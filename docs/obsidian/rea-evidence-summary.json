@@ -1,0 +1,174 @@
+{
+  "tool": "rea-agents",
+  "version": "6.7.0",
+  "date": "2026-11-04",
+  "execution": "local CLI, static ASAR inspection",
+  "semanticAnalysis": "blocked by macOS helper compiler cache permission",
+  "observations": [
+    {
+      "archive": "app",
+      "evidenceId": "ev_b06462e7533051a6dbe740f79cfcb0f9819af0d99331a5a6c447ee5367220307",
+      "errorCode": "execution_failure",
+      "diagnostic": {
+        "source_path": "app.js",
+        "phase": "startup",
+        "message": "macOS process ownership helper compilation failed via xcrun (compiler result: exit code 1): <unknown>:0: error: unable to open output file '/Users/pc/.cache/clang/ModuleCache/381PHTBH1ZI6B/SwiftShims-6PVXR3VD9JVP.pcm': 'Operation not permitted'\n/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/swift/Swift.swiftmodule/arm64e-apple-macos.swiftinterface:5:8: error: could not build Objective-C module 'SwiftShims'\n    3 | // swift-module-flags: -target arm64e-apple-macosx26.2 -target-variant arm64e-apple-ios26.2-macabi -enable-objc-interop -enable-library-evolution -module-link-name swiftCore\u2026 [diagnostics truncated]"
+      },
+      "rootSha256": "0e6383301078a798f0f3bdb42bdb606d904ada77eab8c8fc89da533573979248",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 3852812,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 0,
+        "skipped_javascript_files": 4,
+        "visited_ast_nodes": 0,
+        "findings": 0,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "summary": {
+        "browser_windows": 0,
+        "explicit_web_preferences": 0,
+        "preload_entrypoints": 0,
+        "context_bridge_apis": 0,
+        "exposed_api_members": 0,
+        "ipc": {
+          "operations": 0,
+          "literal_channels": 0,
+          "dynamic_channel_operations": 0,
+          "renderer_transmissions": 0,
+          "renderer_listeners": 0,
+          "main_handlers": 0,
+          "paired_renderer_transmissions": 0,
+          "ambiguous_renderer_transmissions": 0,
+          "unpaired_literal_renderer_transmissions": 0
+        },
+        "sender_validation_observations": 0,
+        "utility_processes": 0,
+        "resolved_utility_entrypoints": 0,
+        "native_addon_bindings": 0,
+        "resolved_native_addon_bindings": 0
+      },
+      "limitations": [
+        "Caller-selected source analysis leaves 33 inventoried files outside analysis scope. Inventory identity covers the complete artifact; relationships through unselected sources remain unknown.",
+        "CommonJS and ESM binding relationships were recovered from inert syntax and resolved only within the inventoried artifact container.",
+        "Graph coverage is incomplete; unavailable facts remain explicit and must not be read as absence.",
+        "JavaScript and HTML were parsed as inert text; bundle bootstrap code was never executed.",
+        "Source analysis was interrupted: Provider javascript-static-analysis adapter failed during analyze_javascript_application",
+        "Static imports, entrypoints, workers, endpoints, and storage relationships do not prove runtime execution.",
+        "Static paths and relationships may remain unresolved when expressions are dynamic or obfuscated.",
+        "Webpack/Rspack factories were recovered from AST literals; REA did not invoke push handlers or bundle bootstrap code.",
+        "app.js: Provider javascript-static-analysis adapter failed during analyze_javascript_application"
+      ],
+      "sourceSelection": {
+        "requested_paths": [
+          "package.json",
+          "app.js",
+          "sim.js",
+          "worker.js",
+          "main.js"
+        ],
+        "unselected_files": 33
+      },
+      "integrityContradictions": []
+    },
+    {
+      "archive": "bootstrap",
+      "evidenceId": "ev_a6f51ae24c7505e3e139bec5d38739aacb4cd77d81cd48af405b8347aa1b2eb3",
+      "errorCode": "execution_failure",
+      "diagnostic": {
+        "source_path": "main.js",
+        "phase": "startup",
+        "message": "macOS process ownership helper compilation failed via xcrun (compiler result: exit code 1): <unknown>:0: error: unable to open output file '/Users/pc/.cache/clang/ModuleCache/381PHTBH1ZI6B/SwiftShims-6PVXR3VD9JVP.pcm': 'Operation not permitted'\n/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/swift/Swift.swiftmodule/arm64e-apple-macos.swiftinterface:5:8: error: could not build Objective-C module 'SwiftShims'\n    3 | // swift-module-flags: -target arm64e-apple-macosx26.2 -target-variant arm64e-apple-ios26.2-macabi -enable-objc-interop -enable-library-evolution -module-link-name swiftCore\u2026 [diagnostics truncated]"
+      },
+      "rootSha256": "9bc94d3b6b9e9579941bb7d20628aa5331f46ee508b270e9123e629f388df207",
+      "statistics": {
+        "relevant_files": 21,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 13887,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 0,
+        "skipped_javascript_files": 1,
+        "visited_ast_nodes": 0,
+        "findings": 0,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "summary": {
+        "browser_windows": 0,
+        "explicit_web_preferences": 0,
+        "preload_entrypoints": 0,
+        "context_bridge_apis": 0,
+        "exposed_api_members": 0,
+        "ipc": {
+          "operations": 0,
+          "literal_channels": 0,
+          "dynamic_channel_operations": 0,
+          "renderer_transmissions": 0,
+          "renderer_listeners": 0,
+          "main_handlers": 0,
+          "paired_renderer_transmissions": 0,
+          "ambiguous_renderer_transmissions": 0,
+          "unpaired_literal_renderer_transmissions": 0
+        },
+        "sender_validation_observations": 0,
+        "utility_processes": 0,
+        "resolved_utility_entrypoints": 0,
+        "native_addon_bindings": 0,
+        "resolved_native_addon_bindings": 0
+      },
+      "limitations": [
+        "Artifact integrity metadata contradicts observed bytes at node_modules/btime/binding.node; the observed bytes are untrusted.",
+        "Artifact integrity metadata contradicts observed bytes at node_modules/get-fonts/binding.node; the observed bytes are untrusted.",
+        "Caller-selected source analysis leaves 19 inventoried files outside analysis scope. Inventory identity covers the complete artifact; relationships through unselected sources remain unknown.",
+        "CommonJS and ESM binding relationships were recovered from inert syntax and resolved only within the inventoried artifact container.",
+        "Graph coverage is incomplete; unavailable facts remain explicit and must not be read as absence.",
+        "JavaScript and HTML were parsed as inert text; bundle bootstrap code was never executed.",
+        "Static imports, entrypoints, workers, endpoints, and storage relationships do not prove runtime execution.",
+        "Static paths and relationships may remain unresolved when expressions are dynamic or obfuscated.",
+        "Webpack/Rspack factories were recovered from AST literals; REA did not invoke push handlers or bundle bootstrap code.",
+        "main.js: Provider javascript-static-analysis adapter failed during analyze_javascript_application"
+      ],
+      "sourceSelection": {
+        "requested_paths": [
+          "package.json",
+          "main.js"
+        ],
+        "unselected_files": 19
+      },
+      "integrityContradictions": [
+        {
+          "contradiction_id": "ic_c7f537716e61f7cfbd0e1b312f22ff71afa52e96e2cd6e9cfadab13a9361e837",
+          "occurrence_id": "occ_f413dd3f44375111f61616cc71eab1133d000de87a7cd15681476b5f58c02cf1",
+          "parent_artifact_id": "art_d18febafdab37f5a0021f91896b34b08b726be763f301f88f6c0b0d6f23ad768",
+          "logical_path": "node_modules/btime/binding.node",
+          "declared_sha256": "fce3459c2ba17f9cd145ecfad5f1ec7e2ada54f556a9a3c07da08135ea382fcd",
+          "observed_sha256": "d9f0f03114af22f98384c09d2df0aef7bd69900194eaa0c7d7af21c080da4842",
+          "entry_kind": "file",
+          "unpacked": true,
+          "trust": "observed-untrusted",
+          "provenance": "container-integrity-metadata-versus-observed-bytes",
+          "limitations": [
+            "Observed bytes contradict declared integrity metadata and cannot support equivalence."
+          ]
+        },
+        {
+          "contradiction_id": "ic_d0dcf40a302164c76ebc93c38ec8a794dc552437da77d5bf035bfefe0b8b3463",
+          "occurrence_id": "occ_b5f92cf4fcf9056ccda4c1532674fc71fcc2e356bb269be0b0f74147423d9b78",
+          "parent_artifact_id": "art_157f51a73bbe86ecfaca081ebc18f9ad148c2493c772c409e15baaefc8e0d057",
+          "logical_path": "node_modules/get-fonts/binding.node",
+          "declared_sha256": "d9070a13559a45ff7087bf18f5cd18363c1597ae4c54a292f16462a98cec5b30",
+          "observed_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+          "entry_kind": "file",
+          "unpacked": true,
+          "trust": "observed-untrusted",
+          "provenance": "container-integrity-metadata-versus-observed-bytes",
+          "limitations": [
+            "Observed bytes contradict declared integrity metadata and cannot support equivalence."
+          ]
+        }
+      ]
+    }
+  ]
+}

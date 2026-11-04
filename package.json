@@ -1,0 +1,14 @@
+{
+  "name": "ivo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Editorial documents and connected knowledge, stored on your device.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "start": "node scripts/serve.mjs",
+    "test": "node --test tests/*.test.js",
+    "build": "node scripts/build.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

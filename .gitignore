@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+.env*
+!.env.example
+research-private/
+*.log
+tests/fixtures/obsidian-vault/.obsidian/

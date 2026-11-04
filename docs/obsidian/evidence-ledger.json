@@ -1,0 +1,339 @@
+{
+  "schema_version": 1,
+  "investigation": "Obsidian packaged architecture: graph, metadata, Canvas, media/editor dependencies",
+  "captured_date": "2026-11-04",
+  "target": {
+    "application": "Obsidian",
+    "bundle_version": "1.15.0",
+    "archive_path": "/Applications/Obsidian.app/Contents/Resources/obsidian.asar",
+    "archive_byte_size": 24553884,
+    "archive_sha256": "0e6383301078a798f0f3bdb42bdb606d904ada77eab8c8fc89da533573979248"
+  },
+  "method": {
+    "reader": "Python standard-library ASAR header reader; bounded UTF-8 source inspection",
+    "coordinate_system": "Zero-based byte offsets; source offsets are within the named uncompressed ASAR file; archive offsets are absolute within obsidian.asar. Inspection length is a locator window, not an exhaustive proof of every surrounding behavior.",
+    "scope": "Direct package observations and static behavioral inference; no runtime traces, performance benchmark, complete decompilation or REA output claimed. No proprietary bundled source is redistributed."
+  },
+  "source_files": {
+    "app.js": {
+      "archive_byte_offset": 694093,
+      "byte_size": 3372270,
+      "sha256": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a"
+    },
+    "worker.js": {
+      "archive_byte_offset": 24303412,
+      "byte_size": 250472,
+      "sha256": "b440a04da734236d816befa208fa15ec514c80d5dd0d195e404615853d87fbe9"
+    },
+    "sim.js": {
+      "archive_byte_offset": 23846142,
+      "byte_size": 17777,
+      "sha256": "9d1768d7d4950fca768c11d5c0ac1fee4f033bee9cf6d7bb004bddf10f369734"
+    },
+    "app.css": {
+      "archive_byte_offset": 95856,
+      "byte_size": 598237,
+      "sha256": "dabc7a75001af0cf898501d570e110d86f269496789942fbb3370bba47a3db07"
+    },
+    "lib/pixi.min.js": {
+      "archive_byte_offset": 20103123,
+      "byte_size": 487134,
+      "sha256": "842814b22c348dcdab381ffb79da3763ff0672271f60f09dababa52656fd31b8"
+    },
+    "lib/pdfjs/version.json": {
+      "archive_byte_offset": 18583368,
+      "byte_size": 65,
+      "sha256": "0a8ac68bb7f1845ad8eb795e7147abf66f75c79b5e585c5985dbad4d42ad1eec"
+    },
+    "lib/codemirror/codemirror.js": {
+      "archive_byte_offset": 10509768,
+      "byte_size": 400161,
+      "sha256": "2150c2e30dcc28427b0cacb31c8073e2f8cdbeb1b03d61214a7200809bf21a43"
+    },
+    "lib/mathjax/obsidian-mathjax.js": {
+      "archive_byte_offset": 12590798,
+      "byte_size": 1139224,
+      "sha256": "ac00d774192009417b8fa50412f4b27f94426014e7526fe1151276a9784de965"
+    }
+  },
+  "evidence": [
+    {
+      "id": "A01",
+      "source": "app.js",
+      "source_byte_offset": 1580179,
+      "archive_byte_offset": 2274272,
+      "inspection_byte_length": 350,
+      "anchor": "this.worker=new Worker(\"worker.js\"",
+      "classification": "artifact_observation",
+      "claim": "A dedicated metadata-cache worker is constructed."
+    },
+    {
+      "id": "A02",
+      "source": "worker.js",
+      "source_byte_offset": 246907,
+      "archive_byte_offset": 24550319,
+      "inspection_byte_length": 3565,
+      "anchor": "function Am(t,e)",
+      "classification": "static_inference",
+      "claim": "Parser returns position-aware links, embeds, tags, headings, sections, list items, blocks, frontmatter and footnote metadata."
+    },
+    {
+      "id": "A03",
+      "source": "app.js",
+      "source_byte_offset": 1588358,
+      "archive_byte_offset": 2282451,
+      "inspection_byte_length": 420,
+      "anchor": "resolveLinks(e){if(!this.getCache(e))return;",
+      "classification": "static_inference",
+      "claim": "Resolved links count references by source and destination; unresolved link paths use a distinct map."
+    },
+    {
+      "id": "A04",
+      "source": "app.js",
+      "source_byte_offset": 1581781,
+      "archive_byte_offset": 2275874,
+      "inspection_byte_length": 1900,
+      "anchor": "getLinkpathDest(e,i){",
+      "classification": "static_inference",
+      "claim": "Link resolution consults normalized lookup and source-relative candidate ranking."
+    },
+    {
+      "id": "A05",
+      "source": "app.js",
+      "source_byte_offset": 1581113,
+      "archive_byte_offset": 2275206,
+      "inspection_byte_length": 980,
+      "anchor": "getTags(){let e={}",
+      "classification": "static_inference",
+      "claim": "Tag aggregation expands slash-separated ancestors and merges case variants."
+    },
+    {
+      "id": "A06",
+      "source": "app.js",
+      "source_byte_offset": 1585219,
+      "archive_byte_offset": 2279312,
+      "inspection_byte_length": 1500,
+      "anchor": "async _preload(){let{fileCache:e,metadataCache:i}",
+      "classification": "static_inference",
+      "claim": "IndexedDB-backed caches use file state and parsed metadata records."
+    },
+    {
+      "id": "A07",
+      "source": "app.js",
+      "source_byte_offset": 1589463,
+      "archive_byte_offset": 2283556,
+      "inspection_byte_length": 2450,
+      "anchor": "computeFileMetadataAsync(e){",
+      "classification": "static_inference",
+      "claim": "File parsing uses hash-keyed metadata reuse and a worker queue."
+    },
+    {
+      "id": "A08",
+      "source": "app.js",
+      "source_byte_offset": 2400852,
+      "archive_byte_offset": 3094945,
+      "inspection_byte_length": 1740,
+      "anchor": "function oDe(o,t,e,i){",
+      "classification": "static_inference",
+      "claim": "Global graph construction combines resolved/unresolved links and optional tag/attachment nodes."
+    },
+    {
+      "id": "A09",
+      "source": "app.js",
+      "source_byte_offset": 2147666,
+      "archive_byte_offset": 2841759,
+      "inspection_byte_length": 1170,
+      "anchor": "function oV(o,t){",
+      "classification": "static_inference",
+      "claim": "Local graph expands a bounded incoming/outgoing neighborhood with depth-dependent weights and optional interlinks."
+    },
+    {
+      "id": "A10",
+      "source": "app.js",
+      "source_byte_offset": 2148483,
+      "archive_byte_offset": 2842576,
+      "inspection_byte_length": 490,
+      "anchor": "function ehe(o){",
+      "classification": "static_inference",
+      "claim": "Orphan removal considers non-self connectivity in both directions."
+    },
+    {
+      "id": "A11",
+      "source": "app.js",
+      "source_byte_offset": 2387076,
+      "archive_byte_offset": 3081169,
+      "inspection_byte_length": 1750,
+      "anchor": "setQuery(t){this.queue",
+      "classification": "static_inference",
+      "claim": "Graph queries reuse search machinery with a cancellable queue and ordered color groups."
+    },
+    {
+      "id": "A12",
+      "source": "app.js",
+      "source_byte_offset": 2136587,
+      "archive_byte_offset": 2830680,
+      "inspection_byte_length": 140,
+      "anchor": "new PIXI.Application({view:t",
+      "classification": "artifact_observation",
+      "claim": "Graph renderer instantiates Pixi with auto-start disabled."
+    },
+    {
+      "id": "A13",
+      "source": "app.js",
+      "source_byte_offset": 2140604,
+      "archive_byte_offset": 2834697,
+      "inspection_byte_length": 4000,
+      "anchor": "renderCallback=()=>{",
+      "classification": "static_inference",
+      "claim": "Graph frame work uses viewport checks, a limit of 50 new graphical nodes per frame, and an idle-frame stop condition."
+    },
+    {
+      "id": "A14",
+      "source": "app.js",
+      "source_byte_offset": 2143752,
+      "archive_byte_offset": 2837845,
+      "inspection_byte_length": 3300,
+      "anchor": "setData(t){let{nodes:e,nodeLookup:i,links:r}",
+      "classification": "static_inference",
+      "claim": "Graph updates reconcile existing objects and seed added node positions near neighbors."
+    },
+    {
+      "id": "A15",
+      "source": "app.js",
+      "source_byte_offset": 2128758,
+      "archive_byte_offset": 2822851,
+      "inspection_byte_length": 2300,
+      "anchor": "getTextStyle(){let{renderer:t}=this,e=this.getSize()",
+      "classification": "static_inference",
+      "claim": "Graph labels have their own typography and zoom/hover visibility behavior."
+    },
+    {
+      "id": "A16",
+      "source": "app.js",
+      "source_byte_offset": 2134928,
+      "archive_byte_offset": 2829021,
+      "inspection_byte_length": 210,
+      "anchor": "new Worker(\"/sim.js\"",
+      "classification": "artifact_observation",
+      "claim": "Graph physics runs in a dedicated named worker."
+    },
+    {
+      "id": "A17",
+      "source": "sim.js",
+      "source_byte_offset": 17081,
+      "archive_byte_offset": 23863223,
+      "inspection_byte_length": 696,
+      "anchor": "var kt=Rt()||Ut()",
+      "classification": "static_inference",
+      "claim": "Worker selects WASM or fallback physics, exchanging packed positions with shared or transferred buffers."
+    },
+    {
+      "id": "A18",
+      "source": "sim.js",
+      "source_byte_offset": 16219,
+      "archive_byte_offset": 23862361,
+      "inspection_byte_length": 1300,
+      "anchor": "self.onmessage=function(t)",
+      "classification": "static_inference",
+      "claim": "Worker messages update topology, drag constraints, force parameters, alpha and run state."
+    },
+    {
+      "id": "A19",
+      "source": "app.js",
+      "source_byte_offset": 2887406,
+      "archive_byte_offset": 3581499,
+      "inspection_byte_length": 225,
+      "anchor": "getData(){let t=[],e=[],i=Array.from(this.nodes.values())",
+      "classification": "static_inference",
+      "claim": "Canvas serializes explicit node and edge objects."
+    },
+    {
+      "id": "A20",
+      "source": "app.js",
+      "source_byte_offset": 2888268,
+      "archive_byte_offset": 3582361,
+      "inspection_byte_length": 1650,
+      "anchor": "importData(t,e){let{nodes:i,edges:r}=t;",
+      "classification": "static_inference",
+      "claim": "Canvas import recognizes file, text, link and group nodes with explicit geometry."
+    },
+    {
+      "id": "A21",
+      "source": "app.js",
+      "source_byte_offset": 2977194,
+      "archive_byte_offset": 3671287,
+      "inspection_byte_length": 325,
+      "anchor": "getViewData(){return Q2(this.canvas.data)}",
+      "classification": "static_inference",
+      "claim": "Canvas view persists and restores JSON data."
+    },
+    {
+      "id": "A22",
+      "source": "app.js",
+      "source_byte_offset": 1801775,
+      "archive_byte_offset": 2495868,
+      "inspection_byte_length": 530,
+      "anchor": "/lib/pdfjs/pdf.min.mjs",
+      "classification": "artifact_observation",
+      "claim": "PDF.js and its worker are loaded from local package assets."
+    },
+    {
+      "id": "A23",
+      "source": "app.js",
+      "source_byte_offset": 1804038,
+      "archive_byte_offset": 2498131,
+      "inspection_byte_length": 760,
+      "anchor": "/lib/mathjax/obsidian-mathjax.js",
+      "classification": "artifact_observation",
+      "claim": "MathJax is loaded from local package assets and configured separately from document text."
+    },
+    {
+      "id": "A24",
+      "source": "app.css",
+      "source_byte_offset": 57910,
+      "archive_byte_offset": 153766,
+      "inspection_byte_length": 80,
+      "anchor": "--file-line-width:",
+      "classification": "artifact_observation",
+      "claim": "Document line measure is exposed through a CSS custom property."
+    },
+    {
+      "id": "A25",
+      "source": "app.js",
+      "source_byte_offset": 1591430,
+      "archive_byte_offset": 2285523,
+      "inspection_byte_length": 760,
+      "anchor": "onRename(e,i){if(!e||!(e instanceof j)",
+      "classification": "static_inference",
+      "claim": "Rename handling relocates metadata-cache keys and refreshes related references."
+    },
+    {
+      "id": "A26",
+      "source": "app.js",
+      "source_byte_offset": 1591033,
+      "archive_byte_offset": 2285126,
+      "inspection_byte_length": 490,
+      "anchor": "onDelete(e){!e||!(e instanceof j)||e instanceof wi",
+      "classification": "static_inference",
+      "claim": "Deletion invalidates metadata and affected references."
+    }
+  ],
+  "unknowns": [
+    "Observed behavior on a live vault and platform-specific parity",
+    "Actual runtime WASM versus fallback choice and measured graph throughput",
+    "Exhaustive link-resolution and search-language edge cases",
+    "Cloud synchronization, plugin isolation and source-level implementation completeness"
+  ],
+  "related_runtime_evidence": [
+    {
+      "id": "R01",
+      "classification": "companion_runtime_observation",
+      "application_version": "1.15.0",
+      "reported_by": "Primary investigation UI verification, 2026-11-04",
+      "fixture": "tests/fixtures/obsidian-vault/Reference.canvas",
+      "fixture_sha256": "f9cd6af35183ca313eb23b6fad28ea945069d4c9ba22aac715fde8c903ccad9d",
+      "observation": "Atlas Backlinks panel grouped the standalone Canvas text card containing [[Atlas]] under Reference.canvas and displayed two backlinks including Material.md.",
+      "scope_limit": "Observed outgoing link attributed to Canvas file; does not establish independent card identity as a graph node or link target."
+    }
+  ]
+}

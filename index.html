@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f6f2">
+  <meta name="description" content="Ivo — a place for connected thoughts, images and documents.">
+  <title>Ivo — A personal atlas</title>
+  <link rel="icon" href="./public/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <div id="app"><div class="loading">Ivo<span>Opening your atlas…</span></div></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="dialog"></dialog>
+  <input id="asset-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" hidden>
+  <input id="import-input" type="file" accept="application/json,.json" hidden>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

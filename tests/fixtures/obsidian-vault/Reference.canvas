@@ -1,0 +1,9 @@
+{
+	"nodes":[
+		{"id":"reference-file","type":"file","file":"Material.md","x":0,"y":0,"width":360,"height":300},
+		{"id":"reference-card","type":"text","text":"Canvas-only card linking [[Atlas]]","x":460,"y":0,"width":280,"height":200}
+	],
+	"edges":[
+		{"id":"reference-edge","fromNode":"reference-file","fromSide":"right","toNode":"reference-card","toSide":"left","label":"manual relation"}
+	]
+}
