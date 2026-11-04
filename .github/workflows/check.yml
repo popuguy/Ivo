@@ -12,3 +12,8 @@ jobs:
           node-version: '22'
       - run: npm test
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ivo-static-preview
+          path: dist/
+          retention-days: 14

@@ -17,6 +17,8 @@ npm test
 npm run build
 ```
 
+The [Check Ivo workflow](https://github.com/popuguy/Ivo/actions/workflows/check.yml) also builds a downloadable `ivo-static-preview` artifact after successful runs.
+
 `dist/` is a static web app suitable for HTTPS hosting. `dist/Ivo.html` is an additional single-file build; browsers differ in whether they permit persistent storage on local files. The served app is the primary development path.
 
 ## First edition
