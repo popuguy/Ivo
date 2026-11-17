@@ -1,0 +1,2 @@
+# Preserve bundled upstream license notices byte-for-byte, including their whitespace.
+public/fonts/**/OFL.txt -whitespace

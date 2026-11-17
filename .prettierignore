@@ -1,0 +1,10 @@
+node_modules/
+dist/
+release/
+public/
+ios/
+research-private/
+src/shared/ui/reference-art-data.js
+tests/fixtures/
+docs/obsidian/
+docs/illustrator/

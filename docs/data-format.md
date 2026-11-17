@@ -1,0 +1,27 @@
+# Document and vault formats
+
+Current writable linked-text documents use **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
+
+| Archive | Document capability                                                                   |
+| ------- | ------------------------------------------------------------------------------------- |
+| 1       | Legacy grid document, no canvas version                                               |
+| 2       | Fixed pages and objects, canvas 1                                                     |
+| 3       | Rich typography, canvas 2                                                             |
+| 4       | Previous linked-text representation, canvas 3; read through the compatibility decoder |
+| 5       | Canonical `textFlows` with frame `textFlowId`, canvas 4                               |
+
+A document has a stable ID and version, editable title, timestamps, tags/aliases, objects and (for current scenes) pages. A text flow has its own stable ID, rich HTML, ordered frame IDs, style, continuation policy and ownership of automatically generated pages. Frames hold geometry and a reference to their text flow; they do not duplicate its source. Images reference original assets. Polygon masks form a validated, bounded parent tree. Application extension data is namespaced and bounded; unknown extension namespaces survive validation.
+
+`domain/documents/schema.js` validates and normalizes import/storage input. `capabilities.js` derives the required archive capability. The compatibility decoder in `migrations.js` is the only production location retaining the old field names. Frozen legacy fixtures intentionally retain their original bytes and spelling. Existing opaque IDs, authored text, Unicode, blank paragraphs, pages, geometry, extensions and original assets are preserved; new IDs use current terminology.
+
+The decoder reads old fields into the current representation without mutating its input. Mixed old/current representations in one document reject rather than silently choosing a source. Unsupported versions, duplicate/invalid references, unsafe URLs/markup, excessive data and invalid clipping ownership fail before a commit. Normalizing a native vault on open performs **no disk write**. A subsequent user edit writes a new immutable current revision while the previous file remains intact. Stored history is decoded through the same boundary.
+
+The folder contains `atlas.json`, content-digested document JSON objects and original asset byte objects. The manifest points to complete validated objects. Object writes precede the atomic manifest replacement; a failed/interrupted manifest commit leaves the previous manifest authoritative. An expected-manifest hash rejects a stale writer. Native IO accepts only confined relative object paths and rejects symbolic-link escapes. Existing assets are not recompressed during migration.
+
+IndexedDB 4 preserves the documents/assets/meta stores. The version change closes stale connections; older database clients cannot reopen a newer database. Reading compatibility data does not rewrite its source; normal edited writes use current keys. Browser history is validated/decoded when read. Per-window workspace metadata and local history are not the future cloud synchronization authority.
+
+Format regressions live in `tests/unit/migrations.test.js`, `tests/unit/vault.test.js`, the browser-storage runtime and the native Foundation interoperability test. See [verification](verification.md) and the [sync boundary](decisions/0002-sync-boundary.md).
+
+Logical library organization still uses the existing `ivo.library` document extension and `library:1` folder metadata. Folder changes alter only that semantic metadata plus revision/timestamp, preserving document identities and authored content. `changeLibrary` commits the affected revisions and folder tree together; it adds no new document/archive/manifest version. Named workspace catalogs and window chrome use bounded profile-local preference keys, excluded from document exports and future authored-replica authority.
+
+Workspace1 view metadata now admits bounded `stacked` groups, graph/backlinks `linkedTo` references and per-graph local scope. Named workspaces include a normalized context-panel layout; named panel presets remain a bounded profile-local catalog scoped to a vault. New view fields carry no authored source, assets, undo or live caret data. Incoming native-window views receive new local tab identities; existing in-memory caret/closed-tab bookmarks are preserved.

@@ -1,0 +1,42 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  background: white;
+  color: #252525;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+#pdf-pages {
+  margin: 0;
+  padding: 0;
+}
+.pdf-page {
+  position: relative;
+  overflow: hidden;
+  background: white;
+  break-after: page;
+  break-inside: avoid;
+  isolation: isolate;
+}
+.pdf-page:last-child {
+  break-after: auto;
+}
+.pdf-layout {
+  position: absolute;
+  left: 0;
+  top: 0;
+  zoom: 1.3333333333333333;
+  isolation: isolate;
+}
+.pdf-page .canvas-object {
+  user-select: text;
+}
+.pdf-page a {
+  cursor: default;
+}

@@ -4,5 +4,17 @@ dist/
 .env*
 !.env.example
 research-private/
+release/
+docs/RECOVERY-HANDOFF.md
+ios/App/App/public/
+ios/App/Pods/
+ios/App/build/
+ios/App/DerivedData/
 *.log
 tests/fixtures/obsidian-vault/.obsidian/
+
+# Locally compiled reference-app artwork; public builds use licensed Obsidian icons.
+src/shared/ui/reference-art-data.js
+
+# Generated development service worker. Production output lives in dist/.
+/sw.js

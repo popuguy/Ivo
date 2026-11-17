@@ -316,6 +316,36 @@
       "anchor": "onDelete(e){!e||!(e instanceof j)||e instanceof wi",
       "classification": "static_inference",
       "claim": "Deletion invalidates metadata and affected references."
+    },
+    {
+      "id": "A27",
+      "source": "app.js",
+      "source_byte_offset": 2137060,
+      "archive_byte_offset": 2831153,
+      "inspection_byte_length": 820,
+      "anchor": "T.fx=P.x,T.fy=P.y",
+      "classification": "static_inference",
+      "claim": "Node drag applies fixed pointer coordinates and raises alpha/alphaTarget to 0.3; release clears the fixed coordinates and sets alphaTarget to zero."
+    },
+    {
+      "id": "A28",
+      "source": "app.js",
+      "source_byte_offset": 2146087,
+      "archive_byte_offset": 2840180,
+      "inspection_byte_length": 710,
+      "anchor": "updateZoom(){let{scale:t,targetScale:e",
+      "classification": "static_inference",
+      "claim": "Zoom eases current scale toward target scale with old-value weight 0.85, adjusts pan to preserve its anchor, and clamps target scale between 1/128 and 8."
+    },
+    {
+      "id": "A29",
+      "source": "app.js",
+      "source_byte_offset": 2141313,
+      "archive_byte_offset": 2835406,
+      "inspection_byte_length": 100,
+      "anchor": "this.panvX=uo(D,Oe*ut,.9)",
+      "classification": "static_inference",
+      "claim": "Released pan velocity eases toward the current keyboard target with old-value weight 0.9 per render frame."
     }
   ],
   "unknowns": [

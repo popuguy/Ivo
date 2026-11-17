@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta
+  http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+/>
+<title>Ivo graph runtime test</title>
+<style>
+  body {
+    margin: 0;
+    background: #f8f7f4;
+    font-family: system-ui;
+  }
+  #stage {
+    position: relative;
+    width: 1100px;
+    height: 700px;
+  }
+</style>
+<div id="stage"></div>
+<script type="module" src="./fixture.js"></script>

@@ -1,0 +1,62 @@
+<!doctype html><meta charset="utf-8" /><link
+  rel="stylesheet"
+  href="../../../src/styles/index.css"
+/>
+<style>
+  body {
+    margin: 0;
+    background: #fff;
+  }
+  #viewport {
+    position: absolute;
+    left: 24px;
+    top: 24px;
+    width: 1100px;
+    height: 760px;
+    overflow: hidden;
+    background: #fff;
+  }
+  #world {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+  }
+  .sample {
+    position: absolute;
+    left: 12px;
+    top: 10px;
+    width: 230px;
+    height: 100px;
+  }
+  .sample p {
+    margin: 0;
+  }
+  .sample > svg {
+    position: absolute;
+    left: 0;
+    top: 39px;
+    width: 70px;
+    height: 20px;
+  }
+  .shape {
+    position: absolute;
+  }
+  .clipping {
+    position: absolute;
+    left: 260px;
+    top: 20px;
+    width: 50px;
+    height: 50px;
+    clip-path: polygon(0 0, 100% 0, 75% 100%, 0 80%);
+  }
+  .clipping img {
+    position: absolute;
+    left: -5px;
+    top: -5px;
+    width: 80px;
+    height: 80px;
+  }
+</style>
+<div id="viewport"><div id="world"></div></div>
+<script type="module" src="fixture.js"></script>

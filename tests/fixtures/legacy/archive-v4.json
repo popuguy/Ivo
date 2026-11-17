@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 4,
+  "documents": [
+    {
+      "id": "legacy-linked-document",
+      "title": "Legacy document with linked text",
+      "kicker": "",
+      "subtitle": "",
+      "tags": [],
+      "aliases": [],
+      "blocks": [
+        {
+          "id": "legacy-frame",
+          "type": "text",
+          "x": 48.125,
+          "y": 52.75,
+          "w": 516,
+          "h": 696,
+          "html": "",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "serif",
+          "fontSize": 16,
+          "align": "left",
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "pageId": "legacy-page",
+          "storyId": "legacy-flow"
+        },
+        {
+          "id": "block-5651151f-e5b1-4372-824b-ecdf8ba827cd",
+          "type": "text",
+          "x": 48.125,
+          "y": 52.75,
+          "w": 516,
+          "h": 696,
+          "html": "",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "serif",
+          "fontSize": 16,
+          "align": "left",
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "pageId": "page-4ea39680-e7cc-44ee-91cd-46408cc73eeb",
+          "storyId": "legacy-flow"
+        },
+        {
+          "id": "legacy-image-frame",
+          "type": "image",
+          "x": 400.5,
+          "y": 300.25,
+          "w": 80.125,
+          "h": 60.5,
+          "html": "",
+          "src": "asset:legacy-image",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "pageId": "legacy-page"
+        }
+      ],
+      "updatedAt": "2026-11-15T18:46:45.176Z",
+      "createdAt": "2026-11-15T18:46:45.176Z",
+      "layout": {
+        "columns": 12,
+        "rows": 38
+      },
+      "version": 17,
+      "template": "blank",
+      "canvasVersion": 3,
+      "pages": [
+        {
+          "id": "legacy-page",
+          "name": "Page 1",
+          "width": 612,
+          "height": 792
+        },
+        {
+          "id": "page-4ea39680-e7cc-44ee-91cd-46408cc73eeb",
+          "name": "Page 2",
+          "width": 612,
+          "height": 792
+        }
+      ],
+      "stories": [
+        {
+          "id": "legacy-flow",
+          "html": "<p><strong>Preserved document text</strong> — café Ελληνικά.</p><p><br></p><ol><li>First</li><li>Second</li></ol>",
+          "frameIds": [
+            "legacy-frame",
+            "block-5651151f-e5b1-4372-824b-ecdf8ba827cd"
+          ],
+          "style": {
+            "textStyle": "serif",
+            "fontSize": 16,
+            "align": "left"
+          },
+          "automaticPages": true,
+          "deleteEmptyPages": true,
+          "autoPages": [
+            {
+              "pageId": "page-4ea39680-e7cc-44ee-91cd-46408cc73eeb",
+              "frameId": "block-5651151f-e5b1-4372-824b-ecdf8ba827cd"
+            }
+          ]
+        }
+      ],
+      "extensions": {
+        "third-party": {
+          "keep": [
+            "original",
+            "extension"
+          ]
+        }
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "legacy-image",
+      "name": "Original.png",
+      "mimeType": "image/png",
+      "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIUlEQVR4nGN49vorVmSUsgUrYhjVQBMNuCRwGTSqgSYaACk0CB+bcN8GAAAAAElFTkSuQmCC"
+    }
+  ]
+}

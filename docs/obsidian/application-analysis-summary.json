@@ -1,0 +1,763 @@
+{
+  "schema_version": 1,
+  "target": "Obsidian1.15.0 installed macOS app",
+  "counts": {
+    "bootstrap_javascript_members": 15,
+    "bootstrap_rea_processed": 15,
+    "application_js_mjs_members": 31,
+    "application_rea_processed": 29,
+    "node_syntax_checked": 46,
+    "node_syntax_failures": 0
+  },
+  "rea_unprocessed_sources": [
+    "lib/pdfjs/wasm/openjpeg_nowasm_fallback.js",
+    "lib/prism.min.js"
+  ],
+  "source_status_counts": {
+    "app": {
+      "skipped": 0,
+      "partial": 3,
+      "complete": 12
+    },
+    "obsidian": {
+      "skipped": 2,
+      "partial": 20,
+      "complete": 9
+    }
+  },
+  "limits": "REA processed counts include partial semantic projections and are not a complete call graph. The two remaining source files passed independent Node syntax checking. No target code was executed.",
+  "runs": [
+    {
+      "name": "bootstrap",
+      "error_code": null,
+      "evidence_id": "ev_4e8360a6197eefe438de44f723fd1f378edd123b66d0a19f483e9ca1067bbcbe",
+      "statistics": {
+        "relevant_files": 21,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 69078,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 15,
+        "skipped_javascript_files": 0,
+        "visited_ast_nodes": 8040,
+        "findings": 135,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "selection": null,
+      "semantic_counts": {
+        "nodes": 6014,
+        "relations": 5688,
+        "unknowns": 1771
+      },
+      "semantic_coverage": {
+        "status": "unknown",
+        "truncated": false,
+        "omitted_nodes": 0,
+        "omitted_relations": 0,
+        "limits": []
+      }
+    },
+    {
+      "name": "core",
+      "error_code": null,
+      "evidence_id": "ev_6a3f18deceb876b5ce3f0320a1e75af5577e9bc75cf79981c87088439ccb8e90",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 3835035,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 3,
+        "skipped_javascript_files": 0,
+        "visited_ast_nodes": 1057330,
+        "findings": 185,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "selection": {
+        "requested_paths": [
+          "package.json",
+          "main.js",
+          "worker.js",
+          "app.js"
+        ],
+        "unselected_files": 34
+      },
+      "semantic_counts": {
+        "nodes": 24000,
+        "relations": 10231,
+        "unknowns": 21405
+      },
+      "semantic_coverage": {
+        "status": "partial",
+        "truncated": true,
+        "omitted_unknown_occurrences": [
+          {
+            "family": "call-flow",
+            "reason": "dynamic-call",
+            "occurrences": 54622
+          },
+          {
+            "family": "object-flow",
+            "reason": "ambiguous-target",
+            "occurrences": 98835
+          },
+          {
+            "family": "object-flow",
+            "reason": "dynamic-property",
+            "occurrences": 4378
+          },
+          {
+            "family": "timer",
+            "reason": "ambiguous-target",
+            "occurrences": 41
+          }
+        ],
+        "omitted_nodes": null,
+        "omitted_relations": null,
+        "limits": [
+          {
+            "name": "semantic_graph_file_node_ceiling",
+            "value": 8000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_file_unknown_ceiling",
+            "value": 8000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_node_ceiling",
+            "value": 24000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_unknown_ceiling",
+            "value": 24000,
+            "unit": "items"
+          }
+        ]
+      }
+    },
+    {
+      "name": "simulation",
+      "error_code": null,
+      "evidence_id": "ev_4ce3e3241f6a2632e16e8e2877acc09660179e5242fafcd71a70bd221389a9a9",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 18037,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 1,
+        "skipped_javascript_files": 0,
+        "visited_ast_nodes": 6190,
+        "findings": 0,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "selection": {
+        "requested_paths": [
+          "package.json",
+          "sim.js"
+        ],
+        "unselected_files": 36
+      },
+      "semantic_counts": {
+        "nodes": 4710,
+        "relations": 4669,
+        "unknowns": 1723
+      },
+      "semantic_coverage": {
+        "status": "partial",
+        "truncated": false,
+        "omitted_nodes": null,
+        "omitted_relations": null,
+        "limits": []
+      }
+    },
+    {
+      "name": "remaining-entrypoints",
+      "error_code": null,
+      "evidence_id": "ev_060fedf12cfe5ca330bfd0fcc60e5f2407a81f7b8a8976a92e4143788a5e02a2",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 1651320,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 5,
+        "skipped_javascript_files": 0,
+        "visited_ast_nodes": 265174,
+        "findings": 20,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "selection": {
+        "requested_paths": [
+          "package.json",
+          "enhance.js",
+          "help.js",
+          "i18n.js",
+          "quicklook.js",
+          "starter.js"
+        ],
+        "unselected_files": 32
+      },
+      "semantic_counts": {
+        "nodes": 32617,
+        "relations": 22671,
+        "unknowns": 31386
+      },
+      "semantic_coverage": {
+        "status": "partial",
+        "truncated": true,
+        "omitted_unknown_occurrences": [
+          {
+            "family": "call-flow",
+            "reason": "dynamic-call",
+            "occurrences": 10
+          }
+        ],
+        "omitted_nodes": null,
+        "omitted_relations": null,
+        "limits": [
+          {
+            "name": "semantic_graph_file_node_ceiling",
+            "value": 10000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_file_unknown_ceiling",
+            "value": 20000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_node_ceiling",
+            "value": 50000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_unknown_ceiling",
+            "value": 100000,
+            "unit": "items"
+          }
+        ]
+      }
+    },
+    {
+      "name": "libraries-first-pass",
+      "error_code": "provider_timeout",
+      "evidence_id": "ev_72b3068a5317f6dc8c9493813dbe6bd61df8582c763e00efdee1e2e7285b50cb",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 8207491,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 14,
+        "skipped_javascript_files": 8,
+        "visited_ast_nodes": 1403817,
+        "findings": 1170,
+        "modules": 73,
+        "parse_failures": 0
+      },
+      "selection": {
+        "requested_paths": [
+          "package.json",
+          "lib/codemirror/cm-addons.js",
+          "lib/codemirror/codemirror.js",
+          "lib/codemirror/markdown.js",
+          "lib/codemirror/meta.min.js",
+          "lib/codemirror/modes.min.js",
+          "lib/codemirror/overlay.js",
+          "lib/codemirror/vim.js",
+          "lib/defuddle.full.js",
+          "lib/i18next.min.js",
+          "lib/mathjax/obsidian-mathjax.js",
+          "lib/moment.min.js",
+          "lib/pdfjs/pdf.min.mjs",
+          "lib/pdfjs/pdf.viewer.min.mjs",
+          "lib/pdfjs/pdf.worker.min.mjs",
+          "lib/pdfjs/wasm/openjpeg_nowasm_fallback.js",
+          "lib/pele.min.js",
+          "lib/pixi.min.js",
+          "lib/prism.min.js",
+          "lib/readability.js",
+          "lib/reveal/reveal.js",
+          "lib/scrypt.js",
+          "lib/turndown.js"
+        ],
+        "unselected_files": 15
+      },
+      "semantic_counts": {
+        "nodes": 55487,
+        "relations": 33077,
+        "unknowns": 47021
+      },
+      "semantic_coverage": {
+        "status": "partial",
+        "truncated": true,
+        "omitted_unknown_occurrences": [
+          {
+            "family": "call-flow",
+            "reason": "dynamic-call",
+            "occurrences": 52236
+          },
+          {
+            "family": "object-flow",
+            "reason": "ambiguous-target",
+            "occurrences": 96135
+          },
+          {
+            "family": "object-flow",
+            "reason": "dynamic-property",
+            "occurrences": 8177
+          },
+          {
+            "family": "timer",
+            "reason": "ambiguous-target",
+            "occurrences": 11
+          }
+        ],
+        "omitted_nodes": null,
+        "omitted_relations": null,
+        "limits": [
+          {
+            "name": "javascript_analysis_worker_heap_limit_bytes",
+            "value": 2172649472,
+            "unit": "bytes"
+          },
+          {
+            "name": "javascript_analysis_worker_timeout_ms",
+            "value": 180000,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "semantic_graph_file_node_ceiling",
+            "value": 5000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_file_unknown_ceiling",
+            "value": 5000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_node_ceiling",
+            "value": 100000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_unknown_ceiling",
+            "value": 100000,
+            "unit": "items"
+          }
+        ]
+      }
+    },
+    {
+      "name": "libraries-remaining",
+      "error_code": "provider_timeout",
+      "evidence_id": "ev_486a9bd00f6511d60cb5af185a9a04e67b853802475872f68dcca7a57bdd3b90",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 1914415,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 2,
+        "skipped_javascript_files": 5,
+        "visited_ast_nodes": 410536,
+        "findings": 12,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "selection": {
+        "requested_paths": [
+          "package.json",
+          "lib/pele.min.js",
+          "lib/pixi.min.js",
+          "lib/prism.min.js",
+          "lib/readability.js",
+          "lib/reveal/reveal.js",
+          "lib/scrypt.js",
+          "lib/turndown.js"
+        ],
+        "unselected_files": 30
+      },
+      "semantic_counts": {
+        "nodes": 10030,
+        "relations": 290,
+        "unknowns": 10360
+      },
+      "semantic_coverage": {
+        "status": "partial",
+        "truncated": true,
+        "omitted_unknown_occurrences": [
+          {
+            "family": "call-flow",
+            "reason": "dynamic-call",
+            "occurrences": 12662
+          },
+          {
+            "family": "object-flow",
+            "reason": "ambiguous-target",
+            "occurrences": 36672
+          },
+          {
+            "family": "object-flow",
+            "reason": "dynamic-property",
+            "occurrences": 6557
+          }
+        ],
+        "omitted_nodes": null,
+        "omitted_relations": null,
+        "limits": [
+          {
+            "name": "javascript_analysis_worker_timeout_ms",
+            "value": 180000,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "semantic_graph_file_node_ceiling",
+            "value": 5000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_file_unknown_ceiling",
+            "value": 5000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_node_ceiling",
+            "value": 50000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_unknown_ceiling",
+            "value": 50000,
+            "unit": "items"
+          }
+        ]
+      }
+    },
+    {
+      "name": "libraries-fallback",
+      "error_code": "provider_timeout",
+      "evidence_id": "ev_6a0a335d8d2301630048bae272286513296f3e6855367bf1d8c12039ecc68187",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 462576,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 0,
+        "skipped_javascript_files": 1,
+        "visited_ast_nodes": 0,
+        "findings": 0,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "selection": {
+        "requested_paths": [
+          "package.json",
+          "lib/pdfjs/wasm/openjpeg_nowasm_fallback.js"
+        ],
+        "unselected_files": 36
+      },
+      "semantic_counts": {
+        "nodes": 32,
+        "relations": 0,
+        "unknowns": 384
+      },
+      "semantic_coverage": {
+        "status": "partial",
+        "truncated": true,
+        "omitted_nodes": null,
+        "omitted_relations": null,
+        "limits": [
+          {
+            "name": "javascript_analysis_worker_timeout_ms",
+            "value": 180000,
+            "unit": "milliseconds"
+          }
+        ]
+      }
+    },
+    {
+      "name": "libraries-final-four",
+      "error_code": null,
+      "evidence_id": "ev_2f2a5b2665ddc9250777905c8f784222a1c7c0df0d325c5d5e9d2aa312cad868",
+      "statistics": {
+        "relevant_files": 38,
+        "nested_asar_containers": 0,
+        "text_bytes_read": 151080,
+        "invalid_utf8_files": 0,
+        "parsed_javascript_files": 4,
+        "skipped_javascript_files": 0,
+        "visited_ast_nodes": 37494,
+        "findings": 4,
+        "modules": 0,
+        "parse_failures": 0
+      },
+      "selection": {
+        "requested_paths": [
+          "package.json",
+          "lib/readability.js",
+          "lib/reveal/reveal.js",
+          "lib/scrypt.js",
+          "lib/turndown.js"
+        ],
+        "unselected_files": 33
+      },
+      "semantic_counts": {
+        "nodes": 18820,
+        "relations": 15824,
+        "unknowns": 8806
+      },
+      "semantic_coverage": {
+        "status": "partial",
+        "truncated": true,
+        "omitted_nodes": null,
+        "omitted_relations": null,
+        "limits": [
+          {
+            "name": "semantic_graph_file_node_ceiling",
+            "value": 10000,
+            "unit": "items"
+          },
+          {
+            "name": "semantic_graph_node_ceiling",
+            "value": 40000,
+            "unit": "items"
+          }
+        ]
+      }
+    }
+  ],
+  "traces": [
+    {
+      "name": "vault-open-trace",
+      "evidence_id": "ev_3fba9686f67aefb4250bae9d718d00ab4f9dc36f0a6e3fcd9c1cbe92d80f261a",
+      "summary": {
+        "matched_seeds": 1,
+        "traced_nodes": 1,
+        "traced_edges": 0,
+        "terminal_paths": 0,
+        "native_handoffs": 0,
+        "observed_facts": 1,
+        "inferred_facts": 0,
+        "unknown_facts": 0,
+        "unavailable_facts": 0
+      },
+      "coverage": {
+        "status": "partial",
+        "source_graph_status": "partial",
+        "total_seed_matches": 1
+      },
+      "native_handoffs": []
+    },
+    {
+      "name": "metadata-worker-trace",
+      "evidence_id": "ev_0ac662974db4dde98b1626e70b8f31d032542ba889115fc05df0a0784e8deac2",
+      "summary": {
+        "matched_seeds": 1,
+        "traced_nodes": 1,
+        "traced_edges": 0,
+        "terminal_paths": 0,
+        "native_handoffs": 0,
+        "observed_facts": 0,
+        "inferred_facts": 1,
+        "unknown_facts": 0,
+        "unavailable_facts": 0
+      },
+      "coverage": {
+        "status": "partial",
+        "source_graph_status": "partial",
+        "total_seed_matches": 1
+      },
+      "native_handoffs": []
+    },
+    {
+      "name": "btime-trace",
+      "evidence_id": "ev_cf5c4d4afea0d4ae82df31c0d3e9a096106c90bdac609f6fc2b681371d7427fd",
+      "summary": {
+        "matched_seeds": 2,
+        "traced_nodes": 7,
+        "traced_edges": 8,
+        "terminal_paths": 2,
+        "native_handoffs": 1,
+        "observed_facts": 6,
+        "inferred_facts": 9,
+        "unknown_facts": 0,
+        "unavailable_facts": 0
+      },
+      "coverage": {
+        "status": "partial",
+        "source_graph_status": "partial",
+        "total_seed_matches": 2
+      },
+      "native_handoffs": [
+        {
+          "native_node_id": "jag_node_4f019c6af35435dc9d70eeb505c2fd34d16872e9f9e31c87ed3875ff4ac2b5a9",
+          "artifact_sha256": "d9f0f03114af22f98384c09d2df0aef7bd69900194eaa0c7d7af21c080da4842",
+          "artifact_path": "node_modules/btime/binding.node",
+          "export_node_ids": [
+            "jag_node_b85c97ea8a63c4cc3751b7ee356e9a2db06c4210a0553ad8fac58576d5b21de0"
+          ],
+          "requested_exports": [],
+          "status": "requires-provider-analysis",
+          "providers": [],
+          "evidence_ids": [],
+          "recommended_tools": [
+            "open_binary",
+            "binary_overview",
+            "search_procedures",
+            "analyze_function",
+            "xrefs"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get-fonts-trace",
+      "evidence_id": "ev_924b927b66f31e3b6edbb56fd950c54e33be07b4b27044f80b4cbcbb13488f2c",
+      "summary": {
+        "matched_seeds": 2,
+        "traced_nodes": 5,
+        "traced_edges": 6,
+        "terminal_paths": 2,
+        "native_handoffs": 1,
+        "observed_facts": 6,
+        "inferred_facts": 5,
+        "unknown_facts": 0,
+        "unavailable_facts": 0
+      },
+      "coverage": {
+        "status": "partial",
+        "source_graph_status": "partial",
+        "total_seed_matches": 2
+      },
+      "native_handoffs": [
+        {
+          "native_node_id": "jag_node_4a35da27bada8cfba75080bccb2f3ec09f36b75c98c60eabd02bcfe1528470cf",
+          "artifact_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+          "artifact_path": "node_modules/get-fonts/binding.node",
+          "export_node_ids": [
+            "jag_node_660c3a26cb409c9e2145963e76f375852f4a239501df48fe6c546332e697d82c"
+          ],
+          "requested_exports": [],
+          "status": "requires-provider-analysis",
+          "providers": [],
+          "evidence_ids": [],
+          "recommended_tools": [
+            "open_binary",
+            "binary_overview",
+            "search_procedures",
+            "analyze_function",
+            "xrefs"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "btime-integrated-trace",
+      "evidence_id": "ev_0635df6ebf29b8e02fe0ca790ef0ae84525cdb78816a5ff37066725b19c86522",
+      "summary": {
+        "matched_seeds": 2,
+        "traced_nodes": 7,
+        "traced_edges": 8,
+        "terminal_paths": 2,
+        "native_handoffs": 1,
+        "observed_facts": 6,
+        "inferred_facts": 9,
+        "unknown_facts": 0,
+        "unavailable_facts": 0
+      },
+      "coverage": {
+        "status": "partial",
+        "source_graph_status": "partial",
+        "total_seed_matches": 2
+      },
+      "native_handoffs": [
+        {
+          "native_node_id": "jag_node_4f019c6af35435dc9d70eeb505c2fd34d16872e9f9e31c87ed3875ff4ac2b5a9",
+          "artifact_sha256": "d9f0f03114af22f98384c09d2df0aef7bd69900194eaa0c7d7af21c080da4842",
+          "artifact_path": "node_modules/btime/binding.node",
+          "export_node_ids": [
+            "jag_node_b85c97ea8a63c4cc3751b7ee356e9a2db06c4210a0553ad8fac58576d5b21de0"
+          ],
+          "requested_exports": [],
+          "status": "evidence-linked",
+          "providers": [
+            {
+              "id": "hopper",
+              "name": "Hopper Disassembler",
+              "version": "launcher-sha256:f75b6862bb729d7a5d75cdd5b3ab8e8bbbf98a95061b9174fdadffb1077fbf42"
+            }
+          ],
+          "evidence_ids": [
+            "ev_425d6c3ae8ac6010be66f4708991f2d5b576226e56ba3acf65cdec8c52507a87",
+            "ev_bb8f5e650a13a6acc27a735f80548e58deb1bda3891a3b56b42d74159a90b463"
+          ],
+          "recommended_tools": [
+            "open_binary",
+            "binary_overview",
+            "search_procedures",
+            "analyze_function",
+            "xrefs"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get-fonts-integrated-trace",
+      "evidence_id": "ev_ddc8ec8ea5a160326fb77e963c11a7f7fc3e4304ae8d0644167dcb77045622c1",
+      "summary": {
+        "matched_seeds": 2,
+        "traced_nodes": 5,
+        "traced_edges": 6,
+        "terminal_paths": 2,
+        "native_handoffs": 1,
+        "observed_facts": 6,
+        "inferred_facts": 5,
+        "unknown_facts": 0,
+        "unavailable_facts": 0
+      },
+      "coverage": {
+        "status": "partial",
+        "source_graph_status": "partial",
+        "total_seed_matches": 2
+      },
+      "native_handoffs": [
+        {
+          "native_node_id": "jag_node_4a35da27bada8cfba75080bccb2f3ec09f36b75c98c60eabd02bcfe1528470cf",
+          "artifact_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+          "artifact_path": "node_modules/get-fonts/binding.node",
+          "export_node_ids": [
+            "jag_node_660c3a26cb409c9e2145963e76f375852f4a239501df48fe6c546332e697d82c"
+          ],
+          "requested_exports": [],
+          "status": "evidence-linked",
+          "providers": [
+            {
+              "id": "hopper",
+              "name": "Hopper Disassembler",
+              "version": "launcher-sha256:f75b6862bb729d7a5d75cdd5b3ab8e8bbbf98a95061b9174fdadffb1077fbf42"
+            }
+          ],
+          "evidence_ids": [
+            "ev_0f78f9a8f5362cd47eb6cd0a8d6f81a12ed35c0ed2dda93bc52150bce3c863ec",
+            "ev_219ecc76e51f8783e58e260dbec7a3de7d3d2dc1079991eec30a9668ed53edf6",
+            "ev_99000562d1880357f53332c8f02cd89f3f191dc85284224ebbea87d05be0f4d4",
+            "ev_9bce25326571743e996183026c885be8ae87e09d69b3aa2345c4b831f60360a8",
+            "ev_c1db1993843b43f0d1fe6690b45516a82544b36350ce9e2ada373c5fa9364a54",
+            "ev_c3e9ce420f5f60e73859539131557fd57bdff2431496b55cd37e308eee39e411"
+          ],
+          "recommended_tools": [
+            "open_binary",
+            "binary_overview",
+            "search_procedures",
+            "analyze_function",
+            "xrefs"
+          ]
+        }
+      ]
+    }
+  ]
+}

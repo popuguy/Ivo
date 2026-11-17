@@ -1,0 +1,2733 @@
+import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.js';
+import { readImageFile } from './assets/image-import.js';
+import { propertiesContent } from './ui/properties.js';
+import { documentContent } from '../../domain/history/document-history.js';
+import { startTextFlow, textFlowForFrame, threadFrame } from '../../domain/documents/text-flows.js';
+import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
+import { sceneObjectHTML, applySceneTypography } from '../../rendering/page-content.js';
+import {
+  selectionRoots,
+  selectionBounds,
+  sceneRect,
+  marqueeSelection,
+  toggleSelection,
+  transformSelection,
+} from '../../domain/geometry/selection.js';
+import {
+  placeTextCaret,
+  captureTextSelection,
+  restoreTextSelection,
+  rangeFromBookmark,
+  bookmarkForRange,
+  textIndexMap,
+  textIndexAt,
+  selectCaretWord,
+} from '../../shared/dom/text-selection.js';
+import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../../domain/text/typography.js';
+import {
+  applyFrameTypography,
+  formatRange,
+  formatParagraphs,
+  rangeUsesFormat,
+} from '../../rendering/text/format.js';
+import { setTextAttribute } from '../../shared/dom/text-attributes.js';
+import { installTooltips } from '../../shared/ui/tooltips.js';
+import { installDocumentPreviews } from '../links/previews.js';
+import { installWorkspacePanels } from './ui/panels.js';
+import { applyPageCamera } from '../../rendering/page-camera.js';
+import { icon as svg, cursor, installReferenceCursors } from '../../shared/ui/icons.js';
+import { uid } from '../../domain/documents/model.js';
+import {
+  addPage,
+  pagePositions,
+  sceneObject,
+  childrenOf,
+  descendantsOf,
+  worldRect,
+  insertObject,
+  moveVertex,
+  transformObject,
+  duplicateObjects,
+  removeObject,
+  removePage,
+  releaseMask,
+  reorderPage,
+  pageAtPoint,
+  moveObjectToPage,
+  transferObjectsAtDrop,
+} from '../../domain/documents/scene.js';
+import {
+  screenToWorld,
+  worldToScreen,
+  zoomAt,
+  fitCamera,
+  wheelDelta,
+  panBy,
+  pinchWheelScale,
+} from '../../domain/geometry/viewport.js';
+import { alignmentRectTargets, transformBlock } from '../../domain/geometry/layout.js';
+import { escapeHTML as esc, cleanHTML, readableHTML } from '../../shared/html/sanitize.js';
+import { scaledPointType } from '../../domain/text/metrics.js';
+import { applyTextLayout, preserveTextLines, textIsOverset } from '../../rendering/text/layout.js';
+import { clipboardImages, prepareImages } from './assets/image-import.js';
+const handles = [
+  ['nw', 0, 0],
+  ['n', 50, 0],
+  ['ne', 100, 0],
+  ['e', 100, 50],
+  ['se', 100, 100],
+  ['s', 50, 100],
+  ['sw', 0, 100],
+  ['w', 0, 50],
+];
+const control = (cmd, label, icon = cmd, extra = '') =>
+  `<button type="button" data-canvas-command="${cmd}" title="${esc(label)}" aria-label="${esc(label)}" ${extra}>${svg(icon)}</button>`;
+const typing = (target) => target.isContentEditable || !!target.closest('input,textarea,select');
+const sessions = new Map();
+let snapEnabled = true;
+try {
+  snapEnabled = localStorage.getItem('ivo:snapping') !== 'false';
+} catch {}
+
+/** Renderer owns transient camera/selection/gesture state; document mutations use scene commands. */
+export function mountCanvasEditor(host, options) {
+  const {
+    getDocument,
+    onCommit,
+    onChange,
+    onOpen,
+    source,
+    onAsset,
+    onUndo,
+    onRedo,
+    onLink,
+    onRequestEdit,
+  } = options;
+  const documentId = getDocument().id,
+    initialDocument = structuredClone(getDocument());
+  const sessionId = (options.sessionId || 'default') + ':' + documentId;
+  const state = {
+    ...{
+      selected: null,
+      activePage: getDocument().pages[0].id,
+      tool: 'select',
+      inside: null,
+      snap: true,
+      camera: null,
+      target: null,
+      panel: 'properties',
+    },
+    ...structuredClone(sessions.get(sessionId) || {}),
+    ...structuredClone(options.initialState || {}),
+  };
+  if (options.initialState?.camera) state.target = { ...state.camera };
+  state.selection = state.selection || (state.selected ? [state.selected] : []);
+  state.snap = snapEnabled;
+  sessions.set(sessionId, state);
+  let flowPlan = { fragments: new Map(), status: new Map() },
+    flowSignature = '',
+    flowPreviewDirty = true,
+    threadFrom = null;
+  const flowRenderCache = new Map();
+  let alive = true,
+    raf = 0,
+    gesture = null,
+    space = false,
+    pendingFiles = Promise.resolve(),
+    pendingCount = 0,
+    textBefore = null,
+    draft = null,
+    activeTextId = null,
+    composing = false,
+    busy = false,
+    textViewBefore = null,
+    inputType = '',
+    applyingText = false,
+    restoring = false,
+    savedTextSelection = null,
+    pendingMarks = {};
+  const compositionWaiters = [];
+  const pointers = new Map();
+  let pinch = null,
+    selectionDirty = true,
+    selectionFrame = null,
+    selectionRect = null,
+    lastDraftToken = '',
+    selectionMembers = [],
+    touchBeforeIds = [];
+  const ownsInput = () => options.isActive?.() !== false;
+  const doc = () => getDocument();
+  const objects = () => selectionRoots(doc(), state.selection);
+  const object = () => {
+    const items = objects();
+    return items.length === 1 ? items[0] : null;
+  };
+  const page = () => doc().pages.find((p) => p.id === state.activePage) || doc().pages[0];
+  host.innerHTML = `<div class="scene-editor ${options.editing ? 'scene-editing' : 'scene-reading'}"><nav class="canvas-tools" aria-label="Drawing tools">${[
+    ['select', 'Selection (V)'],
+    ['direct', 'Direct Selection (A)'],
+    ['text', 'Type (T)'],
+    ['rectangle', 'Rectangle (M)'],
+    ['polygon', 'Polygon (P)'],
+    ['hand', 'Hand (H)'],
+  ]
+    .map(([name, label]) => control('tool-' + name, label, name))
+    .join(
+      '',
+    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div><section class="canvas-document-text" hidden><header><span>Document text</span>${control('close-document-text', 'Close document text', 'close')}</header><div class="canvas-document-scroll"><div class="rich-text canvas-document-source"></div></div></section><footer class="canvas-status"><span class="canvas-tool-status"></span><label class="canvas-snap"><input type="checkbox" data-canvas-snap checked>Snap</label><button class="canvas-panel-toggle" data-canvas-command="toggle-properties" aria-label="Toggle properties">Properties</button><div class="canvas-zoom">${control('zoom-out', 'Zoom out', 'minus')}<button data-canvas-command="zoom-100" class="zoom-value" title="Actual size">100%</button>${control('zoom-in', 'Zoom in', 'plus')}${control('fit-page', 'Fit page', 'fit')}${control('fit-all', 'Fit all pages', 'fit')}</div></footer></div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
+  const editor = host.firstElementChild,
+    viewport = host.querySelector('.canvas-viewport'),
+    world = host.querySelector('.canvas-world'),
+    selection = host.querySelector('.canvas-selection'),
+    guides = host.querySelector('.canvas-guides'),
+    draftSVG = host.querySelector('.canvas-draft');
+  installReferenceCursors(editor);
+  const previews = installDocumentPreviews(editor, {
+      getDocument: (id) => options.documents.find((doc) => doc.id === id),
+      source,
+      onOpen,
+      onError: (error) => options.onNotify?.(error.message),
+      enabled: () => !options.editing && !busy && !dialogOpen(),
+    }),
+    tooltips = installTooltips(editor),
+    marqueeElement = host.querySelector('.canvas-marquee');
+  const workspacePanels = installWorkspacePanels(editor, {
+    prepare() {
+      finishGesture();
+      finishText();
+    },
+    allowed: () => !busy && !composing && !dialogOpen(),
+    initialState: options.panelLayout,
+    presets: options.panelPresets,
+    onError: (error) => options.onNotify?.(error.message),
+    onChange: (layout) => options.onPanelLayout?.(layout),
+    onSelect: (kind) => {
+      state.panel = kind;
+    },
+    onRender: () => renderPanel(),
+  });
+  function setSelectionState(ids) {
+    const values = typeof ids === 'string' ? [ids] : ids || [];
+    const next = selectionRoots(doc(), values).map((item) => item.id);
+    if (next.join('|') !== state.selection.join('|')) selectionDirty = true;
+    state.selection = next;
+    state.selected = next.at(-1) || null;
+  }
+  setSelectionState(state.selection);
+  function positions() {
+    return pagePositions(doc().pages);
+  }
+  function pagePosition(id) {
+    return positions().find((p) => p.id === id) || positions()[0];
+  }
+  function objectWorld(item) {
+    const rect = worldRect(doc(), item),
+      p = pagePosition(item.pageId);
+    return { ...rect, x: rect.x + p.x, y: rect.y + p.y };
+  }
+  function pointer(event) {
+    const rect = viewport.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+  function pointOnPage(event, id = state.activePage) {
+    const value = screenToWorld(pointer(event), state.camera),
+      p = pagePosition(id);
+    return { x: value.x - p.x, y: value.y - p.y };
+  }
+  function requestFrame() {
+    if (!raf && alive) raf = requestAnimationFrame(frame);
+  }
+  function frame() {
+    raf = 0;
+    if (!alive) return;
+    applyPageCamera(world, state.camera);
+    const label = (state.camera.zoom * 100).toFixed(2) + '%';
+    const zoomLabel = host.querySelector('.zoom-value');
+    if (zoomLabel.textContent !== label) zoomLabel.textContent = label;
+    renderSelection();
+  }
+  // Input owns the camera immediately. RAF only coalesces painting to the next display frame.
+  function cameraTo(value) {
+    state.camera = { ...value };
+    state.target = { ...value };
+    requestFrame();
+  }
+  function fit(all = false) {
+    finishGesture();
+    const pages = positions(),
+      p = all
+        ? {
+            x: 0,
+            y: 0,
+            w: Math.max(...pages.map((p) => p.width)),
+            h: pages.at(-1).y + pages.at(-1).height,
+          }
+        : { ...pagePosition(page().id), w: page().width, h: page().height };
+    cameraTo(fitCamera(p, { width: viewport.clientWidth, height: viewport.clientHeight }, 48));
+  }
+  function zoom(factor, anchor = { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 }) {
+    finishGesture();
+    cameraTo(zoomAt(state.target, anchor, state.target.zoom * factor));
+  }
+  function tool(name) {
+    threadFrom = null;
+    finishGesture();
+    endTextEditing();
+    draft = null;
+    state.tool = name;
+    editor.dataset.tool = name;
+    renderTools();
+    renderSelection(true);
+  }
+  function renderTools() {
+    editor.dataset.tool = state.tool;
+    host.querySelectorAll('[data-canvas-command^="tool-"]').forEach((button) => {
+      button.setAttribute(
+        'aria-pressed',
+        String(button.dataset.canvasCommand === 'tool-' + state.tool),
+      );
+      button.disabled = !options.editing && button.dataset.canvasCommand !== 'tool-hand';
+    });
+    host
+      .querySelector('[data-canvas-command="inside"]')
+      .setAttribute('aria-pressed', String(!!state.inside));
+    host.querySelector('.canvas-tool-status').textContent = state.inside
+      ? 'Draw inside'
+      : {
+          select: 'Selection',
+          direct: 'Direct Selection',
+          text: 'Type',
+          rectangle: 'Rectangle',
+          polygon: 'Polygon',
+          hand: 'Hand',
+        }[state.tool];
+  }
+  function select(id) {
+    endTextEditing();
+    setSelectionState(id);
+    const item = object();
+    if (item) state.activePage = item.pageId;
+    renderPanel();
+    renderSelection(true);
+  }
+  function mutate(callback, label = 'Edit') {
+    finishGesture();
+    const viewBefore = captureView();
+    endTextEditing();
+    const before = structuredClone(doc());
+    callback();
+    updateFlowPlan();
+    onCommit(before, { label, viewBefore, viewAfter: captureView() });
+    paint();
+  }
+  function polygonPoints(item, local = false) {
+    return item.points
+      .map((p) => `${p.x * (local ? item.w : 100)},${p.y * (local ? item.h : 100)}`)
+      .join(' ');
+  }
+  function objectHTML(item) {
+    return sceneObjectHTML(item, {
+      document: doc(),
+      source,
+      flow: flowPlan,
+      editing: options.editing,
+      editableId: options.editing && state.tool === 'text' ? activeTextId : null,
+      textHTML: (item) =>
+        options.editing
+          ? cleanHTML(item.html)
+          : readableHTML(item.html, options.documents, doc().id),
+    });
+  }
+  function paint() {
+    updateFlowPlan();
+    setSelectionState(state.selection);
+    selectionDirty = true;
+    world.innerHTML = positions()
+      .map(
+        (p) =>
+          `<section class="canvas-page ${p.id === state.activePage ? 'active' : ''}" data-page="${esc(p.id)}" aria-label="${esc(p.name)}" style="left:${p.x}px;top:${p.y}px;width:${p.width}px;height:${p.height}px"><div class="canvas-page-label">${esc(p.name)}</div>${doc()
+            .blocks.filter((b) => b.pageId === p.id && !b.parentId)
+            .map(objectHTML)
+            .join('')}</section>`,
+      )
+      .join('');
+    applySceneTypography(world, doc());
+    if (doc().textFlows?.length) {
+      flowPreviewDirty = true;
+      refreshFlowPreview();
+    }
+    renderTools();
+    renderPanel();
+    requestFrame();
+  }
+  function updateObject(item) {
+    selectionDirty = true;
+    const element = world.querySelector(`[data-object="${CSS.escape(item.id)}"]`);
+    if (!element) return;
+    for (const [name, value] of Object.entries({
+      left: item.x,
+      top: item.y,
+      width: item.w,
+      height: item.h,
+    }))
+      element.style[name] = value + 'px';
+    const polygon = element.querySelector(':scope > .canvas-polygon polygon');
+    if (polygon) {
+      polygon.parentElement.setAttribute('viewBox', `0 0 ${item.w} ${item.h}`);
+      polygon.setAttribute('points', polygonPoints(item, true));
+      polygon.setAttribute('stroke-width', item.strokeWidth);
+      const clip = element.querySelector(':scope > .canvas-clip');
+      if (clip)
+        clip.style.clipPath = `polygon(${item.points.map((p) => `${p.x * 100}% ${p.y * 100}%`).join(',')})`;
+    }
+    const text = element.querySelector(':scope > .canvas-text');
+    if (text) {
+      applyFrameTypography(text, item);
+      applyTextLayout(text, item);
+    }
+    for (const child of childrenOf(doc(), item.id)) updateObject(child);
+  }
+  function renderSelection(force = false) {
+    if (force) selectionDirty = true;
+    if (selectionDirty) {
+      const item = object(),
+        items = objects();
+      selection.replaceChildren();
+      selectionFrame = null;
+      selectionRect = null;
+      selectionMembers = [];
+      if (items.length && options.editing) {
+        const rect = selectionBounds(doc(), state.selection);
+        const frame = document.createElement('div');
+        selectionFrame = frame;
+        selectionRect = rect;
+        frame.className =
+          'canvas-object-frame' +
+          (state.tool === 'direct' && item?.type === 'polygon' ? ' direct-frame' : '');
+        if (state.tool === 'direct' && item?.type === 'polygon') {
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          path.setAttribute('viewBox', '0 0 100 100');
+          path.setAttribute('preserveAspectRatio', 'none');
+          path.innerHTML = `<polygon points="${polygonPoints(item)}" vector-effect="non-scaling-stroke"/>`;
+          frame.append(path);
+          for (const point of item.points) {
+            const handle = document.createElement('button');
+            handle.className = 'canvas-vertex';
+            handle.dataset.vertex = point.id;
+            handle.setAttribute('aria-label', 'Move polygon point');
+            handle.style.left = point.x * 100 + '%';
+            handle.style.top = point.y * 100 + '%';
+            frame.append(handle);
+          }
+        } else if (!activeTextId)
+          for (const [direction, x, y] of handles) {
+            const handle = document.createElement('button');
+            handle.className = 'canvas-resize ' + direction;
+            handle.dataset.resize = direction;
+            handle.setAttribute('aria-label', 'Resize ' + direction);
+            handle.style.left = x + '%';
+            handle.style.top = y + '%';
+            frame.append(handle);
+          }
+        if (item && !item.textFlowId && !activeTextId && ['text', 'quote'].includes(item.type)) {
+          const circle = document.createElement('button');
+          circle.className = 'canvas-type-circle ' + (item.textKind || 'area');
+          circle.dataset.typeCircle = item.id;
+          circle.title =
+            'Double-click to convert to ' +
+            (item.textKind === 'point' ? 'area' : 'point') +
+            ' type';
+          circle.setAttribute(
+            'aria-label',
+            item.textKind === 'point' ? 'Convert to area type' : 'Convert to point type',
+          );
+          frame.append(circle);
+          const text = world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`);
+          if (text && textIsOverset(text)) {
+            const marker = document.createElement('span');
+            marker.className = 'canvas-overset';
+            marker.textContent = '+';
+            marker.title = 'Text overflow';
+            frame.append(marker);
+          }
+        }
+        if (items.length > 1)
+          for (const member of items) {
+            const element = document.createElement('div');
+            element.className = 'canvas-selection-member';
+            selection.append(element);
+            selectionMembers.push({ element, rect: sceneRect(doc(), member) });
+          }
+        selection.append(frame);
+      }
+      if (item?.textFlowId && selectionFrame) {
+        const textFlow = textFlowForFrame(doc(), item),
+          index = textFlow.frameIds.indexOf(item.id);
+        for (const direction of ['previous', 'next']) {
+          const port = document.createElement('button');
+          port.className = 'canvas-flow-port ' + direction;
+          port.dataset.flowPort = direction;
+          port.dataset.canvasCommand = 'flow-' + direction;
+          port.setAttribute(
+            'aria-label',
+            direction === 'previous'
+              ? 'Previous text frame'
+              : index < textFlow.frameIds.length - 1
+                ? 'Next text frame'
+                : 'Continue text flow',
+          );
+          port.dataset.tooltip = port.getAttribute('aria-label');
+          port.classList.toggle(
+            'linked',
+            direction === 'previous' ? index > 0 : index < textFlow.frameIds.length - 1,
+          );
+          if (
+            direction === 'next' &&
+            index === textFlow.frameIds.length - 1 &&
+            flowPlan.status.get(textFlow.id)?.overset
+          ) {
+            port.textContent = '+';
+            port.classList.add('overset');
+          }
+          selectionFrame.append(port);
+        }
+      }
+      selectionDirty = false;
+    }
+    if (selectionFrame) {
+      const p = worldToScreen(selectionRect, state.camera),
+        z = state.camera.zoom;
+      selectionFrame.style.transform = `translate3d(${p.x}px,${p.y}px,0)`;
+      const w = selectionRect.w * z + 'px',
+        h = selectionRect.h * z + 'px';
+      if (selectionFrame.style.width !== w) selectionFrame.style.width = w;
+      if (selectionFrame.style.height !== h) selectionFrame.style.height = h;
+    }
+    for (const member of selectionMembers) {
+      const p = worldToScreen(member.rect, state.camera);
+      Object.assign(member.element.style, {
+        transform: `translate3d(${p.x}px,${p.y}px,0)`,
+        width: member.rect.w * state.camera.zoom + 'px',
+        height: member.rect.h * state.camera.zoom + 'px',
+      });
+    }
+    const token = draft ? JSON.stringify([state.camera, draft]) : '';
+    if (token === lastDraftToken) return;
+    lastDraftToken = token;
+    draftSVG.replaceChildren();
+    if (draft) {
+      const p = pagePosition(draft.pageId),
+        points = [...draft.points, ...(draft.hover ? [draft.hover] : [])].map((v) =>
+          worldToScreen({ x: v.x + p.x, y: v.y + p.y }, state.camera),
+        );
+      const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      poly.setAttribute('points', points.map((v) => `${v.x},${v.y}`).join(' '));
+      draftSVG.append(poly);
+      for (const point of points.slice(0, draft.points.length)) {
+        const node = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        node.setAttribute('x', point.x - 3);
+        node.setAttribute('y', point.y - 3);
+        node.setAttribute('width', 6);
+        node.setAttribute('height', 6);
+        draftSVG.append(node);
+      }
+    }
+  }
+  function renderPanel() {
+    workspacePanels.select(state.panel);
+    const selectedObjects = objects(),
+      index = options.index?.();
+    for (const { kind, content } of workspacePanels.entries())
+      content.innerHTML = propertiesContent({
+        document: doc(),
+        documents: options.documents,
+        state: { ...state, panel: kind },
+        selectedObjects,
+        selectionRect: selectionBounds(doc(), state.selection),
+        activePage: page(),
+        editing: options.editing,
+        index,
+        flowStatus: flowPlan.status,
+      });
+  }
+  function refreshTextControls() {
+    const element = activeText();
+    if (!element || document.activeElement !== element) return;
+    const range = preserveRange();
+    if (!range) return;
+    const node =
+        range.startContainer.nodeType === Node.ELEMENT_NODE
+          ? range.startContainer
+          : range.startContainer.parentElement,
+      style = getComputedStyle(node),
+      fontSize = parseFloat(style.fontSize) || 16;
+    const declared = node.closest('[data-ivo-font]')?.getAttribute('data-ivo-font'),
+      font =
+        declared ||
+        (style.fontFamily.includes('CMU Serif')
+          ? 'cmu-serif'
+          : style.fontFamily.includes('Georgia')
+            ? 'serif'
+            : object()?.textStyle === 'display'
+              ? 'display'
+              : 'sans');
+    const color = style.color
+      .match(/\d+/g)
+      ?.slice(0, 3)
+      .map((n) => Number(n).toString(16).padStart(2, '0'))
+      .join('');
+    const leadingNode = node.closest('[data-ivo-leading]'),
+      declaredLeading =
+        leadingNode && element.contains(leadingNode)
+          ? Number(leadingNode.getAttribute('data-ivo-leading'))
+          : (sourceTextFlow(element)?.style || object())?.leading;
+    const values = {
+      fontSize,
+      textStyle: font,
+      // Automatic leading is a setting, not the current computed pixel distance.
+      leading: declaredLeading === 0 ? 0 : parseFloat(style.lineHeight) || 0,
+      tracking:
+        style.letterSpacing === 'normal'
+          ? 0
+          : ((parseFloat(style.letterSpacing) || 0) / fontSize) * 1000,
+      textColor: color ? '#' + color : '#252525',
+      align: style.textAlign,
+      ...pendingMarks,
+    };
+    for (const [key, value] of Object.entries(values)) {
+      const input = editor.querySelector(`[data-object-prop="${key}"]`);
+      if (input && document.activeElement !== input)
+        input.value = typeof value === 'number' ? Number(value.toFixed(4)) : value;
+    }
+  }
+
+  function updateFlowPlan() {
+    const key = JSON.stringify([
+      doc().textFlows || [],
+      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale]),
+      doc().pages,
+    ]);
+    if (key === flowSignature) return false;
+    flowPlan = layoutDocumentTextFlows(doc());
+    flowSignature = JSON.stringify([
+      doc().textFlows || [],
+      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale]),
+      doc().pages,
+    ]);
+    flowPreviewDirty = true;
+    return true;
+  }
+  function refreshFlowPreview() {
+    updateFlowPlan();
+    if (!flowPreviewDirty) return;
+    flowPreviewDirty = false;
+    const ids = new Set(doc().pages.map((p) => p.id)),
+      frames = doc().blocks.filter((b) => b.textFlowId),
+      frameIds = new Set(frames.map((frame) => frame.id));
+    for (const id of flowRenderCache.keys()) if (!frameIds.has(id)) flowRenderCache.delete(id);
+    for (const element of world.querySelectorAll('[data-page]'))
+      if (!ids.has(element.dataset.page)) element.remove();
+    for (const p of positions()) {
+      let section = world.querySelector(`[data-page="${CSS.escape(p.id)}"]`);
+      if (!section) {
+        section = document.createElement('section');
+        section.className = 'canvas-page';
+        section.dataset.page = p.id;
+        section.setAttribute('aria-label', p.name);
+        section.innerHTML = `<div class="canvas-page-label">${esc(p.name)}</div>${doc()
+          .blocks.filter((b) => b.pageId === p.id && !b.parentId)
+          .map(objectHTML)
+          .join('')}`;
+        world.append(section);
+      }
+      Object.assign(section.style, {
+        left: p.x + 'px',
+        top: p.y + 'px',
+        width: p.width + 'px',
+        height: p.height + 'px',
+      });
+    }
+    for (const item of frames) {
+      const element = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`);
+      if (!element) continue;
+      const sourceHTML = flowPlan.fragments.get(item.id)?.html || '',
+        cached = flowRenderCache.get(item.id);
+      if (cached?.sourceHTML === sourceHTML && cached.element === element) continue;
+      const html =
+        cached?.sourceHTML === sourceHTML
+          ? cached.html
+          : readableHTML(sourceHTML, options.documents, doc().id, {
+              preserveWikiText: true,
+              trustedFlow: true,
+            });
+      if (element.innerHTML !== html) element.innerHTML = html;
+      flowRenderCache.set(item.id, { sourceHTML, html, element });
+    }
+    applySceneTypography(world, doc());
+    selectionDirty = true;
+    requestFrame();
+  }
+  function sourceCaretIndex() {
+    const element = activeText(),
+      selection = window.getSelection();
+    return element && selection.rangeCount && element.contains(selection.focusNode)
+      ? textIndexAt(textIndexMap(element), selection.focusNode, selection.focusOffset)
+      : null;
+  }
+  function sourceTextFlow(element = activeText()) {
+    return element?.dataset.textFlow
+      ? doc().textFlows?.find((textFlow) => textFlow.id === element.dataset.textFlow)
+      : null;
+  }
+  function followTextFlowCaret() {
+    const element = activeText(),
+      textFlow = sourceTextFlow(element);
+    if (!textFlow || !element?.classList.contains('canvas-document-source')) return;
+    const offset = sourceCaretIndex();
+    if (offset === null) return;
+    let id =
+      textFlow.frameIds.find((id) => {
+        const f = flowPlan.fragments.get(id);
+        return f && offset >= f.start && offset < f.end;
+      }) ||
+      [...textFlow.frameIds].reverse().find((id) => {
+        const f = flowPlan.fragments.get(id);
+        return f && f.end === offset && f.end > f.start;
+      }) ||
+      textFlow.frameIds[0];
+    if (id === activeTextId) return;
+    activeTextId = id;
+    element.dataset.sceneText = id;
+    setSelectionState(id);
+    state.activePage = sceneObject(doc(), id).pageId;
+    rememberTextSelection();
+    renderPanel();
+    const p = objectWorld(sceneObject(doc(), id)),
+      top = worldToScreen(p, state.camera);
+    if (top.y < 20 || top.y > viewport.clientHeight - 60)
+      cameraTo({ ...state.camera, y: state.camera.y + 20 - top.y });
+    selectionDirty = true;
+    requestFrame();
+  }
+  function openTextFlowEditor(item, event, word, { focus = true } = {}) {
+    const textFlow = textFlowForFrame(doc(), item);
+    if (!textFlow) return;
+    const preview = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`);
+    let index = flowPlan.fragments.get(item.id)?.start || 0;
+    if (event) {
+      const caret = document.caretRangeFromPoint?.(event.clientX, event.clientY),
+        marker = caret?.startContainer.parentElement?.closest('[data-flow-text]');
+      if (marker && preview?.contains(marker))
+        index =
+          Number(marker.dataset.flowText) +
+          (caret.startContainer.nodeType === Node.TEXT_NODE ? caret.startOffset : 0);
+    }
+    const pane = host.querySelector('.canvas-document-text'),
+      element = pane.querySelector('.canvas-document-source');
+    pane.hidden = false;
+    if (element.dataset.textFlow !== textFlow.id || cleanHTML(element.innerHTML) !== textFlow.html)
+      element.innerHTML = cleanHTML(textFlow.html);
+    element.dataset.textFlow = textFlow.id;
+    element.dataset.sceneText = item.id;
+    element.dataset.textKind = 'area';
+    applyFrameTypography(element, textFlow.style);
+    element.contentEditable = 'true';
+    element.removeAttribute('aria-readonly');
+    element.setAttribute('role', 'textbox');
+    element.setAttribute('aria-label', 'Edit document text');
+    activeTextId = item.id;
+    state.tool = 'text';
+    setSelectionState(item.id);
+    state.activePage = item.pageId;
+    if (!focus) {
+      element.contentEditable = 'false';
+      element.setAttribute('aria-readonly', 'true');
+      activeTextId = null;
+      renderTools();
+      renderPanel();
+      renderSelection(true);
+      return;
+    }
+    const map = textIndexMap(element),
+      part =
+        map.segments.find((p) => index >= p.start && index <= p.end) ||
+        map.segments.find((p) => p.start > index) ||
+        map.segments.at(-1);
+    element.focus({ preventScroll: true });
+    const range = document.createRange();
+    if (part)
+      range.setStart(part.node, Math.max(0, Math.min(part.node.length, index - part.start)));
+    else range.selectNodeContents(element);
+    range.collapse(!part);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    if (word) selectCaretWord(element, range);
+    rememberTextSelection();
+    renderTools();
+    renderPanel();
+    renderSelection(true);
+  }
+  function writeText(item, html, element) {
+    const textFlow = (element && sourceTextFlow(element)) || textFlowForFrame(doc(), item);
+    if (textFlow) textFlow.html = cleanHTML(html);
+    else if (item) item.html = cleanHTML(html);
+  }
+  function activeText() {
+    return activeTextId
+      ? host.querySelector(`[data-scene-text="${CSS.escape(activeTextId)}"]`)
+      : null;
+  }
+  function captureView() {
+    const element = activeText(),
+      selection = element && document.activeElement === element && captureTextSelection(element);
+    return {
+      selection: state.selection.slice(),
+      activePage: state.activePage,
+      inside: state.inside,
+      tool: state.tool,
+      activeTextId,
+      textSelection:
+        selection || (savedTextSelection?.id === activeTextId ? savedTextSelection.bookmark : null),
+      pendingMarks: structuredClone(pendingMarks),
+    };
+  }
+  function rememberTextSelection() {
+    const element = activeText(),
+      bookmark = element && document.activeElement === element && captureTextSelection(element);
+    if (bookmark) savedTextSelection = { id: activeTextId, bookmark };
+    return bookmark;
+  }
+  function beginTextInput(type = 'insertText') {
+    if (!textBefore) {
+      textBefore = structuredClone(doc());
+      textViewBefore = captureView();
+    }
+    inputType = type;
+  }
+  function syncText(element) {
+    if (!ownsInput()) return;
+    const item = sceneObject(doc(), element.dataset.sceneText),
+      textFlow = sourceTextFlow(element);
+    if (!item && !textFlow) return;
+    writeText(item, element.innerHTML, element);
+    if (textFlow && !composing) {
+      refreshFlowPreview();
+      followTextFlowCaret();
+    }
+    if (item) measureText(item, element);
+    selectionDirty = true;
+    rememberTextSelection();
+    requestFrame();
+  }
+  function finishText() {
+    if (!ownsInput() || composing || restoring || applyingText) return;
+    const element = activeText();
+    if (
+      element &&
+      (sourceTextFlow(element)?.html ?? sceneObject(doc(), activeTextId)?.html) !==
+        cleanHTML(element.innerHTML)
+    ) {
+      beginTextInput();
+      syncText(element);
+    }
+    if (activeText()?.classList.contains('canvas-document-source')) {
+      refreshFlowPreview();
+      followTextFlowCaret();
+    }
+    if (!textBefore) return;
+    const before = textBefore,
+      viewBefore = textViewBefore;
+    const kind = inputType;
+    textBefore = null;
+    textViewBefore = null;
+    inputType = '';
+    if (documentContent(before) !== documentContent(doc()))
+      onCommit(before, {
+        label: kind.startsWith('delete') ? 'Delete text' : 'Typing',
+        mergeKey: ['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(kind)
+          ? kind + ':' + (sourceTextFlow(element)?.id || activeTextId)
+          : null,
+        viewBefore,
+        viewAfter: captureView(),
+      });
+  }
+  function measureText(item, element) {
+    if (item.textFlowId || item.textKind !== 'point') return;
+    const rect = element.getBoundingClientRect();
+    item.w = Math.max(0.01, rect.width / state.camera.zoom);
+    item.h = Math.max(0.01, rect.height / state.camera.zoom);
+    updateObject(item);
+  }
+  function endTextEditing() {
+    const element = activeText();
+    if (element && document.activeElement === element) element.blur();
+    finishText();
+    if (composing) return false;
+    if (element) {
+      element.contentEditable = 'false';
+      element.removeAttribute('role');
+      element.removeAttribute('aria-label');
+    }
+    if (element?.classList.contains('canvas-document-source'))
+      host.querySelector('.canvas-document-text').hidden = true;
+    activeTextId = null;
+    savedTextSelection = null;
+    pendingMarks = {};
+    selectionDirty = true;
+    return true;
+  }
+  function focusText(id, event, word = false) {
+    const item = sceneObject(doc(), id);
+    if (item?.textFlowId) {
+      if (endTextEditing() === false) return;
+      openTextFlowEditor(item, event, word);
+      return;
+    }
+    const element = world.querySelector(`[data-scene-text="${CSS.escape(id)}"]`);
+    if (!element) return;
+    if (activeTextId === id && element.isContentEditable) return;
+    if (endTextEditing() === false) return;
+    state.tool = 'text';
+    activeTextId = id;
+    setSelectionState(id);
+    state.activePage = sceneObject(doc(), id).pageId;
+    element.contentEditable = 'true';
+    element.removeAttribute('aria-readonly');
+    element.setAttribute('role', 'textbox');
+    element.setAttribute('aria-label', 'Edit text object');
+    renderTools();
+    renderPanel();
+    renderSelection(true);
+    if (event) placeTextCaret(element, event.clientX, event.clientY, { word });
+    else {
+      element.focus({ preventScroll: true });
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    rememberTextSelection();
+  }
+  function restoreView(view = {}, { focus = true } = {}) {
+    restoring = true;
+    host.querySelector('.canvas-document-text').hidden = true;
+    textBefore = null;
+    textViewBefore = null;
+    const old = activeText();
+    if (old) {
+      old.contentEditable = 'false';
+      old.blur();
+    }
+    activeTextId =
+      view.activeTextId && sceneObject(doc(), view.activeTextId) ? view.activeTextId : null;
+    setSelectionState(view.selection || state.selection);
+    state.activePage = doc().pages.some((p) => p.id === view.activePage)
+      ? view.activePage
+      : doc().pages[0].id;
+    state.inside = sceneObject(doc(), view.inside) ? view.inside : null;
+    state.tool = activeTextId ? 'text' : view.tool || 'select';
+    pendingMarks = view.pendingMarks || {};
+    savedTextSelection =
+      activeTextId && view.textSelection
+        ? { id: activeTextId, bookmark: view.textSelection }
+        : null;
+    paint();
+    if (activeTextId && textFlowForFrame(doc(), activeTextId))
+      openTextFlowEditor(sceneObject(doc(), activeTextId), undefined, false, { focus });
+    if (activeTextId && focus) {
+      const element = activeText();
+      if (!restoreTextSelection(element, view.textSelection)) {
+        element.focus({ preventScroll: true });
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      rememberTextSelection();
+    } else if (focus) viewport.focus({ preventScroll: true });
+    if (!focus && activeTextId) {
+      const element = activeText();
+      if (element) {
+        element.contentEditable = 'false';
+        element.setAttribute('aria-readonly', 'true');
+      }
+      activeTextId = null;
+      savedTextSelection = null;
+    }
+    restoring = false;
+  }
+  function deactivate() {
+    if (composing) return false;
+    finishGesture(true);
+    finishText();
+    const view = captureView(),
+      element = activeText();
+    if (element) {
+      element.contentEditable = 'false';
+      element.setAttribute('aria-readonly', 'true');
+      if (document.activeElement === element) element.blur();
+    }
+    activeTextId = null;
+    textBefore = null;
+    textViewBefore = null;
+    inputType = '';
+    savedTextSelection = null;
+    pendingMarks = {};
+    draft = null;
+    threadFrom = null;
+    pointers.clear();
+    pinch = null;
+    space = false;
+    viewport.classList.remove('space-pan');
+    previews.hide();
+    closeContextMenu();
+    selectionDirty = true;
+    requestFrame();
+    return view;
+  }
+  function refreshExternal() {
+    if (ownsInput() && activeTextId) return;
+    if (!ownsInput()) {
+      activeTextId = null;
+      textBefore = null;
+      textViewBefore = null;
+      savedTextSelection = null;
+    }
+    const pane = host.querySelector('.canvas-document-text'),
+      element = pane.querySelector('.canvas-document-source'),
+      textFlow = doc().textFlows?.find((value) => value.id === element.dataset.textFlow);
+    paint();
+    if (!pane.hidden) {
+      if (textFlow) {
+        element.innerHTML = cleanHTML(textFlow.html);
+        applyFrameTypography(element, textFlow.style);
+        element.contentEditable = 'false';
+        element.setAttribute('aria-readonly', 'true');
+      } else pane.hidden = true;
+    }
+  }
+  function prepareHistory() {
+    if (composing || pendingCount || busy) return false;
+    finishGesture(true);
+    finishText();
+    pointers.clear();
+    pinch = null;
+    space = false;
+    viewport.classList.remove('space-pan');
+    delete editor.dataset.gesture;
+    return true;
+  }
+  function applyTextProperty(field, value) {
+    const item = object();
+    if (!item || !['text', 'quote'].includes(item.type)) return false;
+    finishText();
+    const textFlow = textFlowForFrame(doc(), item);
+    if (textFlow && activeTextId !== item.id && !['bold', 'italic', 'underline'].includes(field)) {
+      const before = structuredClone(doc()),
+        viewBefore = captureView();
+      textFlow.style[field] = value;
+      refreshFlowPreview();
+      onCommit(before, { label: 'TextFlow formatting', viewBefore, viewAfter: captureView() });
+      return true;
+    }
+    const element =
+        activeTextId === item.id
+          ? activeText()
+          : world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`),
+      range = preserveRange();
+    if (activeTextId === item.id && CHARACTER_FIELDS[field] && range?.collapsed) {
+      pendingMarks[field] = value;
+      return true;
+    }
+    if (
+      activeTextId === item.id &&
+      range &&
+      !range.collapsed &&
+      CHARACTER_FIELDS[field] &&
+      rangeUsesFormat(element, range, field, value)
+    )
+      return true;
+    const before = structuredClone(doc()),
+      viewBefore = captureView();
+    if (activeTextId === item.id && range && !range.collapsed && CHARACTER_FIELDS[field]) {
+      formatRange(element, range, field, value);
+      savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };
+      if (document.activeElement === element)
+        restoreTextSelection(element, savedTextSelection.bookmark);
+      writeText(item, element.innerHTML);
+    } else if (
+      activeTextId === item.id &&
+      range &&
+      PARAGRAPH_FIELDS[field] &&
+      formatParagraphs(element, range, field, value)
+    ) {
+      writeText(item, element.innerHTML);
+      savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };
+    } else if (['bold', 'italic', 'underline'].includes(field)) {
+      const all = document.createRange();
+      all.selectNodeContents(element);
+      formatRange(element, all, field, value);
+      writeText(item, element.innerHTML);
+    } else {
+      const textFlow = textFlowForFrame(doc(), item);
+      if (textFlow) {
+        textFlow.style[field] = value;
+        applyFrameTypography(element, textFlow.style);
+      } else {
+        item[field] = value;
+        applyFrameTypography(element, item);
+      }
+    }
+    if (item.textFlowId) {
+      refreshFlowPreview();
+      followTextFlowCaret();
+    }
+    measureText(item, element);
+    selectionDirty = true;
+    onCommit(before, { label: 'Text formatting', viewBefore, viewAfter: captureView() });
+    requestFrame();
+    return true;
+  }
+  function parentOffset(item, document = doc()) {
+    return item.parentId
+      ? worldRect(document, sceneObject(document, item.parentId))
+      : { x: 0, y: 0 };
+  }
+  function insertionContext(pageId = state.activePage) {
+    const parent = sceneObject(doc(), state.inside);
+    return { pageId: parent?.pageId || pageId, parentId: parent?.id };
+  }
+  function createAt(type, rect) {
+    const context = insertionContext(),
+      parent = context.parentId
+        ? worldRect(doc(), sceneObject(doc(), context.parentId))
+        : { x: 0, y: 0 };
+    let created;
+    mutate(() => {
+      created = insertObject(doc(), type, context.pageId, {
+        ...rect,
+        x: rect.x - parent.x,
+        y: rect.y - parent.y,
+        parentId: context.parentId,
+      });
+      setSelectionState(created.id);
+    });
+    return created;
+  }
+  function finishPolygon() {
+    if (!draft || draft.points.length < 3) {
+      draft = null;
+      renderSelection();
+      return;
+    }
+    const { points, pageId } = draft;
+    state.activePage = pageId;
+    const x = Math.min(...points.map((p) => p.x)),
+      y = Math.min(...points.map((p) => p.y)),
+      w = Math.max(0.01, Math.max(...points.map((p) => p.x)) - x),
+      h = Math.max(0.01, Math.max(...points.map((p) => p.y)) - y);
+    draft = null;
+    mutate(() => {
+      const context = insertionContext(pageId),
+        parent = context.parentId
+          ? worldRect(doc(), sceneObject(doc(), context.parentId))
+          : { x: 0, y: 0 };
+      const item = insertObject(doc(), 'polygon', context.pageId, {
+        parentId: context.parentId,
+        x: x - parent.x,
+        y: y - parent.y,
+        w,
+        h,
+      });
+      item.points = points.map((p) => ({ id: uid('vertex-'), x: (p.x - x) / w, y: (p.y - y) / h }));
+      setSelectionState(item.id);
+    });
+    tool('direct');
+  }
+  function renderGuides(values, pageId) {
+    guides.replaceChildren();
+    const p = pageId ? pagePosition(pageId) : { x: 0, y: 0 },
+      z = state.camera.zoom;
+    for (const guide of values) {
+      const line = document.createElement('div');
+      line.className = 'canvas-guide ' + guide.axis;
+      const start = worldToScreen(
+        {
+          x: (guide.axis === 'x' ? guide.position : guide.start) + p.x,
+          y: (guide.axis === 'y' ? guide.position : guide.start) + p.y,
+        },
+        state.camera,
+      );
+      Object.assign(line.style, {
+        left: start.x + 'px',
+        top: start.y + 'px',
+        width: (guide.axis === 'y' ? (guide.end - guide.start) * z : 1) + 'px',
+        height: (guide.axis === 'x' ? (guide.end - guide.start) * z : 1) + 'px',
+      });
+      guides.append(line);
+    }
+  }
+  function restoreGestureDocument(before) {
+    const current = doc(),
+      existing = new Map(current.blocks.map((item) => [item.id, item]));
+    for (const key of Object.keys(current)) if (!Object.hasOwn(before, key)) delete current[key];
+    for (const [key, value] of Object.entries(before))
+      if (key !== 'blocks') current[key] = structuredClone(value);
+    current.blocks = before.blocks.map((original) => {
+      const item = existing.get(original.id) || {};
+      for (const key of Object.keys(item)) if (!Object.hasOwn(original, key)) delete item[key];
+      return Object.assign(item, structuredClone(original));
+    });
+  }
+  function moveMode(g, copying) {
+    if (g.copying === copying) return true;
+    restoreGestureDocument(g.before);
+    g.ids = g.sourceIds.slice();
+    g.copying = false;
+    if (copying)
+      try {
+        g.ids = duplicateObjects(doc(), g.sourceIds, { offset: { x: 0, y: 0 } }).map(
+          (item) => item.id,
+        );
+        g.copying = true;
+      } catch (error) {
+        options.onNotify?.(error.message);
+        finishGesture(true);
+        return false;
+      }
+    g.id = g.ids[0];
+    g.baseline = structuredClone(doc());
+    g.original =
+      g.ids.length > 1
+        ? selectionBounds(g.baseline, g.ids)
+        : worldRect(g.baseline, sceneObject(g.baseline, g.id));
+    setSelectionState(g.ids);
+    paint();
+    return true;
+  }
+  function replayMoveModifiers(event) {
+    const g = gesture;
+    if (g?.kind !== 'move' || !g.lastInput) return false;
+    pointerMove({ ...g.lastInput, altKey: event.altKey, shiftKey: event.shiftKey, buttons: 1 });
+    return true;
+  }
+  function finishGesture(cancel = false) {
+    if (!gesture) return;
+    const old = gesture;
+    gesture = null;
+    if (old.clickToggle && !old.moved) {
+      setSelectionState(
+        cancel
+          ? old.clickToggle.beforeIds
+          : toggleSelection(old.clickToggle.beforeIds, [old.clickToggle.hit]),
+      );
+      renderPanel();
+      renderSelection(true);
+    }
+    if (old.kind === 'marquee') {
+      marqueeElement.hidden = true;
+      if (cancel) setSelectionState(old.beforeIds);
+      else if (!old.moved) setSelectionState(old.additive ? old.beforeIds : []);
+      renderPanel();
+      renderSelection(true);
+    }
+    delete editor.dataset.gesture;
+    delete editor.dataset.copying;
+    guides.replaceChildren();
+    editor.classList.remove('is-dragging');
+    for (const el of world.querySelectorAll('.canvas-page')) el.style.zIndex = '';
+    try {
+      viewport.releasePointerCapture(old.pointerId);
+    } catch {}
+    if (old.before) {
+      if (cancel) {
+        restoreGestureDocument(old.before);
+        if (old.sourceIds) setSelectionState(old.sourceIds);
+        paint();
+      } else if (JSON.stringify(old.before.blocks) !== JSON.stringify(doc().blocks)) {
+        if (old.kind === 'move' && transferObjectsAtDrop(doc(), old.ids || [old.id])) {
+          state.activePage = sceneObject(doc(), old.id)?.pageId || state.activePage;
+          state.inside = null;
+          paint();
+        }
+        if (doc().textFlows?.length) refreshFlowPreview();
+        onCommit(old.before, {
+          label: old.copying
+            ? 'Duplicate and move'
+            : old.kind === 'resize'
+              ? 'Resize'
+              : old.kind === 'vertex'
+                ? 'Edit point'
+                : 'Move',
+          viewBefore: old.viewBefore,
+          viewAfter: captureView(),
+        });
+        renderPanel();
+      }
+    }
+    if (old.kind === 'draw' && cancel) {
+      draft = null;
+      renderSelection();
+    }
+    if (old.kind === 'draw' && !cancel) {
+      const p = old.last || old.start,
+        w = Math.abs(p.x - old.start.x),
+        h = Math.abs(p.y - old.start.y);
+      draft = null;
+      if (w > 2 && h > 2) {
+        const item = createAt(old.type, {
+          x: Math.min(p.x, old.start.x),
+          y: Math.min(p.y, old.start.y),
+          w,
+          h,
+          ...(old.type === 'text' ? { textKind: 'area' } : {}),
+        });
+        if (old.type === 'text') focusText(item.id);
+        else tool('select');
+      } else if (old.type === 'text') {
+        const item = createAt('text', { x: p.x, y: p.y, w: 160, h: 24, textKind: 'point' });
+        focusText(item.id);
+      }
+      renderSelection();
+    }
+  }
+  function startGesture(event, kind, extra = {}) {
+    finishGesture();
+    finishText();
+    cameraTo({ ...state.camera }, true);
+    gesture = {
+      kind,
+      viewBefore: captureView(),
+      pointerId: event.pointerId,
+      start: pointer(event),
+      camera: { ...state.camera },
+      ...extra,
+    };
+    editor.dataset.gesture = kind;
+    if (kind === 'move')
+      for (const item of objects()) {
+        const el = world.querySelector(`[data-page="${CSS.escape(item.pageId)}"]`);
+        if (el) el.style.zIndex = '2';
+      }
+    if (kind === 'resize')
+      editor.style.setProperty(
+        '--active-resize-cursor',
+        cursor(
+          {
+            n: 'resize-vertical',
+            s: 'resize-vertical',
+            e: 'resize-horizontal',
+            w: 'resize-horizontal',
+            nw: 'resize-tlbr',
+            se: 'resize-tlbr',
+            ne: 'resize-trbl',
+            sw: 'resize-trbl',
+          }[extra.handle],
+        ),
+      );
+    viewport.setPointerCapture(event.pointerId);
+    viewport.focus({ preventScroll: true });
+  }
+  let lastHit = null;
+  function pointerDown(event) {
+    if (!ownsInput() || busy || dialogOpen() || (event.button !== 0 && event.button !== 1)) return;
+    editor.dataset.option = String(event.altKey);
+    const position = pointer(event);
+    if (event.pointerType === 'touch' && !pointers.size) touchBeforeIds = state.selection.slice();
+    if (event.pointerType === 'touch') pointers.set(event.pointerId, position);
+    if (event.pointerType === 'touch' && pointers.size === 2) {
+      finishGesture(true);
+      setSelectionState(touchBeforeIds);
+      const [a, b] = [...pointers.values()];
+      editor.dataset.gesture = 'pan';
+      pinch = {
+        distance: Math.hypot(a.x - b.x, a.y - b.y),
+        center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        camera: { ...state.camera },
+      };
+      viewport.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+    const text = event.target.closest('[data-scene-text],[data-flow-frame]');
+    if (activeTextId && text?.dataset.sceneText === activeTextId && !space) return;
+    if (activeTextId && !space) {
+      if (endTextEditing() === false) {
+        event.preventDefault();
+        return;
+      }
+      if (state.tool === 'text' && !text) {
+        event.preventDefault();
+        select(null);
+        viewport.focus({ preventScroll: true });
+        return;
+      }
+    }
+    if (!options.editing && text && !space) return;
+    event.preventDefault();
+    const pageElement = event.target.closest('[data-page]');
+    if (pageElement) {
+      state.activePage = pageElement.dataset.page;
+      if (sceneObject(doc(), state.inside)?.pageId !== state.activePage) state.inside = null;
+    }
+    if (
+      space ||
+      state.tool === 'hand' ||
+      event.button === 1 ||
+      (!options.editing && !event.target.closest('a'))
+    ) {
+      startGesture(event, 'pan');
+      return;
+    }
+    if (!options.editing) return;
+    if (event.target.closest('[data-type-circle],[data-flow-port]')) return;
+    let hit = event.target.closest('[data-object]')?.dataset.object;
+    lastHit = hit;
+    if (hit && state.tool === 'select' && !state.inside) {
+      let item = sceneObject(doc(), hit);
+      while (item?.parentId) {
+        hit = item.parentId;
+        item = sceneObject(doc(), hit);
+      }
+    }
+    const vertex = event.target.closest('[data-vertex]'),
+      resize = event.target.closest('[data-resize]');
+    if (vertex || resize) {
+      const items = objects();
+      if (!items.length || (vertex && items.length !== 1)) return;
+      const item = items[0],
+        multiple = items.length > 1;
+      startGesture(event, vertex ? 'vertex' : 'resize', {
+        id: item.id,
+        ids: state.selection.slice(),
+        before: structuredClone(doc()),
+        original: multiple ? selectionBounds(doc(), state.selection) : worldRect(doc(), item),
+        vertex: vertex?.dataset.vertex,
+        handle: resize?.dataset.resize,
+        pageId: item.pageId,
+      });
+      return;
+    }
+    if (threadFrom && !hit) {
+      threadFrom = null;
+      renderTools();
+      return;
+    }
+    if (threadFrom && hit) {
+      const from = threadFrom;
+      threadFrom = null;
+      try {
+        mutate(() => threadFrame(doc(), from, hit), 'Thread text frames');
+        select(hit);
+      } catch (error) {
+        options.onNotify?.(error.message);
+      }
+      return;
+    }
+    const p = pointOnPage(event);
+    if (state.tool === 'polygon') {
+      if (!draft) draft = { pageId: state.activePage, points: [] };
+      if (event.detail < 2 && draft.points.length < 256) draft.points.push(p);
+      draft.hover = p;
+      renderSelection();
+      return;
+    }
+    if (['rectangle', 'text'].includes(state.tool)) {
+      if (
+        state.tool === 'text' &&
+        hit &&
+        ['text', 'quote'].includes(sceneObject(doc(), hit)?.type)
+      ) {
+        focusText(hit, event);
+        return;
+      }
+      startGesture(event, 'draw', {
+        type: state.tool === 'text' ? 'text' : 'polygon',
+        start: p,
+        pageId: state.activePage,
+      });
+      draft = { pageId: state.activePage, points: [p], hover: p };
+      return;
+    }
+    if (!hit) {
+      const beforeIds = state.selection.slice();
+      startGesture(event, 'marquee', { beforeIds, additive: event.shiftKey, enclosed: false });
+      marqueeElement.hidden = false;
+      Object.assign(marqueeElement.style, {
+        left: position.x + 'px',
+        top: position.y + 'px',
+        width: '0px',
+        height: '0px',
+      });
+      renderSelection();
+      return;
+    }
+    const clickToggle =
+      event.shiftKey && !event.altKey ? { beforeIds: state.selection.slice(), hit } : null;
+    if (!state.selection.includes(hit)) select(clickToggle ? [...state.selection, hit] : hit);
+    const items = objects(),
+      item = items[0],
+      before = structuredClone(doc());
+    startGesture(event, 'move', {
+      id: item.id,
+      ids: state.selection.slice(),
+      sourceIds: state.selection.slice(),
+      clickToggle,
+      copying: false,
+      before,
+      baseline: before,
+      original: items.length > 1 ? selectionBounds(doc(), state.selection) : worldRect(doc(), item),
+      pageId: item.pageId,
+    });
+  }
+  function pointerMove(event) {
+    editor.dataset.option = String(event.altKey);
+    const pos = pointer(event);
+    if (pointers.has(event.pointerId)) pointers.set(event.pointerId, pos);
+    if (pinch && pointers.size === 2) {
+      const [a, b] = [...pointers.values()],
+        center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        distance = Math.hypot(a.x - b.x, a.y - b.y);
+      const next = zoomAt(
+        pinch.camera,
+        pinch.center,
+        (pinch.camera.zoom * distance) / Math.max(1, pinch.distance),
+      );
+      next.x += center.x - pinch.center.x;
+      next.y += center.y - pinch.center.y;
+      cameraTo(next, true);
+      return;
+    }
+    // A native popup or focus transfer can consume mouse-up; later hover must never continue a transform.
+    if (gesture && event.pointerType !== 'touch' && event.buttons === 0) {
+      finishGesture();
+      return;
+    }
+    if (!gesture) {
+      if (draft) {
+        draft.hover = pointOnPage(event, draft.pageId);
+        requestFrame();
+      }
+      return;
+    }
+    if (event.pointerId !== gesture.pointerId) return;
+    const g = gesture;
+    if (g.kind === 'marquee') {
+      g.lastClient = { x: event.clientX, y: event.clientY };
+      const x = Math.min(pos.x, g.start.x),
+        y = Math.min(pos.y, g.start.y),
+        w = Math.abs(pos.x - g.start.x),
+        h = Math.abs(pos.y - g.start.y);
+      g.moved = Math.hypot(w, h) >= 3;
+      Object.assign(marqueeElement.style, {
+        left: x + 'px',
+        top: y + 'px',
+        width: w + 'px',
+        height: h + 'px',
+      });
+      const origin = screenToWorld({ x, y }, state.camera),
+        hits = g.moved
+          ? marqueeSelection(
+              doc(),
+              { ...origin, w: w / state.camera.zoom, h: h / state.camera.zoom },
+              { parentId: state.inside, enclosed: g.enclosed },
+            )
+          : [];
+      setSelectionState(g.additive ? toggleSelection(g.beforeIds, hits) : hits);
+      requestFrame();
+      return;
+    }
+    if (g.kind === 'pan') {
+      cameraTo(
+        { ...g.camera, x: g.camera.x + pos.x - g.start.x, y: g.camera.y + pos.y - g.start.y },
+        true,
+      );
+      return;
+    }
+    if (g.kind === 'draw') {
+      g.last = pointOnPage(event, g.pageId);
+      draft.points = [
+        g.start,
+        { x: g.last.x, y: g.start.y },
+        g.last,
+        { x: g.start.x, y: g.last.y },
+        g.start,
+      ];
+      draft.hover = null;
+      requestFrame();
+      return;
+    }
+    g.lastInput = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
+    };
+    const dx = (pos.x - g.start.x) / state.camera.zoom,
+      dy = (pos.y - g.start.y) / state.camera.zoom;
+    if (!g.moved && Math.hypot(pos.x - g.start.x, pos.y - g.start.y) < 3) return;
+    g.moved = true;
+    editor.classList.add('is-dragging');
+    if (g.kind === 'move') {
+      if (!moveMode(g, !!event.altKey)) return;
+      editor.dataset.copying = String(g.copying);
+    }
+    const baseline = g.baseline || g.before;
+    if (g.ids?.length > 1) {
+      const selected = selectionRoots(baseline, g.ids),
+        excluded = new Set(
+          selected.flatMap((item) => [
+            item.id,
+            ...descendantsOf(baseline, item.id).map((child) => child.id),
+          ]),
+        );
+      const targets = alignmentRectTargets(
+        doc()
+          .blocks.filter((item) => !item.parentId && !excluded.has(item.id))
+          .map((item) => ({ id: item.id, ...sceneRect(doc(), item) })),
+        page().width,
+        page().height,
+        { artboardEdges: false },
+      );
+      const result = transformBlock(
+        g.original,
+        { x: dx, y: dy },
+        {
+          pageWidth: page().width,
+          targets,
+          snap: state.snap && (g.kind === 'move' || !event.altKey),
+          viewScale: state.camera.zoom,
+          resize: g.kind === 'resize' ? g.handle : false,
+          constrain: g.kind === 'move' && event.shiftKey,
+          proportional: event.shiftKey,
+          fromCenter: event.altKey,
+          unbounded: true,
+        },
+      );
+      transformSelection(doc(), g.ids, result.rect, baseline);
+      for (const item of selected) updateObject(sceneObject(doc(), item.id));
+      renderGuides(result.guides, null);
+      requestFrame();
+      return;
+    }
+    const item = sceneObject(doc(), g.id),
+      original = sceneObject(baseline, g.id),
+      offset = parentOffset(original, baseline);
+    const ids = new Set([item.id, ...descendantsOf(baseline, item.id).map((v) => v.id)]);
+    for (const old of baseline.blocks.filter((v) => ids.has(v.id)))
+      Object.assign(sceneObject(doc(), old.id), structuredClone(old));
+    if (g.kind === 'vertex') {
+      const vertex = original.points.find((v) => v.id === g.vertex);
+      moveVertex(doc(), item.id, g.vertex, {
+        x: original.x + vertex.x * original.w + dx,
+        y: original.y + vertex.y * original.h + dy,
+      });
+      guides.replaceChildren();
+    } else {
+      const sourcePage = pagePosition(g.pageId),
+        p =
+          g.kind === 'move' && !item.parentId
+            ? pageAtPoint(doc(), {
+                x: sourcePage.x + g.original.x + dx + g.original.w / 2,
+                y: sourcePage.y + g.original.y + dy + g.original.h / 2,
+              }) || sourcePage
+            : sourcePage,
+        origin = { x: p.x - sourcePage.x, y: p.y - sourcePage.y },
+        rectangles = doc()
+          .blocks.filter((v) => v.pageId === p.id && !ids.has(v.id) && v.id !== item.parentId)
+          .map((v) => {
+            const rect = worldRect(doc(), v);
+            return { id: v.id, ...rect, x: rect.x + origin.x, y: rect.y + origin.y };
+          });
+      const result = transformBlock(
+        g.original,
+        { x: dx, y: dy },
+        {
+          pageWidth: p.width,
+          targets: alignmentRectTargets(rectangles, p.width, p.height, { artboardOrigin: origin }),
+          snap: state.snap && (g.kind === 'move' || !event.altKey),
+          viewScale: state.camera.zoom * (globalThis.ivoNative?.zoomFactor?.() || 1),
+          resize: g.kind === 'resize' ? g.handle : false,
+          constrain: g.kind === 'move' && event.shiftKey,
+          proportional: event.shiftKey,
+          fromCenter: event.altKey,
+          unbounded: true,
+        },
+      );
+      transformObject(
+        doc(),
+        item.id,
+        { ...result.rect, x: result.rect.x - offset.x, y: result.rect.y - offset.y },
+        baseline,
+      );
+      if (item.textKind === 'point' && g.kind === 'resize')
+        Object.assign(
+          item,
+          scaledPointType(original, item.w / original.w, item.h / original.h, {
+            min: 1,
+            max: 2000,
+          }),
+        );
+      renderGuides(result.guides, g.pageId);
+    }
+    updateObject(item);
+    requestFrame();
+  }
+  function pointerUp(event) {
+    pointers.delete(event.pointerId);
+    if (pinch) {
+      if (pointers.size < 2) {
+        pinch = null;
+        delete editor.dataset.gesture;
+      }
+      return;
+    }
+    if (gesture?.pointerId === event.pointerId) {
+      if (event.type !== 'pointercancel' && gesture.kind === 'move' && gesture.moved)
+        pointerMove({
+          clientX: event.clientX,
+          clientY: event.clientY,
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          buttons: 1,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+        });
+      finishGesture(event.type === 'pointercancel');
+    }
+  }
+  function convertText() {
+    const item = object();
+    if (!item || item.textFlowId || !['text', 'quote'].includes(item.type)) return;
+    finishText();
+    const element = world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`);
+    mutate(() => {
+      if (item.textKind !== 'point') {
+        preserveTextLines(element);
+        writeText(item, element.innerHTML);
+        item.textKind = 'point';
+        applyTextLayout(element, item);
+        measureText(item, element);
+      } else item.textKind = 'area';
+    });
+  }
+  let replaceId = null,
+    contextMenu = null;
+  function preserveRange() {
+    const element = activeText();
+    if (!element) {
+      savedTextSelection = null;
+      return null;
+    }
+    const bookmark = document.activeElement === element && captureTextSelection(element);
+    if (bookmark) savedTextSelection = { id: activeTextId, bookmark };
+    return savedTextSelection?.id === activeTextId
+      ? rangeFromBookmark(element, savedTextSelection.bookmark)
+      : null;
+  }
+  async function command(name) {
+    if (!ownsInput() || busy || dialogOpen() || composing) return;
+    if (['document-text', 'start-flow', 'thread'].includes(name) && !options.editing) return;
+    if (name === 'flow-previous' || name === 'flow-next') {
+      const item = object(),
+        textFlow = textFlowForFrame(doc(), item);
+      if (!textFlow) return;
+      const index = textFlow.frameIds.indexOf(item.id),
+        id = textFlow.frameIds[index + (name === 'flow-next' ? 1 : -1)];
+      if (id) {
+        select(id);
+        fit();
+      } else if (name === 'flow-next') {
+        threadFrom = item.id;
+        endTextEditing();
+        state.tool = 'select';
+        renderTools();
+        host.querySelector('.canvas-tool-status').textContent = 'Choose an empty text frame';
+      }
+      return;
+    }
+    if (name === 'close-document-text') {
+      endTextEditing();
+      tool('select');
+      return;
+    }
+    if (name === 'document-text') {
+      const item = object() || doc().blocks.find((b) => b.textFlowId);
+      if (item) focusText(item.id);
+      return;
+    }
+    if (name === 'thread' && object()) {
+      endTextEditing();
+      threadFrom = object().id;
+      state.tool = 'select';
+      renderTools();
+      host.querySelector('.canvas-tool-status').textContent = 'Choose an empty text frame';
+      return;
+    }
+    if (name === 'start-flow' && object()) {
+      await prepareTextFlowFonts();
+      if (!alive || busy) return;
+      const id = object().id;
+      mutate(() => startTextFlow(doc(), id), 'Start text flow');
+      focusText(id);
+      return;
+    }
+    if (name === 'toggle-panel-floating') return workspacePanels.toggleFloating();
+    if (name === 'collapse-properties') return workspacePanels.setCollapsed(true);
+    if (name === 'toggle-properties') {
+      if (
+        (editor.classList.contains('show-properties') ||
+          editor.classList.contains('panel-floating')) &&
+        !editor.classList.contains('panel-collapsed')
+      ) {
+        workspacePanels.setCollapsed(true);
+        editor.classList.remove('show-properties');
+        return;
+      }
+      workspacePanels.show();
+      return;
+    }
+    if (name.startsWith('tool-')) {
+      tool(name.slice(5));
+      paint();
+      return;
+    }
+    if (name === 'zoom-in') return zoom(1.25);
+    if (name === 'zoom-out') return zoom(0.8);
+    if (name === 'zoom-100')
+      return cameraTo(
+        zoomAt(state.target, { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 }, 1),
+      );
+    if (name === 'fit-page' || name === 'fit-all') return fit(name === 'fit-all');
+    if (name === 'select-all') {
+      if (document.activeElement?.matches('input,textarea')) {
+        document.activeElement.select();
+        return;
+      }
+      if (document.activeElement?.isContentEditable) {
+        document.execCommand('selectAll');
+        return;
+      }
+      select(
+        doc()
+          .blocks.filter((item) => (item.parentId || null) === (state.inside || null))
+          .map((item) => item.id),
+      );
+      return;
+    }
+    if (name === 'deselect') return select(null);
+    if (!options.editing) return;
+    if (name === 'undo' || name === 'redo') {
+      if (
+        document.activeElement?.matches('input,textarea') &&
+        document.activeElement.dataset.editing === 'true'
+      ) {
+        document.execCommand(name);
+        return;
+      }
+      if (!prepareHistory()) return;
+      return name === 'undo' ? onUndo() : onRedo();
+    }
+    if (name === 'inside') {
+      const item = object();
+      if (state.inside) {
+        state.inside = null;
+        renderTools();
+        renderPanel();
+        return;
+      }
+      if (item?.type !== 'polygon') {
+        options.onNotify?.('Select a polygon to draw inside.');
+        return;
+      }
+      state.inside = item.id;
+      renderTools();
+      renderPanel();
+      return;
+    }
+    if (name === 'add-page') {
+      if (doc().pages.length >= 128) return;
+      mutate(() => {
+        state.activePage = addPage(doc(), page().id).id;
+        setSelectionState(null);
+        state.inside = null;
+        state.panel = 'pages';
+      });
+      fit();
+      return;
+    }
+    if (name === 'delete-page') {
+      if (doc().pages.length === 1) return;
+      mutate(() => {
+        removePage(doc(), page().id);
+        state.activePage = doc().pages[0].id;
+        setSelectionState(null);
+        state.inside = null;
+      });
+      fit();
+      return;
+    }
+    if (name === 'delete' && objects().length)
+      return mutate(() => {
+        for (const item of objects()) removeObject(doc(), item.id);
+        setSelectionState(null);
+        state.inside = null;
+      });
+    if (name === 'duplicate' && objects().length)
+      return mutate(() => {
+        const copies = duplicateObjects(doc(), state.selection);
+        setSelectionState(copies.map((item) => item.id));
+      });
+    if (name === 'select-mask' && object()?.parentId) return select(object().parentId);
+    if (name === 'release-mask' && object()?.clip)
+      return mutate(() => {
+        releaseMask(doc(), object().id);
+        state.inside = null;
+      });
+    if (name === 'image' || name === 'replace') {
+      replaceId = name === 'replace' ? object()?.id : null;
+      host.querySelector('.canvas-file-input').click();
+      return;
+    }
+    if (name === 'fit-text' && object()) {
+      finishText();
+      const item = object(),
+        el = world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`);
+      if (el) {
+        const before = structuredClone(doc()),
+          viewBefore = captureView(),
+          oldHeight = el.style.height;
+        el.style.height = 'auto';
+        const height = el.getBoundingClientRect().height / state.camera.zoom;
+        el.style.height = oldHeight;
+        item.h = Math.max(0.01, height);
+        updateObject(item);
+        onCommit(before, { label: 'Fit text frame', viewBefore, viewAfter: captureView() });
+        renderPanel();
+        requestFrame();
+      }
+      return;
+    }
+    if (['bold', 'italic', 'underline'].includes(name)) {
+      const range = preserveRange(),
+        element = activeText();
+      if (element && range) {
+        const node =
+            range.startContainer.nodeType === Node.ELEMENT_NODE
+              ? range.startContainer
+              : range.startContainer.parentElement,
+          style = getComputedStyle(node),
+          atCaret =
+            name === 'bold'
+              ? Number(style.fontWeight) >= 600
+              : name === 'italic'
+                ? style.fontStyle === 'italic'
+                : style.textDecorationLine.includes('underline');
+        const enabled = range.collapsed
+          ? (pendingMarks[name] ?? atCaret)
+          : rangeUsesFormat(element, range, name, true);
+        applyTextProperty(name, !enabled);
+      } else if (object() && ['text', 'quote'].includes(object().type)) {
+        if (object().textFlowId) {
+          focusText(object().id);
+          const range = document.createRange();
+          range.selectNodeContents(activeText());
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          rememberTextSelection();
+        }
+        const el =
+            activeTextId === object().id
+              ? activeText()
+              : world.querySelector(`[data-scene-text="${CSS.escape(object().id)}"]`),
+          all = document.createRange();
+        all.selectNodeContents(el);
+        applyTextProperty(name, !rangeUsesFormat(el, all, name, true));
+      }
+      return;
+    }
+
+    if (name === 'link') {
+      const range = preserveRange(),
+        owner = doc().id,
+        element = activeText(),
+        viewBefore = captureView(),
+        bookmark = range && bookmarkForRange(element, range),
+        id = await onLink?.();
+      if (!id || !alive || doc().id !== owner) return;
+      const target = options.documents.find((v) => v.id === id);
+      if (!target) return;
+      if (element?.isConnected && activeTextId === element.dataset.sceneText && bookmark) {
+        finishText();
+        const before = structuredClone(doc()),
+          currentRange = rangeFromBookmark(element, bookmark);
+        if (!currentRange) return;
+        const anchor = document.createElement('a');
+        anchor.dataset.docId = id;
+        anchor.href = '#doc=' + id;
+        if (currentRange.collapsed) anchor.textContent = target.title;
+        else anchor.append(currentRange.extractContents());
+        currentRange.insertNode(anchor);
+        currentRange.selectNodeContents(anchor);
+        writeText(sceneObject(doc(), activeTextId), element.innerHTML);
+        if (textFlowForFrame(doc(), activeTextId)) refreshFlowPreview();
+        savedTextSelection = {
+          id: activeTextId,
+          bookmark: bookmarkForRange(element, currentRange),
+        };
+        restoreTextSelection(element, savedTextSelection.bookmark);
+        measureText(sceneObject(doc(), activeTextId), element);
+        onCommit(before, { label: 'Insert link', viewBefore, viewAfter: captureView() });
+        selectionDirty = true;
+        requestFrame();
+        return;
+      }
+      mutate(() => {
+        const existing = object();
+        if (existing && ['text', 'quote'].includes(existing.type)) {
+          const textFlow = textFlowForFrame(doc(), existing);
+          if (textFlow) {
+            textFlow.html += `<p><a data-doc-id="${esc(id)}" href="#doc=${esc(id)}">${esc(target.title)}</a></p>`;
+            return;
+          }
+          existing.html += `<p><a data-doc-id="${esc(id)}" href="#doc=${esc(id)}">${esc(target.title)}</a></p>`;
+          return;
+        }
+        const context = insertionContext();
+        insertObject(doc(), 'text', context.pageId, {
+          parentId: context.parentId,
+          html: `<p><a data-doc-id="${esc(id)}" href="#doc=${esc(id)}">${esc(target.title)}</a></p>`,
+        });
+      }, 'Insert link');
+    }
+  }
+  function addFiles(files) {
+    pendingCount++;
+    const context = insertionContext(),
+      replace = replaceId;
+    replaceId = null;
+    pendingFiles = pendingFiles
+      .then(async () => {
+        if (files.some((file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name)))
+          throw new Error('PDF placement has been removed. Place an image file instead.');
+        if (!files.length) return;
+        const prepared = await prepareImages(files, { readFile: readImageFile });
+        for (const value of prepared) await onAsset(value.asset);
+        if (!alive) return;
+        mutate(() => {
+          for (const [i, { asset, size }] of prepared.entries()) {
+            let item = replace && sceneObject(doc(), replace);
+            if (!item) {
+              const parent = context.parentId && sceneObject(doc(), context.parentId),
+                scale = Math.min(1, 360 / size.width, 480 / size.height);
+              item = insertObject(doc(), 'image', context.pageId, {
+                parentId: parent?.id,
+                ...(!parent
+                  ? {
+                      x: 48 + i * 16,
+                      y: 48 + i * 16,
+                      w: size.width * scale,
+                      h: size.height * scale,
+                    }
+                  : {}),
+              });
+            }
+            item.type = 'image';
+            item.src = 'asset:' + asset.id;
+            item.alt = asset.name;
+            setSelectionState(item.id);
+          }
+          state.tool = 'select';
+        });
+      })
+      .catch((error) => options.onNotify?.(error.message))
+      .finally(() => pendingCount--);
+    return pendingFiles;
+  }
+
+  function closeContextMenu() {
+    contextMenu?.remove();
+    contextMenu = null;
+  }
+  function showContextMenu(event) {
+    if (!options.editing || busy || dialogOpen() || composing) return;
+    event.preventDefault();
+    finishGesture();
+    preserveRange();
+    let hit = event.target.closest('[data-object]')?.dataset.object;
+    if (hit && state.tool === 'select' && !state.inside) {
+      let item = sceneObject(doc(), hit);
+      while (item?.parentId) {
+        hit = item.parentId;
+        item = sceneObject(doc(), hit);
+      }
+    }
+    if (hit && !state.selection.includes(hit) && !activeTextId) select(hit);
+    const context = { selected: objects().length > 0, textEditing: !!activeTextId };
+    if (options.nativeContextMenu !== false && globalThis.ivoNative?.showContextMenu) {
+      globalThis.ivoNative
+        .showContextMenu(context)
+        .catch((error) => options.onNotify?.(error.message));
+      return;
+    }
+    closeContextMenu();
+    contextMenu = document.createElement('div');
+    contextMenu.className = 'canvas-context-menu';
+    contextMenu.setAttribute('role', 'menu');
+    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button><div class="menu-separator"></div><button role="menuitem" data-canvas-command="duplicate" ${context.selected ? '' : 'disabled'}>Duplicate</button><button role="menuitem" data-canvas-command="delete" ${context.selected ? '' : 'disabled'}>Delete</button><div class="menu-separator"></div><button role="menuitem" data-canvas-command="select-all">Select all</button><button role="menuitem" data-canvas-command="deselect">Deselect</button>`;
+    editor.append(contextMenu);
+    const bounds = editor.getBoundingClientRect();
+    contextMenu.style.left =
+      Math.min(event.clientX - bounds.left, editor.clientWidth - contextMenu.offsetWidth - 4) +
+      'px';
+    contextMenu.style.top =
+      Math.min(event.clientY - bounds.top, editor.clientHeight - contextMenu.offsetHeight - 4) +
+      'px';
+    contextMenu.querySelector('button').focus({ preventScroll: true });
+  }
+  const controller = new AbortController(),
+    listen = (target, event, callback, extra = {}) =>
+      target.addEventListener(event, callback, { signal: controller.signal, ...extra });
+  listen(host, 'pointerdown', (event) => {
+    if (event.target.closest('[data-canvas-command]')) {
+      preserveRange();
+      if (event.target.closest('.canvas-type-format')) event.preventDefault();
+    }
+  });
+  listen(host, 'click', (event) => {
+    const cmd = event.target.closest('[data-canvas-command]');
+    if (cmd) {
+      event.preventDefault();
+      closeContextMenu();
+      Promise.resolve(command(cmd.dataset.canvasCommand)).catch((e) =>
+        options.onNotify?.(e.message),
+      );
+      return;
+    }
+    const tab = event.target.closest('[data-canvas-panel]');
+    if (tab) {
+      finishText();
+      state.panel = tab.dataset.canvasPanel;
+      renderPanel();
+      return;
+    }
+    const p = event.target.closest('[data-select-page]');
+    if (p) {
+      state.activePage = p.dataset.selectPage;
+      setSelectionState(null);
+      state.inside = null;
+      renderPanel();
+      fit();
+      return;
+    }
+    const open = event.target.closest('[data-scene-open],[data-doc-id]');
+    if (open && (!options.editing || event.metaKey || event.ctrlKey || open.dataset.sceneOpen)) {
+      event.preventDefault();
+      onOpen(open.dataset.sceneOpen || open.dataset.docId, {
+        newTab: event.metaKey || event.ctrlKey,
+        toRight: (event.metaKey || event.ctrlKey) && event.altKey,
+      });
+    } else if (options.editing && event.target.closest('.canvas-text a')) event.preventDefault();
+  });
+  listen(host, 'auxclick', (event) => {
+    const link = event.target.closest('[data-doc-id],[data-scene-open]');
+    if (event.button === 1 && link) {
+      event.preventDefault();
+      onOpen(link.dataset.docId || link.dataset.sceneOpen, {
+        newTab: true,
+        toRight: (event.metaKey || event.ctrlKey) && event.altKey,
+      });
+    }
+  });
+  listen(host, 'change', (event) => {
+    const el = event.target;
+    if (el.matches('[data-flow-auto]')) {
+      mutate(() => {
+        textFlowForFrame(doc(), object()).automaticPages = el.checked;
+      }, 'Change text flow');
+      return;
+    }
+    if (el.matches('input,select,textarea')) {
+      el.dataset.editing = 'false';
+      el.dataset.focusValue = el.value;
+    }
+    if (el.matches('[data-page-order]')) {
+      const index = Math.max(
+        0,
+        Math.min(doc().pages.length - 1, Math.round(Number(el.value) || 1) - 1),
+      );
+      mutate(() => reorderPage(doc(), page().id, index), 'Reorder page');
+      fit();
+      return;
+    }
+    if (el.matches('[data-selection-page]') && el.value) {
+      const pageId = el.value;
+      mutate(() => {
+        for (const item of objects()) moveObjectToPage(doc(), item.id, pageId);
+        state.activePage = pageId;
+        state.inside = null;
+      }, 'Move to page');
+      fit();
+      return;
+    }
+    if (el.dataset.selectionProp && objects().length > 1) {
+      const key = el.dataset.selectionProp,
+        value = Number(el.value);
+      if (!Number.isFinite(value)) return;
+      mutate(() => {
+        const rect = selectionBounds(doc(), state.selection);
+        rect[key] = ['w', 'h'].includes(key)
+          ? Math.max(0.01, Math.min(100000, value))
+          : Math.max(-100000, Math.min(100000, value));
+        transformSelection(doc(), state.selection, rect, structuredClone(doc()));
+      });
+      return;
+    }
+    if (el.matches('[data-canvas-snap]')) {
+      state.snap = el.checked;
+      snapEnabled = state.snap;
+      try {
+        localStorage.setItem('ivo:snapping', String(state.snap));
+      } catch {}
+      return;
+    }
+    if (el.matches('.canvas-file-input')) {
+      addFiles([...el.files]);
+      el.value = '';
+      return;
+    }
+    if (el.dataset.objectProp && object()) {
+      const prop = el.dataset.objectProp;
+      let value = el.type === 'number' ? Number(el.value) : el.value;
+      if (el.type === 'number' && !Number.isFinite(value)) return;
+      if (['x', 'y'].includes(prop)) value = Math.max(-100000, Math.min(100000, value));
+      if (['w', 'h'].includes(prop)) value = Math.max(0.01, Math.min(100000, value));
+      if (prop === 'fontSize') value = Math.max(1, Math.min(2000, value));
+      if (prop === 'strokeWidth') value = Math.max(0, Math.min(100, value));
+      if (prop === 'leading') value = Math.max(0, Math.min(4000, value));
+      if (prop === 'tracking') value = Math.max(-1000, Math.min(10000, value));
+      if (['paragraphBefore', 'paragraphAfter'].includes(prop))
+        value = Math.max(0, Math.min(2000, value));
+      if ((CHARACTER_FIELDS[prop] || PARAGRAPH_FIELDS[prop]) && applyTextProperty(prop, value)) {
+        if (el.type === 'number') el.value = String(value);
+        el.dataset.focusValue = el.value;
+        return;
+      }
+      mutate(() => {
+        const item = object();
+        if (['x', 'y', 'w', 'h'].includes(prop))
+          transformObject(
+            doc(),
+            item.id,
+            { x: item.x, y: item.y, w: item.w, h: item.h, [prop]: value },
+            structuredClone(doc()),
+          );
+        else if (prop === 'cropX' || prop === 'cropY') {
+          item.crop = {
+            ...item.crop,
+            [prop === 'cropX' ? 'x' : 'y']: Math.max(0, Math.min(100, value)),
+          };
+          item.objectPosition = { ...item.crop };
+        } else item[prop] = value;
+      });
+    }
+    if (el.dataset.pageProp) {
+      const key = el.dataset.pageProp,
+        value =
+          key === 'name'
+            ? el.value.slice(0, 120)
+            : Math.max(72, Math.min(14400, Number(el.value) || 72));
+      mutate(() => {
+        page()[key] = value;
+      });
+    }
+    if (el.dataset.sceneMeta) {
+      const key = el.dataset.sceneMeta;
+      mutate(() => {
+        doc()[key] =
+          key === 'title'
+            ? el.value.trim().slice(0, 180) || 'Untitled'
+            : [
+                ...new Set(
+                  el.value
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                ),
+              ];
+        options.onMetadata?.();
+      });
+    }
+  });
+  listen(host, 'pointerdown', (event) => {
+    const element = event.target.closest('.canvas-document-source');
+    if (
+      ownsInput() &&
+      options.editing &&
+      element &&
+      !element.isContentEditable &&
+      sceneObject(doc(), element.dataset.sceneText)
+    ) {
+      event.preventDefault();
+      focusText(element.dataset.sceneText, event);
+      placeTextCaret(element, event.clientX, event.clientY);
+    }
+  });
+  listen(host, 'focusin', (event) => {
+    if (event.target.matches('input,textarea')) {
+      event.target.dataset.focusValue = event.target.value;
+      event.target.dataset.editing = 'false';
+    }
+    if (event.target.matches('[data-scene-text]')) {
+      setSelectionState(event.target.dataset.sceneText);
+      selectionDirty = true;
+      requestFrame();
+    }
+  });
+  listen(host, 'focusout', (event) => {
+    if (event.target.matches('[data-scene-text]')) finishText();
+  });
+  listen(document, 'selectionchange', () => {
+    if (!applyingText && !restoring) {
+      rememberTextSelection();
+      refreshTextControls();
+      if (!composing) followTextFlowCaret();
+    }
+  });
+  listen(host, 'compositionstart', () => {
+    beginTextInput('insertCompositionText');
+    const element = activeText();
+    if (element) inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
+    composing = true;
+  });
+  listen(host, 'compositionend', () => {
+    composing = false;
+    const element = activeText();
+    if (element) syncText(element);
+    inputType = 'insertCompositionText';
+    finishText();
+    for (const resolve of compositionWaiters.splice(0)) resolve();
+  });
+  listen(host, 'beforeinput', (event) => {
+    const element = event.target.closest('[data-scene-text]');
+    if (!ownsInput()) {
+      if (element) event.preventDefault();
+      return;
+    }
+    if (!element || element.dataset.sceneText !== activeTextId || applyingText) return;
+    if (['historyUndo', 'historyRedo'].includes(event.inputType)) {
+      event.preventDefault();
+      command(event.inputType === 'historyUndo' ? 'undo' : 'redo');
+      return;
+    }
+    beginTextInput(event.inputType);
+    if (event.inputType.startsWith('insert'))
+      inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
+    if (
+      event.inputType === 'insertText' &&
+      event.data &&
+      Object.keys(pendingMarks).length &&
+      !composing
+    ) {
+      event.preventDefault();
+      const range = preserveRange();
+      if (!range) return;
+      applyingText = true;
+      try {
+        const span = document.createElement('span');
+        for (const [field, value] of Object.entries(pendingMarks))
+          setTextAttribute(span, CHARACTER_FIELDS[field], value);
+        span.textContent = event.data;
+        range.deleteContents();
+        range.insertNode(span);
+        range.selectNodeContents(span);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        syncText(element);
+      } finally {
+        applyingText = false;
+      }
+      finishText();
+    }
+  });
+  listen(host, 'input', (event) => {
+    if (!ownsInput()) return;
+    const element = event.target;
+    if (element.matches('input,textarea'))
+      element.dataset.editing = String(element.value !== element.dataset.focusValue);
+    if (!element.dataset.sceneText || applyingText || restoring) return;
+    beginTextInput(event.inputType || 'insertText');
+    if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak')
+      inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
+    syncText(element);
+    if (!composing) finishText();
+  });
+  listen(window, 'paste', (event) => {
+    if (!ownsInput() || busy || dialogOpen() || event.target.closest('input,textarea,select'))
+      return;
+    const files = clipboardImages(event.clipboardData);
+    if (files.length) {
+      event.preventDefault();
+      if (!options.editing) {
+        onRequestEdit?.(files);
+        return;
+      }
+      addFiles(files);
+      return;
+    }
+    const text = event.target.closest('[data-scene-text],[data-flow-frame]');
+    if (text && options.editing) {
+      event.preventDefault();
+      beginTextInput('insertFromPaste');
+      document.execCommand(
+        'insertHTML',
+        false,
+        cleanHTML(
+          event.clipboardData.getData('text/html') ||
+            esc(event.clipboardData.getData('text/plain')).replace(/\n/g, '<br>'),
+        ),
+      );
+    }
+  });
+  listen(viewport, 'contextmenu', showContextMenu);
+  listen(host.querySelector('.canvas-document-text'), 'contextmenu', showContextMenu);
+  listen(window, 'pointerdown', (event) => {
+    if (contextMenu && !contextMenu.contains(event.target)) closeContextMenu();
+  });
+  listen(viewport, 'pointerdown', pointerDown);
+  listen(viewport, 'pointermove', pointerMove);
+  listen(viewport, 'pointerup', pointerUp);
+  listen(viewport, 'pointercancel', pointerUp);
+  listen(viewport, 'lostpointercapture', (event) => {
+    if (gesture?.pointerId === event.pointerId) finishGesture();
+  });
+  listen(viewport, 'dblclick', (event) => {
+    if (!options.editing) return;
+    if (event.target.closest('[data-type-circle]')) {
+      convertText();
+      return;
+    }
+    if (state.tool === 'polygon') {
+      finishPolygon();
+      return;
+    }
+    const id = event.target.closest('[data-object]')?.dataset.object || lastHit;
+    if (activeTextId === id) return;
+    if (['text', 'quote'].includes(sceneObject(doc(), id)?.type)) focusText(id, event, true);
+  });
+  listen(
+    viewport,
+    'wheel',
+    (event) => {
+      if (!ownsInput()) return;
+      event.preventDefault();
+      const delta = wheelDelta(event, {
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      });
+      if (event.ctrlKey) zoom(pinchWheelScale(delta.y), pointer(event));
+      else if (event.altKey) zoom(Math.exp(-delta.y * 0.005), pointer(event));
+      else {
+        finishGesture();
+        cameraTo(panBy(state.camera, delta));
+      }
+    },
+    { passive: false },
+  );
+  listen(viewport, 'dragover', (event) => event.preventDefault());
+  listen(viewport, 'drop', (event) => {
+    event.preventDefault();
+    if (options.editing) addFiles([...event.dataTransfer.files]);
+  });
+  listen(window, 'keydown', (event) => {
+    if (
+      !(event.target instanceof Element) ||
+      !ownsInput() ||
+      busy ||
+      dialogOpen() ||
+      !host.isConnected ||
+      event.isComposing ||
+      composing
+    )
+      return;
+    if (contextMenu) {
+      const buttons = [...contextMenu.querySelectorAll('button:not(:disabled)')];
+      if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+        event.preventDefault();
+        const index = buttons.indexOf(document.activeElement);
+        buttons[
+          (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+        ]?.focus();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeContextMenu();
+        viewport.focus({ preventScroll: true });
+        return;
+      }
+      if (event.key === 'Tab') closeContextMenu();
+      else return;
+    }
+    editor.dataset.option = String(event.altKey);
+    if (['Alt', 'Shift'].includes(event.key) && replayMoveModifiers(event)) {
+      event.preventDefault();
+      return;
+    }
+    const modifier = event.metaKey || event.ctrlKey;
+    if (event.target.closest('[data-type-circle]') && ['Enter', ' '].includes(event.key)) {
+      event.preventDefault();
+      convertText();
+      return;
+    }
+    if (event.target.closest('button') && ['Enter', ' '].includes(event.key) && !draft) return;
+    if (modifier && event.key.toLowerCase() === 'e') return;
+    if (
+      modifier &&
+      event.key.toLowerCase() === 'z' &&
+      (event.target.closest('[data-scene-text]') ||
+        (event.target.closest('.canvas-properties') &&
+          event.target.matches('input,textarea') &&
+          event.target.dataset.editing !== 'true'))
+    ) {
+      event.preventDefault();
+      command(event.shiftKey ? 'redo' : 'undo');
+      return;
+    }
+    if (activeTextId && event.target.closest('[data-scene-text]') && modifier) {
+      const key = event.key.toLowerCase();
+      if (event.shiftKey && ['b', 'i', 'u'].includes(key)) {
+        event.preventDefault();
+        command({ b: 'bold', i: 'italic', u: 'underline' }[key]);
+        return;
+      }
+      if (event.shiftKey && ['l', 'r', 'c'].includes(key)) {
+        event.preventDefault();
+        applyTextProperty('align', { l: 'left', r: 'right', c: 'center' }[key]);
+        return;
+      }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault();
+        window
+          .getSelection()
+          .modify(
+            event.shiftKey ? 'extend' : 'move',
+            event.key === 'ArrowLeft'
+              ? 'left'
+              : event.key === 'ArrowRight'
+                ? 'right'
+                : event.key === 'ArrowUp'
+                  ? 'backward'
+                  : 'forward',
+            event.key === 'ArrowLeft' || event.key === 'ArrowRight' ? 'word' : 'paragraph',
+          );
+        rememberTextSelection();
+        return;
+      }
+    }
+    if (typing(event.target)) {
+      if (event.key === 'Escape') {
+        event.target.blur();
+        tool('select');
+        paint();
+        event.preventDefault();
+      }
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (gesture?.kind === 'marquee' && key === 'e') {
+      event.preventDefault();
+      gesture.enclosed = !gesture.enclosed;
+      if (gesture.lastClient)
+        pointerMove({
+          clientX: gesture.lastClient.x,
+          clientY: gesture.lastClient.y,
+          pointerId: gesture.pointerId,
+        });
+      return;
+    }
+    if (modifier && event.shiftKey && key === 'a') {
+      event.preventDefault();
+      select(null);
+      return;
+    }
+    if (modifier && key === 'a') {
+      event.preventDefault();
+      command('select-all');
+      return;
+    }
+    if (modifier && key === 'z') {
+      if (options.editing) {
+        event.preventDefault();
+        command(event.shiftKey ? 'redo' : 'undo');
+      }
+      return;
+    }
+    if (modifier && key === '0') {
+      event.preventDefault();
+      fit(true);
+      return;
+    }
+    if (['+', '=', '-'].includes(key)) {
+      event.preventDefault();
+      zoom(key === '-' ? 0.8 : 1.25);
+      return;
+    }
+    if (key === ' ') {
+      space = true;
+      viewport.classList.add('space-pan');
+      event.preventDefault();
+      return;
+    }
+    if (key === 'escape') {
+      closeContextMenu();
+      if (gesture) finishGesture(true);
+      threadFrom = null;
+      draft = null;
+      state.inside = null;
+      select(null);
+      tool('select');
+      paint();
+      return;
+    }
+    if (!options.editing || modifier || event.altKey) return;
+    const name = { v: 'select', a: 'direct', t: 'text', m: 'rectangle', p: 'polygon', h: 'hand' }[
+      key
+    ];
+    if (name) {
+      event.preventDefault();
+      tool(name);
+      paint();
+      return;
+    }
+    if (key === 'enter' && draft) {
+      event.preventDefault();
+      finishPolygon();
+      return;
+    }
+    if (['delete', 'backspace'].includes(key) && objects().length) {
+      event.preventDefault();
+      command('delete');
+      return;
+    }
+    if (key.startsWith('arrow') && objects().length) {
+      event.preventDefault();
+      mutate(() => {
+        const amount = event.shiftKey ? 10 : 1;
+        for (const item of objects()) {
+          item.x += key === 'arrowleft' ? -amount : key === 'arrowright' ? amount : 0;
+          item.y += key === 'arrowup' ? -amount : key === 'arrowdown' ? amount : 0;
+        }
+      });
+    }
+  });
+  listen(window, 'keyup', (event) => {
+    editor.dataset.option = String(event.altKey);
+    if (['Alt', 'Shift'].includes(event.key) && replayMoveModifiers(event)) event.preventDefault();
+    if (event.key === ' ') {
+      space = false;
+      viewport.classList.remove('space-pan');
+    }
+  });
+  listen(window, 'blur', () => {
+    delete editor.dataset.option;
+    finishGesture(true);
+    finishText();
+    space = false;
+    viewport.classList.remove('space-pan');
+    pointers.clear();
+    pinch = null;
+    delete editor.dataset.gesture;
+  });
+  function dialogOpen() {
+    return !!document.querySelector('dialog[open]');
+  }
+  const observer = new ResizeObserver(() => {
+    selectionDirty = true;
+    requestFrame();
+  });
+  observer.observe(viewport);
+  if (state.camera && !state.target) state.target = { ...state.camera };
+  if (!state.camera) {
+    state.camera = fitCamera(
+      { x: 0, y: 0, w: page().width, h: page().height },
+      { width: viewport.clientWidth, height: viewport.clientHeight },
+      48,
+    );
+    state.target = { ...state.camera };
+  }
+  setSelectionState(state.selection);
+  if (!doc().pages.some((p) => p.id === state.activePage)) state.activePage = doc().pages[0].id;
+  if (!sceneObject(doc(), state.inside)) state.inside = null;
+  host.querySelector('[data-canvas-snap]').checked = state.snap;
+  paint();
+  if (documentContent(initialDocument) !== documentContent(doc())) onChange();
+  document.fonts?.ready.then(() => {
+    if (alive) {
+      selectionDirty = true;
+      requestFrame();
+    }
+  });
+  return {
+    command,
+    getPanelLayout: () => workspacePanels.getState(),
+    setPanelLayout: (layout) => workspacePanels.restore(layout),
+    addFiles,
+    captureView,
+    restoreView,
+    prepareHistory,
+    deactivate,
+    refreshExternal,
+    setBusy(value) {
+      busy = value;
+      if (value) previews.hide();
+      editor.inert = value;
+      editor.classList.toggle('interaction-busy', value);
+      if (value) {
+        finishGesture(true);
+        const element = activeText();
+        if (element && document.activeElement === element) element.blur();
+      }
+    },
+    finish() {
+      finishGesture();
+      const element = activeText();
+      if (element && composing) element.blur();
+      finishText();
+    },
+    async flush() {
+      finishGesture();
+      if (composing) {
+        activeText()?.blur();
+        if (composing) await new Promise((resolve) => compositionWaiters.push(resolve));
+      }
+      finishText();
+      while (pendingCount) await pendingFiles;
+    },
+    get pending() {
+      return pendingCount > 0 || composing;
+    },
+    destroy() {
+      finishGesture();
+      endTextEditing();
+      alive = false;
+      closeContextMenu();
+      previews.destroy();
+      tooltips.destroy();
+      workspacePanels.destroy();
+      controller.abort();
+      observer.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    },
+    getState: () => structuredClone({ ...state, activeTextId, composing, busy }),
+  };
+}

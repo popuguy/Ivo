@@ -1,0 +1,1331 @@
+{
+  "date": "2026-11-04",
+  "target": "Installed Obsidian 1.15.0 macOS",
+  "method": "Actual REA 6.7.0 Hopper analyze_function dossiers; full __text decoding with Apple LLVM 17.0.0 for both slices of six integration targets",
+  "raw_evidence_location": "Parent workspace work/obsidian-deep/native (private, outside repository)",
+  "function_count": 29,
+  "summed_dossier_instruction_count": 4609,
+  "functions": [
+    {
+      "key": "btime-callback",
+      "evidence_id": "ev_425d6c3ae8ac6010be66f4708991f2d5b576226e56ba3acf65cdec8c52507a87",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/btime/binding.node",
+      "target_sha256": "d9f0f03114af22f98384c09d2df0aef7bd69900194eaa0c7d7af21c080da4842",
+      "architecture": "arm64",
+      "address": "0x6d8",
+      "assembly_instruction_count": 178,
+      "pseudocode_characters": 36746,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "btime-set-time",
+      "evidence_id": "ev_bb8f5e650a13a6acc27a735f80548e58deb1bda3891a3b56b42d74159a90b463",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/btime/binding.node",
+      "target_sha256": "d9f0f03114af22f98384c09d2df0aef7bd69900194eaa0c7d7af21c080da4842",
+      "architecture": "arm64",
+      "address": "0x660",
+      "assembly_instruction_count": 30,
+      "pseudocode_characters": 184,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "cli-json-escape",
+      "evidence_id": "ev_0d44c89e6febea22bd973a5528d7bb581a7b319a3b5de3629812ae46d6637188",
+      "target": "Contents/MacOS/obsidian-cli",
+      "target_sha256": "384536f2c4ecf59eaaef975920bc756d079bc365878ee4fae19a5089b15d8698",
+      "architecture": "arm64",
+      "address": "0x100000984",
+      "assembly_instruction_count": 260,
+      "pseudocode_characters": 54370,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "cli-main",
+      "evidence_id": "ev_25913f19f28ec93c979853acc7aac1b1eb418c0dc7a3c1f794d4c9bc686e357c",
+      "target": "Contents/MacOS/obsidian-cli",
+      "target_sha256": "384536f2c4ecf59eaaef975920bc756d079bc365878ee4fae19a5089b15d8698",
+      "architecture": "arm64",
+      "address": "0x100000598",
+      "assembly_instruction_count": 211,
+      "pseudocode_characters": 3518,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "cli-response",
+      "evidence_id": "ev_3c991b9a540a9ad31c42d0075bcf7df594ccdc2c4ea2e5d333e72f3d4aa938bd",
+      "target": "Contents/MacOS/obsidian-cli",
+      "target_sha256": "384536f2c4ecf59eaaef975920bc756d079bc365878ee4fae19a5089b15d8698",
+      "architecture": "arm64",
+      "address": "0x100000ef0",
+      "assembly_instruction_count": 53,
+      "pseudocode_characters": 1299,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "cli-stdin",
+      "evidence_id": "ev_ce26269473895fee664b4fdbfa8fabd5c588b8b82897382079d39088cd1a4794",
+      "target": "Contents/MacOS/obsidian-cli",
+      "target_sha256": "384536f2c4ecf59eaaef975920bc756d079bc365878ee4fae19a5089b15d8698",
+      "architecture": "arm64",
+      "address": "0x100000e14",
+      "assembly_instruction_count": 55,
+      "pseudocode_characters": 1652,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "font-enumeration",
+      "evidence_id": "ev_0f78f9a8f5362cd47eb6cd0a8d6f81a12ed35c0ed2dda93bc52150bce3c863ec",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/get-fonts/binding.node",
+      "target_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "architecture": "arm64",
+      "address": "0x3374",
+      "assembly_instruction_count": 133,
+      "pseudocode_characters": 6651,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "font-js-boundary",
+      "evidence_id": "ev_c1db1993843b43f0d1fe6690b45516a82544b36350ce9e2ada373c5fa9364a54",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/get-fonts/binding.node",
+      "target_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "architecture": "arm64",
+      "address": "0x910",
+      "assembly_instruction_count": 36,
+      "pseudocode_characters": 481,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "font-worker-create",
+      "evidence_id": "ev_c3e9ce420f5f60e73859539131557fd57bdff2431496b55cd37e308eee39e411",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/get-fonts/binding.node",
+      "target_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "architecture": "arm64",
+      "address": "0xd04",
+      "assembly_instruction_count": 62,
+      "pseudocode_characters": 874,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "font-worker-error",
+      "evidence_id": "ev_9bce25326571743e996183026c885be8ae87e09d69b3aa2345c4b831f60360a8",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/get-fonts/binding.node",
+      "target_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "architecture": "arm64",
+      "address": "0x12fc",
+      "assembly_instruction_count": 25,
+      "pseudocode_characters": 352,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "font-worker-execute",
+      "evidence_id": "ev_99000562d1880357f53332c8f02cd89f3f191dc85284224ebbea87d05be0f4d4",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/get-fonts/binding.node",
+      "target_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "architecture": "arm64",
+      "address": "0x1160",
+      "assembly_instruction_count": 2,
+      "pseudocode_characters": 54,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "font-worker-result",
+      "evidence_id": "ev_219ecc76e51f8783e58e260dbec7a3de7d3d2dc1079991eec30a9668ed53edf6",
+      "target": "Contents/Resources/app.asar.unpacked/node_modules/get-fonts/binding.node",
+      "target_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "architecture": "arm64",
+      "address": "0x1168",
+      "assembly_instruction_count": 86,
+      "pseudocode_characters": 2483,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "launcher-entry",
+      "evidence_id": "ev_d342f2b0488688f7fe5c5ad6e235bf51bac76c955d2663b5245e97a056e1d33c",
+      "target": "Contents/MacOS/Obsidian",
+      "target_sha256": "51998258add760e3a2d7b169617a432a384758e26d0702fc4a3ff8417fa2b22e",
+      "architecture": "arm64",
+      "address": "0x100000460",
+      "assembly_instruction_count": 24,
+      "pseudocode_characters": 707,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "launcher-stdio",
+      "evidence_id": "ev_31cd73509852b9952874e7f94f03deddabfab4418199eaeebd774d40ac8eb037",
+      "target": "Contents/MacOS/Obsidian",
+      "target_sha256": "51998258add760e3a2d7b169617a432a384758e26d0702fc4a3ff8417fa2b22e",
+      "architecture": "arm64",
+      "address": "0x1000004c0",
+      "assembly_instruction_count": 63,
+      "pseudocode_characters": 879,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-bridge",
+      "evidence_id": "ev_cde7f0702b30be9817d70f9db97f66ff8e3d67605737720dee691638c597865d",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x100006534",
+      "assembly_instruction_count": 62,
+      "pseudocode_characters": 1165,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-directory",
+      "evidence_id": "ev_49a5c85374e49371b5fa8d7cf86c2e9589ae39f94dfd2de837a9e9efe7f44b85",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x100003684",
+      "assembly_instruction_count": 570,
+      "pseudocode_characters": 39284,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-dispatch",
+      "evidence_id": "ev_91874c248e548020b94e19ad126f48f5a01dedd71edbdbb13fb238142e4a4548",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x10000a2e0",
+      "assembly_instruction_count": 255,
+      "pseudocode_characters": 6403,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-external",
+      "evidence_id": "ev_3560a37c0d57d37ee40ad3c5fbca845f454ee0f141098c558d3881a3163eb398",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x10000b090",
+      "assembly_instruction_count": 318,
+      "pseudocode_characters": 6487,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-load",
+      "evidence_id": "ev_29ad181d428f29b752edab9a4e482a53064f71969ee3de17ed19b86793847e9a",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x100003580",
+      "assembly_instruction_count": 65,
+      "pseudocode_characters": 1166,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-message",
+      "evidence_id": "ev_504b4ca72bf02814dac7ace0dcf4e9ff50a62d0ba18db8ec1da06d7ec9566e4d",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x10000a064",
+      "assembly_instruction_count": 159,
+      "pseudocode_characters": 8848,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-navigation",
+      "evidence_id": "ev_0453e6c159a12f6b51470a35bf6ebe433c4d5923211d7d80d4c5173bbbc50c23",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x10000c744",
+      "assembly_instruction_count": 198,
+      "pseudocode_characters": 8781,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-prepare",
+      "evidence_id": "ev_79b5c99adbd1beaa4a5d49ec1a94e62d129fe1fedbb1804d23f46cda6b93fd1a",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x10000869c",
+      "assembly_instruction_count": 612,
+      "pseudocode_characters": 125636,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-scheme",
+      "evidence_id": "ev_c617e95de46039e9cfe61259d69264baa210f073fea87c6de3c45e60169fc2f2",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x1000052e8",
+      "assembly_instruction_count": 474,
+      "pseudocode_characters": 99268,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "preview-webview",
+      "evidence_id": "ev_46baa37c97e7070f9c1beedd88c17ebb4779f6f5352f42d662651a5edf30dd40",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/MacOS/ObsidianQuickLook",
+      "target_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "architecture": "arm64",
+      "address": "0x100007d18",
+      "assembly_instruction_count": 278,
+      "pseudocode_characters": 3800,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "xpc-accept",
+      "evidence_id": "ev_d32111b2f4b1bf29ebb19c06fa0d112a33cd3606770ed58dd10c00ff913a3e11",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/XPCServices/ObsidianQuickLookLinks.xpc/Contents/MacOS/ObsidianQuickLookLinks",
+      "target_sha256": "eb718ad1846d859873b09c92e2a7d2d69a866601d55ca5a0271f10bbe42e257f",
+      "architecture": "arm64",
+      "address": "0x100003264",
+      "assembly_instruction_count": 51,
+      "pseudocode_characters": 362,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "xpc-main",
+      "evidence_id": "ev_98dfaec2194ff9387c3be7784fbfc8d64a35fa59beca6b30a4fbcd811f92b939",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/XPCServices/ObsidianQuickLookLinks.xpc/Contents/MacOS/ObsidianQuickLookLinks",
+      "target_sha256": "eb718ad1846d859873b09c92e2a7d2d69a866601d55ca5a0271f10bbe42e257f",
+      "architecture": "arm64",
+      "address": "0x1000033a0",
+      "assembly_instruction_count": 35,
+      "pseudocode_characters": 275,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "xpc-open-link",
+      "evidence_id": "ev_2bc2745399c420754cdad328998de4015061f06a94ad84e4102123910650ae03",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/XPCServices/ObsidianQuickLookLinks.xpc/Contents/MacOS/ObsidianQuickLookLinks",
+      "target_sha256": "eb718ad1846d859873b09c92e2a7d2d69a866601d55ca5a0271f10bbe42e257f",
+      "architecture": "arm64",
+      "address": "0x1000034f0",
+      "assembly_instruction_count": 218,
+      "pseudocode_characters": 4378,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "xpc-workspace-open",
+      "evidence_id": "ev_87d2e49c91046f85e81928e97a6b9be232d1724fd2d6b08e44bb4697f924b61f",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/XPCServices/ObsidianQuickLookLinks.xpc/Contents/MacOS/ObsidianQuickLookLinks",
+      "target_sha256": "eb718ad1846d859873b09c92e2a7d2d69a866601d55ca5a0271f10bbe42e257f",
+      "architecture": "arm64",
+      "address": "0x1000039dc",
+      "assembly_instruction_count": 86,
+      "pseudocode_characters": 889,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    },
+    {
+      "key": "xpc-workspace-result",
+      "evidence_id": "ev_111f233c534214296b239658231fa38ba25290e5d59d7ca08bf21ed2e87eb9d2",
+      "target": "Contents/PlugIns/ObsidianQuickLook.appex/Contents/XPCServices/ObsidianQuickLookLinks.xpc/Contents/MacOS/ObsidianQuickLookLinks",
+      "target_sha256": "eb718ad1846d859873b09c92e2a7d2d69a866601d55ca5a0271f10bbe42e257f",
+      "architecture": "arm64",
+      "address": "0x100003c44",
+      "assembly_instruction_count": 10,
+      "pseudocode_characters": 225,
+      "facet_availability": {
+        "pseudocode": {
+          "available": true
+        },
+        "assembly": {
+          "available": true
+        },
+        "comments": {
+          "available": true
+        },
+        "callers": {
+          "available": true
+        },
+        "callees": {
+          "available": true
+        },
+        "references": {
+          "available": true
+        },
+        "strings_names": {
+          "available": true
+        },
+        "cfg": {
+          "available": true
+        }
+      },
+      "limitations": [
+        "Native CallReference classifications are observed where available; detailed reference flags remain unknown.",
+        "Hopper's public Python API does not expose equivalent external or thunk classification in this dossier.",
+        "Native calls without resolved target addresses are not represented as edges; enumeration beyond reported CallReference objects is unknown.",
+        "Pseudocode and assembly are provider-specific representations, not original source."
+      ]
+    }
+  ],
+  "full_section_disassemblies": [
+    {
+      "name": "launcher",
+      "architecture": "arm64",
+      "source_sha256": "51998258add760e3a2d7b169617a432a384758e26d0702fc4a3ff8417fa2b22e",
+      "output_sha256": "b81557b778e143c1368a9f6b6f0e2c0563203c12e369c0dbc16bc9c730e6fc55",
+      "output_bytes": 3117,
+      "exit_code": 0
+    },
+    {
+      "name": "launcher",
+      "architecture": "x86_64",
+      "source_sha256": "51998258add760e3a2d7b169617a432a384758e26d0702fc4a3ff8417fa2b22e",
+      "output_sha256": "75ab533234974ff1fcba4650a7dab37c132c8b12569bc025930316f47d442369",
+      "output_bytes": 3348,
+      "exit_code": 0
+    },
+    {
+      "name": "cli",
+      "architecture": "arm64",
+      "source_sha256": "384536f2c4ecf59eaaef975920bc756d079bc365878ee4fae19a5089b15d8698",
+      "output_sha256": "6317bb999213ec05b5552f13953fdc118a726330726c61b9839e893a2e131828",
+      "output_bytes": 21107,
+      "exit_code": 0
+    },
+    {
+      "name": "cli",
+      "architecture": "x86_64",
+      "source_sha256": "384536f2c4ecf59eaaef975920bc756d079bc365878ee4fae19a5089b15d8698",
+      "output_sha256": "57abcbb45ed8150a5bc9fed6f5a88539cfd60bb5e6259f777581affbe36ab3ae",
+      "output_bytes": 19825,
+      "exit_code": 0
+    },
+    {
+      "name": "btime",
+      "architecture": "arm64",
+      "source_sha256": "d9f0f03114af22f98384c09d2df0aef7bd69900194eaa0c7d7af21c080da4842",
+      "output_sha256": "da44718288e7218983507107c7afa506294838b972cda8a96a8ab0cea52e6755",
+      "output_bytes": 56327,
+      "exit_code": 0
+    },
+    {
+      "name": "btime",
+      "architecture": "x86_64",
+      "source_sha256": "d9f0f03114af22f98384c09d2df0aef7bd69900194eaa0c7d7af21c080da4842",
+      "output_sha256": "d9a6d7610b2efa5728d1d934c475e5db3d83e73997deb23b54fa29cd9027b335",
+      "output_bytes": 62010,
+      "exit_code": 0
+    },
+    {
+      "name": "fonts",
+      "architecture": "arm64",
+      "source_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "output_sha256": "f6834fb2ac121f29232abec05a9d0176e7f52e17dbe008fdfe32bf31b9ae75ca",
+      "output_bytes": 97066,
+      "exit_code": 0
+    },
+    {
+      "name": "fonts",
+      "architecture": "x86_64",
+      "source_sha256": "02040d4641231a862b89ddade42d697aaed69e2c64dc396cbbeaa4aebb7c38ab",
+      "output_sha256": "126710569f67b7c5324ece551720343b6499cea716228b54e20148973987d2f4",
+      "output_bytes": 113289,
+      "exit_code": 0
+    },
+    {
+      "name": "preview",
+      "architecture": "arm64",
+      "source_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "output_sha256": "be2738f876c7fd0af98a6427f270516745251ef7806f67039c1bf9a15a6f5b2c",
+      "output_bytes": 470947,
+      "exit_code": 0
+    },
+    {
+      "name": "preview",
+      "architecture": "x86_64",
+      "source_sha256": "a1238b26203a3e32657c15a70a19beec2d5b167ad8700ab979a2df5a355db9f1",
+      "output_sha256": "49335c528ebcaae4ed28d0ae99cf91d29af8adb9aae732e323066ec4063827e6",
+      "output_bytes": 532172,
+      "exit_code": 0
+    },
+    {
+      "name": "xpc",
+      "architecture": "arm64",
+      "source_sha256": "eb718ad1846d859873b09c92e2a7d2d69a866601d55ca5a0271f10bbe42e257f",
+      "output_sha256": "9101c68f90a53ec768cc63385a28920f6913980681d762a4e43d999e0c0abb7c",
+      "output_bytes": 102089,
+      "exit_code": 0
+    },
+    {
+      "name": "xpc",
+      "architecture": "x86_64",
+      "source_sha256": "eb718ad1846d859873b09c92e2a7d2d69a866601d55ca5a0271f10bbe42e257f",
+      "output_sha256": "83e34d84c2babf496dcc10ba86315fc1c0cca1c0149de1cb0fce0be85249edc7",
+      "output_bytes": 130330,
+      "exit_code": 0
+    }
+  ],
+  "limitations": [
+    "Summed dossier instruction counts can overlap; they are not unique code coverage.",
+    "Hopper pseudocode is reconstructed and may contain incorrect types/duplicated Swift branches.",
+    "No live target invocation, measured performance or complete upstream-runtime reconstruction is implied."
+  ]
+}

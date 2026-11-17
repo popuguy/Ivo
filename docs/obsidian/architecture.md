@@ -2,7 +2,9 @@
 
 This is an original analysis of the locally installed Obsidian **1.15.0** package, inspected on **2026-11-04**. It documents the parts most relevant to Ivo: file-derived metadata, graph construction and rendering, Canvas persistence, and rich-document dependencies. It is a bounded static investigation, supplemented by one explicitly identified companion UI observation, not a claim to have reconstructed the entire application.
 
-The source archive was `/Applications/Obsidian.app/Contents/Resources/obsidian.asar`. Its SHA-256 is `0e6383301078a798f0f3bdb42bdb606d904ada77eab8c8fc89da533573979248`. The accompanying [evidence ledger](evidence-ledger.json) records source-file hashes, byte offsets, short lookup anchors, and evidence classifications. No vendor source files are redistributed. Evidence IDs in this report are local investigation IDs, not REA trace IDs.
+The subsequent [consolidated investigation](investigation.md) adds native disassembly/decompilation, complete native artifact/slice inventory, decoded WASM, and expanded application/save/recovery/sync paths. This document retains its original graph-focused findings and locator IDs.
+
+The source archive was `/Applications/Obsidian.app/Contents/Resources/obsidian.asar`. Its SHA-256 is `0e6383301078a798f0f3bdb42bdb606d904ada77eab8c8fc89da533573979248`. The accompanying [evidence ledger](evidence-ledger.json) records source-file hashes, byte offsets, short lookup anchors, and evidence classifications. No vendor source files are redistributed. A01–A26 are local manual-inspection IDs. The subsequent [REA follow-up](rea-followup.md) adds actual REA evidence IDs and selected-source results, with explicit coverage limits.
 
 ## How to read the evidence
 
@@ -64,6 +66,8 @@ The graph renderer reconciles node IDs against existing node objects, removes mi
 The frame callback applies new positions, pan/zoom interpolation, and viewport calculations. It limits initialization of previously unrendered node graphics to **50 per frame**, prioritizing proximity to the viewport center. Rendering methods hide off-screen node/link graphics using viewport checks. This is evidence of visibility control, not proof that off-screen GPU resources or node objects are destroyed. [A13]
 
 The callback uses animation frames and stops scheduling after more than 60 idle frames; changes reset that idle state. Labels have independent styling and visibility logic, including zoom-dependent fading and hover/selection emphasis. The graph's label font stack is separate from ordinary note text. CSS-derived colors are read into the renderer, so note typography and graph typography should not be treated as a single styling system. [A13, A15]
+
+The drag handler fixes a node to pointer coordinates and requests simulation alpha/alpha-target 0.3. Release clears those fixed coordinates and returns alpha-target to zero. Zoom eases toward its target while preserving an anchor, retaining 0.85 of the previous scale per render frame; released pan velocity retains 0.9 of its previous value while easing toward the keyboard target. These are static mechanisms/constants, not measured input-to-display latency. The 4 November follow-up checked the source file against its recorded SHA-256 before adding these anchors. [A27–A29]
 
 ### Physics transport
 

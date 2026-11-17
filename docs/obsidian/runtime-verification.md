@@ -2,6 +2,8 @@
 
 Date: 2026-11-04. Installed desktop reference: Obsidian 1.15.0 on macOS. Tests used the isolated [fixture vault](../../tests/fixtures/obsidian-vault/), not the user's notes.
 
+The [consolidated static investigation](investigation.md) adds native, WASM, and expanded application evidence. It does not expand the runtime test results listed below.
+
 ## Observed in the app
 
 | Action | Observed result |
@@ -20,8 +22,9 @@ Panel counts and status-bar counts must not be generalized from this small fixtu
 
 REA 6.7.0 was available in a local npm cache and invoked through its public `scripts/rea.mjs analyze-javascript-application` command. Two ASAR boundaries were examined: the bootstrap `app.asar` and application `obsidian.asar`. Selected application sources were package.json, app.js, sim.js, worker.js, and main.js. Source bytes were treated as inert text.
 
-REA produced archive identities and inventories but failed before semantic JavaScript parsing: its macOS ownership helper could not compile because the compiler cache directory was not writable in the execution sandbox. Retrying with cache environment paths did not resolve that restriction. The [retained summary](rea-evidence-summary.json) records evidence IDs, selected scope, errors, and limitations. Zero reported semantic findings must **not** be interpreted as absence of features.
+The initial REA attempts produced inventories but failed before semantic parsing because the macOS ownership helper could not compile in the default cache. The recovery run resolved compilation using `REA_DARWIN_MODULE_CACHE_PATH`, parsed `sim.js`, then failed at process-table inspection during cleanup. Its partial evidence was preserved.
 
+The local Codex follow-up obtained scoped process-inspection approval, verified that the old worker was absent and its temporary directory empty, and completed both the simulation and core-source runs successfully. REA parsed `sim.js`, `main.js`, `worker.js`, and `app.js` across the two selected-source runs. See [REA follow-up](rea-followup.md) and the [retained summary](rea-evidence-summary.json) for exact evidence IDs, counts, limits, and remaining unknowns. The core semantic graph reached its retention ceiling; these successful runs are bounded static evidence, not complete reverse engineering or runtime tracing.
 Bootstrap integrity metadata also contradicted observed bytes for two unpacked native bindings. A record-and-continue static attempt retained those contradictions; no package trust or runtime equivalence claim is made. The local code-signature verification also failed for the installed arm64 bundle. This study does not establish the cause of either result.
 
 The companion manual static inspection recovered the documented metadata/graph/Canvas structures and their locations. [The evidence ledger](evidence-ledger.json) contains archive/source hashes and bounded lookup anchors. It is an original reference, not a redistribution of the application. No Obsidian source, native module, font, icon, or photograph was copied into Ivo.

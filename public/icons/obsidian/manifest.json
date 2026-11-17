@@ -1,0 +1,251 @@
+{
+  "source": "Obsidian embedded Lucide registry",
+  "icons": {
+    "select": {
+      "file": "select.svg",
+      "registryName": "mouse-pointer",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "23bfba85154be5528d26f5e560a7312b51e17b83a86821f5dce31cebbeb7e97a"
+    },
+    "direct": {
+      "file": "direct.svg",
+      "registryName": "mouse-pointer-2",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "7ebe493f41287d310118d846c372ebb53464ab616986db14ca13985acbf76bae"
+    },
+    "text": {
+      "file": "text.svg",
+      "registryName": "text-cursor",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "3c507210fd89411a4ab67281383c7917adc8aadc7861bd231648a70d0951561e"
+    },
+    "rectangle": {
+      "file": "rectangle.svg",
+      "registryName": "rectangle-horizontal",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "24ca8320c4a8a48f8a64febd3d3bef85dd3e7d232c968ebdc655ffe21b83e355"
+    },
+    "polygon": {
+      "file": "polygon.svg",
+      "registryName": "hexagon",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "5e9d015a8b6d914ee67af6fdd40734279ecbef1b4cd1b7e9d778f8659ec4b5b0"
+    },
+    "hand": {
+      "file": "hand.svg",
+      "registryName": "hand",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "ec0cf47fd84e16015a4a5fc95353c2ad0e80d32b714ad51955f5b0ddcdcfd11b"
+    },
+    "image": {
+      "file": "image.svg",
+      "registryName": "image-plus",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "2797b81106632f3cd2662014791901586076af4435832c8fb399d8e00af590bf"
+    },
+    "inside": {
+      "file": "inside.svg",
+      "registryName": "scan",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "6581c56bf0999024bbd665d403fd6a975611bbc4ffd710361f0044ea01cc5850"
+    },
+    "undo": {
+      "file": "undo.svg",
+      "registryName": "undo-2",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "7b75ee022f17f05a9a15887867aa8cd60a1b29cf6de083c14a37aa7d799491d5"
+    },
+    "redo": {
+      "file": "redo.svg",
+      "registryName": "redo-2",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "a59ffab9838e8d6a6117b89e765e7091e919ea4466424ab939e711225d2c97d6"
+    },
+    "link": {
+      "file": "link.svg",
+      "registryName": "link",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "49a50faa4dd66581290286e93b5437eef2eb53e5d2b1056b465819e90d13d06e"
+    },
+    "book": {
+      "file": "book.svg",
+      "registryName": "files",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "a5b6d6b695a82012b431cf570dc480759b90708859834135cb577a0df6f32f19"
+    },
+    "document": {
+      "file": "document.svg",
+      "registryName": "file",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "31124bbd23f7976fc06299122c0a49ab7f4fd9e307c3a75ea5640271e7f81193"
+    },
+    "search": {
+      "file": "search.svg",
+      "registryName": "search",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "ba2a54f92eb9057fdbca4f7a128922882e74615fb1741fabd7e17dfe76281140"
+    },
+    "plus": {
+      "file": "plus.svg",
+      "registryName": "plus",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "d485e5238f405ed0e18ed8bc9cde46017b3cd83b734147bd2a587adf5dd79df2"
+    },
+    "minus": {
+      "file": "minus.svg",
+      "registryName": "minus",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "02fbc96faf1a9cc34383d4ec82a54a2b1de5a05a98eb6222e65b22b7a01ff460"
+    },
+    "close": {
+      "file": "close.svg",
+      "registryName": "x",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "f3bc24503442adbf8cc60237248ee73e4c12db91a6e5adeacb93920f48bc990c"
+    },
+    "edit": {
+      "file": "edit.svg",
+      "registryName": "pencil",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "398461b031f0fcfbcb076ccc39d506d082b1b235ce8e2df510975be39f48d505"
+    },
+    "menu": {
+      "file": "menu.svg",
+      "registryName": "menu",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "9688004757e6fa8c4e3951497658e438dff31c115477757f77f5890a896bbdaf"
+    },
+    "dots": {
+      "file": "dots.svg",
+      "registryName": "ellipsis",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "5044256f6c9ad7066e96b21c54ec8531b6666e919797bfef1e9cb42f30dd9fa9"
+    },
+    "reading": {
+      "file": "reading.svg",
+      "registryName": "book-open",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "b89336e4c0bd984ac17eca5971bfa4b22ec8c4a32e170e31319ad5e1dc6f7f87"
+    },
+    "fit": {
+      "file": "fit.svg",
+      "registryName": "maximize",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "f3582e421198925a89bb7f2ba8bc8543b9c78723e76b53605c72388ba4a0e832"
+    },
+    "fit-page": {
+      "file": "fit-page.svg",
+      "registryName": "maximize",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "f3582e421198925a89bb7f2ba8bc8543b9c78723e76b53605c72388ba4a0e832"
+    },
+    "fit-all": {
+      "file": "fit-all.svg",
+      "registryName": "maximize",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "f3582e421198925a89bb7f2ba8bc8543b9c78723e76b53605c72388ba4a0e832"
+    },
+    "graph": {
+      "file": "graph.svg",
+      "registryName": "git-fork",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "4e44924a8aa5aa7d3d4a9297c3757dc98d7b2c3af95f2d7d4ba51bed6b76bf67"
+    },
+    "bold": {
+      "file": "bold.svg",
+      "registryName": "bold",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "dced396f0b38704ef8f237d3d964c8ad0d028f84bf816bb36c178dfa0970bda2"
+    },
+    "italic": {
+      "file": "italic.svg",
+      "registryName": "italic",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "0cfa0fb635fff6d1dccd84357a43edcd19d3fb2bedfca33a5c0de4b3fc433cca"
+    },
+    "delete": {
+      "file": "delete.svg",
+      "registryName": "trash-2",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "79fe24bd8d95d9be62a6814261cf0cad83ef125917be0c92b3d1cdd7476ce6e8"
+    },
+    "duplicate": {
+      "file": "duplicate.svg",
+      "registryName": "copy",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "72f2858a80a0ceae4aa8b4c97d4cb53987c8743572d9e64dd7186b1dad936eb7"
+    },
+    "check": {
+      "file": "check.svg",
+      "registryName": "check",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "dfe35d2f57f4de8509a7a8f0929c6b88d6325cd90d065536ae230a737a075c09"
+    },
+    "chevron-down": {
+      "file": "chevron-down.svg",
+      "registryName": "chevron-down",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "da0896fb579f84d39ae475fe850fd66e81d81bffaeaa8eb761d9a5295369e72c"
+    },
+    "chevron-right": {
+      "file": "chevron-right.svg",
+      "registryName": "chevron-right",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "bea03bc32c2b3a67793f3ee8deba1a8b5790751abc82b3651832703da7627c05"
+    },
+    "pin": {
+      "registryName": "pin",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "ff35850d4c53fd831131becc0b6f5eebf9e05c6e554dcea5348fa61d499eaae2",
+      "file": "pin.svg"
+    },
+    "folder": {
+      "file": "folder.svg",
+      "registryName": "folder",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "e55e6d328217a4716033c921c741ba9fa7d138c1247409dd0225167285bc1b67"
+    },
+    "folder-open": {
+      "file": "folder-open.svg",
+      "registryName": "folder-open",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "3b3bec59a04bc68db3a7d685f3b96e0ab066ccfd6929c6afdee32f3d789e7487"
+    },
+    "folder-plus": {
+      "file": "folder-plus.svg",
+      "registryName": "folder-plus",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "511dee3498aee8d1d6cae3a7b07860747ab6207f80858bd13fadeeb89fd0094c"
+    },
+    "bookmark": {
+      "file": "bookmark.svg",
+      "registryName": "bookmark",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "2fab9eb945c629e63f9f8eaebcafda1456fb336892154038dc05f4662064f5cb"
+    },
+    "settings": {
+      "file": "settings.svg",
+      "registryName": "settings",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "cd2311128db09b946f6d2994b47a4dda2361de7947441833422dd8a5842ebadb"
+    },
+    "sort-asc": {
+      "file": "sort-asc.svg",
+      "registryName": "sort-asc",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "b9f591a3da2483535a1f70f5a6b143893981befff93a347b1bad883ac921c493"
+    },
+    "panel-left": {
+      "file": "panel-left.svg",
+      "registryName": "panel-left",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "a216c49396495176c8a767b9d2baf97b701ba88bf86e8a301e02c11d31630ed3"
+    },
+    "panel-right": {
+      "file": "panel-right.svg",
+      "registryName": "panel-right",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "075f1858b18bafdc098909d4b6942bbd812afd3b53ca779d6e41dc53d68e9842"
+    }
+  }
+}

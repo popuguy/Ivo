@@ -1,0 +1,145 @@
+import { CURRENT_CANVAS_VERSION } from './capabilities.js';
+import { uid, createBlock } from './model.js';
+const STYLE_KEYS = [
+  'textStyle',
+  'fontSize',
+  'align',
+  'leading',
+  'tracking',
+  'textColor',
+  'paragraphBefore',
+  'paragraphAfter',
+];
+export function textFlowForFrame(document, frame) {
+  const id =
+    typeof frame === 'string'
+      ? document.blocks.find((b) => b.id === frame)?.textFlowId
+      : frame?.textFlowId;
+  return document.textFlows?.find((textFlow) => textFlow.id === id) || null;
+}
+export function startTextFlow(
+  document,
+  frameId,
+  { automaticPages = true, deleteEmptyPages = true } = {},
+) {
+  const frame = document.blocks.find((b) => b.id === frameId);
+  if (!frame || !['text', 'quote'].includes(frame.type)) throw new Error('Choose a text frame.');
+  const current = textFlowForFrame(document, frame);
+  if (current) return current;
+  const style = Object.fromEntries(
+    STYLE_KEYS.filter((key) => frame[key] !== undefined).map((key) => [key, frame[key]]),
+  );
+  const textFlow = {
+    id: uid('flow-'),
+    html: frame.type === 'quote' ? `<div data-ivo-italic="true">${frame.html}</div>` : frame.html,
+    frameIds: [frame.id],
+    style,
+    automaticPages,
+    deleteEmptyPages,
+    autoPages: [],
+  };
+  frame.type = 'text';
+  frame.html = '';
+  frame.textKind = 'area';
+  frame.textFlowId = textFlow.id;
+  (document.textFlows ||= []).push(textFlow);
+  document.canvasVersion = CURRENT_CANVAS_VERSION;
+  return textFlow;
+}
+export function threadFrame(document, fromId, targetId) {
+  if (fromId === targetId) throw new Error('Choose another text frame.');
+  const target = document.blocks.find((b) => b.id === targetId);
+  if (
+    !target ||
+    target.type !== 'text' ||
+    target.textFlowId ||
+    target.html.replace(/<[^>]*>/g, '').trim()
+  )
+    throw new Error('Choose an empty, unthreaded text frame.');
+  const textFlow = startTextFlow(document, fromId, { automaticPages: false });
+  const index = textFlow.frameIds.indexOf(fromId);
+  textFlow.frameIds.splice(index + 1, 0, targetId);
+  target.textFlowId = textFlow.id;
+  target.html = '';
+  target.textKind = 'area';
+  return textFlow;
+}
+export function appendTextFlowPage(document, textFlow) {
+  if (document.pages.length >= 128 || document.blocks.length >= 1000) return null;
+  const last = document.blocks.find((b) => b.id === textFlow.frameIds.at(-1)),
+    index = document.pages.findIndex((p) => p.id === last.pageId),
+    previous = document.pages[index];
+  let x = last.x,
+    y = last.y,
+    parentId = last.parentId;
+  while (parentId) {
+    const parent = document.blocks.find((b) => b.id === parentId);
+    x += parent.x;
+    y += parent.y;
+    parentId = parent.parentId;
+  }
+  const page = {
+    id: uid('page-'),
+    name: `Page ${document.pages.length + 1}`,
+    width: previous.width,
+    height: previous.height,
+  };
+  document.pages.splice(index + 1, 0, page);
+  const frame = createBlock('text', {
+    ...structuredClone(textFlow.style),
+    pageId: page.id,
+    textFlowId: textFlow.id,
+    x,
+    y,
+    w: last.w,
+    h: last.h,
+    textScale: structuredClone(last.textScale || { x: 1, y: 1 }),
+    html: '',
+    textKind: 'area',
+  });
+  document.blocks.push(frame);
+  textFlow.frameIds.push(frame.id);
+  textFlow.autoPages.push({ pageId: page.id, frameId: frame.id });
+  return frame;
+}
+export function removeTextFlowFrames(document, ids) {
+  const removed = new Set(ids);
+  for (const textFlow of document.textFlows || []) {
+    textFlow.frameIds = textFlow.frameIds.filter((id) => !removed.has(id));
+    textFlow.autoPages = textFlow.autoPages.filter((value) => !removed.has(value.frameId));
+  }
+  if (document.textFlows)
+    document.textFlows = document.textFlows.filter((textFlow) => textFlow.frameIds.length);
+}
+export function duplicateTextFlows(document, ids) {
+  const additions = [];
+  for (const textFlow of document.textFlows || []) {
+    const frameIds = textFlow.frameIds.filter((id) => ids.has(id)).map((id) => ids.get(id));
+    if (!frameIds.length) continue;
+    const copy = {
+      ...structuredClone(textFlow),
+      id: uid('flow-'),
+      frameIds,
+      automaticPages: false,
+      autoPages: [],
+    };
+    for (const id of frameIds) document.blocks.find((b) => b.id === id).textFlowId = copy.id;
+    additions.push(copy);
+  }
+  if (additions.length) document.textFlows.push(...additions);
+}
+export function trimTextFlowPages(document, textFlow, used) {
+  if (!textFlow.deleteEmptyPages) return false;
+  let changed = false;
+  for (const owned of [...textFlow.autoPages].reverse()) {
+    const index = textFlow.frameIds.indexOf(owned.frameId);
+    if (index < used || index < 0) continue;
+    if (document.blocks.some((b) => b.pageId === owned.pageId && b.id !== owned.frameId)) continue;
+    document.pages = document.pages.filter((p) => p.id !== owned.pageId);
+    document.blocks = document.blocks.filter((b) => b.id !== owned.frameId);
+    textFlow.frameIds.splice(index, 1);
+    textFlow.autoPages = textFlow.autoPages.filter((p) => p !== owned);
+    changed = true;
+  }
+  return changed;
+}

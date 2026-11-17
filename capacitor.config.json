@@ -1,0 +1,6 @@
+{
+  "appId": "com.paulcantrell.ivo",
+  "appName": "Ivo",
+  "webDir": "dist",
+  "ios": { "contentInset": "automatic" }
+}
