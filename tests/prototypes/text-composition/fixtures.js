@@ -1,4 +1,9 @@
 export const fixtures = [
+  { id: 'kerning', html: '<p>AVATAR To WA</p>' },
+  {
+    id: 'paragraph',
+    html: '<p>Professional typography needs careful choices across the whole paragraph. A good line depends on the lines that follow.</p>',
+  },
   {
     id: 'latin',
     html:

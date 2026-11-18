@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFile, writeFile, mkdir, mkdtemp } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import electron from 'electron';
+import { verifyParagraphDecision } from './paragraph.js';
 import { inspectFont } from '../../../src/domain/text/fonts.js';
 
 if (process.platform !== 'darwin') {
@@ -118,7 +119,13 @@ async function rejects(request, expected) {
   assert.notEqual(result.code, 0, 'Invalid native input was accepted');
   assert.match(result.stderr, expected);
 }
+async function measure(request) {
+  const bytes = JSON.stringify(request),
+    execution = await run(binary, [path.join(out, 'measure-does-not-write.pdf')], { input: bytes });
+  return accept(JSON.parse(execution.stdout), bytes);
+}
 const results = [];
+let paragraph;
 for (const source of sources) {
   const request = {
       ...source,
@@ -221,7 +228,7 @@ for (const source of sources) {
       () => accept(result, JSON.stringify({ ...request, id: 'different' })),
       /Stale or mismatched/,
     );
-  } else {
+  } else if (source.id === 'unicode') {
     assert(
       result.diagnostics.some((s) => s.startsWith('unpackaged-fallback:')),
       'Complex-script fallback identity was hidden',
@@ -251,6 +258,36 @@ for (const source of sources) {
       /surrogate pair/,
     );
   }
+  if (source.id === 'paragraph')
+    paragraph = await verifyParagraphDecision(request, {
+      compose,
+      rejects,
+      measure,
+    });
+  if (source.id === 'kerning') {
+    const query = {
+        ...request,
+        mode: 'measure-lines-proof',
+        candidates: [{ start: 0, end: request.text.length }],
+      },
+      metrics = await measure(query),
+      none = await measure({
+        ...query,
+        runs: query.runs.map((run) => ({ ...run, kerning: 'none' })),
+      }),
+      tracked = await measure({
+        ...query,
+        runs: query.runs.map((run) => ({ ...run, tracking: 100 })),
+      });
+    assert(
+      metrics.measurements[0].width < none.measurements[0].width,
+      'Zero tracking disabled metrics kerning',
+    );
+    assert(
+      tracked.measurements[0].width > metrics.measurements[0].width,
+      'Tracking did not add independent cluster spacing',
+    );
+  }
   results.push({
     id: source.id,
     lines: lines.length,
@@ -258,6 +295,8 @@ for (const source of sources) {
     diagnostics: result.diagnostics,
   });
 }
+await assert.rejects(access(path.join(out, 'measure-does-not-write.pdf')), { code: 'ENOENT' });
+await assert.rejects(access(path.join(out, 'rejected.pdf')), { code: 'ENOENT' });
 const python = process.env.IVO_PDF_PYTHON || 'python3';
 const inspected = await run(python, [path.join(here, 'inspect-pdf.py'), out]);
 const report = {
@@ -269,6 +308,7 @@ const report = {
   sameFrozenLinesToPDF: true,
   controlledFailures: true,
   results,
+  paragraph,
   pdf: JSON.parse(inspected.stdout),
   artifacts: out,
 };

@@ -61,7 +61,7 @@ export function compositionSource(root, { id, doc = {}, settings = {} } = {}) {
     if (part.logicalStart !== logical) throw Error('Incomplete logical source map');
     const start = text.length;
     text += part.text;
-    const { textStyle, bold, italic, fontSize, ligatures, tracking } = part.style;
+    const { textStyle, bold, italic, fontSize, ligatures, tracking, kerning } = part.style;
     if (textStyle !== 'cmu-serif') throw Error('Prototype requires an explicit CMU resource');
     const represented = new Set([
       'textStyle',
@@ -70,6 +70,7 @@ export function compositionSource(root, { id, doc = {}, settings = {} } = {}) {
       'fontSize',
       'ligatures',
       'tracking',
+      'kerning',
       'paragraphStyle',
       'characterStyle',
     ]);
@@ -97,12 +98,13 @@ export function compositionSource(root, { id, doc = {}, settings = {} } = {}) {
         size: fontSize,
         ligatures,
         tracking,
+        kerning,
       };
       const prior = runs.at(-1);
       if (
         prior &&
         prior.end === run.start &&
-        ['font', 'size', 'ligatures', 'tracking'].every((k) => prior[k] === run[k])
+        ['font', 'size', 'ligatures', 'tracking', 'kerning'].every((k) => prior[k] === run[k])
       )
         prior.end = run.end;
       else runs.push(run);

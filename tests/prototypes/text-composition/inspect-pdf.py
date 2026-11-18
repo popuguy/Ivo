@@ -59,4 +59,16 @@ with pdfplumber.open(out / "latin.pdf") as document:
         assert abs(first["matrix"][4] - 20) < 0.001, "PDF line origin differs from native geometry"
         matched_lines += 1
 assert matched_lines > 10
-print(json.dumps({"pages": len(reader.pages), "embeddedFontNames": sorted(embedded_names), "latinSourceEquivalent": True, "actualTextForLigatures": True, "plainExtractorReturnsLigatureScalars": True, "matchedNativeBaselines": matched_lines}))
+paragraph = json.loads((out / "paragraph-optimal.json").read_text())
+optimized = PdfReader(out / "paragraph-optimal.pdf")
+text = "".join(page.extract_text() or "" for page in optimized.pages)
+assert compact(text) == compact(paragraph["request"]["text"]), "Optimized PDF lost source text"
+optimized_lines = 0
+with pdfplumber.open(out / "paragraph-optimal.pdf") as document:
+    for line in paragraph["result"]["layout"]["lines"]:
+        page = document.pages[line["page"]]
+        baseline = page.height - 20 - line["baseline"]
+        chars = [char for char in page.chars if abs(char["matrix"][5] - baseline) < 0.001]
+        assert chars, "Optimized PDF rewrapped or misplaced a chosen line"
+        optimized_lines += 1
+print(json.dumps({"pages": len(reader.pages), "embeddedFontNames": sorted(embedded_names), "latinSourceEquivalent": True, "actualTextForLigatures": True, "plainExtractorReturnsLigatureScalars": True, "matchedNativeBaselines": matched_lines, "optimizedParagraphExactText": True, "matchedOptimizedBaselines": optimized_lines}))

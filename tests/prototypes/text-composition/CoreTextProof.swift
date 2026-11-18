@@ -24,12 +24,14 @@ struct TextRun: Decodable {
     let size: Double
     let ligatures: Bool
     let tracking: Double
+    let kerning: String?
 }
 struct Frame: Decodable {
     let id: String
     let width: Double
     let height: Double
 }
+struct Candidate: Decodable { let start: Int; let end: Int }
 struct Request: Decodable {
     let `protocol`: Int
     let mode: String
@@ -43,6 +45,8 @@ struct Request: Decodable {
     let resources: [FontResource]
     let frames: [Frame]
     let allowFallback: Bool
+    let candidates: [Candidate]?
+    let breaks: [Int]?
 }
 struct FrozenLine {
     let page: Int
@@ -64,7 +68,7 @@ func require(_ value: Bool, _ message: String) throws { if !value { throw fail(m
 
 func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
-    try require(request.protocol == 1 && request.mode == "greedy-geometry-proof", "Unsupported proof protocol or policy")
+    try require(request.protocol == 1 && ["greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof"].contains(request.mode), "Unsupported proof protocol or policy")
     try require(!request.id.isEmpty && request.id.utf8.count <= 120, "Invalid source identity")
     try require(length > 0 && length <= 100_000 && request.logicalLength >= 0 && request.logicalLength <= 200_000, "Source exceeds proof bounds")
     try require(request.sourceHTML.utf8.count <= 1_000_000 && digest(Data(request.sourceHTML.utf8)) == request.sourceDigest, "Source digest mismatch")
@@ -98,7 +102,7 @@ func validate(_ request: Request) throws -> [String: CGFont] {
         guard let provider = CGDataProvider(data: bytes as CFData), let font = CGFont(provider) else { throw fail("Font cannot be decoded") }
         try require(font.postScriptName as String? == resource.postscript, "Font face identity mismatch")
         let ct = CTFontCreateWithGraphicsFont(font, 12, nil, nil)
-        if let table = CTFontCopyTable(ct, 0x4F532F32, []) as Data?, table.count >= 10 {
+        if request.mode != "measure-lines-proof", let table = CTFontCopyTable(ct, 0x4F532F32, []) as Data?, table.count >= 10 {
             let flags = Int(table[8]) * 256 + Int(table[9])
             try require(flags & 0x0302 == 0, "Font does not permit this subset-PDF proof")
         }
@@ -109,6 +113,7 @@ func validate(_ request: Request) throws -> [String: CGFont] {
     for run in request.runs {
         try require(run.start == position && run.end > run.start && run.end <= length, "Runs do not cover the native source")
         try require(fonts[run.font] != nil && finite(run.size, 1, 2000) && finite(run.tracking, -1000, 10000), "Unavailable font or invalid run metrics")
+        try require(run.kerning == nil || run.kerning == "metrics" || run.kerning == "none", "Unsupported kerning policy")
         for boundary in [run.start, run.end] where boundary > 0 && boundary < length {
             let before = string.character(at: boundary - 1), after = string.character(at: boundary)
             try require(!(before >= 0xD800 && before <= 0xDBFF && after >= 0xDC00 && after <= 0xDFFF), "Run splits a surrogate pair")
@@ -116,6 +121,28 @@ func validate(_ request: Request) throws -> [String: CGFont] {
         position = run.end
     }
     try require(position == length, "Runs lost source text")
+    if request.mode != "greedy-geometry-proof" {
+        try require(length <= 10_000 && request.text.unicodeScalars.allSatisfy { ($0.value >= 32 && $0.value < 127) || $0.value == 0x2028 || $0.value == 0x2029 }, "Paragraph proof currently requires ASCII source and explicit break atoms")
+        if request.mode == "measure-lines-proof" {
+            guard let candidates = request.candidates else { throw fail("Missing line alternatives") }
+            try require(!candidates.isEmpty && candidates.count <= 4096, "Line-alternative budget exceeded")
+            for candidate in candidates {
+                try require(candidate.start >= 0 && candidate.end > candidate.start && candidate.end <= length, "Invalid line alternative")
+                let value = string.substring(with: NSRange(location: candidate.start, length: candidate.end - candidate.start))
+                try require(!value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }), "Line alternative crosses a forced break")
+            }
+        } else {
+            guard let breaks = request.breaks else { throw fail("Missing explicit line decisions") }
+            try require(!breaks.isEmpty && breaks.count <= 2048 && breaks.last == length, "Explicit lines do not cover source")
+            var previous = 0
+            for end in breaks {
+                try require(end > previous && end <= length, "Invalid explicit line order")
+                let value = string.substring(with: NSRange(location: previous, length: end - previous))
+                try require(!value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }), "Explicit line crosses a forced break")
+                previous = end
+            }
+        }
+    }
     return fonts
 }
 
@@ -137,7 +164,7 @@ func logicalRanges(_ start: Int, _ end: Int, _ spans: [SourceSpan]) -> [[Int]] {
     }
 }
 
-func compose(_ request: Request, fonts: [String: CGFont]) throws -> ([FrozenLine], [[String: Any]], [String]) {
+func attributedSource(_ request: Request, fonts: [String: CGFont]) -> NSMutableAttributedString {
     // Equal-length engine normalization: paragraph identity remains in the source map.
     let attributed = NSMutableAttributedString(string: request.text.replacingOccurrences(of: "\u{2029}", with: "\n"))
     for run in request.runs {
@@ -145,10 +172,28 @@ func compose(_ request: Request, fonts: [String: CGFont]) throws -> ([FrozenLine
         attributed.addAttributes([
             NSAttributedString.Key(kCTFontAttributeName as String): font,
             NSAttributedString.Key(kCTLigatureAttributeName as String): run.ligatures ? 1 : 0,
-            NSAttributedString.Key(kCTKernAttributeName as String): run.tracking * run.size / 1000,
+            NSAttributedString.Key(kCTTrackingAttributeName as String): run.tracking * run.size / 1000,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 37.0 / 255, alpha: 1)
         ], range: NSRange(location: run.start, length: run.end - run.start))
+        if run.kerning == "none" {
+            attributed.addAttribute(NSAttributedString.Key(kCTKernAttributeName as String), value: 0, range: NSRange(location: run.start, length: run.end - run.start))
+        }
     }
+    return attributed
+}
+func measureCandidates(_ request: Request, fonts: [String: CGFont]) -> [[String: Any]] {
+    let typesetter = CTTypesetterCreateWithAttributedString(attributedSource(request, fonts: fonts))
+    let string = request.text as NSString
+    return request.candidates!.map { candidate in
+        var end = candidate.end
+        while end > candidate.start && [10, 13, 0x2028, 0x2029].contains(Int(string.character(at: end - 1))) { end -= 1 }
+        let line = end > candidate.start ? CTTypesetterCreateLine(typesetter, CFRange(location: candidate.start, length: end - candidate.start)) : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
+        let width = max(0, CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
+        return ["start": candidate.start, "end": candidate.end, "width": width]
+    }
+}
+func compose(_ request: Request, fonts: [String: CGFont]) throws -> ([FrozenLine], [[String: Any]], [String]) {
+    let attributed = attributedSource(request, fonts: fonts)
     let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let textLength = attributed.length
     var boundaries = [0], cursor = request.text.startIndex
@@ -161,7 +206,9 @@ func compose(_ request: Request, fonts: [String: CGFont]) throws -> ([FrozenLine
     for (page, frame) in request.frames.enumerated() {
         var top = 0.0
         while position < textLength {
-            var count = CTTypesetterSuggestLineBreak(typesetter, position, frame.width)
+            var count = request.mode == "explicit-lines-proof"
+                ? request.breaks!.first(where: { $0 > position })! - position
+                : CTTypesetterSuggestLineBreak(typesetter, position, frame.width)
             if count <= 0 {
                 count = (boundaries.first(where: { $0 > position }) ?? textLength) - position
                 diagnostics.insert("unbreakable-cluster-overflow")
@@ -175,6 +222,8 @@ func compose(_ request: Request, fonts: [String: CGFont]) throws -> ([FrozenLine
                 : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
             var ascent = CGFloat.zero, descent = CGFloat.zero, leading = CGFloat.zero
             let width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+            let visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
+            if request.mode == "explicit-lines-proof" { try require(visibleWidth <= frame.width + 0.000001, "Explicit line exceeds frame width") }
             if contentEnd == position, let blank = request.runs.first(where: { $0.start <= position && $0.end > position }) {
                 let font = CTFontCreateWithGraphicsFont(fonts[blank.font]!, blank.size, nil, nil)
                 ascent = CTFontGetAscent(font); descent = CTFontGetDescent(font); leading = CTFontGetLeading(font)
@@ -220,7 +269,7 @@ func compose(_ request: Request, fonts: [String: CGFont]) throws -> ([FrozenLine
             frozen.append(FrozenLine(page: page, start: position, end: end, baseline: baseline, ascent: Double(ascent), descent: Double(descent), line: line))
             output.append(["frame": frame.id, "page": page, "start": position, "end": end, "contentEnd": contentEnd,
                            "baseline": baseline, "ascent": Double(ascent), "descent": Double(descent),
-                           "leading": Double(leading), "width": width, "advance": advance,
+                           "leading": Double(leading), "width": width, "visibleWidth": visibleWidth, "advance": advance,
                            "sourceRanges": logicalRanges(position, end, request.spans), "runs": runRows, "carets": carets])
             position = end; top += advance
         }
@@ -251,15 +300,18 @@ do {
     try require(input.count <= 30_000_000 && CommandLine.arguments.count == 2, "Invalid proof invocation")
     let request = try JSONDecoder().decode(Request.self, from: input)
     let fonts = try validate(request)
-    let (lines, rows, diagnostics) = try compose(request, fonts: fonts)
-    try writePDF(request, lines, CommandLine.arguments[1])
-    let result: [String: Any] = [
+    var result: [String: Any] = [
         "protocol": 1, "mode": request.mode, "requestDigest": digest(input), "sourceDigest": request.sourceDigest,
         "os": ProcessInfo.processInfo.operatingSystemVersionString, "backend": "CoreText-system",
-        "resources": request.resources.map { ["id": $0.id, "digest": $0.digest, "postscript": $0.postscript] },
-        "layout": ["lines": rows, "coveredLength": lines.last?.end ?? 0, "textLength": request.text.utf16.count],
-        "diagnostics": diagnostics
+        "resources": request.resources.map { ["id": $0.id, "digest": $0.digest, "postscript": $0.postscript] }
     ]
+    if request.mode == "measure-lines-proof" { result["measurements"] = measureCandidates(request, fonts: fonts) }
+    else {
+        let (lines, rows, diagnostics) = try compose(request, fonts: fonts)
+        try writePDF(request, lines, CommandLine.arguments[1])
+        result["layout"] = ["lines": rows, "coveredLength": lines.last?.end ?? 0, "textLength": request.text.utf16.count]
+        result["diagnostics"] = diagnostics
+    }
     FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]))
 } catch {
     FileHandle.standardError.write(Data((error.localizedDescription + "\n").utf8))

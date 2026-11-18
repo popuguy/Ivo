@@ -1,5 +1,11 @@
 # Verification
 
+## Native composition experiments — 18 November 2026
+
+The [geometry/PDF proof](indesign/native-composition-prototype.md) and [owned paragraph-decision slice](indesign/paragraph-breaks.md) run outside the live editor. Standard checks pass with 226 unit tests. The isolated native proof verifies unchanged source maps, exact font resources, real glyph/dual-caret geometry, repeated-result identity, explicit fallback diagnostics, separate kerning/tracking, bounded global versus greedy choices and rejection of invalid/stale/unfit data. Measurement and rejected requests cannot create a PDF. Independent parsing verifies embedded fonts, source-equivalent Latin with source-backed ligature ActualText, 25 native baselines and all ten optimized-paragraph baselines; final raster output was inspected.
+
+Controlled native reference comparisons, font identities and unresolved differences remain private under parent `work/paragraph-composition-proof-2026-11-18/reference/`, with owned documents closed and prior state restored. These are partial engine-gate results, not a full composer, accessible export, production native input or device qualification. The prior text-core package/33 desktop groups remain the production application checkpoint; no personal vault or global preference changed in either experiment.
+
 ## Linked selection, native formatting and frame composition — 18 November 2026
 
 The [text-interaction core](text-interaction-core.md), [frame composition](frame-composition.md) and [native command contracts](native-input-contracts.md) record this milestone. Standard checks pass with 222 unit tests. The sequential runtime run passes all 32 groups present when it started; the newly registered native Type-menu group passes separately against the same production command implementation. This is 33 groups across retained logs, not an uninterrupted 33-group run. The first desktop selection launch aborted before window initialization; the scoped desktop run passes without changing global permissions.

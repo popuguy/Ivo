@@ -4,6 +4,8 @@
 
 The first [native geometry/PDF proof](../indesign/native-composition-prototype.md) now runs separately from production: current-source maps, exact CMU resources, native glyph/caret geometry and same-line PDF output have bounded evidence. It exposes fallback and PDF ligature-extraction differences explicitly. This is partial P1/P2/P6 evidence; the paragraph scheduler, native presentation/input and mobile gates still block adopting a new layout authority.
 
+The subsequent [owned paragraph-decision slice](../indesign/paragraph-breaks.md) implements bounded global fitting over native measured alternatives and exact-line PDF output. It establishes a limited ragged-right decision from P3; full justification/hyphenation/publication policies and P5 presentation/input still remain open. Core Text metrics kerning and independent tracking now have a direct regression.
+
 The [66-capability programme](../indesign/text-parity-programme.md) requires more than font controls over browser layout. Whole-paragraph choices, custom spacing tolerances, contour exclusions, footnote/table pagination, parent text frames and vertical CJK rules need an owned composition pipeline. A low-level library may supply shaping and drawing, but it must not become another mutable document model.
 
 ## Proposed choice
