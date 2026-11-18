@@ -1,3 +1,11 @@
+import {
+  copyObjectSelection,
+  readObjectClipboard,
+  pasteObjectSelection,
+  OBJECT_CLIPBOARD_TYPE,
+  MAX_OBJECT_CLIPBOARD,
+} from '../../domain/documents/clipboard.js';
+import { validateImport } from '../../domain/documents/schema.js';
 import { fontChoices, SYSTEM_FONT_PREFIX } from '../../domain/text/font-catalog.js';
 import { flowInputHTML, projectFlowInput, inputColumn } from '../../rendering/text/flow-input.js';
 import { createContextualBar } from './ui/contextual-bar.js';
@@ -20,7 +28,12 @@ import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.
 import { readImageFile } from './assets/image-import.js';
 import { propertiesContent } from './ui/properties.js';
 import { documentContent } from '../../domain/history/document-history.js';
-import { startTextFlow, textFlowForFrame, threadFrame } from '../../domain/documents/text-flows.js';
+import {
+  startTextFlow,
+  textFlowForFrame,
+  frameTextSettings,
+  threadFrame,
+} from '../../domain/documents/text-flows.js';
 import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
 import { sceneObjectHTML, applySceneTypography } from '../../rendering/page-content.js';
 import {
@@ -430,7 +443,7 @@ export function mountCanvasEditor(host, options) {
     }
     const text = element.querySelector(':scope > .canvas-text');
     if (text) {
-      applyFrameTypography(text, effectiveTextStyle(doc(), item));
+      applyFrameTypography(text, effectiveTextStyle(doc(), frameTextSettings(doc(), item)));
       applyTextLayout(text, item);
     }
     for (const child of childrenOf(doc(), item.id)) updateObject(child);
@@ -2319,6 +2332,96 @@ export function mountCanvasEditor(host, options) {
       }, 'Insert link');
     }
   }
+  function pasteObjects(value) {
+    if (!options.editing || !ownsInput() || busy || composing) return Promise.resolve(false);
+    endTextEditing();
+    finishGesture();
+    const context = insertionContext(),
+      before = documentContent(doc());
+    pendingCount++;
+    pendingFiles = pendingFiles
+      .then(async () => {
+        if (!alive || !ownsInput() || documentContent(doc()) !== before)
+          throw new Error('The document changed before the objects could be pasted. Paste again.');
+        const archive = readObjectClipboard(value),
+          planned = structuredClone(doc()),
+          roots = pasteObjectSelection(planned, archive, context),
+          existing = options.assets?.() || options.fonts?.() || [],
+          resources = new Map(existing.map((asset) => [asset.id, asset]));
+        for (const asset of archive.assets) {
+          const prior = resources.get(asset.id);
+          if (prior && (prior.data !== asset.data || prior.mimeType !== asset.mimeType))
+            throw new Error(
+              'A clipboard resource conflicts with a resource already in this vault.',
+            );
+          resources.set(asset.id, asset);
+        }
+        validateImport({ schemaVersion: 6, documents: [planned], assets: [...resources.values()] });
+        for (const asset of archive.assets)
+          if (!existing.some((a) => a.id === asset.id)) await onAsset(asset);
+        if (!alive || !ownsInput() || busy || documentContent(doc()) !== before)
+          throw new Error('The document changed before the objects could be pasted. Paste again.');
+        mutate(() => {
+          Object.assign(doc(), planned);
+          setSelectionState(roots.map((item) => item.id));
+          state.tool = 'select';
+        }, 'Paste objects');
+        publishingControls.prepareLegacyFonts();
+        return true;
+      })
+      .catch((error) => {
+        options.onNotify?.(error.message);
+        return false;
+      })
+      .finally(() => pendingCount--);
+    return pendingFiles;
+  }
+  function copyObjects(event) {
+    const target = event.target instanceof Element ? event.target : document.activeElement;
+    if (
+      !ownsInput() ||
+      busy ||
+      dialogOpen() ||
+      composing ||
+      !options.editing ||
+      activeTextId ||
+      target?.closest('input,textarea,select,[contenteditable="true"]') ||
+      !objects().length
+    )
+      return;
+    try {
+      finishGesture();
+      const payload = copyObjectSelection(
+        doc(),
+        state.selection,
+        options.assets?.() || options.fonts?.() || [],
+      );
+      if (!payload || !event.clipboardData) return;
+      const value = JSON.stringify(payload);
+      if (value.length > MAX_OBJECT_CLIPBOARD)
+        throw new Error('The selected objects are too large for the clipboard.');
+      const text = document.createElement('div');
+      text.innerHTML = cleanHTML(
+        [
+          ...payload.archive.documents[0].blocks.map((b) => b.html),
+          ...(payload.archive.documents[0].textFlows || []).map((f) => f.html),
+        ].join('<br>'),
+      );
+      event.clipboardData.setData(OBJECT_CLIPBOARD_TYPE, value);
+      event.clipboardData.setData('text/html', text.innerHTML);
+      event.clipboardData.setData('text/plain', text.textContent || 'Ivo objects');
+      event.preventDefault();
+      if (event.type === 'cut')
+        mutate(() => {
+          for (const item of objects()) removeObject(doc(), item.id);
+          setSelectionState(null);
+          state.inside = null;
+        }, 'Cut objects');
+    } catch (error) {
+      event.preventDefault();
+      options.onNotify?.(error.message);
+    }
+  }
   function addFiles(files) {
     pendingCount++;
     const context = insertionContext(),
@@ -2727,8 +2830,14 @@ export function mountCanvasEditor(host, options) {
     if (!composing) finishText();
   });
   listen(window, 'paste', (event) => {
-    if (!ownsInput() || busy || dialogOpen() || event.target.closest('input,textarea,select'))
+    const target = event.target instanceof Element ? event.target : document.activeElement;
+    if (!ownsInput() || busy || dialogOpen() || target?.closest('input,textarea,select')) return;
+    const objectData = event.clipboardData?.getData(OBJECT_CLIPBOARD_TYPE);
+    if (objectData && !activeTextId && options.editing) {
+      event.preventDefault();
+      void pasteObjects(objectData);
       return;
+    }
     const files = clipboardImages(event.clipboardData);
     if (files.length) {
       event.preventDefault();
@@ -2739,7 +2848,7 @@ export function mountCanvasEditor(host, options) {
       addFiles(files);
       return;
     }
-    const text = event.target.closest('[data-scene-text],[data-flow-frame]');
+    const text = target?.closest('[data-scene-text],[data-flow-frame]');
     if (text && options.editing) {
       event.preventDefault();
       beginTextInput('insertFromPaste');
@@ -2754,6 +2863,7 @@ export function mountCanvasEditor(host, options) {
       publishingControls.prepareLegacyFonts();
     }
   });
+  for (const type of ['copy', 'cut']) listen(window, type, copyObjects);
   for (const type of ['copy', 'cut'])
     listen(host, type, (event) => {
       const element = activeText(),

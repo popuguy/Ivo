@@ -9,6 +9,7 @@ const runtime = [
   'text',
   'publishing',
   'fonts',
+  'clipboard',
   'inline-metrics',
   'browser-storage',
   'pdf',

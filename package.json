@@ -69,7 +69,9 @@
     "test:publishing": "electron tests/runtime/publishing/runner.mjs",
     "pretest:publishing": "node scripts/reference-art.mjs",
     "test:fonts": "electron tests/runtime/fonts/runner.mjs",
-    "pretest:fonts": "node scripts/reference-art.mjs"
+    "pretest:fonts": "node scripts/reference-art.mjs",
+    "test:clipboard": "electron tests/runtime/clipboard/runner.mjs",
+    "pretest:clipboard": "node scripts/reference-art.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

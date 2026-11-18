@@ -786,6 +786,7 @@ export function startApplication({ root, dialog }) {
         isActive: () => windowLease && workspace.active === tab.id,
         source,
         fonts: () => [...assets.values()].filter((asset) => asset.font),
+        assets: () => [...assets.values()],
         systemFonts: () => fontLibrary?.rows || [],
         refreshSystemFonts: async () => {
           await fontLibrary.load(true);

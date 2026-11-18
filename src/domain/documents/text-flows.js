@@ -8,6 +8,10 @@ export function textFlowForFrame(document, frame) {
       : frame?.textFlowId;
   return document.textFlows?.find((textFlow) => textFlow.id === id) || null;
 }
+/** Threaded text has one style owner. Frame geometry must not revive old character defaults. */
+export function frameTextSettings(document, frame) {
+  return textFlowForFrame(document, frame)?.style || frame;
+}
 export function startTextFlow(
   document,
   frameId,

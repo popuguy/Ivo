@@ -1,6 +1,14 @@
 # Verification
 
-Current font-portability increment: 18 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
+Current clipboard/text-style increment: 18 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
+
+## Object clipboard and shared text typography — 18 November 2026
+
+The new regression fails against the previous preview renderer with “Inactive frame revived stale italic settings.” The corrected renderer and direct movement path use the shared flow settings without falling back to stale individual-frame character defaults. Repeated edit/exit, mixed italic/regular source and live frame movement retain the same effective style without changing the canonical text.
+
+Standard checks pass with 194 unit tests. Eleven targeted runtime groups pass sequentially: clipboard, interaction, text, text-flows, fonts, publishing, PDF, navigation, workspace, scene and build. The clipboard fixture invokes actual Electron native copy/paste/cut commands, verifies independent copied text-flow identities and one undo/redo transaction, preserves text-range copy, checks cross-vault image persistence before insertion, and rejects failed/stale resource operations without overwriting authored data. Unit tests additionally cover clipping subtrees, copied-child world coordinates, original document links, inherited style identity/remapping/reuse, cross-page offsets, malicious clipboard input and exact font/companion bytes. The fixture restores native clipboard representations on completion. The old-renderer reproduction and passing logs remain preserved.
+
+The review package is `release/2026-11-18-clipboard-styles/Ivo-darwin-arm64/Ivo.app`. All 177 generated web files match across static, synchronized iOS and Mac ASAR output; all 104 packaged source files match the working tree, and the unpacked native font helper is byte-identical. Tests/docs/private research are excluded from the app. Source remains archive 6 / canvas 5 with an ephemeral version-1 object clipboard; no stored-data migration is required. Verification uses only temporary documents/vaults. Personal notes and running app instances are untouched. Native iPhone/iPad input/clipboard testing and complete InDesign composition equivalence remain open. Private evidence is under parent `work/clipboard-styles-2026-11-18/`.
 
 ## System fonts and portable vault resources — 18 November 2026
 

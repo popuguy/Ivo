@@ -8,6 +8,10 @@ Status meanings: **Foundation** works in a bounded first implementation; **Next*
 
 Installed font discovery and automatic vault font packaging are delivered for the desktop/shared Apple bridge, with CMU Serif as the new-text default. See [font portability](font-portability.md). Existing note typography is preserved; unsupported/oversized fonts, direct collection-file imports, glyph-fallback capture and physical iPhone/iPad verification remain scoped boundaries.
 
+## Delivered: object clipboard and shared text-style correction
+
+Native object copy/cut/paste now preserves selected frames, masks/children, rich source, styles, resource bytes and independent copied flows with undo/redo. Clipboard resources persist before objects are inserted; failed or stale operations preserve authored content. Inactive display and dragging consume the same flow-owned typography as editing and PDF, preventing old per-frame defaults from reviving italic/bold/size settings. See [text-flow.md](text-flow.md) and [verification](verification.md). Cross-frame selection/composition and full InDesign text-engine parity remain in the existing publishing scope.
+
 ## Delivered foundation: publishing and typography
 
 See [working features, format, tests and remaining scope](publishing-foundation.md). Archive 6 / canvas 5 is opt-in; old vault bytes are not rewritten on open. Native manifest 1 and IndexedDB 4 are unchanged. This includes the selected-tab underline correction, all-area-frame ports, OpenType popup, a draggable contextual bar, classic/custom text highlighting, initial paragraph/character style inheritance, a compact Properties rewrite, Layers, parent page definitions and portable imported font bytes. It is not complete InDesign parity. The detailed remaining work is ordered in that document; older rows below describe the narrower prior foundation and remain historical acceptance context.

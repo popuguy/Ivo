@@ -1,3 +1,4 @@
+import { frameTextSettings } from '../domain/documents/text-flows.js';
 import { objectAvailable, effectiveTextStyle } from '../domain/documents/publishing.js';
 import { applyNamedTextStyles } from './text/styles.js';
 import { childrenOf } from '../domain/documents/scene.js';
@@ -42,15 +43,7 @@ export function applySceneTypography(root, doc) {
       `[data-scene-text="${CSS.escape(item.id)}"],[data-flow-frame="${CSS.escape(item.id)}"]`,
     );
     if (element) {
-      applyFrameTypography(
-        element,
-        effectiveTextStyle(
-          doc,
-          item.textFlowId
-            ? { ...item, ...doc.textFlows.find((f) => f.id === item.textFlowId).style }
-            : item,
-        ),
-      );
+      applyFrameTypography(element, effectiveTextStyle(doc, frameTextSettings(doc, item)));
       applyTextLayout(element, item);
       applyNamedTextStyles(element, doc);
     }
