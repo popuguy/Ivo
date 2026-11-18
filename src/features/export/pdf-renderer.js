@@ -1,3 +1,5 @@
+import { prepareVaultFonts } from '../../rendering/text/fonts.js';
+import { parentObjects, orderedPageObjects } from '../../domain/documents/publishing.js';
 import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
 import { sceneObjectHTML, applySceneTypography } from '../../rendering/page-content.js';
 import { readableHTML } from '../../shared/html/sanitize.js';
@@ -6,6 +8,7 @@ import { intersectPDFRect, pdfRectInsidePolygon } from './pdf-plan.js';
 /** The only renderer used for PDF output: no editor, camera, user scripts or external requests. */
 export async function renderPDFSnapshot(snapshot) {
   await prepareTextFlowFonts();
+  await prepareVaultFonts(snapshot.assets);
   const root = document.querySelector('#pdf-pages'),
     assets = new Map(snapshot.assets.map((asset) => [asset.id, asset.data]));
   const source = (src) => (src.startsWith('asset:') ? assets.get(src.slice(6)) || '' : src);
@@ -38,11 +41,12 @@ export async function renderPDFSnapshot(snapshot) {
       const layout = document.createElement('div');
       layout.className = 'pdf-layout';
       layout.style.cssText = `width:${page.width}px;height:${page.height}px`;
-      layout.innerHTML = doc.blocks
-        .filter((item) => item.pageId === page.id && !item.parentId)
+      const inherited = parentObjects(doc, page),
+        renderDoc = { ...doc, blocks: [...inherited, ...doc.blocks] };
+      layout.innerHTML = [...orderedPageObjects(renderDoc, page.id)]
         .map((item) =>
           sceneObjectHTML(item, {
-            document: doc,
+            document: renderDoc,
             source,
             flow,
             textHTML: (block) => readableHTML(block.html, documents, doc.id),
@@ -51,7 +55,7 @@ export async function renderPDFSnapshot(snapshot) {
         .join('');
       section.append(layout);
       root.append(section);
-      applySceneTypography(layout, doc);
+      applySceneTypography(layout, renderDoc);
       pages.push({
         documentId: doc.id,
         documentTitle: doc.title,
@@ -61,7 +65,7 @@ export async function renderPDFSnapshot(snapshot) {
         width: page.width,
         height: page.height,
         section,
-        doc,
+        doc: renderDoc,
       });
     }
   }

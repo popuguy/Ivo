@@ -1,15 +1,6 @@
-import { CURRENT_CANVAS_VERSION } from './capabilities.js';
+import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 import { uid, createBlock } from './model.js';
-const STYLE_KEYS = [
-  'textStyle',
-  'fontSize',
-  'align',
-  'leading',
-  'tracking',
-  'textColor',
-  'paragraphBefore',
-  'paragraphAfter',
-];
+const STYLE_KEYS = Object.keys({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS });
 export function textFlowForFrame(document, frame) {
   const id =
     typeof frame === 'string'
@@ -29,6 +20,7 @@ export function startTextFlow(
   const style = Object.fromEntries(
     STYLE_KEYS.filter((key) => frame[key] !== undefined).map((key) => [key, frame[key]]),
   );
+  if (frame.textOverrides) style.textOverrides = structuredClone(frame.textOverrides);
   const textFlow = {
     id: uid('flow-'),
     html: frame.type === 'quote' ? `<div data-ivo-italic="true">${frame.html}</div>` : frame.html,
@@ -43,7 +35,7 @@ export function startTextFlow(
   frame.textKind = 'area';
   frame.textFlowId = textFlow.id;
   (document.textFlows ||= []).push(textFlow);
-  document.canvasVersion = CURRENT_CANVAS_VERSION;
+  document.canvasVersion = Math.max(document.canvasVersion, 4);
   return textFlow;
 }
 export function threadFrame(document, fromId, targetId) {
@@ -83,6 +75,7 @@ export function appendTextFlowPage(document, textFlow) {
     name: `Page ${document.pages.length + 1}`,
     width: previous.width,
     height: previous.height,
+    ...(previous.parentPageId ? { parentPageId: previous.parentPageId } : {}),
   };
   document.pages.splice(index + 1, 0, page);
   const frame = createBlock('text', {
@@ -94,6 +87,8 @@ export function appendTextFlowPage(document, textFlow) {
     w: last.w,
     h: last.h,
     textScale: structuredClone(last.textScale || { x: 1, y: 1 }),
+    ...(last.frameOptions ? { frameOptions: structuredClone(last.frameOptions) } : {}),
+    ...(last.layerId ? { layerId: last.layerId } : {}),
     html: '',
     textKind: 'area',
   });

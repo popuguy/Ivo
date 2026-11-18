@@ -1,6 +1,6 @@
 import { normalizeInlineMetrics } from '../dom/inline-metrics.js';
 import { resolveDocumentLink } from '../../domain/knowledge/index.js';
-import { validTextAttribute } from '../../domain/text/typography.js';
+import { validTextAttribute, TEXT_ATTRIBUTE_NAMES } from '../../domain/text/typography.js';
 import { applyTextAttributes } from '../dom/text-attributes.js';
 const TAGS = new Set([
   'DIV',
@@ -67,19 +67,7 @@ export function cleanHTML(value) {
     }
     const out = document.createElement(node.tagName.toLowerCase());
     if (['SPAN', 'P', 'DIV', 'LI', 'H2', 'H3', 'H4', 'BLOCKQUOTE'].includes(node.tagName)) {
-      for (const name of [
-        'font',
-        'size',
-        'leading',
-        'tracking',
-        'color',
-        'bold',
-        'italic',
-        'underline',
-        'align',
-        'before',
-        'after',
-      ]) {
+      for (const name of TEXT_ATTRIBUTE_NAMES) {
         const raw = node.getAttribute('data-ivo-' + name),
           value = raw === null ? null : validTextAttribute(name, raw);
         if (value !== null) out.setAttribute('data-ivo-' + name, value);

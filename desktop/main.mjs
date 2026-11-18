@@ -1342,6 +1342,17 @@ function installMenu() {
       {
         label: 'Window',
         submenu: [
+          ...['Properties', 'Pages', 'Layers', 'Links'].map((label) => ({
+            label,
+            enabled: hasVault,
+            click: () => sendCommand('show-panel-' + label.toLowerCase()),
+          })),
+          {
+            label: 'Contextual Text Bar',
+            enabled: hasVault,
+            click: () => sendCommand('show-contextual'),
+          },
+          { type: 'separator' },
           { label: 'Workspaces…', enabled: hasVault, click: () => sendCommand('workspaces') },
           {
             label: 'Restore Previous Workspace',

@@ -246,6 +246,102 @@
       "registryName": "panel-right",
       "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
       "svgSHA256": "075f1858b18bafdc098909d4b6942bbd812afd3b53ca779d6e41dc53d68e9842"
+    },
+    "eye": {
+      "file": "eye.svg",
+      "registryName": "eye",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "78d7cf310cd31e2cbc24d9a640cf29537c9ebd6bec7262301aa7a14855d03429"
+    },
+    "eye-off": {
+      "file": "eye-off.svg",
+      "registryName": "eye-off",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "ceb5551c1928980640a5ee3a340b31aeb7cd52e4104a4b1dd399f13d4aa7d1b9"
+    },
+    "lock": {
+      "file": "lock.svg",
+      "registryName": "lock",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "ab5282d46ac4f40654e5bc56cfca5df0a92eaa48f0671a719cc9aa7f241a5e38"
+    },
+    "unlock": {
+      "file": "unlock.svg",
+      "registryName": "unlock",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "dcf44db5ccf9ab4037c56edd6bcbd641ba513c516433a92fa15d4c5f3339eb43"
+    },
+    "layers": {
+      "file": "layers.svg",
+      "registryName": "layers",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "dcd20f2e27f86f7234ffa7839e0b2c30e8bd92a6b17a4eca47437f269e26f37d"
+    },
+    "highlighter": {
+      "file": "highlighter.svg",
+      "registryName": "highlighter",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "4c7a4d7c66ab9ded23d4fd3964bb8d9cd74c9cd6eb65c07b697da0cbef2b2fe9"
+    },
+    "align-left": {
+      "file": "align-left.svg",
+      "registryName": "align-left",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "c9cda658f9b95953cc28feaedd766436b94ee002c59c668d142e257cef91c1b1"
+    },
+    "align-center": {
+      "file": "align-center.svg",
+      "registryName": "align-center",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "ed4dec0c05a964014262ac7fe3ea4f882c89337073a9a621ef4568498d4a1769"
+    },
+    "align-right": {
+      "file": "align-right.svg",
+      "registryName": "align-right",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "612547e2da6b66dd4d3d2d90547ac59255b4b2c787d393419597881ec95a5bed"
+    },
+    "align-justify": {
+      "file": "align-justify.svg",
+      "registryName": "align-justify",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "d37a0c41419602286528ef3083d4c17fc29af705fa728d03ef59bd5d2f56f2b0"
+    },
+    "underline": {
+      "file": "underline.svg",
+      "registryName": "underline",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "6ac63faf87d4784884d91c1283463bd62b402f803df8b353f3f5d77ee46381f7"
+    },
+    "strikethrough": {
+      "file": "strikethrough.svg",
+      "registryName": "strikethrough",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "e5ca11cfda3e7f55c87b27da424350c6720a2c365707431b27aa2bcfa5b6799a"
+    },
+    "superscript": {
+      "file": "superscript.svg",
+      "registryName": "superscript",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "16f835cef23d24ab77672cb131869b8055b567461ac10bbe11e5b7e87ff981b8"
+    },
+    "subscript": {
+      "file": "subscript.svg",
+      "registryName": "subscript",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "78b03a8a5819229dc0efbf1f55c65cb53dcc68ae499ae92a8e70790e3b66a540"
+    },
+    "bring-to-front": {
+      "file": "bring-to-front.svg",
+      "registryName": "bring-to-front",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "0a20cad56511ab20a34b6100088df22b20170183cbcb944706beee1e8dc2d507"
+    },
+    "send-to-back": {
+      "file": "send-to-back.svg",
+      "registryName": "send-to-back",
+      "sourceHash": "12194d5ec11152b78a7532a521ac9fdc88be0ab4768ddedb7fd238d0d8c6031a",
+      "svgSHA256": "5981cd5ff51e64ea2facdf35057046599fb681470765ab6755478caddbd1f934"
     }
   }
 }

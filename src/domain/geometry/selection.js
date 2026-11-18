@@ -1,10 +1,11 @@
+import { objectAvailable } from '../documents/publishing.js';
 import { pagePositions, worldRect, sceneObject, transformObject } from '../documents/scene.js';
 import { scaledPointType } from '../text/metrics.js';
 
 export function selectionRoots(document, ids) {
   const selected = new Set(ids);
   return document.blocks
-    .filter((item) => selected.has(item.id))
+    .filter((item) => selected.has(item.id) && objectAvailable(document, item))
     .filter((item) => {
       let parent = item.parentId;
       while (parent) {
@@ -72,7 +73,7 @@ export function intersectsSelection(rect, points, enclosed = false) {
 }
 export function marqueeSelection(document, rect, { parentId = null, enclosed = false } = {}) {
   return document.blocks
-    .filter((item) => (item.parentId || null) === parentId)
+    .filter((item) => (item.parentId || null) === parentId && objectAvailable(document, item))
     .filter((item) => {
       const r = sceneRect(document, item);
       if (

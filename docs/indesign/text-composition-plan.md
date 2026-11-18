@@ -1,6 +1,6 @@
 # InDesign reference pass for text composition
 
-Prioritized 16 November 2026 after the repeated-font-size defect. The immediate defect and live note are repaired; the larger text revamp is planned, not implemented or reverse engineered yet.
+Prioritized 16 November 2026 after the repeated-font-size defect. The immediate defect and live note are repaired. A private reference investigation followed; it remains outside this implementation branch. The 18 November [publishing foundation](../publishing-foundation.md) delivers sparse named styles/overrides, typed typography, frame columns/insets, OpenType/variable fonts, authored highlights and portable font imports. The semantic composition engine described below remains open; browser composition is not InDesign's paragraph composer.
 
 ## Reference questions
 

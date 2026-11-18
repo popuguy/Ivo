@@ -1,6 +1,22 @@
 # Verification
 
-Current Geist/UI-correction increment: 16 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
+Current publishing increment: 18 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
+
+## Publishing foundation — 18 November 2026
+
+The [publishing foundation](publishing-foundation.md) records implemented scope and remaining parity work. Standard checks cover 179 unit tests, formatting/lint, acyclic imports/architecture boundaries and static/standalone builds. The expanded publishing fixture verifies eight frame handles, independent in/out ports, type-options pointer ownership, named-style/direct-override ownership through threading, authored highlight removal, columns/insets, layers/locking, actual closed-panel visibility, isolated parent editing and shared-layer reconciliation, archive round-trips and remounting. Frozen archive 5 remains readable without implicit upgrading; new publishing capabilities use archive 6 / canvas 5.
+
+Across the retained runtime logs, 24 of 27 groups pass. Three native-window observation groups do not pass in this desktop session: vault and workspace-window focus handoffs time out despite ready/visible/focusable windows, and startup misses its first-show observation. The unchanged public baseline was run separately and reproduces the same vault-focus and startup-observation failures. These are recorded limits, not green checks. No global focus, privacy or permission setting was changed. Initial failing logs are retained alongside corrections and successful focused retries.
+
+The extended PDF fixture verifies selectable text, exact mixed page sizes, original image pixels, links and masks, unchanged frozen snapshots, 12 linked-flow pages, vault font bytes, highlights, parent artwork and hidden layers. It initially exposed single-column multicolumn behavior affecting masked link bounds, then a font data-URL rejection under the PDF security policy. Single-column legacy layout is preserved and validated font bytes now feed FontFace directly; the security policy remains unchanged. The corrected PDF fixture passes.
+
+Direct browser pointer review complements synthetic fixture events: actual clicks open the small frame type-options control, the contextual bar moves by its grip, and panel tabs detach, close, restore and regroup. It exposed a blank-canvas gesture consuming the type-options click and CSS painting a closed floating group; both now have focused regression assertions. This does not establish exact InDesign timing or physical iPhone/iPad behavior.
+
+The Mac review package is `release/2026-11-18-publishing/Ivo-darwin-arm64/Ivo.app`. Swift Foundation interoperability and iOS web-asset preparation are checked separately; they are not native iOS/device verification. Logs, captures and package/source comparisons are retained outside Git under parent `work/publishing-2026-11-18/`. Private reference reports, binaries, captures, disassembly and original proprietary artwork are excluded from the public implementation branch.
+
+Final byte comparison verifies all 168 generated web files across the build, iOS assets and Mac ASAR, all 95 runtime source files and all 67 public assets. Test, documentation and private research trees are excluded from the app. The 500-object viewport fixture reports immediate wheel/pinch response, no inserted overlay nodes or overflow-layout reads during pan, unchanged authored geometry and a 9.8 ms 95th-percentile frame interval on this machine. These bounded measurements are not a universal performance guarantee.
+
+## Earlier verified baseline
 
 | Check                  | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

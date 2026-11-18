@@ -75,6 +75,9 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 25)),
           windows().map((window) => ({
             url: window.webContents.getURL(),
             title: window.getTitle(),
+            visible: window.isVisible(),
+            focusable: window.isFocusable(),
+            focused: window.isFocused(),
           })),
         ),
     );
@@ -148,6 +151,8 @@ void (async () => {
         "document.querySelectorAll('[data-workspace-group]').length===2&&!document.querySelector('#dialog').open",
       ),
     );
+    // A native-focus assertion needs to activate its own isolated process on macOS.
+    app.focus({ steal: true });
     wb.focus();
     await wait(() => BrowserWindow.getFocusedWindow() === wb);
     const windowMenu = Menu.getApplicationMenu().items.find(

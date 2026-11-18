@@ -1,4 +1,4 @@
-import { TEXT_FONTS, validTextAttribute } from '../../domain/text/typography.js';
+import { fontFamilyFor, validTextAttribute } from '../../domain/text/typography.js';
 export function setTextAttribute(element, name, value) {
   const valid = validTextAttribute(name, String(value));
   if (valid === null) throw new TypeError('Unsupported text attribute ' + name);
@@ -9,13 +9,15 @@ export function setTextAttribute(element, name, value) {
 export function applyTextAttributes(element) {
   const value = (name) => element.getAttribute('data-ivo-' + name),
     style = element.style;
+  if (value('autoleading') !== null)
+    style.setProperty('--ivo-auto-leading', String(Number(value('autoleading')) / 100));
   const values = {
-    fontFamily: value('font') ? TEXT_FONTS[value('font')] : null,
+    fontFamily: value('font') ? fontFamilyFor(value('font')) : null,
     fontSize: value('size') !== null ? value('size') + 'px' : null,
     lineHeight:
       value('leading') !== null
         ? Number(value('leading')) === 0
-          ? '1.2'
+          ? 'var(--ivo-auto-leading, 1.2)'
           : value('leading') + 'px'
         : null,
     letterSpacing: value('tracking') !== null ? Number(value('tracking')) / 1000 + 'em' : null,
@@ -27,6 +29,67 @@ export function applyTextAttributes(element) {
     textAlign: value('align'),
     marginTop: value('before') !== null ? value('before') + 'px' : null,
     marginBottom: value('after') !== null ? value('after') + 'px' : null,
+    backgroundColor:
+      value('highlight') !== null
+        ? value('highlight') === 'none'
+          ? 'transparent'
+          : value('highlight')
+        : null,
+    textTransform:
+      value('caps') !== null ? (value('caps') === 'true' ? 'uppercase' : 'none') : null,
+    fontKerning: value('kern') !== null ? (value('kern') === 'none' ? 'none' : 'normal') : null,
+    marginLeft: value('left') !== null ? value('left') + 'px' : null,
+    marginRight: value('right') !== null ? value('right') + 'px' : null,
+    textIndent: value('first') !== null ? value('first') + 'px' : null,
+    hyphens: value('hyphens') !== null ? (value('hyphens') === 'true' ? 'auto' : 'manual') : null,
+    breakInside: value('keep') !== null ? (value('keep') === 'true' ? 'avoid' : 'auto') : null,
+    breakAfter: value('next') !== null ? (value('next') === 'true' ? 'avoid' : 'auto') : null,
+    widows: value('widows'),
+    orphans: value('orphans'),
+    direction: value('dir') === 'auto' ? null : value('dir'),
   };
+  if (value('align')?.startsWith('justify')) {
+    values.textAlign = 'justify';
+    values.textAlignLast =
+      { 'justify-center': 'center', 'justify-right': 'right', 'justify-all': 'justify' }[
+        value('align')
+      ] || 'start';
+  }
+  if (value('baseline') !== null) {
+    values.position = 'relative';
+    values.top = -Number(value('baseline')) + 'px';
+  }
+  const decorations = [];
+  if (value('underline') === 'true') decorations.push('underline');
+  if (value('strike') === 'true') decorations.push('line-through');
+  if (value('strike') !== null || value('underline') !== null)
+    values.textDecoration = decorations.join(' ') || 'none';
+  const features = ['liga', 'dlig', 'smcp', 'onum', 'tnum', 'zero', 'frac', 'ordn', 'salt'].filter(
+    (name) => value(name) !== null,
+  );
+  if (features.length)
+    values.fontFeatureSettings = features
+      .map((name) => `"${name}" ${value(name) === 'true' ? 1 : 0}`)
+      .join(',');
+  if (value('lang')) element.lang = value('lang');
+  if (value('axes') !== null)
+    values.fontVariationSettings =
+      value('axes') === 'normal'
+        ? 'normal'
+        : value('axes')
+            .split(',')
+            .map((entry) => {
+              const [tag, number] = entry.split(':');
+              return `"${tag}" ${number}`;
+            })
+            .join(',');
+  if (value('optical') !== null)
+    values.fontOpticalSizing = value('optical') === 'true' ? 'auto' : 'none';
+  if (value('dir') === 'auto') element.dir = 'auto';
+  if (value('hscale') !== null || value('vscale') !== null) {
+    values.display = 'inline-block';
+    values.transformOrigin = 'left baseline';
+    values.transform = `scale(${Number(value('hscale') || 100) / 100},${Number(value('vscale') || 100) / 100})`;
+  }
   for (const [key, v] of Object.entries(values)) if (v !== null) style[key] = v;
 }

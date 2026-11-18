@@ -1,9 +1,44 @@
 import { normalizeInlineMetrics } from '../../shared/dom/inline-metrics.js';
 import { bookmarkForRange, rangeFromBookmark } from '../../shared/dom/text-selection.js';
-import { TEXT_FONTS, CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../../domain/text/typography.js';
+import {
+  TEXT_FONTS,
+  TEXT_ATTRIBUTE_NAMES,
+  fontFamilyFor,
+  CHARACTER_FIELDS,
+  PARAGRAPH_FIELDS,
+} from '../../domain/text/typography.js';
 import { setTextAttribute } from '../../shared/dom/text-attributes.js';
 export function applyFrameTypography(element, item) {
+  for (const name of TEXT_ATTRIBUTE_NAMES) element.removeAttribute('data-ivo-' + name);
+  for (const property of [
+    'font-weight',
+    'font-style',
+    'text-decoration',
+    'font-feature-settings',
+    'font-variation-settings',
+    'font-optical-sizing',
+    'text-transform',
+    'font-kerning',
+    'text-indent',
+    'margin-left',
+    'margin-right',
+    'break-inside',
+    'break-after',
+    'widows',
+    'orphans',
+    'direction',
+    'hyphens',
+    'position',
+    'top',
+    'display',
+  ])
+    element.style.removeProperty(property);
+  element.removeAttribute('lang');
+  element.removeAttribute('dir');
+
+  element.style.fontFamily = fontFamilyFor(item.textStyle) || '';
   element.style.fontSize = (item.fontSize || 16) + 'px';
+  element.style.setProperty('--ivo-auto-leading', String((item.autoLeading || 120) / 100));
   element.style.textAlign = item.align || 'left';
   for (const name of Object.keys(TEXT_FONTS))
     element.classList.toggle(name, item.textStyle === name);
@@ -17,6 +52,30 @@ export function applyFrameTypography(element, item) {
   ])
     if (item[prop] === undefined) element.style.removeProperty(name);
     else element.style.setProperty(name, item[prop] + 'px');
+  for (const [prop, attr] of Object.entries({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS })) {
+    if (
+      item[prop] === undefined ||
+      [
+        'font',
+        'size',
+        'leading',
+        'tracking',
+        'color',
+        'align',
+        'before',
+        'after',
+        'highlight',
+      ].includes(attr)
+    )
+      continue;
+    setTextAttribute(element, attr, item[prop]);
+  }
+  if (item.leading === 0) element.style.lineHeight = String((item.autoLeading || 120) / 100);
+  element.style.textAlign = item.align?.startsWith('justify') ? 'justify' : item.align || 'left';
+  element.style.textAlignLast =
+    { 'justify-center': 'center', 'justify-right': 'right', 'justify-all': 'justify' }[
+      item.align
+    ] || 'auto';
 }
 
 export function rangeUsesFormat(element, range, field, value) {
@@ -49,7 +108,7 @@ export function rangeUsesFormat(element, range, field, value) {
       if (field === 'textStyle')
         return (
           style.fontFamily.replace(/["']/g, '').split(',')[0].trim().toLowerCase() ===
-          (TEXT_FONTS[value] || '').replace(/["']/g, '').split(',')[0].trim().toLowerCase()
+          (fontFamilyFor(value) || '').replace(/["']/g, '').split(',')[0].trim().toLowerCase()
         );
       if (field === 'textColor') {
         const rgb = style.color

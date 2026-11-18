@@ -4,7 +4,7 @@ import { uid, createDocument, createBlock } from './model.js';
 import { scaledPointType } from '../text/metrics.js';
 
 export const DEFAULT_PAGE = Object.freeze({ width: 612, height: 792 });
-export const isSceneDocument = (document) => [1, 2, 4].includes(document.canvasVersion);
+export const isSceneDocument = (document) => [1, 2, 4, 5].includes(document.canvasVersion);
 export function makePage(size = DEFAULT_PAGE, name = 'Page 1') {
   return { id: uid('page-'), name, width: size.width, height: size.height };
 }
@@ -38,6 +38,7 @@ export function addPage(document, afterId) {
     ),
     previous = document.pages[index];
   const page = makePage(previous, `Page ${document.pages.length + 1}`);
+  if (previous.parentPageId) page.parentPageId = previous.parentPageId;
   document.pages.splice(index + 1, 0, page);
   return page;
 }
@@ -106,6 +107,14 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
   if (parent && (parent.type !== 'polygon' || parent.pageId !== pageId))
     throw new Error('Draw inside requires a polygon on this page.');
   const object = makeObject(type, pageId, overrides);
+  if (document.publishing) {
+    const layer =
+      document.publishing.layers.find((l) => l.id === (parent?.layerId || overrides.layerId)) ||
+      [...document.publishing.layers].reverse().find((l) => l.visible && !l.locked);
+    if (!layer || !layer.visible || layer.locked)
+      throw new Error('Choose an unlocked visible layer before adding an object.');
+    object.layerId = layer.id;
+  }
   if (parent) {
     parent.clip = true;
     object.parentId = parent.id;

@@ -51,7 +51,7 @@ test('ambiguous representations, missing sources and unsupported versions fail b
   const missing = validateImport(fixture);
   delete missing.documents[0].textFlows;
   assert.throws(() => validateImport(missing), /canonical document text/);
-  assert.throws(() => validateImport({ ...fixture, schemaVersion: 6 }), /unsupported schema/);
+  assert.throws(() => validateImport({ ...fixture, schemaVersion: 7 }), /unsupported schema/);
   const oldEnvelope = validateImport(fixture);
   oldEnvelope.schemaVersion = 4;
   assert.throws(() => validateImport(oldEnvelope), /schema 5/);

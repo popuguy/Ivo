@@ -1,10 +1,12 @@
-const KINDS = ['properties', 'pages', 'links'];
+export const PANEL_KINDS = ['properties', 'pages', 'layers', 'links'];
+const KINDS = PANEL_KINDS;
 const number = (value, fallback, min, max) =>
   Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
 export function defaultPanels() {
   return {
-    version: 2,
-    dock: 224,
+    version: 3,
+    closed: [],
+    dock: 296,
     textFlow: null,
     groups: [
       {
@@ -28,7 +30,7 @@ export function normalizePanels(input) {
   const used = new Set(),
     ids = new Set(),
     groups = [];
-  for (const value of raw.slice(0, 3)) {
+  for (const value of raw.slice(0, KINDS.length)) {
     if (!value || typeof value !== 'object') continue;
     const tabs = (Array.isArray(value.tabs) ? value.tabs : []).filter((kind) => {
       if (!KINDS.includes(kind) || used.has(kind)) return false;
@@ -60,8 +62,13 @@ export function normalizePanels(input) {
   if (!groups.length) return defaultPanels();
   for (const kind of KINDS) if (!used.has(kind)) groups[0].tabs.push(kind);
   return {
-    version: 2,
-    dock: number(input.dock, 224, 0, 480),
+    version: 3,
+    closed: [
+      ...new Set(
+        (Array.isArray(input.closed) ? input.closed : []).filter((kind) => KINDS.includes(kind)),
+      ),
+    ],
+    dock: number(input.dock, 296, 0, 480),
     textFlow: number(input.textFlow, null, 0, 10000),
     groups,
   };
@@ -96,7 +103,7 @@ export function panelPreset(name) {
       { ...layout.groups[0], tabs: ['properties'], active: 'properties' },
       {
         id: 'context-pages',
-        tabs: ['pages', 'links'],
+        tabs: ['pages', 'layers', 'links'],
         active: 'pages',
         floating: false,
         collapsed: false,

@@ -1,3 +1,18 @@
+import { createContextualBar } from './ui/contextual-bar.js';
+import { clearRangeOverrides } from '../../rendering/text/overrides.js';
+import { editReferenceRect } from '../../domain/geometry/transform-reference.js';
+import { openParentEditor } from './ui/parent-editor.js';
+import { markTypographyVersion } from '../../domain/documents/capabilities.js';
+import {
+  enablePublishing,
+  effectiveTextStyle,
+  layerFor,
+  objectAvailable,
+  orderedPageObjects,
+  parentObjects,
+} from '../../domain/documents/publishing.js';
+import { installPublishingControls } from './ui/publishing-controller.js';
+import { applyNamedTextStyles } from '../../rendering/text/styles.js';
 import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.js';
 import { readImageFile } from './assets/image-import.js';
 import { propertiesContent } from './ui/properties.js';
@@ -23,7 +38,11 @@ import {
   textIndexAt,
   selectCaretWord,
 } from '../../shared/dom/text-selection.js';
-import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../../domain/text/typography.js';
+import {
+  CHARACTER_FIELDS,
+  PARAGRAPH_FIELDS,
+  validTextAttribute,
+} from '../../domain/text/typography.js';
 import {
   applyFrameTypography,
   formatRange,
@@ -155,7 +174,8 @@ export function mountCanvasEditor(host, options) {
     lastDraftToken = '',
     selectionMembers = [],
     touchBeforeIds = [];
-  const ownsInput = () => options.isActive?.() !== false;
+  let parentEditor = null;
+  const ownsInput = () => options.isActive?.() !== false && !parentEditor;
   const doc = () => getDocument();
   const objects = () => selectionRoots(doc(), state.selection);
   const object = () => {
@@ -174,7 +194,7 @@ export function mountCanvasEditor(host, options) {
     .map(([name, label]) => control('tool-' + name, label, name))
     .join(
       '',
-    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div><section class="canvas-document-text" hidden><header><span>Document text</span>${control('close-document-text', 'Close document text', 'close')}</header><div class="canvas-document-scroll"><div class="rich-text canvas-document-source"></div></div></section><footer class="canvas-status"><span class="canvas-tool-status"></span><label class="canvas-snap"><input type="checkbox" data-canvas-snap checked>Snap</label><button class="canvas-panel-toggle" data-canvas-command="toggle-properties" aria-label="Toggle properties">Properties</button><div class="canvas-zoom">${control('zoom-out', 'Zoom out', 'minus')}<button data-canvas-command="zoom-100" class="zoom-value" title="Actual size">100%</button>${control('zoom-in', 'Zoom in', 'plus')}${control('fit-page', 'Fit page', 'fit')}${control('fit-all', 'Fit all pages', 'fit')}</div></footer></div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
+    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div><section class="canvas-document-text" hidden><header><span>Document text</span>${control('close-document-text', 'Close document text', 'close')}</header><div class="canvas-document-scroll"><div class="rich-text canvas-document-source"></div></div></section><footer class="canvas-status"><span class="canvas-tool-status"></span><label class="canvas-snap"><input type="checkbox" data-canvas-snap checked>Snap</label><button class="canvas-panel-toggle" data-canvas-command="toggle-properties" aria-label="Toggle properties">Properties</button><div class="canvas-zoom">${control('zoom-out', 'Zoom out', 'minus')}<button data-canvas-command="zoom-100" class="zoom-value" title="Actual size">100%</button>${control('zoom-in', 'Zoom in', 'plus')}${control('fit-page', 'Fit page', 'fit')}${control('fit-all', 'Fit all pages', 'fit')}</div></footer></div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
   const editor = host.firstElementChild,
     viewport = host.querySelector('.canvas-viewport'),
     world = host.querySelector('.canvas-world'),
@@ -315,8 +335,16 @@ export function mountCanvasEditor(host, options) {
     const viewBefore = captureView();
     endTextEditing();
     const before = structuredClone(doc());
-    callback();
-    updateFlowPlan();
+    try {
+      callback();
+      updateFlowPlan();
+    } catch (error) {
+      const current = doc();
+      for (const key of Object.keys(current)) delete current[key];
+      Object.assign(current, before);
+      paint();
+      throw error;
+    }
     onCommit(before, { label, viewBefore, viewAfter: captureView() });
     paint();
   }
@@ -338,6 +366,24 @@ export function mountCanvasEditor(host, options) {
           : readableHTML(item.html, options.documents, doc().id),
     });
   }
+  function pageObjectsHTML(p) {
+    const inherited = parentObjects(doc(), p),
+      renderDoc = { ...doc(), blocks: [...inherited, ...doc().blocks] };
+    const inheritedIds = new Set(inherited.map((b) => b.id));
+    return orderedPageObjects(renderDoc, p.id)
+      .map((item) =>
+        inheritedIds.has(item.id)
+          ? `<div class="canvas-parent-art" aria-hidden="true">${sceneObjectHTML(item, { document: renderDoc, source, textHTML: (item) => cleanHTML(item.html) })}</div>`
+          : objectHTML(item),
+      )
+      .join('');
+  }
+  function renderingDocument() {
+    return {
+      ...doc(),
+      blocks: [...doc().pages.flatMap((p) => parentObjects(doc(), p)), ...doc().blocks],
+    };
+  }
   function paint() {
     updateFlowPlan();
     setSelectionState(state.selection);
@@ -345,13 +391,10 @@ export function mountCanvasEditor(host, options) {
     world.innerHTML = positions()
       .map(
         (p) =>
-          `<section class="canvas-page ${p.id === state.activePage ? 'active' : ''}" data-page="${esc(p.id)}" aria-label="${esc(p.name)}" style="left:${p.x}px;top:${p.y}px;width:${p.width}px;height:${p.height}px"><div class="canvas-page-label">${esc(p.name)}</div>${doc()
-            .blocks.filter((b) => b.pageId === p.id && !b.parentId)
-            .map(objectHTML)
-            .join('')}</section>`,
+          `<section class="canvas-page ${p.id === state.activePage ? 'active' : ''}" data-page="${esc(p.id)}" aria-label="${esc(p.name)}" style="left:${p.x}px;top:${p.y}px;width:${p.width}px;height:${p.height}px"><div class="canvas-page-label">${esc(p.name)}</div>${pageObjectsHTML(p)}</section>`,
       )
       .join('');
-    applySceneTypography(world, doc());
+    applySceneTypography(world, renderingDocument());
     if (doc().textFlows?.length) {
       flowPreviewDirty = true;
       refreshFlowPreview();
@@ -392,6 +435,7 @@ export function mountCanvasEditor(host, options) {
     if (selectionDirty) {
       const item = object(),
         items = objects();
+      editor.style.setProperty('--selection', item ? layerFor(doc(), item).color : '#4268d4');
       selection.replaceChildren();
       selectionFrame = null;
       selectionRect = null;
@@ -460,9 +504,21 @@ export function mountCanvasEditor(host, options) {
           }
         selection.append(frame);
       }
-      if (item?.textFlowId && selectionFrame) {
+      if (
+        item &&
+        ['text', 'quote'].includes(item.type) &&
+        item.textKind !== 'point' &&
+        selectionFrame
+      ) {
         const textFlow = textFlowForFrame(doc(), item),
-          index = textFlow.frameIds.indexOf(item.id);
+          index = textFlow?.frameIds.indexOf(item.id) ?? 0;
+        const more = document.createElement('button');
+        more.className = 'canvas-type-options';
+        more.dataset.canvasCommand = 'type-options';
+        more.setAttribute('aria-label', 'Open explore more type options');
+        more.dataset.tooltip = 'Open explore more type options';
+        more.innerHTML = svg('text');
+        selectionFrame.append(more);
         for (const direction of ['previous', 'next']) {
           const port = document.createElement('button');
           port.className = 'canvas-flow-port ' + direction;
@@ -472,19 +528,24 @@ export function mountCanvasEditor(host, options) {
             'aria-label',
             direction === 'previous'
               ? 'Previous text frame'
-              : index < textFlow.frameIds.length - 1
+              : index < (textFlow?.frameIds.length || 1) - 1
                 ? 'Next text frame'
                 : 'Continue text flow',
           );
           port.dataset.tooltip = port.getAttribute('aria-label');
           port.classList.toggle(
             'linked',
-            direction === 'previous' ? index > 0 : index < textFlow.frameIds.length - 1,
+            direction === 'previous' ? index > 0 : index < (textFlow?.frameIds.length || 1) - 1,
           );
           if (
             direction === 'next' &&
-            index === textFlow.frameIds.length - 1 &&
-            flowPlan.status.get(textFlow.id)?.overset
+            index === (textFlow?.frameIds.length || 1) - 1 &&
+            (textFlow
+              ? flowPlan.status.get(textFlow.id)?.overset
+              : (() => {
+                  const el = world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`);
+                  return el && textIsOverset(el);
+                })())
           ) {
             port.textContent = '+';
             port.classList.add('overset');
@@ -511,6 +572,16 @@ export function mountCanvasEditor(host, options) {
         height: member.rect.h * state.camera.zoom + 'px',
       });
     }
+    contextualBar.layout(
+      selectionFrame
+        ? {
+            x: selectionRect.x * state.camera.zoom + state.camera.x,
+            y: selectionRect.y * state.camera.zoom + state.camera.y,
+            w: selectionRect.w * state.camera.zoom,
+            h: selectionRect.h * state.camera.zoom,
+          }
+        : null,
+    );
     const token = draft ? JSON.stringify([state.camera, draft]) : '';
     if (token === lastDraftToken) return;
     lastDraftToken = token;
@@ -546,8 +617,10 @@ export function mountCanvasEditor(host, options) {
         selectionRect: selectionBounds(doc(), state.selection),
         activePage: page(),
         editing: options.editing,
+        parentMode: options.parentMode,
         index,
         flowStatus: flowPlan.status,
+        fonts: options.fonts?.() || [],
       });
   }
   function refreshTextControls() {
@@ -564,13 +637,15 @@ export function mountCanvasEditor(host, options) {
     const declared = node.closest('[data-ivo-font]')?.getAttribute('data-ivo-font'),
       font =
         declared ||
-        (style.fontFamily.includes('CMU Serif')
-          ? 'cmu-serif'
-          : style.fontFamily.includes('Georgia')
-            ? 'serif'
-            : object()?.textStyle === 'display'
-              ? 'display'
-              : 'sans');
+        (style.fontFamily.includes('ivo-font-')
+          ? style.fontFamily.match(/font-[a-f0-9]{64}/)?.[0]
+          : style.fontFamily.includes('CMU Serif')
+            ? 'cmu-serif'
+            : style.fontFamily.includes('Georgia')
+              ? 'serif'
+              : object()?.textStyle === 'display'
+                ? 'display'
+                : 'sans');
     const color = style.color
       .match(/\d+/g)
       ?.slice(0, 3)
@@ -594,25 +669,37 @@ export function mountCanvasEditor(host, options) {
       align: style.textAlign,
       ...pendingMarks,
     };
+    for (const [key, attr] of Object.entries({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS })) {
+      const owner = node.closest('[data-ivo-' + attr + ']');
+      if (owner && element.contains(owner) && !(key in values))
+        values[key] = owner.getAttribute('data-ivo-' + attr);
+    }
     for (const [key, value] of Object.entries(values)) {
-      const input = editor.querySelector(`[data-object-prop="${key}"]`);
-      if (input && document.activeElement !== input)
-        input.value = typeof value === 'number' ? Number(value.toFixed(4)) : value;
+      for (const input of editor.querySelectorAll(`[data-object-prop="${key}"]`)) {
+        if (input && document.activeElement !== input) {
+          if (input.type === 'checkbox') input.checked = value === true || value === 'true';
+          else input.value = typeof value === 'number' ? Number(value.toFixed(4)) : value;
+        }
+      }
     }
   }
 
   function updateFlowPlan() {
     const key = JSON.stringify([
       doc().textFlows || [],
-      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale]),
+      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale, b.frameOptions]),
       doc().pages,
+      doc().publishing?.paragraphStyles,
+      doc().publishing?.characterStyles,
     ]);
     if (key === flowSignature) return false;
     flowPlan = layoutDocumentTextFlows(doc());
     flowSignature = JSON.stringify([
       doc().textFlows || [],
-      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale]),
+      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale, b.frameOptions]),
       doc().pages,
+      doc().publishing?.paragraphStyles,
+      doc().publishing?.characterStyles,
     ]);
     flowPreviewDirty = true;
     return true;
@@ -634,10 +721,7 @@ export function mountCanvasEditor(host, options) {
         section.className = 'canvas-page';
         section.dataset.page = p.id;
         section.setAttribute('aria-label', p.name);
-        section.innerHTML = `<div class="canvas-page-label">${esc(p.name)}</div>${doc()
-          .blocks.filter((b) => b.pageId === p.id && !b.parentId)
-          .map(objectHTML)
-          .join('')}`;
+        section.innerHTML = `<div class="canvas-page-label">${esc(p.name)}</div>${pageObjectsHTML(p)}`;
         world.append(section);
       }
       Object.assign(section.style, {
@@ -663,7 +747,7 @@ export function mountCanvasEditor(host, options) {
       if (element.innerHTML !== html) element.innerHTML = html;
       flowRenderCache.set(item.id, { sourceHTML, html, element });
     }
-    applySceneTypography(world, doc());
+    applySceneTypography(world, renderingDocument());
     selectionDirty = true;
     requestFrame();
   }
@@ -730,7 +814,8 @@ export function mountCanvasEditor(host, options) {
     element.dataset.textFlow = textFlow.id;
     element.dataset.sceneText = item.id;
     element.dataset.textKind = 'area';
-    applyFrameTypography(element, textFlow.style);
+    applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
+    applyNamedTextStyles(element, doc());
     element.contentEditable = 'true';
     element.removeAttribute('aria-readonly');
     element.setAttribute('role', 'textbox');
@@ -1004,7 +1089,8 @@ export function mountCanvasEditor(host, options) {
     if (!pane.hidden) {
       if (textFlow) {
         element.innerHTML = cleanHTML(textFlow.html);
-        applyFrameTypography(element, textFlow.style);
+        applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
+        applyNamedTextStyles(element, doc());
         element.contentEditable = 'false';
         element.setAttribute('aria-readonly', 'true');
       } else pane.hidden = true;
@@ -1026,10 +1112,26 @@ export function mountCanvasEditor(host, options) {
     if (!item || !['text', 'quote'].includes(item.type)) return false;
     finishText();
     const textFlow = textFlowForFrame(doc(), item);
-    if (textFlow && activeTextId !== item.id && !['bold', 'italic', 'underline'].includes(field)) {
+    const fontFace =
+      field === 'textStyle' ? options.fonts?.().find((asset) => asset.id === value)?.font : null;
+    const faceDefaults = fontFace ? { bold: fontFace.weight >= 600, italic: fontFace.italic } : {};
+    if (
+      textFlow &&
+      activeTextId !== item.id &&
+      !['bold', 'italic', 'underline', 'highlight', 'strikethrough', 'characterStyle'].includes(
+        field,
+      )
+    ) {
       const before = structuredClone(doc()),
         viewBefore = captureView();
       textFlow.style[field] = value;
+      Object.assign(textFlow.style, faceDefaults);
+      if (
+        (textFlow.style.paragraphStyle || textFlow.style.characterStyle) &&
+        !['paragraphStyle', 'characterStyle'].includes(field)
+      )
+        Object.assign((textFlow.style.textOverrides ||= {}), { [field]: value, ...faceDefaults });
+      markTypographyVersion(doc());
       refreshFlowPreview();
       onCommit(before, { label: 'TextFlow formatting', viewBefore, viewAfter: captureView() });
       return true;
@@ -1037,10 +1139,17 @@ export function mountCanvasEditor(host, options) {
     const element =
         activeTextId === item.id
           ? activeText()
-          : world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`),
+          : textFlow
+            ? document.createElement('div')
+            : world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`),
       range = preserveRange();
+    if (textFlow && activeTextId !== item.id) {
+      element.innerHTML = cleanHTML(textFlow.html);
+      applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
+    }
     if (activeTextId === item.id && CHARACTER_FIELDS[field] && range?.collapsed) {
       pendingMarks[field] = value;
+      Object.assign(pendingMarks, faceDefaults);
       return true;
     }
     if (
@@ -1055,6 +1164,8 @@ export function mountCanvasEditor(host, options) {
       viewBefore = captureView();
     if (activeTextId === item.id && range && !range.collapsed && CHARACTER_FIELDS[field]) {
       formatRange(element, range, field, value);
+      for (const [key, setting] of Object.entries(faceDefaults))
+        formatRange(element, range, key, setting);
       savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };
       if (document.activeElement === element)
         restoreTextSelection(element, savedTextSelection.bookmark);
@@ -1067,7 +1178,11 @@ export function mountCanvasEditor(host, options) {
     ) {
       writeText(item, element.innerHTML);
       savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };
-    } else if (['bold', 'italic', 'underline'].includes(field)) {
+    } else if (
+      ['bold', 'italic', 'underline', 'highlight', 'strikethrough', 'characterStyle'].includes(
+        field,
+      )
+    ) {
       const all = document.createRange();
       all.selectNodeContents(element);
       formatRange(element, all, field, value);
@@ -1076,11 +1191,46 @@ export function mountCanvasEditor(host, options) {
       const textFlow = textFlowForFrame(doc(), item);
       if (textFlow) {
         textFlow.style[field] = value;
-        applyFrameTypography(element, textFlow.style);
+        Object.assign(textFlow.style, faceDefaults);
+        if (
+          (textFlow.style.paragraphStyle || textFlow.style.characterStyle) &&
+          !['paragraphStyle', 'characterStyle'].includes(field)
+        )
+          Object.assign((textFlow.style.textOverrides ||= {}), { [field]: value, ...faceDefaults });
+        applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
+        applyNamedTextStyles(element, doc());
       } else {
         item[field] = value;
-        applyFrameTypography(element, item);
+        Object.assign(item, faceDefaults);
+        if (
+          (item.paragraphStyle || item.characterStyle) &&
+          !['paragraphStyle', 'characterStyle'].includes(field)
+        )
+          Object.assign((item.textOverrides ||= {}), { [field]: value, ...faceDefaults });
+        applyFrameTypography(element, effectiveTextStyle(doc(), item));
       }
+    }
+    if (CHARACTER_FIELDS[field] || PARAGRAPH_FIELDS[field]) {
+      const all = Object.keys({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS });
+      if (
+        (all.includes(field) &&
+          ![
+            'textStyle',
+            'fontSize',
+            'align',
+            'leading',
+            'tracking',
+            'textColor',
+            'paragraphBefore',
+            'paragraphAfter',
+            'bold',
+            'italic',
+            'underline',
+          ].includes(field)) ||
+        /^font-/.test(String(value))
+      )
+        enablePublishing(doc());
+      applyNamedTextStyles(element, doc());
     }
     if (item.textFlowId) {
       refreshFlowPreview();
@@ -1092,6 +1242,34 @@ export function mountCanvasEditor(host, options) {
     requestFrame();
     return true;
   }
+  function clearTextOverrides() {
+    const item = object();
+    if (!item || !['text', 'quote'].includes(item.type)) return;
+    finishText();
+    const before = structuredClone(doc()),
+      viewBefore = captureView(),
+      flow = textFlowForFrame(doc(), item),
+      live = activeTextId === item.id ? activeText() : null;
+    const element = live || document.createElement('div');
+    if (!live) element.innerHTML = cleanHTML(flow ? flow.html : item.html);
+    const range = live ? preserveRange() : document.createRange();
+    if (!range) return;
+    if (!live) range.selectNodeContents(element);
+    const bookmark = live ? bookmarkForRange(element, range) : null;
+    clearRangeOverrides(element, range);
+    writeText(item, element.innerHTML);
+    if (!live) delete (flow?.style || item).textOverrides;
+    pendingMarks = {};
+    if (live && bookmark) {
+      savedTextSelection = { id: item.id, bookmark };
+      restoreTextSelection(element, bookmark);
+      applyNamedTextStyles(element, doc());
+    }
+    refreshFlowPreview();
+    onCommit(before, { label: 'Clear text overrides', viewBefore, viewAfter: captureView() });
+    selectionDirty = true;
+    requestFrame();
+  }
   function parentOffset(item, document = doc()) {
     return item.parentId
       ? worldRect(document, sceneObject(document, item.parentId))
@@ -1099,7 +1277,14 @@ export function mountCanvasEditor(host, options) {
   }
   function insertionContext(pageId = state.activePage) {
     const parent = sceneObject(doc(), state.inside);
-    return { pageId: parent?.pageId || pageId, parentId: parent?.id };
+    return {
+      pageId: parent?.pageId || pageId,
+      parentId: parent?.id,
+      layerId:
+        parent?.layerId ||
+        doc().publishing?.layers.find((l) => l.id === state.activeLayer && l.visible && !l.locked)
+          ?.id,
+    };
   }
   function createAt(type, rect) {
     const context = insertionContext(),
@@ -1113,6 +1298,7 @@ export function mountCanvasEditor(host, options) {
         x: rect.x - parent.x,
         y: rect.y - parent.y,
         parentId: context.parentId,
+        layerId: context.layerId,
       });
       setSelectionState(created.id);
     });
@@ -1138,6 +1324,7 @@ export function mountCanvasEditor(host, options) {
           : { x: 0, y: 0 };
       const item = insertObject(doc(), 'polygon', context.pageId, {
         parentId: context.parentId,
+        layerId: context.layerId,
         x: x - parent.x,
         y: y - parent.y,
         w,
@@ -1335,6 +1522,15 @@ export function mountCanvasEditor(host, options) {
   let lastHit = null;
   function pointerDown(event) {
     if (!ownsInput() || busy || dialogOpen() || (event.button !== 0 && event.button !== 1)) return;
+    if (
+      !space &&
+      event.button === 0 &&
+      event.target.closest('[data-type-circle],[data-flow-port],[data-canvas-command]')
+    ) {
+      // Frame adornments own this click; they must not start a blank-canvas selection gesture.
+      event.preventDefault();
+      return;
+    }
     editor.dataset.option = String(event.altKey);
     const position = pointer(event);
     if (event.pointerType === 'touch' && !pointers.size) touchBeforeIds = state.selection.slice();
@@ -1384,8 +1580,16 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     if (!options.editing) return;
-    if (event.target.closest('[data-type-circle],[data-flow-port]')) return;
+    if (
+      ['text', 'rectangle', 'polygon'].includes(state.tool) &&
+      doc().publishing &&
+      !doc().publishing.layers.some((l) => l.visible && !l.locked)
+    ) {
+      options.onNotify?.('Choose an unlocked visible layer before adding an object.');
+      return;
+    }
     let hit = event.target.closest('[data-object]')?.dataset.object;
+    if (hit && !objectAvailable(doc(), sceneObject(doc(), hit))) hit = null;
     lastHit = hit;
     if (hit && state.tool === 'select' && !state.inside) {
       let item = sceneObject(doc(), hit);
@@ -1733,11 +1937,41 @@ export function mountCanvasEditor(host, options) {
   }
   async function command(name) {
     if (!ownsInput() || busy || dialogOpen() || composing) return;
+    if (
+      options.parentMode &&
+      [
+        'start-flow',
+        'thread',
+        'new-parent',
+        'add-page',
+        'delete-page',
+        'override-parent',
+        'restore-parent',
+      ].includes(name)
+    ) {
+      options.onNotify?.('Parent frames are independent text containers.');
+      return;
+    }
+    if (name === 'show-contextual') {
+      state.contextBarHidden = false;
+      selectionDirty = true;
+      requestFrame();
+      return;
+    }
+    if (publishingControls.command(name)) return;
     if (['document-text', 'start-flow', 'thread'].includes(name) && !options.editing) return;
     if (name === 'flow-previous' || name === 'flow-next') {
       const item = object(),
         textFlow = textFlowForFrame(doc(), item);
-      if (!textFlow) return;
+      if (!textFlow) {
+        if (name === 'flow-next' && item) {
+          threadFrom = item.id;
+          endTextEditing();
+          state.tool = 'select';
+          renderTools();
+        }
+        return;
+      }
       const index = textFlow.frameIds.indexOf(item.id),
         id = textFlow.frameIds[index + (name === 'flow-next' ? 1 : -1)];
       if (id) {
@@ -2003,6 +2237,7 @@ export function mountCanvasEditor(host, options) {
         const context = insertionContext();
         insertObject(doc(), 'text', context.pageId, {
           parentId: context.parentId,
+          layerId: context.layerId,
           html: `<p><a data-doc-id="${esc(id)}" href="#doc=${esc(id)}">${esc(target.title)}</a></p>`,
         });
       }, 'Insert link');
@@ -2029,6 +2264,7 @@ export function mountCanvasEditor(host, options) {
                 scale = Math.min(1, 360 / size.width, 480 / size.height);
               item = insertObject(doc(), 'image', context.pageId, {
                 parentId: parent?.id,
+                layerId: context.layerId,
                 ...(!parent
                   ? {
                       x: 48 + i * 16,
@@ -2094,9 +2330,21 @@ export function mountCanvasEditor(host, options) {
   }
   const controller = new AbortController(),
     listen = (target, event, callback, extra = {}) =>
-      target.addEventListener(event, callback, { signal: controller.signal, ...extra });
+      target.addEventListener(
+        event,
+        (value) => {
+          if (
+            target === host &&
+            value.target instanceof Element &&
+            value.target.closest('.scene-editor') !== editor
+          )
+            return;
+          callback(value);
+        },
+        { signal: controller.signal, ...extra },
+      );
   listen(host, 'pointerdown', (event) => {
-    if (event.target.closest('[data-canvas-command]')) {
+    if (event.target.closest('[data-canvas-command],[data-object-prop],[data-highlight-color]')) {
       preserveRange();
       if (event.target.closest('.canvas-type-format')) event.preventDefault();
     }
@@ -2205,7 +2453,8 @@ export function mountCanvasEditor(host, options) {
     }
     if (el.dataset.objectProp && object()) {
       const prop = el.dataset.objectProp;
-      let value = el.type === 'number' ? Number(el.value) : el.value;
+      let value =
+        el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value;
       if (el.type === 'number' && !Number.isFinite(value)) return;
       if (['x', 'y'].includes(prop)) value = Math.max(-100000, Math.min(100000, value));
       if (['w', 'h'].includes(prop)) value = Math.max(0.01, Math.min(100000, value));
@@ -2215,6 +2464,13 @@ export function mountCanvasEditor(host, options) {
       if (prop === 'tracking') value = Math.max(-1000, Math.min(10000, value));
       if (['paragraphBefore', 'paragraphAfter'].includes(prop))
         value = Math.max(0, Math.min(2000, value));
+      if (CHARACTER_FIELDS[prop] || PARAGRAPH_FIELDS[prop]) {
+        const attr = CHARACTER_FIELDS[prop] || PARAGRAPH_FIELDS[prop];
+        if (validTextAttribute(attr, String(value)) === null) {
+          options.onNotify?.('Choose a valid typography value.');
+          return;
+        }
+      }
       if ((CHARACTER_FIELDS[prop] || PARAGRAPH_FIELDS[prop]) && applyTextProperty(prop, value)) {
         if (el.type === 'number') el.value = String(value);
         el.dataset.focusValue = el.value;
@@ -2226,7 +2482,12 @@ export function mountCanvasEditor(host, options) {
           transformObject(
             doc(),
             item.id,
-            { x: item.x, y: item.y, w: item.w, h: item.h, [prop]: value },
+            editReferenceRect(
+              { x: item.x, y: item.y, w: item.w, h: item.h },
+              prop,
+              value,
+              state.transformReference,
+            ),
             structuredClone(doc()),
           );
         else if (prop === 'cropX' || prop === 'cropY') {
@@ -2235,7 +2496,10 @@ export function mountCanvasEditor(host, options) {
             [prop === 'cropX' ? 'x' : 'y']: Math.max(0, Math.min(100, value)),
           };
           item.objectPosition = { ...item.crop };
-        } else item[prop] = value;
+        } else {
+          if (['opacity', 'rotation'].includes(prop)) enablePublishing(doc());
+          item[prop] = value;
+        }
       });
     }
     if (el.dataset.pageProp) {
@@ -2651,6 +2915,47 @@ export function mountCanvasEditor(host, options) {
   function dialogOpen() {
     return !!document.querySelector('dialog[open]');
   }
+  const contextualBar = createContextualBar(editor, viewport, {
+    doc,
+    state,
+    objects,
+    editing: () => options.editing,
+    textEditing: () => !!activeTextId,
+    fonts: options.fonts,
+    allowed: () => ownsInput() && !busy && !composing,
+  });
+  const publishingControls = installPublishingControls(editor, {
+    doc,
+    state,
+    objects,
+    mutate,
+    applyTextProperty,
+    render: renderPanel,
+    select,
+    preserveRange,
+    allowed: () => ownsInput() && options.editing && !busy && !composing && !dialogOpen(),
+    notify: options.onNotify,
+    onAsset: options.onAsset,
+    onEditParent: editParent,
+    showPanel: (kind) => workspacePanels.show(kind),
+    clearOverrides: clearTextOverrides,
+    fonts: options.fonts,
+    parentMode: options.parentMode,
+  });
+  function editParent(id) {
+    if (parentEditor || options.parentMode || !options.editing) return;
+    endTextEditing();
+    parentEditor = openParentEditor(editor, id, {
+      getDocument,
+      mount: mountCanvasEditor,
+      options,
+      onCommit,
+      onClose: () => {
+        parentEditor = null;
+        paint();
+      },
+    });
+  }
   const observer = new ResizeObserver(() => {
     selectionDirty = true;
     requestFrame();
@@ -2699,12 +3004,15 @@ export function mountCanvasEditor(host, options) {
       }
     },
     finish() {
+      parentEditor?.finish();
       finishGesture();
       const element = activeText();
       if (element && composing) element.blur();
       finishText();
     },
     async flush() {
+      if (parentEditor) await parentEditor.flush();
+      await publishingControls.flush();
       finishGesture();
       if (composing) {
         activeText()?.blur();
@@ -2714,7 +3022,7 @@ export function mountCanvasEditor(host, options) {
       while (pendingCount) await pendingFiles;
     },
     get pending() {
-      return pendingCount > 0 || composing;
+      return pendingCount > 0 || composing || publishingControls.pending || parentEditor?.pending;
     },
     destroy() {
       finishGesture();
@@ -2723,6 +3031,10 @@ export function mountCanvasEditor(host, options) {
       closeContextMenu();
       previews.destroy();
       tooltips.destroy();
+      publishingControls.destroy();
+      contextualBar.destroy();
+      parentEditor?.destroy();
+
       workspacePanels.destroy();
       controller.abort();
       observer.disconnect();

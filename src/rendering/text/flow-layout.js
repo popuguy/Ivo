@@ -1,7 +1,9 @@
+import { effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { cleanHTML } from '../../shared/html/sanitize.js';
 import { applyFrameTypography } from './format.js';
 import { textIndexMap, textIndexAt } from '../../shared/dom/text-selection.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
+import { applyNamedTextStyles } from './styles.js';
 let fontReady;
 export function prepareTextFlowFonts() {
   return (fontReady ||= Promise.all(
@@ -161,6 +163,8 @@ const metrics = (frame) => ({
 });
 /** Native browser column composition with derived fragments; canonical textFlow source is never split or rewritten. */
 export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
+  if (doc.blocks.some((b) => b.textFlowId && b.frameOptions))
+    return layoutFrameColumns(doc, { allowPages });
   const fragments = new Map(),
     status = new Map();
   let changed = false;
@@ -170,7 +174,8 @@ export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
       start = 0,
       index = 0,
       used = 0,
-      overset = false;
+      overset = false,
+      additionalFrames = 0;
     while (index < textFlow.frameIds.length) {
       const frame = doc.blocks.find((b) => b.id === textFlow.frameIds[index]),
         size = metrics(frame);
@@ -185,7 +190,8 @@ export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
       probe.dataset.flowRoot = 'true';
       probe.innerHTML = remaining;
       document.body.append(probe);
-      applyFrameTypography(probe, textFlow.style);
+      applyFrameTypography(probe, effectiveTextStyle(doc, textFlow.style));
+      applyNamedTextStyles(probe, doc);
       Object.assign(probe.style, {
         position: 'fixed',
         left: '-100000px',
@@ -219,6 +225,8 @@ export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
           group++;
           changed = true;
         }
+      if (index + group === textFlow.frameIds.length && !columns.verticalOverset)
+        additionalFrames = Math.max(0, columns.count - group);
       const count = Math.min(group, columns.count);
       for (let i = 0; i < count; i++) {
         const a = columns.cuts.get(i),
@@ -260,7 +268,96 @@ export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
       frames: textFlow.frameIds.length,
       used,
       characters: source.total,
+      additionalFrames,
     });
   }
   return { fragments, status, changed };
+}
+
+/** Project each physical frame into disposable equal-width column slots. Source stays singular. */
+function layoutFrameColumns(doc, { allowPages }) {
+  let changed = false;
+  for (let attempt = 0; attempt < 129; attempt++) {
+    const projection = structuredClone(doc),
+      slots = new Map();
+    projection.blocks = [];
+    for (const frame of doc.blocks) {
+      if (!frame.textFlowId) {
+        projection.blocks.push(structuredClone(frame));
+        continue;
+      }
+      const f = frame.frameOptions || {},
+        sx = frame.textScale?.x || 1,
+        sy = frame.textScale?.y || 1,
+        count = f.columns || 1,
+        gutter = f.gutter ?? 12;
+      const width =
+          (frame.w - (f.insetLeft || 0) - (f.insetRight || 0) - (count - 1) * gutter) / count,
+        height = frame.h - (f.insetTop || 0) - (f.insetBottom || 0);
+      if (width < 1 || height < 1) throw new Error('Frame insets and gutters leave no text area.');
+      const values = [];
+      for (let i = 0; i < count; i++) {
+        const slot = {
+          ...structuredClone(frame),
+          id: frame.id + '-column-' + i,
+          w: width,
+          h: height,
+        };
+        delete slot.frameOptions;
+        values.push({
+          id: slot.id,
+          left: ((f.insetLeft || 0) + i * (width + gutter)) / sx,
+          top: (f.insetTop || 0) / sy,
+          width: width / sx,
+          height: height / sy,
+        });
+        projection.blocks.push(slot);
+      }
+      slots.set(frame.id, values);
+    }
+    for (const flow of projection.textFlows || []) {
+      flow.frameIds = flow.frameIds.flatMap((id) => slots.get(id).map((s) => s.id));
+      flow.automaticPages = false;
+      flow.deleteEmptyPages = false;
+      flow.autoPages = [];
+    }
+    const result = layoutDocumentTextFlows(projection, { allowPages: false });
+    let added = false;
+    for (const flow of doc.textFlows || []) {
+      const extra = result.status.get(flow.id)?.additionalFrames || 0;
+      if (extra && flow.automaticPages && allowPages) {
+        const last = doc.blocks.find((b) => b.id === flow.frameIds.at(-1)),
+          needed = Math.ceil(extra / (last.frameOptions?.columns || 1));
+        for (let i = 0; i < needed; i++) {
+          if (!appendTextFlowPage(doc, flow)) break;
+          changed = true;
+          added = true;
+        }
+      }
+    }
+    if (added) continue;
+    const fragments = new Map(),
+      status = new Map();
+    for (const flow of doc.textFlows || []) {
+      let used = 0;
+      for (const [index, id] of flow.frameIds.entries()) {
+        const parts = slots.get(id).map((slot) => ({ ...slot, ...result.fragments.get(slot.id) }));
+        if (parts.some((p) => p.end > p.start)) used = index + 1;
+        fragments.set(id, {
+          start: parts[0].start,
+          end: parts.at(-1).end,
+          html: parts
+            .map(
+              (p) =>
+                `<div class="flow-column" style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;overflow:hidden">${p.html}</div>`,
+            )
+            .join(''),
+        });
+      }
+      if (allowPages && trimTextFlowPages(doc, flow, Math.max(1, used))) changed = true;
+      status.set(flow.id, { ...result.status.get(flow.id), frames: flow.frameIds.length, used });
+    }
+    return { fragments, status, changed };
+  }
+  throw new Error('Text continuation exceeded the page limit.');
 }

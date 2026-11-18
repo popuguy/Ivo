@@ -4,6 +4,15 @@ export function applyTextLayout(element, block) {
   element.dataset.textKind = block.textKind || 'area';
   element.style.setProperty('--text-scale-x', scale.x);
   element.style.setProperty('--text-scale-y', scale.y);
+  const f = block.frameOptions || {};
+  element.style.padding = `${f.insetTop || 0}px ${f.insetRight || 0}px ${f.insetBottom || 0}px ${f.insetLeft || 0}px`;
+  element.style.boxSizing = 'border-box';
+  const columns = !block.textFlowId && (f.columns || 1) > 1;
+  element.style.columnCount = columns ? String(f.columns) : '';
+  element.style.columnGap = columns ? (f.gutter ?? 12) + 'px' : '';
+  element.style.columnFill = columns ? 'auto' : '';
+  element.style.alignContent =
+    f.verticalAlign === 'center' ? 'center' : f.verticalAlign === 'bottom' ? 'end' : 'start';
 }
 
 /** Freeze soft wraps before area→point conversion, retaining inline markup and all overflow. */

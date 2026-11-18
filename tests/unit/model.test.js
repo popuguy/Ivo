@@ -203,7 +203,7 @@ test('CMU Serif survives document and backup validation', () => {
 });
 
 test('import rejects invalid shapes, layout overflow, nonfinite values and oversized counts', () => {
-  assert.throws(() => validateImport({ schemaVersion: 6, documents: [] }), /schema version/);
+  assert.throws(() => validateImport({ schemaVersion: 7, documents: [] }), /schema version/);
   assert.throws(
     () => validateImport({ schemaVersion: 1, documents: new Array(5001).fill({}) }),
     /at most 5000/,

@@ -65,7 +65,9 @@
     "pretest:workspace-views": "node scripts/reference-art.mjs",
     "test:startup": "npm run build && electron tests/runtime/startup/runner.mjs",
     "test:inline-metrics": "electron tests/runtime/inline-metrics/runner.mjs",
-    "pretest:inline-metrics": "node scripts/reference-art.mjs"
+    "pretest:inline-metrics": "node scripts/reference-art.mjs",
+    "test:publishing": "electron tests/runtime/publishing/runner.mjs",
+    "pretest:publishing": "node scripts/reference-art.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

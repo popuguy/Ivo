@@ -6,7 +6,7 @@ const owns = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 export function migrateArchive(payload) {
   if (
     !payload ||
-    ![1, 2, 3, 4, 5].includes(payload.schemaVersion) ||
+    ![1, 2, 3, 4, 5, 6].includes(payload.schemaVersion) ||
     !Array.isArray(payload.documents)
   )
     return payload;
@@ -47,5 +47,7 @@ export function migrateArchive(payload) {
     }
     return document;
   });
-  return migrated ? { ...payload, schemaVersion: 5, documents } : payload;
+  return migrated
+    ? { ...payload, schemaVersion: Math.max(5, payload.schemaVersion), documents }
+    : payload;
 }

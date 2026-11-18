@@ -1,5 +1,13 @@
 import { applyTextAttributes } from './text-attributes.js';
-const METRICS = ['size', 'leading'];
+const PROPERTIES = {
+  size: 'font-size',
+  leading: 'line-height',
+  highlight: 'background-color',
+  underline: 'text-decoration',
+  strike: 'text-decoration',
+};
+const METRICS = Object.keys(PROPERTIES);
+const scopedSpans = METRICS.map((name) => 'span[data-ivo-' + name + ']').join(',');
 // These elements do not introduce a relative font size of their own. Keep links,
 // emphasis and other character properties in place while resolving metric runs.
 const TRANSPARENT = new Set(['SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'A']);
@@ -9,9 +17,7 @@ export function normalizeInlineMetrics(root) {
   let changed = false;
   // Extracting a selection can leave empty old-style spans at both boundaries.
   // Empty inline boxes still have metrics; they must not retain a former large size.
-  for (const span of [
-    ...root.querySelectorAll('span[data-ivo-size],span[data-ivo-leading]'),
-  ].reverse())
+  for (const span of [...root.querySelectorAll(scopedSpans)].reverse())
     if (
       !span.textContent.length &&
       (span.closest('p,div,li,h2,h3,h4,blockquote') || root).textContent.length > 0 &&
@@ -20,9 +26,7 @@ export function normalizeInlineMetrics(root) {
       span.remove();
       changed = true;
     }
-  const candidates = [
-    ...root.querySelectorAll('span[data-ivo-size],span[data-ivo-leading]'),
-  ].filter(
+  const candidates = [...root.querySelectorAll(scopedSpans)].filter(
     (span) =>
       (span.textContent.length > 0 || span.querySelector('br')) &&
       METRICS.some(
@@ -61,7 +65,7 @@ export function normalizeInlineMetrics(root) {
         const attr = 'data-ivo-' + name;
         if (node.hasAttribute(attr)) next[name] = node.getAttribute(attr);
         clone.removeAttribute(attr);
-        clone.style.removeProperty(name === 'size' ? 'font-size' : 'line-height');
+        clone.style.removeProperty(PROPERTIES[name]);
       }
     if (!clone.getAttribute('style')) clone.removeAttribute('style');
     for (const child of node.childNodes) clone.append(copy(child, next));

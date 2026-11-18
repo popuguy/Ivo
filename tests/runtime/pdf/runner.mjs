@@ -1,6 +1,14 @@
+import { createHash } from 'node:crypto';
+import { inspectFont } from '../../../src/domain/text/fonts.js';
+import {
+  enablePublishing,
+  createParent,
+  applyParent,
+  addLayer,
+} from '../../../src/domain/documents/publishing.js';
 import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
 import { app, nativeImage } from 'electron';
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -194,6 +202,80 @@ app
       path.join(output, 'flow-manifest.json'),
       JSON.stringify(flowPDF.manifest, null, 2),
     );
+    const publishing = createSceneDocument('Publishing export'),
+      fontBytes = await readFile(path.join(root, 'public/fonts/cmu-serif/cmunrm.ttf')),
+      font = inspectFont(fontBytes),
+      fontId = 'font-' + createHash('sha256').update(fontBytes).digest('hex');
+    enablePublishing(publishing);
+    const parentMask = insertObject(publishing, 'polygon', {
+      x: 40,
+      y: 40,
+      w: 220,
+      h: 150,
+      clip: true,
+      points: [
+        { id: 'pm-a', x: 0, y: 0 },
+        { id: 'pm-b', x: 1, y: 0 },
+        { id: 'pm-c', x: 0, y: 1 },
+      ],
+      fill: '#e6e8eb',
+      stroke: '#626872',
+    });
+    insertObject(publishing, 'text', {
+      parentId: parentMask.id,
+      x: 8,
+      y: 8,
+      w: 180,
+      h: 100,
+      textStyle: fontId,
+      fontSize: 16,
+      html: '<p><a href="https://example.com/parent">Parent link</a></p><p><span data-ivo-highlight="#fff176">Portable font highlight</span></p>',
+    });
+    const parentDefinition = createParent(publishing, publishing.pages[0].id, 'Layout'),
+      parentPage = addPage(publishing, publishing.pages[0].id);
+    applyParent(publishing, parentPage.id, parentDefinition.id);
+    const invisible = addLayer(publishing, 'Hidden');
+    invisible.visible = false;
+    const hiddenItem = insertObject(publishing, 'text', {
+      x: 20,
+      y: 220,
+      w: 240,
+      h: 80,
+      html: '<p>Do not print</p>',
+    });
+    hiddenItem.layerId = invisible.id;
+    const pubSnapshot = createPDFSnapshot(
+        [publishing],
+        [
+          {
+            id: fontId,
+            name: 'cmunrm.ttf',
+            mimeType: font.mimeType,
+            data: `data:${font.mimeType};base64,${fontBytes.toString('base64')}`,
+          },
+        ],
+        publishing.id,
+      ),
+      pubBefore = JSON.stringify(pubSnapshot);
+    const pubPDF = await renderPDF(pubSnapshot, {
+      project: root,
+      onRendered: async (window) => {
+        const result = await window.webContents.executeJavaScript(
+          `({hidden:document.body.textContent.includes('Do not print'),family:getComputedStyle(document.querySelector('.canvas-text')).fontFamily,highlight:!!document.querySelector('[data-ivo-highlight]')})`,
+        );
+        assert.equal(result.hidden, false);
+        assert.ok(result.family.includes(fontId));
+        assert.equal(result.highlight, true);
+      },
+    });
+    assert.equal(JSON.stringify(pubSnapshot), pubBefore);
+    assert.equal(pubPDF.manifest.pages.length, 2);
+    assert.ok(
+      pubPDF.manifest.links.some(
+        (l) => l.pageIndex === 1 && l.target.url === 'https://example.com/parent',
+      ),
+    );
+    await writeFile(path.join(output, 'publishing.pdf'), pubPDF.bytes);
     console.log(
       JSON.stringify(
         {
@@ -207,6 +289,7 @@ app
           originalImagePixels: [1024, 512],
           flowPages: flowPDF.manifest.pages.length,
           flowSnapshotUnchanged: true,
+          publishingFontsParentsLayersHighlights: true,
           warnings: manifest.warnings,
         },
         null,

@@ -30,7 +30,10 @@ export function createPassiveRefresh({
         timer = null;
         if (blocked()) return;
         try {
-          const value = await read({ includeAssets: needsAssets });
+          const value = await read({
+            includeAssets: needsAssets,
+            isCurrent: () => !blocked() && ticket === generation,
+          });
           if (blocked() || ticket !== generation) return;
           apply(value);
           if (value.assets) needsAssets = false;

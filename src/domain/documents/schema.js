@@ -1,7 +1,18 @@
 import { migrateArchive } from './migrations.js';
 import { BLOCK_TYPES, ID_PATTERN, LIMITS } from './constants.js';
 import { attribute, decodeEntities } from '../text/html.js';
-import { archiveVersion, markTypographyVersion } from './capabilities.js';
+import { archiveVersion, markTypographyVersion, hasPublishingFeatures } from './capabilities.js';
+import {
+  CHARACTER_FIELDS,
+  PARAGRAPH_FIELDS,
+  validTextAttribute,
+  fontFamilyFor,
+  TEXT_ATTRIBUTE_NAMES,
+  ALIGNMENTS,
+} from '../text/typography.js';
+import { resolvedTextStyle } from './publishing.js';
+import { inspectFont } from '../text/fonts.js';
+import { referencedFonts } from '../text/font-references.js';
 const _own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 function fail(message) {
@@ -151,16 +162,46 @@ function checkHtml(html, label, assetIds) {
           fail(`${label}.${key} refers to a missing asset`);
       }
     }
+    for (const name of TEXT_ATTRIBUTE_NAMES) {
+      const raw = attribute(tag[0], 'data-ivo-' + name);
+      if (raw !== null && validTextAttribute(name, raw) === null)
+        fail(`${label} has an invalid ${name} attribute`);
+    }
     const style = attribute(tag[0], 'style');
     if (style && /url\s*\(|expression\s*\(|@import/i.test(decodeEntities(style)))
       fail(`${label} contains active CSS`);
   }
 }
 
+function typography(input, out, label) {
+  if (input.textOverrides !== undefined) {
+    const overrides = record(input.textOverrides, label + '.textOverrides');
+    if (overrides.textOverrides || overrides.paragraphStyle || overrides.characterStyle)
+      fail(`${label} has invalid style overrides`);
+    const normalized = {};
+    typography(overrides, normalized, label);
+    if (Object.keys(overrides).some((k) => !Object.hasOwn(normalized, k)))
+      fail(`${label} has unknown style overrides`);
+    out.textOverrides = normalized;
+  }
+
+  for (const [key, attr] of Object.entries({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS })) {
+    if (input[key] === undefined) continue;
+    const valid = validTextAttribute(attr, String(input[key]));
+    if (valid === null) fail(`${label}.${key} has an invalid typography value`);
+    out[key] =
+      typeof input[key] === 'number'
+        ? Number(valid)
+        : typeof input[key] === 'boolean'
+          ? valid === 'true'
+          : valid;
+  }
+}
+
 export function validateImport(payload) {
   record(payload, 'archive');
   payload = migrateArchive(payload);
-  if (![1, 2, 3, 4, 5].includes(payload.schemaVersion)) fail('unsupported schema version');
+  if (![1, 2, 3, 4, 5, 6].includes(payload.schemaVersion)) fail('unsupported schema version');
   if (!Array.isArray(payload.documents) || payload.documents.length > LIMITS.documents)
     fail(`documents must contain at most ${LIMITS.documents} entries`);
   if (
@@ -183,7 +224,7 @@ export function validateImport(payload) {
     const assetId = id(asset.id, `${label}.id`);
     const data = string(asset.data, `${label}.data`, Math.ceil((LIMITS.assetBytes * 4) / 3) + 100);
     const match = data.match(
-      /^data:(image\/(?:jpeg|png|webp|gif|avif)|application\/pdf);base64,([A-Za-z0-9+/]*={0,2})$/i,
+      /^data:(image\/(?:jpeg|png|webp|gif|avif)|application\/pdf|font\/(?:ttf|otf));base64,([A-Za-z0-9+/]*={0,2})$/i,
     );
     if (!match || !match[2] || match[2].length % 4 !== 0)
       fail(`${label}.data must be supported base64 image or PDF data`);
@@ -199,7 +240,13 @@ export function validateImport(payload) {
       match[1].toLowerCase(),
     ).toLowerCase();
     if (mimeType !== match[1].toLowerCase()) fail(`${label}.mimeType does not match its data`);
+    const font = match[1].startsWith('font/')
+      ? inspectFont(Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0)))
+      : null;
+    if (font && (payload.schemaVersion < 6 || font.mimeType !== mimeType))
+      fail(`${label} requires schema 6 and matching font bytes`);
     return {
+      ...(font ? { font } : {}),
       id: assetId,
       data,
       name: string(asset.name, `${label}.name`, 1024, 'Untitled asset'),
@@ -215,12 +262,16 @@ export function validateImport(payload) {
     record(doc, label);
     const documentId = id(doc.id, `${label}.id`);
     const paged = doc.canvasVersion !== undefined;
-    if (paged && (![1, 2, 4].includes(doc.canvasVersion) || payload.schemaVersion < 2))
+    if (paged && (![1, 2, 4, 5].includes(doc.canvasVersion) || payload.schemaVersion < 2))
       fail(
         `${label} requires page-scene archive schema 2 or later with a supported canvas version`,
       );
     if (paged && doc.canvasVersion === 4 && payload.schemaVersion < 5)
       fail(`${label} requires text flow archive schema 5`);
+    if ((doc.publishing || doc.canvasVersion === 5) && payload.schemaVersion < 6)
+      fail(`${label} requires publishing archive schema 6`);
+    if (doc.publishing && doc.canvasVersion !== 5)
+      fail(`${label} requires publishing canvas version 5`);
     if (paged && doc.canvasVersion === 2 && payload.schemaVersion < 3)
       fail(`${label} requires typography archive schema 3`);
     if (!paged && doc.pages !== undefined) fail(`${label}.pages requires a canvas version`);
@@ -292,20 +343,18 @@ export function validateImport(payload) {
         textStyle: enumeration(
           block.textStyle,
           `${key}.textStyle`,
-          ['serif', 'sans', 'cmu-serif', 'display'],
+          fontFamilyFor(block.textStyle)
+            ? [block.textStyle]
+            : ['serif', 'sans', 'cmu-serif', 'display'],
           'serif',
         ),
         fontSize: number(block.fontSize, `${key}.fontSize`, paged ? 1 : 10, paged ? 2000 : 120, 16),
-        align: enumeration(
-          block.align,
-          `${key}.align`,
-          ['left', 'center', 'right', 'justify'],
-          'left',
-        ),
+        align: enumeration(block.align, `${key}.align`, ALIGNMENTS, 'left'),
         crop: position(block.crop, `${key}.crop`),
         objectPosition: position(block.objectPosition ?? block.crop, `${key}.objectPosition`),
       };
       if (['text', 'quote'].includes(block.type)) {
+        typography(block, normalized, key);
         normalized.textKind = enumeration(
           block.textKind,
           `${key}.textKind`,
@@ -330,9 +379,65 @@ export function validateImport(payload) {
       if (paged) {
         if (!pageIds.has(block.pageId)) fail(`${key}.pageId is unknown`);
         normalized.pageId = block.pageId;
+        if (doc.canvasVersion === 5) {
+          if (block.layerId !== undefined)
+            normalized.layerId = string(block.layerId, `${key}.layerId`, 120);
+          if (block.parentOriginId !== undefined)
+            normalized.parentOriginId = string(block.parentOriginId, `${key}.parentOriginId`, 120);
+          if (block.name !== undefined) normalized.name = string(block.name, `${key}.name`, 180);
+          for (const flag of ['hidden', 'locked'])
+            if (block[flag] !== undefined) {
+              if (typeof block[flag] !== 'boolean') fail(`${key}.${flag} must be boolean`);
+              normalized[flag] = block[flag];
+            }
+          if (block.opacity !== undefined)
+            normalized.opacity = number(block.opacity, `${key}.opacity`, 0, 100);
+          if (block.rotation !== undefined)
+            normalized.rotation = number(block.rotation, `${key}.rotation`, -36000, 36000);
+          if (block.frameOptions !== undefined) {
+            const f = record(block.frameOptions, `${key}.frameOptions`);
+            normalized.frameOptions = {};
+            for (const [name, min, max, fallback] of [
+              ['columns', 1, 40, 1],
+              ['gutter', 0, 2000, 12],
+              ['insetTop', 0, 2000, 0],
+              ['insetRight', 0, 2000, 0],
+              ['insetBottom', 0, 2000, 0],
+              ['insetLeft', 0, 2000, 0],
+              ['corner', 0, 2000, 0],
+            ])
+              normalized.frameOptions[name] = number(
+                f[name],
+                `${key}.frameOptions.${name}`,
+                min,
+                max,
+                fallback,
+              );
+            if (!Number.isInteger(normalized.frameOptions.columns))
+              fail(`${key} requires a whole column count`);
+            normalized.frameOptions.verticalAlign = enumeration(
+              f.verticalAlign,
+              key,
+              ['top', 'center', 'bottom'],
+              'top',
+            );
+            normalized.frameOptions.fill = string(f.fill, key, 7, 'none');
+            normalized.frameOptions.stroke = string(f.stroke, key, 7, 'none');
+            for (const name of ['fill', 'stroke'])
+              if (!/^(?:none|#[0-9a-f]{6})$/i.test(normalized.frameOptions[name]))
+                fail(`${key} has invalid frame paint`);
+            normalized.frameOptions.strokeWidth = number(f.strokeWidth, key, 0, 100, 0);
+          }
+        } else if (
+          block.layerId !== undefined ||
+          block.frameOptions !== undefined ||
+          block.hidden !== undefined ||
+          block.locked !== undefined
+        )
+          fail(`${key} requires publishing canvas version 5`);
         if (block.textFlowId !== undefined) {
           if (
-            doc.canvasVersion !== 4 ||
+            ![4, 5].includes(doc.canvasVersion) ||
             typeof block.textFlowId !== 'string' ||
             !ID_PATTERN.test(block.textFlowId) ||
             !['text', 'quote'].includes(block.type) ||
@@ -390,6 +495,135 @@ export function validateImport(payload) {
       version: revision(doc.version, `${label}.version`),
       template: string(doc.template, `${label}.template`, 100, 'blank'),
     };
+    if (doc.publishing !== undefined) {
+      const p = record(doc.publishing, `${label}.publishing`);
+      if (p.version !== 1) fail(`${label} has an unsupported publishing version`);
+      if (!Array.isArray(p.layers) || !p.layers.length || p.layers.length > 128)
+        fail(`${label} requires 1 to 128 layers`);
+      const layers = p.layers.map((layer, i) => {
+        record(layer, label);
+        if (
+          typeof layer.visible !== 'boolean' ||
+          typeof layer.locked !== 'boolean' ||
+          !/^#[0-9a-f]{6}$/i.test(layer.color)
+        )
+          fail(`${label} has invalid layer flags or color`);
+        return {
+          id: id(layer.id, `${label}.layers[${i}]`),
+          name: string(layer.name, label, 120),
+          color: layer.color,
+          visible: layer.visible,
+          locked: layer.locked,
+        };
+      });
+      const layerIds = new Set(layers.map((l) => l.id));
+      if (blocks.some((b) => b.layerId && !layerIds.has(b.layerId)))
+        fail(`${label} refers to an unknown layer`);
+      const styleList = (kind) => {
+        const values = p[kind];
+        if (!Array.isArray(values) || values.length > 256)
+          fail(`${label} has invalid style definitions`);
+        return values.map((value) => {
+          record(value, label);
+          const attributes = {};
+          typography(record(value.attributes, label), attributes, label);
+          if (
+            Object.keys(value.attributes).some((k) => !Object.hasOwn(attributes, k)) ||
+            attributes.characterStyle ||
+            attributes.paragraphStyle
+          )
+            fail(`${label} has invalid style attributes`);
+          return {
+            id: id(value.id, label),
+            name: string(value.name, label, 120),
+            basedOn: value.basedOn === null ? null : string(value.basedOn, label, 120),
+            attributes,
+          };
+        });
+      };
+      normalized.publishing = {
+        version: 1,
+        layers,
+        paragraphStyles: styleList('paragraphStyles'),
+        characterStyles: styleList('characterStyles'),
+        parents: [],
+      };
+      for (const kind of ['paragraph', 'character'])
+        for (const style of normalized.publishing[kind + 'Styles'])
+          resolvedTextStyle(normalized, kind, style.id);
+      if (!Array.isArray(p.parents) || p.parents.length > 26)
+        fail(`${label} has invalid parent definitions`);
+      normalized.publishing.parents = p.parents.map((parent) => {
+        record(parent, label);
+        const parentId = id(parent.id, label),
+          width = number(parent.width, label, 72, 14400),
+          height = number(parent.height, label, 72, 14400);
+        if (
+          !Array.isArray(parent.blocks) ||
+          parent.blocks.length > 1000 ||
+          parent.blocks.some((b) => b.textFlowId)
+        )
+          fail(`${label} has invalid parent objects`);
+        totalBlocks += parent.blocks.length;
+        if (
+          totalBlocks > LIMITS.blocks ||
+          blocks.length + p.parents.reduce((n, v) => n + v.blocks.length, 0) >
+            LIMITS.blocksPerDocument
+        )
+          fail(`${label} exceeds the combined page and parent object limit`);
+        totalHtml += parent.blocks.reduce((n, b) => n + (b.html || '').length, 0);
+        if (totalHtml > 20000000) fail('total HTML exceeds 20 million characters');
+        const parentDoc = validateImport({
+          schemaVersion: 6,
+          assets,
+          documents: [
+            {
+              id: parentId,
+              canvasVersion: 5,
+              publishing: { ...normalized.publishing, parents: [] },
+              pages: [{ id: parentId + '-page', width, height }],
+              blocks: parent.blocks.map((b) => ({ ...b, pageId: parentId + '-page' })),
+            },
+          ],
+        }).documents[0];
+        const result = parentDoc.blocks.map((b) => {
+          id(b.id, label);
+          for (const v of b.points || []) id(v.id, label);
+          if (b.layerId && !layerIds.has(b.layerId)) fail(`${label} has unknown parent layer`);
+          const { pageId, ...rest } = b;
+          return rest;
+        });
+        return {
+          id: parentId,
+          name: string(parent.name, label, 120),
+          prefix: string(parent.prefix, label, 8),
+          width,
+          height,
+          blocks: result,
+        };
+      });
+      for (let i = 0; i < pages.length; i++)
+        if (doc.pages[i].parentPageId !== undefined) {
+          const parent = normalized.publishing.parents.find(
+            (p) => p.id === doc.pages[i].parentPageId,
+          );
+          if (!parent) fail(`${label} has an unknown page parent`);
+          pages[i].parentPageId = parent.id;
+          if (doc.pages[i].parentOverrides !== undefined) {
+            if (
+              !Array.isArray(doc.pages[i].parentOverrides) ||
+              doc.pages[i].parentOverrides.length > 1000
+            )
+              fail(`${label} has invalid parent overrides`);
+            const overrides = [
+              ...new Set(doc.pages[i].parentOverrides.map((value) => string(value, label, 120))),
+            ];
+            if (overrides.some((id) => !parent.blocks.some((b) => b.id === id)))
+              fail(`${label} has invalid parent overrides`);
+            pages[i].parentOverrides = overrides;
+          }
+        }
+    }
     if (paged) {
       normalized.canvasVersion = doc.canvasVersion;
       normalized.pages = pages;
@@ -429,7 +663,7 @@ export function validateImport(payload) {
     }
     if (doc.textFlows !== undefined) {
       if (
-        doc.canvasVersion !== 4 ||
+        ![4, 5].includes(doc.canvasVersion) ||
         payload.schemaVersion < 5 ||
         !Array.isArray(doc.textFlows) ||
         doc.textFlows.length > 1000
@@ -469,16 +703,13 @@ export function validateImport(payload) {
             textStyle: enumeration(
               input.textStyle,
               `${key}.textStyle`,
-              ['serif', 'sans', 'cmu-serif', 'display'],
+              fontFamilyFor(input.textStyle)
+                ? [input.textStyle]
+                : ['serif', 'sans', 'cmu-serif', 'display'],
               'serif',
             ),
             fontSize: number(input.fontSize, `${key}.fontSize`, 1, 2000, 16),
-            align: enumeration(
-              input.align,
-              `${key}.align`,
-              ['left', 'center', 'right', 'justify'],
-              'left',
-            ),
+            align: enumeration(input.align, `${key}.align`, ALIGNMENTS, 'left'),
           };
         for (const [name, min, max] of [
           ['leading', 0, 4000],
@@ -488,6 +719,7 @@ export function validateImport(payload) {
         ])
           if (input[name] !== undefined)
             style[name] = number(input[name], `${key}.${name}`, min, max);
+        typography(input, style, key);
         if (input.textColor !== undefined) {
           if (!/^#[0-9a-f]{6}$/i.test(input.textColor)) fail(`${key} has invalid color`);
           style.textColor = input.textColor;
@@ -529,6 +761,23 @@ export function validateImport(payload) {
           fail(`${label} contains an orphan text frame`);
     } else if (blocks.some((frame) => frame.textFlowId))
       fail(`${label} requires canonical document text sources`);
+    for (const holder of [...blocks, ...(normalized.textFlows || []).map((f) => f.style)])
+      for (const kind of ['paragraph', 'character'])
+        if (holder[kind + 'Style']) resolvedTextStyle(normalized, kind, holder[kind + 'Style']);
+    for (const font of referencedFonts(normalized))
+      if (!assets.some((a) => a.id === font && a.font))
+        fail(`${label} refers to a missing vault font`);
+    for (const source of [...blocks, ...(normalized.textFlows || [])])
+      for (const tag of (source.html || '').matchAll(/<[^>]+>/g))
+        for (const [attr, kind] of [
+          ['pstyle', 'paragraph'],
+          ['cstyle', 'character'],
+        ]) {
+          const styleId = attribute(tag[0], 'data-ivo-' + attr);
+          if (styleId && styleId !== 'none') resolvedTextStyle(normalized, kind, styleId);
+        }
+    if (hasPublishingFeatures(doc) && (payload.schemaVersion < 6 || doc.canvasVersion !== 5))
+      fail(`${label} requires archive 6 / canvas 5 for publishing features`);
     if (doc.extensions !== undefined)
       normalized.extensions = extensions(doc.extensions, `${label}.extensions`);
     return normalized;

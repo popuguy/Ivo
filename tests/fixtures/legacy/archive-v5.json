@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 5,
+  "documents": [{
+    "id": "document-v5-frozen", "title": "Canonical text before publishing", "canvasVersion": 4,
+    "pages": [{"id":"page-v5-frozen","name":"Page 1","width":612,"height":792}],
+    "blocks": [{"id":"frame-v5-frozen","type":"text","pageId":"page-v5-frozen","textFlowId":"flow-v5-frozen","x":48.125,"y":40,"w":280.5,"h":140.25,"html":"","textKind":"area","fontSize":16,"textStyle":"cmu-serif"}],
+    "textFlows": [{"id":"flow-v5-frozen","html":"<p>Original text, café and 日本語.</p><p><br></p>","frameIds":["frame-v5-frozen"],"style":{"textStyle":"cmu-serif","fontSize":16,"leading":0},"automaticPages":false,"deleteEmptyPages":false,"autoPages":[]}]
+  }],
+  "assets": []
+}

@@ -1,14 +1,15 @@
 # Document and vault formats
 
-Current writable linked-text documents use **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
+Publishing documents use **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
 
-| Archive | Document capability                                                                   |
-| ------- | ------------------------------------------------------------------------------------- |
-| 1       | Legacy grid document, no canvas version                                               |
-| 2       | Fixed pages and objects, canvas 1                                                     |
-| 3       | Rich typography, canvas 2                                                             |
-| 4       | Previous linked-text representation, canvas 3; read through the compatibility decoder |
-| 5       | Canonical `textFlows` with frame `textFlowId`, canvas 4                               |
+| Archive | Document capability                                                                                                |
+| ------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1       | Legacy grid document, no canvas version                                                                            |
+| 2       | Fixed pages and objects, canvas 1                                                                                  |
+| 3       | Rich typography, canvas 2                                                                                          |
+| 4       | Previous linked-text representation, canvas 3; read through the compatibility decoder                              |
+| 5       | Canonical `textFlows` with frame `textFlowId`, canvas 4                                                            |
+| 6       | Publishing layers, parent definitions/overrides, sparse text styles, frame options and vault font assets, canvas 5 |
 
 A document has a stable ID and version, editable title, timestamps, tags/aliases, objects and (for current scenes) pages. A text flow has its own stable ID, rich HTML, ordered frame IDs, style, continuation policy and ownership of automatically generated pages. Frames hold geometry and a reference to their text flow; they do not duplicate its source. Images reference original assets. Polygon masks form a validated, bounded parent tree. Application extension data is namespaced and bounded; unknown extension namespaces survive validation.
 
@@ -25,3 +26,5 @@ Format regressions live in `tests/unit/migrations.test.js`, `tests/unit/vault.te
 Logical library organization still uses the existing `ivo.library` document extension and `library:1` folder metadata. Folder changes alter only that semantic metadata plus revision/timestamp, preserving document identities and authored content. `changeLibrary` commits the affected revisions and folder tree together; it adds no new document/archive/manifest version. Named workspace catalogs and window chrome use bounded profile-local preference keys, excluded from document exports and future authored-replica authority.
 
 Workspace1 view metadata now admits bounded `stacked` groups, graph/backlinks `linkedTo` references and per-graph local scope. Named workspaces include a normalized context-panel layout; named panel presets remain a bounded profile-local catalog scoped to a vault. New view fields carry no authored source, assets, undo or live caret data. Incoming native-window views receive new local tab identities; existing in-memory caret/closed-tab bookmarks are preserved.
+
+Publishing capability details and limits are in [publishing-foundation.md](publishing-foundation.md). `publishing.version` is 1. Parent definitions own stable object/vertex IDs; pages reference them, and inherited instances are disposable. Layer visibility/locking and scene ownership participate in validation, painting and editing. Named style IDs and based-on links are validated independently of direct overrides. Run/paragraph attributes are typed and allowlisted. TrueType/OpenType asset metadata is decoded from saved bytes; fonts retain original data and use the existing hashed `.bin` objects. Font data does not require a new native manifest or database store. Old source/asset originals remain unchanged on read.

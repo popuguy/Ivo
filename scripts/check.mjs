@@ -7,6 +7,7 @@ const runtime = [
   'render',
   'interaction',
   'text',
+  'publishing',
   'inline-metrics',
   'browser-storage',
   'pdf',

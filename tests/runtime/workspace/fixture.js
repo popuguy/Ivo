@@ -82,13 +82,14 @@ try {
   }
   const resize = host.querySelector('.workspace-panel-resize'),
     grip = host.querySelector('.canvas-panel-microbar'),
-    divider = host.querySelector('.workspace-document-divider');
+    divider = host.querySelector('.workspace-document-divider'),
+    initialPanelWidth = panel.getBoundingClientRect().width;
   pointer(resize, 'pointerdown', panel.getBoundingClientRect().x, 200);
   pointer(resize, 'pointermove', panel.getBoundingClientRect().x - 60, 200);
   pointer(resize, 'pointerup', 0, 200);
   await tick();
   assert(
-    Math.abs(panel.getBoundingClientRect().width - 284) < 1,
+    Math.abs(panel.getBoundingClientRect().width - (initialPanelWidth + 60)) < 1,
     'Dock resize did not change panel width',
   );
   assert(document.activeElement === resize, 'Pointer resize did not acquire keyboard ownership');
@@ -99,7 +100,7 @@ try {
   );
   await keyboard('resize');
   assert(
-    Math.abs(panel.getBoundingClientRect().width - 294) < 1,
+    Math.abs(panel.getBoundingClientRect().width - (initialPanelWidth + 70)) < 1,
     'Keyboard resize did not follow pointer focus',
   );
   assert(

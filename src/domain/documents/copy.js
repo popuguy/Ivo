@@ -10,6 +10,12 @@ export function copyDocument(source, { title = source.title + ' (copy)', templat
     document,
     ...(document.pages || []),
     ...(document.textFlows || []),
+    ...(document.publishing?.layers || []),
+    ...(document.publishing?.parents || []),
+    ...(document.publishing?.paragraphStyles || []),
+    ...(document.publishing?.characterStyles || []),
+    ...(document.publishing?.parents || []).flatMap((p) => p.blocks),
+    ...(document.publishing?.parents || []).flatMap((p) => p.blocks.flatMap((b) => b.points || [])),
     ...document.blocks,
     ...document.blocks.flatMap((block) => block.points || []),
   ])
@@ -19,9 +25,45 @@ export function copyDocument(source, { title = source.title + ' (copy)', templat
   document.aliases = [];
   document.version = 1;
   document.createdAt = document.updatedAt = new Date().toISOString();
-  for (const page of document.pages || []) page.id = ids.get(page.id);
+  for (const page of document.pages || []) {
+    page.id = ids.get(page.id);
+    if (page.parentPageId) page.parentPageId = ids.get(page.parentPageId);
+    if (page.parentOverrides) page.parentOverrides = page.parentOverrides.map((id) => ids.get(id));
+  }
+  function remapRichText(holder) {
+    if (holder.html)
+      holder.html = holder.html.replace(
+        /(data-ivo-(?:pstyle|cstyle)=["'])([^"']+)(["'])/g,
+        (all, prefix, id, suffix) => (ids.has(id) ? prefix + ids.get(id) + suffix : all),
+      );
+    for (const key of ['paragraphStyle', 'characterStyle'])
+      if (holder[key] && ids.has(holder[key])) holder[key] = ids.get(holder[key]);
+  }
+  if (document.publishing) {
+    for (const layer of document.publishing.layers) layer.id = ids.get(layer.id);
+    for (const style of [
+      ...document.publishing.paragraphStyles,
+      ...document.publishing.characterStyles,
+    ]) {
+      style.id = ids.get(style.id);
+      if (style.basedOn) style.basedOn = ids.get(style.basedOn);
+    }
+    for (const parent of document.publishing.parents) {
+      parent.id = ids.get(parent.id);
+      for (const block of parent.blocks) {
+        block.id = ids.get(block.id);
+        if (block.parentId) block.parentId = ids.get(block.parentId);
+        if (block.layerId) block.layerId = ids.get(block.layerId);
+        for (const point of block.points || []) point.id = ids.get(point.id);
+        remapRichText(block);
+      }
+    }
+  }
   for (const block of document.blocks) {
     block.id = ids.get(block.id);
+    if (block.layerId) block.layerId = ids.get(block.layerId);
+    if (block.parentOriginId) block.parentOriginId = ids.get(block.parentOriginId);
+    remapRichText(block);
     if (block.pageId) block.pageId = ids.get(block.pageId);
     if (block.textFlowId) block.textFlowId = ids.get(block.textFlowId);
     if (block.parentId) block.parentId = ids.get(block.parentId);
@@ -36,6 +78,8 @@ export function copyDocument(source, { title = source.title + ' (copy)', templat
   }
   for (const textFlow of document.textFlows || []) {
     textFlow.id = ids.get(textFlow.id);
+    remapRichText(textFlow);
+    remapRichText(textFlow.style);
     textFlow.frameIds = textFlow.frameIds.map((id) => ids.get(id));
     textFlow.autoPages = textFlow.autoPages.map((value) => ({
       pageId: ids.get(value.pageId),

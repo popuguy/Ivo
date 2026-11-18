@@ -1,3 +1,4 @@
+import { prepareVaultFonts } from '../rendering/text/fonts.js';
 import { dialogMarkup, installDialogDismissal } from '../shared/ui/dialog.js';
 import { normalizePanels } from '../domain/workspace/panels.js';
 import { presentStartup, afterStartupPaint } from './startup.js';
@@ -782,6 +783,7 @@ export function startApplication({ root, dialog }) {
         initialState: tab.canvasState,
         isActive: () => windowLease && workspace.active === tab.id,
         source,
+        fonts: () => [...assets.values()].filter((asset) => asset.font),
         onCommit: (before, metadata) => commitDocument(id, tab.id, before, metadata),
         onChange: () => changed(docs.find((doc) => doc.id === id)),
         onOpen: (id, options) =>
@@ -798,6 +800,7 @@ export function startApplication({ root, dialog }) {
         onAsset: async (asset) => {
           await saveAsset(asset);
           assets.set(asset.id, asset);
+          await prepareVaultFonts([...assets.values()]);
         },
         onRequestEdit: async (files) => {
           const owner = tab.id;
@@ -2471,6 +2474,7 @@ export function startApplication({ root, dialog }) {
           });
           receiveDocuments(loaded.documents);
           assets = new Map(loaded.assets.map((a) => [a.id, a]));
+          await prepareVaultFonts([...assets.values()]);
           workspace = normalizeWorkspace(workspace, docs);
           const importedId =
             payload.documents.find((document) => docs.some((live) => live.id === document.id))
@@ -2657,7 +2661,10 @@ export function startApplication({ root, dialog }) {
           return doc;
         });
         receiveDocuments(incoming);
-        if (state.assets) assets = new Map(state.assets.map((asset) => [asset.id, asset]));
+        if (state.assets) {
+          assets = new Map(state.assets.map((asset) => [asset.id, asset]));
+          await prepareVaultFonts([...assets.values()]);
+        }
         for (const id of changedIds) documentSession.discardHistory(id);
         const available = new Set(docs.map((doc) => doc.id));
         if (workspace.tabs.some((tab) => tab.kind === 'document' && !available.has(tab.docId)))
@@ -2728,11 +2735,15 @@ export function startApplication({ root, dialog }) {
   });
   const passiveRefresh = createPassiveRefresh({
     blocked: () => !initialized || windowLease || windowRefreshing,
-    read: async ({ includeAssets }) => ({
-      documents: await loadDocuments(),
-      assets: includeAssets ? await loadAssets() : null,
-      library: normalizeLibraryMeta((await getMeta('library:1'))?.value),
-    }),
+    read: async ({ includeAssets, isCurrent }) => {
+      const value = {
+        documents: await loadDocuments(),
+        assets: includeAssets ? await loadAssets() : null,
+        library: normalizeLibraryMeta((await getMeta('library:1'))?.value),
+      };
+      if (value.assets && isCurrent()) await prepareVaultFonts(value.assets, { isCurrent });
+      return value;
+    },
     apply: (next) => {
       const existing = new Map(allDocuments().map((doc) => [doc.id, doc]));
       receiveDocuments(
@@ -2804,6 +2815,7 @@ export function startApplication({ root, dialog }) {
       });
       receiveDocuments(loaded.documents);
       assets = new Map(loaded.assets.map((a) => [a.id, a]));
+      await prepareVaultFonts([...assets.values()]);
       if (!loaded.documents.length && !(await getMeta('initialized')))
         await saveImport({ schemaVersion: CURRENT_ARCHIVE_VERSION, documents: [], assets: [] });
       libraryMeta = normalizeLibraryMeta((await getMeta('library:1'))?.value);

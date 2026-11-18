@@ -464,7 +464,10 @@ body.sidebar-collapsed .workspace-sidebar-toggle .sidebar-toggle-icon-inner {
 .document-tab.active {
   z-index: 1;
   background: var(--workspace-content-background);
-  box-shadow: 0 0 0 1px var(--workspace-border);
+  box-shadow:
+    0 -1px 0 var(--workspace-border),
+    -1px 0 0 var(--workspace-border),
+    1px 0 0 var(--workspace-border);
   color: #222;
 }
 .document-tab.active::before,
