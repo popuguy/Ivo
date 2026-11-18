@@ -1,3 +1,4 @@
+import { legacyFontFamilies } from '../../../domain/text/font-references.js';
 import {
   enablePublishing,
   layersFor,
@@ -37,6 +38,13 @@ export function installPublishingControls(
     fonts = () => [],
     parentMode = false,
     textState,
+    resolveFont,
+    refreshSystemFonts,
+    prepareDocumentFonts,
+    canPrepareFonts,
+    ensureFontVariant,
+    fontSelection,
+    applyFontSettings,
   },
 ) {
   const controller = new AbortController(),
@@ -57,7 +65,42 @@ export function installPublishingControls(
   let popover = null,
     draggedLayer = null,
     fontWork = Promise.resolve(),
-    fontPending = 0;
+    fontPending = 0,
+    preparedLegacy = '';
+  function prepareLegacyFonts() {
+    const signature = JSON.stringify([...legacyFontFamilies(doc())].sort());
+    if (!prepareDocumentFonts || !canPrepareFonts() || signature === preparedLegacy) return;
+    preparedLegacy = signature;
+    const snapshot = structuredClone(doc());
+    fontPending++;
+    fontWork = fontWork
+      .then(() => prepareDocumentFonts(snapshot))
+      .catch((error) => {
+        preparedLegacy = '';
+        notify?.(error.message);
+      })
+      .finally(() => fontPending--);
+  }
+  function fontTransaction(prepare) {
+    if (!allowed()) return Promise.resolve(false);
+    const target = fontSelection();
+    fontPending++;
+    fontWork = fontWork
+      .then(async () => {
+        const settings = await prepare();
+        if (!allowed() || fontSelection() !== target) return false;
+        applyFontSettings(settings);
+        render();
+        return true;
+      })
+      .catch((error) => {
+        notify?.(error.message);
+        if (allowed() && fontSelection() === target) render();
+        return false;
+      })
+      .finally(() => fontPending--);
+    return fontWork;
+  }
   function closePopover() {
     popover?.destroy();
     popover = null;
@@ -368,6 +411,40 @@ export function installPublishingControls(
     run(() => mutate(() => reorderLayer(doc(), from, row.dataset.layerRow), 'Reorder layers'));
   });
   return {
+    prepareLegacyFonts,
+    chooseFont(value) {
+      return fontTransaction(() => resolveFont(value));
+    },
+    variant(field, value) {
+      const summary = textState(),
+        ids = summary?.fonts.filter((id) => /^font-/.test(id)) || [];
+      if (!ensureFontVariant || !ids.length || !['bold', 'italic'].includes(field)) return false;
+      void fontTransaction(async () => {
+        for (const id of ids)
+          await ensureFontVariant(
+            id,
+            field === 'bold' ? value : summary.values.bold === true,
+            field === 'italic' ? value : summary.values.italic === true,
+          );
+        const settings = { [field]: value };
+        if (
+          field === 'bold' &&
+          ids.some((id) =>
+            fonts()
+              .find((asset) => asset.id === id)
+              ?.font.axes.some((axis) => axis.tag === 'wght'),
+          )
+        ) {
+          settings.fontVariations =
+            (summary.values.fontVariations || '')
+              .split(',')
+              .filter((pair) => pair && pair !== 'normal' && !pair.startsWith('wght:'))
+              .join(',') || 'normal';
+        }
+        return settings;
+      });
+      return true;
+    },
     flush: () => fontWork,
     get pending() {
       return fontPending > 0;
@@ -401,6 +478,10 @@ export function installPublishingControls(
       if (!allowed()) return false;
       if (name === 'type-options') {
         openType(anchor);
+        return true;
+      }
+      if (name === 'refresh-fonts') {
+        if (refreshSystemFonts) void refreshSystemFonts().catch((error) => notify?.(error.message));
         return true;
       }
       if (name === 'import-font') {

@@ -34,7 +34,7 @@ export function createBlock(type = 'text', overrides = {}) {
     caption: '',
     alt: '',
     fit: 'cover',
-    textStyle: 'serif',
+    textStyle: 'cmu-serif',
     fontSize: 16,
     align: 'left',
     ...(['text', 'quote'].includes(type) ? { textKind: 'area', textScale: { x: 1, y: 1 } } : {}),

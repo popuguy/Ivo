@@ -1,4 +1,5 @@
 export const TEXT_FONTS = Object.freeze({
+  geist: '"Geist", sans-serif',
   sans: '"Helvetica Neue", Helvetica, Arial, sans-serif',
   serif: 'Georgia, Times New Roman, serif',
   'cmu-serif': '"CMU Serif", Georgia, serif',
@@ -17,7 +18,7 @@ export const OPENTYPE_FEATURES = Object.freeze({
 });
 /** Effective authoring defaults, independent of a particular renderer's computed CSS. */
 export const TEXT_DEFAULTS = Object.freeze({
-  textStyle: 'sans',
+  textStyle: 'cmu-serif',
   fontSize: 16,
   leading: 0,
   tracking: 0,

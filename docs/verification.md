@@ -1,6 +1,18 @@
 # Verification
 
-Current publishing increment: 18 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
+Current font-portability increment: 18 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
+
+## System fonts and portable vault resources — 18 November 2026
+
+New text defaults to CMU Serif and the interface remains Geist. The Apple native catalog supplies installed named faces; selecting one validates and persists its immutable vault bytes before applying the font reference. Original single-face bytes are preserved, while collection faces are exported with reconstructed SFNT offsets/checksums. Existing Georgia/Helvetica source obtains portable resources without rewriting its typography. See [font portability](font-portability.md).
+
+Standard checks pass with 188 unit tests. Across retained logs, 15 targeted runtime groups pass: fonts, scene, interaction, text, publishing, inline-metrics, text-flows, PDF, workspace, daily-use, navigation, shell, window-refresh, workspace-views and build. The new font fixture exercises the real native catalog (1,310 faces across 385 families on this Mac), CMU defaults, selected-word application and undo/redo, persistence before source references, companion faces, immutable deduplication, failure and late-selection fences, vault reopening and portable legacy PDF resources. Unit checks also cover exact Medium/Semibold registration and default/nondefault variable-font coordinates.
+
+Both native checks pass: Core Text single/collection-face export with the SFNT checksum, and Swift Foundation interoperability with the desktop vault. The iOS project passes property-list syntax validation, and shared web assets are synchronized; this does not establish a full Xcode build or physical iPhone/iPad behavior. The earlier native-window observation limits remain unchanged.
+
+A separate isolated native pointer review opened the populated picker, displayed all 18 Graphik faces, selected Graphik Medium and verified the resulting on-page text and Properties value. The temporary review vault closed normally; personal notes and installed font files were untouched. Machine font bytes, catalogs, screenshots and logs remain private under parent `work/system-fonts-2026-11-18/`.
+
+The review package is `release/2026-11-18-system-fonts/Ivo-darwin-arm64/Ivo.app`. All 176 generated web files match across the static build, iOS assets and Mac ASAR. The native helper is unpacked, executable and byte-identical to its compiled source-build output; compiler caches are excluded from the package. Editable-embedding flags and the existing 30 MB per-font / 100 MB archive resource budgets remain enforced. Unsupported or oversized faces report an error and preserve the previous font. Automatic enumeration is provided by the Apple native bridge; browser-only builds retain shipped/vault/manual-import fonts.
 
 ## On-page text and properties corrections — 18 November 2026
 

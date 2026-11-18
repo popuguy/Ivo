@@ -1,3 +1,4 @@
+import { createSystemFonts } from './system-fonts.mjs';
 import {
   app,
   BrowserWindow,
@@ -33,6 +34,11 @@ import {
 } from './workspace-windows.mjs';
 import { normalizeWorkspace } from '../src/domain/workspace/state.js';
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
+  systemFonts = createSystemFonts(
+    app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar.unpacked/desktop/native/bin/ivo-fonts')
+      : path.join(project, 'desktop/native/bin/ivo-fonts'),
+  ),
   webRoot = path.join(project, 'dist'),
   origin = 'ivo://app',
   pageURL = origin + '/index.html';
@@ -115,6 +121,12 @@ else {
         'saveImport',
         'changeLibrary',
       ]);
+      ipcMain.handle('ivo:fonts', async (event, action, value) => {
+        owner(event);
+        if (action === 'list') return systemFonts.list(value === true);
+        if (action === 'read') return systemFonts.read(value);
+        throw new Error('Unknown font request.');
+      });
       ipcMain.handle('ivo:store', async (event, method, args) => {
         const record = owner(event);
         if (!record.vault || !methods.has(method) || !Array.isArray(args) || args.length > 2)

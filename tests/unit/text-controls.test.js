@@ -15,6 +15,13 @@ test('feature applicability matches the actual shipped font faces', async () => 
   }
 });
 
+test('bundled Geist applicability matches its shipped variable font', async () => {
+  const font = inspectFont(
+    await readFile(new URL('../../public/fonts/geist/Geist-Variable.ttf', import.meta.url)),
+  );
+  assert.deepEqual(BUNDLED_FONT_FEATURES.geist.regular, font.features);
+});
+
 test('anchored type options fit above/below and at either canvas edge', () => {
   const bounds = { x: 0, y: 0, w: 600, h: 500 },
     size = { w: 242, h: 290 };

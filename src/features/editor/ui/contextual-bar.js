@@ -1,3 +1,4 @@
+import { fontChoices } from '../../../domain/text/font-catalog.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
 import { effectiveTextStyle } from '../../../domain/documents/publishing.js';
@@ -15,6 +16,7 @@ export function createContextualBar(
     textEditing = () => false,
     textState = () => null,
     fonts = () => [],
+    systemFonts = () => [],
     allowed,
   },
 ) {
@@ -112,16 +114,11 @@ export function createContextualBar(
         settings.align,
         summary?.mixed,
         fonts().map((a) => a.id),
+        systemFonts().length,
       ]);
     if (token !== next && !bar.contains(document.activeElement)) {
       token = next;
-      const choices = [
-        ['sans', 'Helvetica Neue'],
-        ['serif', 'Georgia'],
-        ['cmu-serif', 'CMU Serif'],
-        ['display', 'Display'],
-        ...fonts().map((a) => [a.id, a.font.family + ' ' + a.font.subfamily]),
-      ];
+      const choices = fontChoices(fonts(), systemFonts(), settings.textStyle);
       delete bar.dataset.reflected;
       bar.innerHTML = `<button data-bar-grip aria-label="Move contextual bar" data-tooltip="Drag contextual bar">${icon('menu')}</button><select data-object-prop="textStyle" aria-label="Contextual font family">${choices.map(([id, name]) => `<option value="${id}" ${settings.textStyle === id ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select><button data-canvas-command="bold" aria-label="Bold" data-tooltip="Bold">${icon('bold')}</button><button data-canvas-command="italic" aria-label="Italic" data-tooltip="Italic">${icon('italic')}</button><input type="number" step="any" min="1" max="2000" data-object-prop="fontSize" aria-label="Contextual point size" value="${settings.fontSize || 16}"><span>pt</span><input type="color" data-object-prop="textColor" aria-label="Contextual text fill" value="${settings.textColor || '#252525'}"><select data-object-prop="align" aria-label="Contextual paragraph alignment">${[
         ['left', 'Left'],

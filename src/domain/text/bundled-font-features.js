@@ -1,5 +1,40 @@
 // Feature tags declared by the shipped OFL CMU Serif faces; verified against font bytes in tests.
+const geistFeatures = [
+  'aalt',
+  'case',
+  'ccmp',
+  'dlig',
+  'dnom',
+  'frac',
+  'kern',
+  'liga',
+  'locl',
+  'mark',
+  'mkmk',
+  'numr',
+  'ordn',
+  'pnum',
+  'sinf',
+  'ss01',
+  'ss02',
+  'ss03',
+  'ss04',
+  'ss05',
+  'ss06',
+  'ss07',
+  'ss08',
+  'ss09',
+  'subs',
+  'sups',
+  'tnum',
+];
 export const BUNDLED_FONT_FEATURES = Object.freeze({
+  geist: {
+    regular: geistFeatures,
+    bold: geistFeatures,
+    italic: geistFeatures,
+    boldItalic: geistFeatures,
+  },
   'cmu-serif': {
     regular: [
       'aalt',

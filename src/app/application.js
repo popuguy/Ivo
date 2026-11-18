@@ -1,3 +1,4 @@
+import { createInstalledFontLibrary } from '../features/editor/assets/installed-fonts.js';
 import { prepareVaultFonts } from '../rendering/text/fonts.js';
 import { dialogMarkup, installDialogDismissal } from '../shared/ui/dialog.js';
 import { normalizePanels } from '../domain/workspace/panels.js';
@@ -119,7 +120,8 @@ export function startApplication({ root, dialog }) {
     graphDepth = 1,
     showTags = true,
     graphHandle,
-    canvasHandle;
+    canvasHandle,
+    fontLibrary;
   let workspace = createWorkspace(),
     vaultInfo = { name: 'Local vault', manager: false },
     workspaceTimer,
@@ -784,6 +786,14 @@ export function startApplication({ root, dialog }) {
         isActive: () => windowLease && workspace.active === tab.id,
         source,
         fonts: () => [...assets.values()].filter((asset) => asset.font),
+        systemFonts: () => fontLibrary?.rows || [],
+        refreshSystemFonts: async () => {
+          await fontLibrary.load(true);
+          for (const other of panes.values()) other.canvas?.refreshFonts();
+        },
+        resolveFont: (value) => fontLibrary.resolve(value),
+        prepareDocumentFonts: (doc) => fontLibrary.prepareDocument(doc),
+        ensureFontVariant: (id, bold, italic) => fontLibrary.ensureVariant(id, bold, italic),
         onCommit: (before, metadata) => commitDocument(id, tab.id, before, metadata),
         onChange: () => changed(docs.find((doc) => doc.id === id)),
         onOpen: (id, options) =>
@@ -2013,7 +2023,7 @@ export function startApplication({ root, dialog }) {
         'ivo-atlas-' + new Date().toISOString().slice(0, 10) + '.json',
         JSON.stringify(
           {
-            schemaVersion: archiveVersion(allDocuments()),
+            schemaVersion: archiveVersion(allDocuments(), [...assets.values()]),
             exportedAt: new Date().toISOString(),
             documents: allDocuments(),
             assets: [...assets.values()],
@@ -2808,6 +2818,15 @@ export function startApplication({ root, dialog }) {
       } catch (error) {
         toast(error.message);
       }
+      fontLibrary = createInstalledFontLibrary({
+        native: globalThis.ivoNative?.fonts,
+        assets: () => [...assets.values()],
+        persist: async (asset) => {
+          await saveAsset(asset);
+          assets.set(asset.id, asset);
+          await prepareVaultFonts([...assets.values()]);
+        },
+      });
       const loaded = validateImport({
         schemaVersion: CURRENT_ARCHIVE_VERSION,
         documents: await loadDocuments(),
@@ -2840,6 +2859,12 @@ export function startApplication({ root, dialog }) {
       render();
       await presentStartup(root);
       startupPresented = true;
+      void fontLibrary
+        .load()
+        .then(() => {
+          if (initialized) for (const pane of panes.values()) pane.canvas?.refreshFonts();
+        })
+        .catch((error) => toast(error.message));
       if (!globalThis.ivoNative && location.protocol !== 'file:' && 'serviceWorker' in navigator)
         navigator.serviceWorker.register('./sw.js').catch(() => {});
     } catch (error) {

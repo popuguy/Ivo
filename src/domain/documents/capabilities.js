@@ -35,15 +35,17 @@ export function hasPublishingFeatures(doc) {
         b.opacity !== undefined ||
         b.rotation !== undefined ||
         b.name !== undefined ||
-        /^font-/.test(b.textStyle || '') ||
+        /^(font-|geist$)/.test(b.textStyle || '') ||
         newFields.some((key) => b[key] !== undefined) ||
-        newAttrs.test(b.html || ''),
+        newAttrs.test(b.html || '') ||
+        /data-ivo-font\s*=\s*["'](?:geist|font-[a-f0-9]{64})["']/.test(b.html || ''),
     ) ||
     (doc.textFlows || []).some(
       (f) =>
         newAttrs.test(f.html) ||
+        /data-ivo-font\s*=\s*["'](?:geist|font-[a-f0-9]{64})["']/.test(f.html) ||
         newFields.some((key) => f.style[key] !== undefined) ||
-        /^font-/.test(f.style.textStyle || ''),
+        /^(font-|geist$)/.test(f.style.textStyle || ''),
     )
   );
 }
@@ -60,7 +62,8 @@ export function hasAdvancedTypography(document) {
   );
 }
 
-export function archiveVersion(documents) {
+export function archiveVersion(documents, assets = []) {
+  if (assets.some((asset) => asset.font || asset.mimeType?.startsWith('font/'))) return 6;
   if (documents.some(hasPublishingFeatures)) return 6;
   return documents.some((doc) => doc.canvasVersion === 4 || doc.textFlows?.length)
     ? 5

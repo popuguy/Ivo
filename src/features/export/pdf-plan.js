@@ -1,4 +1,4 @@
-import { referencedFonts } from '../../domain/text/font-references.js';
+import { referencedFonts, legacyFontFamilies } from '../../domain/text/font-references.js';
 import { archiveVersion } from '../../domain/documents/capabilities.js';
 import { buildIndex } from '../../domain/knowledge/index.js';
 import { validateImport } from '../../domain/documents/schema.js';
@@ -31,13 +31,17 @@ export function createPDFSnapshot(documents, assets, documentId, { includeLinked
       for (const b of parent.blocks) if (b.src?.startsWith('asset:')) assetIds.add(b.src.slice(6));
   }
   const values = assets instanceof Map ? [...assets.values()] : assets;
-  const families = new Set(
-    values.filter((a) => assetIds.has(a.id) && a.font).map((a) => a.font.family),
-  );
+  const families = new Set([
+    ...selected.flatMap((doc) => [...legacyFontFamilies(doc)]),
+    ...values.filter((a) => assetIds.has(a.id) && a.font).map((a) => a.font.family),
+  ]);
   for (const asset of values)
     if (asset.font && families.has(asset.font.family)) assetIds.add(asset.id);
   const archive = validateImport({
-    schemaVersion: archiveVersion(selected),
+    schemaVersion: archiveVersion(
+      selected,
+      values.filter((asset) => assetIds.has(asset.id)),
+    ),
     documents: selected,
     assets: values.filter((asset) => assetIds.has(asset.id)),
   });

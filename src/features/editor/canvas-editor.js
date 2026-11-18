@@ -1,3 +1,4 @@
+import { fontChoices, SYSTEM_FONT_PREFIX } from '../../domain/text/font-catalog.js';
 import { flowInputHTML, projectFlowInput, inputColumn } from '../../rendering/text/flow-input.js';
 import { createContextualBar } from './ui/contextual-bar.js';
 import { summarizeTextStyle, reflectTextStyle } from '../../rendering/text/selection-style.js';
@@ -628,6 +629,7 @@ export function mountCanvasEditor(host, options) {
         index,
         flowStatus: flowPlan.status,
         fonts: options.fonts?.() || [],
+        systemFonts: options.systemFonts?.() || [],
         textSummary,
       });
     reflectTextStyle(editor, textSummary);
@@ -1074,6 +1076,7 @@ export function mountCanvasEditor(host, options) {
       savedTextSelection = null;
     }
     restoring = false;
+    publishingControls.prepareLegacyFonts();
   }
   function deactivate() {
     if (composing) return false;
@@ -1138,7 +1141,7 @@ export function mountCanvasEditor(host, options) {
     delete editor.dataset.gesture;
     return true;
   }
-  function applyTextProperty(field, value) {
+  function applyTextProperty(field, value, { commit = true } = {}) {
     const item = object();
     if (!item || !['text', 'quote'].includes(item.type)) return false;
     finishText();
@@ -1170,6 +1173,7 @@ export function mountCanvasEditor(host, options) {
       )
         Object.assign((settings.textOverrides ||= {}), { [field]: value, ...faceDefaults });
       writeText(item, root.innerHTML);
+      if (value === 'geist') enablePublishing(doc());
       markTypographyVersion(doc());
       if (textFlow) refreshFlowPreview();
       else {
@@ -1183,7 +1187,8 @@ export function mountCanvasEditor(host, options) {
       }
       syncTextStyle();
       selectionDirty = true;
-      onCommit(before, { label: 'Text formatting', viewBefore, viewAfter: captureView() });
+      if (commit)
+        onCommit(before, { label: 'Text formatting', viewBefore, viewAfter: captureView() });
       requestFrame();
       return true;
     }
@@ -1280,7 +1285,7 @@ export function mountCanvasEditor(host, options) {
             'italic',
             'underline',
           ].includes(field)) ||
-        /^font-/.test(String(value))
+        /^(font-|geist$)/.test(String(value))
       )
         enablePublishing(doc());
       applyNamedTextStyles(element, doc());
@@ -1291,7 +1296,8 @@ export function mountCanvasEditor(host, options) {
     }
     measureText(item, element);
     selectionDirty = true;
-    onCommit(before, { label: 'Text formatting', viewBefore, viewAfter: captureView() });
+    if (commit)
+      onCommit(before, { label: 'Text formatting', viewBefore, viewAfter: captureView() });
     syncTextStyle();
     requestFrame();
     return true;
@@ -2235,7 +2241,7 @@ export function mountCanvasEditor(host, options) {
         const enabled = range.collapsed
           ? (pendingMarks[name] ?? atCaret)
           : rangeUsesFormat(element, range, name, true);
-        applyTextProperty(name, !enabled);
+        if (!publishingControls.variant(name, !enabled)) applyTextProperty(name, !enabled);
       } else if (object() && ['text', 'quote'].includes(object().type)) {
         if (object().textFlowId) {
           focusText(object().id);
@@ -2252,7 +2258,8 @@ export function mountCanvasEditor(host, options) {
               : world.querySelector(`[data-scene-text="${CSS.escape(object().id)}"]`),
           all = document.createRange();
         all.selectNodeContents(el);
-        applyTextProperty(name, !rangeUsesFormat(el, all, name, true));
+        const value = !rangeUsesFormat(el, all, name, true);
+        if (!publishingControls.variant(name, value)) applyTextProperty(name, value);
       }
       return;
     }
@@ -2522,6 +2529,12 @@ export function mountCanvasEditor(host, options) {
     }
     if (el.dataset.objectProp && object()) {
       const prop = el.dataset.objectProp;
+      if (prop === 'textStyle' && options.resolveFont) {
+        void publishingControls.chooseFont(el.value);
+        return;
+      }
+      if (prop === 'textStyle' && el.value.startsWith(SYSTEM_FONT_PREFIX)) return;
+      if (['bold', 'italic'].includes(prop) && publishingControls.variant(prop, el.checked)) return;
       let value =
         el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value;
       if (el.type === 'number' && !Number.isFinite(value)) return;
@@ -2738,6 +2751,7 @@ export function mountCanvasEditor(host, options) {
             esc(event.clipboardData.getData('text/plain')).replace(/\n/g, '<br>'),
         ),
       );
+      publishingControls.prepareLegacyFonts();
     }
   });
   for (const type of ['copy', 'cut'])
@@ -3072,6 +3086,7 @@ export function mountCanvasEditor(host, options) {
     textEditing: () => !!activeTextId,
     textState: () => textSummary,
     fonts: options.fonts,
+    systemFonts: options.systemFonts,
     allowed: () => ownsInput() && !busy && !composing,
   });
   const publishingControls = installPublishingControls(editor, {
@@ -3088,11 +3103,45 @@ export function mountCanvasEditor(host, options) {
     onAsset: options.onAsset,
     onEditParent: editParent,
     textState: () => (textSummary = readSelectedTextStyle()),
+    resolveFont: options.resolveFont,
+    refreshSystemFonts: options.refreshSystemFonts,
+    prepareDocumentFonts: options.prepareDocumentFonts,
+    canPrepareFonts: () => ownsInput() && !busy && !composing,
+    ensureFontVariant: options.ensureFontVariant,
+    fontSelection: () => {
+      preserveRange();
+      const view = captureView(),
+        flow = textFlowForFrame(doc(), view.activeTextId);
+      return JSON.stringify([
+        doc().id,
+        flow ? [flow.id] : state.selection,
+        flow?.id || view.activeTextId,
+        view.textSelection?.anchor.index,
+        view.textSelection?.focus.index,
+      ]);
+    },
+    applyFontSettings: (settings) => {
+      finishText();
+      const before = structuredClone(doc()),
+        viewBefore = captureView();
+      for (const [key, value] of Object.entries(settings)) {
+        if (
+          key === 'fontVariations' &&
+          value === 'normal' &&
+          readSelectedTextStyle()?.values.fontVariations === 'normal'
+        )
+          continue;
+        applyTextProperty(key, value, { commit: false });
+      }
+      if (documentContent(before) !== documentContent(doc()))
+        onCommit(before, { label: 'Font', viewBefore, viewAfter: captureView() });
+    },
     showPanel: (kind) => workspacePanels.show(kind),
     clearOverrides: clearTextOverrides,
     fonts: options.fonts,
     parentMode: options.parentMode,
   });
+  publishingControls.prepareLegacyFonts();
   function editParent(id) {
     if (parentEditor || options.parentMode || !options.editing) return;
     endTextEditing();
@@ -3135,6 +3184,23 @@ export function mountCanvasEditor(host, options) {
   });
   return {
     command,
+    refreshFonts() {
+      const choices = fontChoices(
+        options.fonts?.() || [],
+        options.systemFonts?.() || [],
+        readSelectedTextStyle()?.values.textStyle,
+      );
+      for (const select of editor.querySelectorAll('select[data-object-prop="textStyle"]')) {
+        if (document.activeElement === select) continue;
+        const value = select.value;
+        select.innerHTML = choices
+          .map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`)
+          .join('');
+        select.value = value;
+      }
+      syncTextStyle();
+      requestFrame();
+    },
     getPanelLayout: () => workspacePanels.getState(),
     setPanelLayout: (layout) => workspacePanels.restore(layout),
     addFiles,

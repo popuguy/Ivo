@@ -12,6 +12,10 @@ const methods = [
 ];
 contextBridge.exposeInMainWorld('ivoNative', {
   platform: 'macos',
+  fonts: Object.freeze({
+    list: (refresh = false) => ipcRenderer.invoke('ivo:fonts', 'list', refresh),
+    read: (postscript) => ipcRenderer.invoke('ivo:fonts', 'read', postscript),
+  }),
   vaults: Object.freeze(
     Object.fromEntries(
       ['info', 'list', 'open', 'choose', 'create', 'forget', 'manager', 'menu', 'show'].map(

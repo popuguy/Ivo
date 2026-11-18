@@ -47,6 +47,10 @@ export async function initializePlatform({ prepareForSuspend, createPlugin } = {
   });
   globalThis.ivoNative = {
     platform: 'ios',
+    fonts: {
+      list: async () => (await plugin.listFonts()).fonts,
+      read: (postscript) => plugin.readFont({ postscript }),
+    },
     store,
     onPrepareClose: (callback) => {
       prepare = callback;

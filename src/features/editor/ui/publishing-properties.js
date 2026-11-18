@@ -1,3 +1,4 @@
+import { fontChoices } from '../../../domain/text/font-catalog.js';
 import { referencePoint } from '../../../domain/geometry/transform-reference.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
@@ -59,14 +60,8 @@ export function styleProperties(item, doc, state) {
     `<div class="style-kind-tabs" role="group" aria-label="Text style kind">${['paragraph', 'character'].map((value) => `<button data-style-kind="${value}" aria-pressed="${kind === value}">${value === 'paragraph' ? 'Paragraph' : 'Character'} Styles</button>`).join('')}</div><div class="publishing-style-row">${choose(kind + 'Style', item[kind + 'Style'] || 'none', [['none', kind === 'paragraph' ? '[Basic Paragraph]' : '[None]'], ...definitions.map((s) => [s.id, s.name])], kind === 'paragraph' ? 'Paragraph Styles' : 'Character Styles')}${button('new-' + kind + '-style', 'New ' + kind + ' style', 'plus')}${button('edit-' + kind + '-style', 'Edit ' + kind + ' style', 'edit')}</div>${button('clear-overrides', 'Clear overrides in selection')}`,
   );
 }
-export function textProperties(item, fonts) {
-  const fontsList = [
-    ['sans', 'Helvetica Neue'],
-    ['serif', 'Georgia'],
-    ['cmu-serif', 'CMU Serif'],
-    ['display', 'Helvetica Neue Display'],
-    ...fonts.map((a) => [a.id, `${a.font.family} · ${a.font.subfamily}`]),
-  ];
+export function textProperties(item, fonts, installed = []) {
+  const fontsList = fontChoices(fonts, installed, item.textStyle);
   return (
     section(
       'Character',
@@ -94,7 +89,7 @@ export function textProperties(item, fonts) {
           ['he', 'Hebrew'],
         ],
         'Language',
-      )}${button('type-options', 'Open explore more type options')}</details>${field('Text fill', `<input type="color" data-object-prop="textColor" value="${item.textColor || '#252525'}">`)}${button('import-font', 'Add font to vault…')}`,
+      )}${button('type-options', 'Open explore more type options')}</details>${field('Text fill', `<input type="color" data-object-prop="textColor" value="${item.textColor || '#252525'}">`)}${button('import-font', 'Add font to vault…')}${button('refresh-fonts', 'Refresh installed fonts')}`,
     ) +
     section(
       'Paragraph',

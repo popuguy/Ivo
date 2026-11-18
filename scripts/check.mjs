@@ -8,6 +8,7 @@ const runtime = [
   'interaction',
   'text',
   'publishing',
+  'fonts',
   'inline-metrics',
   'browser-storage',
   'pdf',

@@ -11,7 +11,7 @@
     "test": "node --test tests/unit/*.test.js",
     "test:graph": "electron tests/runtime/graph/runner.mjs",
     "build": "node scripts/build.mjs",
-    "desktop": "npm run build && electron .",
+    "desktop": "npm run build && node scripts/build-native-fonts.mjs && electron .",
     "desktop:package": "npm run build && node scripts/package-desktop.mjs",
     "ios:prepare": "npm run build && cap sync ios",
     "ios:open": "cap open ios",
@@ -67,7 +67,9 @@
     "test:inline-metrics": "electron tests/runtime/inline-metrics/runner.mjs",
     "pretest:inline-metrics": "node scripts/reference-art.mjs",
     "test:publishing": "electron tests/runtime/publishing/runner.mjs",
-    "pretest:publishing": "node scripts/reference-art.mjs"
+    "pretest:publishing": "node scripts/reference-art.mjs",
+    "test:fonts": "electron tests/runtime/fonts/runner.mjs",
+    "pretest:fonts": "node scripts/reference-art.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

@@ -11,7 +11,9 @@ public final class IvoAtlasPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "hash", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "finishSuspend", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "finishSuspend", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "listFonts", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "readFont", returnType: CAPPluginReturnPromise)
     ]
     private let queue = DispatchQueue(label: "com.paulcantrell.ivo.atlas", qos: .userInitiated)
     private var atlas: AtlasFiles?
@@ -83,6 +85,25 @@ public final class IvoAtlasPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Invalid native hash request."); return
             }
             call.resolve(["sha256":AtlasFiles.digest(data)])
+        }
+    }
+    @objc func listFonts(_ call: CAPPluginCall) {
+        queue.async {
+            do {
+                let bytes = try JSONEncoder().encode(SystemFonts.list())
+                let values = try JSONSerialization.jsonObject(with: bytes) as? [[String: Any]] ?? []
+                call.resolve(["fonts": values])
+            } catch { call.reject(error.localizedDescription) }
+        }
+    }
+    @objc func readFont(_ call: CAPPluginCall) {
+        queue.async {
+            do {
+                guard let name = call.getString("postscript") else { throw self.invalidCall() }
+                let bytes = try JSONEncoder().encode(SystemFonts.read(name))
+                let value = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] ?? [:]
+                call.resolve(value)
+            } catch { call.reject(error.localizedDescription) }
         }
     }
     private func invalidCall() -> NSError {
