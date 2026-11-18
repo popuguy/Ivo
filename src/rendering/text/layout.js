@@ -1,3 +1,4 @@
+import { composeFrameText } from './frame-composition.js';
 import { textScale } from '../../domain/text/metrics.js';
 export function applyTextLayout(element, block) {
   const scale = textScale(block);
@@ -5,14 +6,29 @@ export function applyTextLayout(element, block) {
   element.style.setProperty('--text-scale-x', scale.x);
   element.style.setProperty('--text-scale-y', scale.y);
   const f = block.frameOptions || {};
-  element.style.padding = `${f.insetTop || 0}px ${f.insetRight || 0}px ${f.insetBottom || 0}px ${f.insetLeft || 0}px`;
+  element.style.padding = `${(f.insetTop || 0) / scale.y}px ${(f.insetRight || 0) / scale.x}px ${(f.insetBottom || 0) / scale.y}px ${(f.insetLeft || 0) / scale.x}px`;
   element.style.boxSizing = 'border-box';
   const columns = !block.textFlowId && (f.columns || 1) > 1;
   element.style.columnCount = columns ? String(f.columns) : '';
   element.style.columnGap = columns ? (f.gutter ?? 12) + 'px' : '';
   element.style.columnFill = columns ? 'auto' : '';
-  element.style.alignContent =
-    f.verticalAlign === 'center' ? 'center' : f.verticalAlign === 'bottom' ? 'end' : 'start';
+  const characterShift = -Number(element.getAttribute('data-ivo-baseline') || 0);
+  element.style.position = characterShift ? 'relative' : '';
+  element.style.top = characterShift ? characterShift + 'px' : '';
+  element.style.height = '';
+  element.style.alignContent = 'start';
+  if (
+    !block.textFlowId &&
+    block.textKind !== 'point' &&
+    (f.firstBaseline || ['center', 'bottom'].includes(f.verticalAlign))
+  ) {
+    const options = { ...f, minimumFirstBaseline: (f.minimumFirstBaseline || 0) / scale.y },
+      available = (block.h - (f.insetTop || 0) - (f.insetBottom || 0)) / scale.y,
+      composition = composeFrameText(element, options, available);
+    element.style.position = 'relative';
+    element.style.top = composition.top * scale.y + characterShift + 'px';
+    element.style.height = `calc(100% / var(--text-scale-y, 1) - ${composition.top}px)`;
+  }
 }
 
 /** Freeze soft wraps before area→point conversion, retaining inline markup and all overflow. */

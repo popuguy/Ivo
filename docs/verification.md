@@ -1,5 +1,17 @@
 # Verification
 
+## Linked selection, native formatting and frame composition — 18 November 2026
+
+The [text-interaction core](text-interaction-core.md), [frame composition](frame-composition.md) and [native command contracts](native-input-contracts.md) record this milestone. Standard checks pass with 222 unit tests. The sequential runtime run passes all 32 groups present when it started; the newly registered native Type-menu group passes separately against the same production command implementation. This is 33 groups across retained logs, not an uninterrupted 33-group run. The first desktop selection launch aborted before window initialization; the scoped desktop run passes without changing global permissions.
+
+Trusted pointer/keyboard tests exercise forward and backward selection across linked pages, source-corresponding highlight ranges, copy/delete/undo, unequal-frame line navigation, structural paragraphs/soft breaks/blank lines, cancellation, final mouse-up position and pending insertion-mark rebasing. The actual Command-I route is tested through deselection, saved archive bytes and a fresh renderer. Native Type items additionally verify partial and whole-frame scopes, stale same-revision ranges, field rejection and one-step undo without double shortcut dispatch. Browser-format normalization and effective underline/strike paint retain source ownership; generated paint/provenance cannot serialize into authored content.
+
+Measured first baselines, insets/text scaling and Top/Center/Bottom placement agree between live input, page output and PDF snapshots. Frozen archive 6 / canvas 5 opens unchanged; authoring the new baseline capability requires archive 7 / canvas 6. New clipboard/version tests preserve that gate. Actual document-link clipboard IPC now awaits the pinned Electron ClipboardItem API; the fixture restores the original OS clipboard. The two-stage native workspace-window suite passes with the current on-page input and actual clipboard shapes, including writer leases, transfers, passive refresh and close/reopen behavior.
+
+Both native checks pass: shared Apple font export/checksums and Swift Foundation/native-vault interoperability. iOS web-asset preparation passes; this is not a full Xcode build or physical iPhone/iPad qualification. The separate Mac package is `release/2026-11-18-text-core/Ivo-darwin-arm64/Ivo.app`. All 185 generated web files match static/iOS/ASAR output, all 112 source files match the package and the unpacked native font helper is byte-identical. Tests, docs and private reference material are excluded.
+
+Evidence is retained under parent `work/indesign-text-core-2026-11-18/`. Only owned synthetic fixtures were used; personal vaults and global settings remain unchanged. The [66-capability programme](indesign/text-parity-programme.md) remains open, including advanced paragraph composition, structures/editorial features and full native/device input. The [composition-authority proposal](decisions/0004-text-composition-authority.md) defines the next native geometry/selectable-PDF experiment; it is not an implemented replacement editor.
+
 Current clipboard/text-style increment: 18 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
 
 ## Object clipboard and shared text typography — 18 November 2026

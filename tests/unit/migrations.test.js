@@ -1,3 +1,4 @@
+import { CURRENT_ARCHIVE_VERSION } from '../../src/domain/documents/capabilities.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -51,7 +52,10 @@ test('ambiguous representations, missing sources and unsupported versions fail b
   const missing = validateImport(fixture);
   delete missing.documents[0].textFlows;
   assert.throws(() => validateImport(missing), /canonical document text/);
-  assert.throws(() => validateImport({ ...fixture, schemaVersion: 7 }), /unsupported schema/);
+  assert.throws(
+    () => validateImport({ ...fixture, schemaVersion: CURRENT_ARCHIVE_VERSION + 1 }),
+    /unsupported schema/,
+  );
   const oldEnvelope = validateImport(fixture);
   oldEnvelope.schemaVersion = 4;
   assert.throws(() => validateImport(oldEnvelope), /schema 5/);

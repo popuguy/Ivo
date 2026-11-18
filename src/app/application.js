@@ -1,3 +1,8 @@
+import {
+  nativeTextMenuState,
+  nativeTextCommand,
+  matchesNativeTextCommand,
+} from '../domain/text/native-commands.js';
 import { createInstalledFontLibrary } from '../features/editor/assets/installed-fonts.js';
 import { prepareVaultFonts } from '../rendering/text/fonts.js';
 import { dialogMarkup, installDialogDismissal } from '../shared/ui/dialog.js';
@@ -2074,8 +2079,22 @@ export function startApplication({ root, dialog }) {
       if (error) toast(error);
     }
   }
-  function runAction(name) {
+  function runAction(name, { textTarget } = {}) {
     if (!windowLease) return Promise.resolve();
+    if (textTarget !== undefined) {
+      const value = { name, textTarget };
+      if (
+        !editing ||
+        view !== 'document' ||
+        dialog.open ||
+        transitions.busy ||
+        titleComposing ||
+        canvasHandle?.getState().composing ||
+        !matchesNativeTextCommand(value, canvasHandle?.textCommandTarget?.())
+      )
+        return Promise.resolve();
+      return Promise.resolve(canvasHandle.command(name)).catch((error) => toast(error.message));
+    }
     // View-only navigation does not enter document busy/history transitions.
     if (name === 'menu' || name.startsWith('sidebar-')) {
       if (transitions.busy || dialog.open || titleComposing || canvasHandle?.getState().composing)
@@ -2545,6 +2564,10 @@ export function startApplication({ root, dialog }) {
         : !!(allowed && timeline?.canRedo),
       undoLabel: nativeField ? '' : allowed ? timeline?.undoLabel || '' : '',
       redoLabel: nativeField ? '' : allowed ? timeline?.redoLabel || '' : '',
+      ...nativeTextMenuState({
+        canFormat: !!allowed,
+        textTarget: allowed ? canvasHandle?.textCommandTarget?.() : null,
+      }),
     });
   }
   for (const name of [
@@ -2554,6 +2577,7 @@ export function startApplication({ root, dialog }) {
     'change',
     'compositionstart',
     'compositionend',
+    'selectionchange',
   ])
     document.addEventListener(name, () => queueMicrotask(updateNativeHistory));
   function routeNativeCommand(name) {
@@ -2561,6 +2585,9 @@ export function startApplication({ root, dialog }) {
       if (name === 'close-tab') return globalThis.ivoNative?.windows?.close?.();
       return;
     }
+    const format = nativeTextCommand(name);
+    if (format) return runAction(format.name, { textTarget: format.textTarget });
+    if (typeof name !== 'string' && !(name?.type === 'open-document')) return;
     const target = document.activeElement,
       field = target?.matches('input,textarea'),
       textCommand = ['undo', 'redo', 'select-all'].includes(name);

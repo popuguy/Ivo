@@ -1,3 +1,6 @@
+import { verifyFlowCaretGeometry } from './flow-geometry.js';
+import { verifyTextDecorations } from './decorations.js';
+import { verifyNativeTextFormatting } from './native-format.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import {
   captureTextSelection,
@@ -18,6 +21,9 @@ const wait = async (predicate) => {
   throw new Error('Timed out waiting for application state');
 };
 try {
+  verifyNativeTextFormatting();
+  await verifyTextDecorations();
+  await verifyFlowCaretGeometry();
   const a = createSceneDocument('A text test'),
     b = createSceneDocument('B text test');
   a.id = 'text-a';

@@ -3848,3 +3848,28 @@ dialog .prompt-instructions {
   text-align: center;
   color: #707070;
 }
+
+/* The retained input remains the keyboard/IME owner while source ranges span pages. */
+.canvas-input-world.flow-range-active {
+  opacity: 0;
+  pointer-events: none;
+}
+.canvas-input-world.flow-range-active .canvas-flow-clip {
+  pointer-events: none;
+}
+::highlight(ivo-flow-selection) {
+  background-color: Highlight;
+  color: HighlightText;
+}
+.canvas-flow-range {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+.canvas-flow-range > div {
+  position: absolute;
+  background: Highlight;
+  opacity: 0.35;
+}

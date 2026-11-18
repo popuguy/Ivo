@@ -1,7 +1,12 @@
 import { migrateArchive } from './migrations.js';
 import { BLOCK_TYPES, ID_PATTERN, LIMITS } from './constants.js';
 import { attribute, decodeEntities } from '../text/html.js';
-import { archiveVersion, markTypographyVersion, hasPublishingFeatures } from './capabilities.js';
+import {
+  archiveVersion,
+  markTypographyVersion,
+  hasPublishingFeatures,
+  hasFrameComposition,
+} from './capabilities.js';
 import {
   CHARACTER_FIELDS,
   PARAGRAPH_FIELDS,
@@ -201,7 +206,7 @@ function typography(input, out, label) {
 export function validateImport(payload) {
   record(payload, 'archive');
   payload = migrateArchive(payload);
-  if (![1, 2, 3, 4, 5, 6].includes(payload.schemaVersion)) fail('unsupported schema version');
+  if (![1, 2, 3, 4, 5, 6, 7].includes(payload.schemaVersion)) fail('unsupported schema version');
   if (!Array.isArray(payload.documents) || payload.documents.length > LIMITS.documents)
     fail(`documents must contain at most ${LIMITS.documents} entries`);
   if (
@@ -262,16 +267,18 @@ export function validateImport(payload) {
     record(doc, label);
     const documentId = id(doc.id, `${label}.id`);
     const paged = doc.canvasVersion !== undefined;
-    if (paged && (![1, 2, 4, 5].includes(doc.canvasVersion) || payload.schemaVersion < 2))
+    if (paged && (![1, 2, 4, 5, 6].includes(doc.canvasVersion) || payload.schemaVersion < 2))
       fail(
         `${label} requires page-scene archive schema 2 or later with a supported canvas version`,
       );
     if (paged && doc.canvasVersion === 4 && payload.schemaVersion < 5)
       fail(`${label} requires text flow archive schema 5`);
-    if ((doc.publishing || doc.canvasVersion === 5) && payload.schemaVersion < 6)
+    if ((doc.publishing || [5, 6].includes(doc.canvasVersion)) && payload.schemaVersion < 6)
       fail(`${label} requires publishing archive schema 6`);
-    if (doc.publishing && doc.canvasVersion !== 5)
+    if (doc.publishing && ![5, 6].includes(doc.canvasVersion))
       fail(`${label} requires publishing canvas version 5`);
+    if (paged && doc.canvasVersion === 6 && payload.schemaVersion < 7)
+      fail(`${label} requires frame-composition archive schema 7`);
     if (paged && doc.canvasVersion === 2 && payload.schemaVersion < 3)
       fail(`${label} requires typography archive schema 3`);
     if (!paged && doc.pages !== undefined) fail(`${label}.pages requires a canvas version`);
@@ -379,7 +386,7 @@ export function validateImport(payload) {
       if (paged) {
         if (!pageIds.has(block.pageId)) fail(`${key}.pageId is unknown`);
         normalized.pageId = block.pageId;
-        if (doc.canvasVersion === 5) {
+        if ([5, 6].includes(doc.canvasVersion)) {
           if (block.layerId !== undefined)
             normalized.layerId = string(block.layerId, `${key}.layerId`, 120);
           if (block.parentOriginId !== undefined)
@@ -421,6 +428,23 @@ export function validateImport(payload) {
               ['top', 'center', 'bottom'],
               'top',
             );
+            if (f.firstBaseline !== undefined || f.minimumFirstBaseline !== undefined) {
+              if (doc.canvasVersion !== 6 || payload.schemaVersion < 7)
+                fail(`${key} first-baseline policies require archive 7 / canvas 6`);
+              normalized.frameOptions.firstBaseline = enumeration(
+                f.firstBaseline,
+                key,
+                ['ascent', 'cap-height', 'x-height', 'leading', 'fixed'],
+                'ascent',
+              );
+              normalized.frameOptions.minimumFirstBaseline = number(
+                f.minimumFirstBaseline,
+                key,
+                0,
+                2000,
+                0,
+              );
+            }
             normalized.frameOptions.fill = string(f.fill, key, 7, 'none');
             normalized.frameOptions.stroke = string(f.stroke, key, 7, 'none');
             for (const name of ['fill', 'stroke'])
@@ -437,7 +461,7 @@ export function validateImport(payload) {
           fail(`${key} requires publishing canvas version 5`);
         if (block.textFlowId !== undefined) {
           if (
-            ![4, 5].includes(doc.canvasVersion) ||
+            ![4, 5, 6].includes(doc.canvasVersion) ||
             typeof block.textFlowId !== 'string' ||
             !ID_PATTERN.test(block.textFlowId) ||
             !['text', 'quote'].includes(block.type) ||
@@ -574,12 +598,12 @@ export function validateImport(payload) {
         totalHtml += parent.blocks.reduce((n, b) => n + (b.html || '').length, 0);
         if (totalHtml > 20000000) fail('total HTML exceeds 20 million characters');
         const parentDoc = validateImport({
-          schemaVersion: 6,
+          schemaVersion: payload.schemaVersion,
           assets,
           documents: [
             {
               id: parentId,
-              canvasVersion: 5,
+              canvasVersion: doc.canvasVersion,
               publishing: { ...normalized.publishing, parents: [] },
               pages: [{ id: parentId + '-page', width, height }],
               blocks: parent.blocks.map((b) => ({ ...b, pageId: parentId + '-page' })),
@@ -663,7 +687,7 @@ export function validateImport(payload) {
     }
     if (doc.textFlows !== undefined) {
       if (
-        ![4, 5].includes(doc.canvasVersion) ||
+        ![4, 5, 6].includes(doc.canvasVersion) ||
         payload.schemaVersion < 5 ||
         !Array.isArray(doc.textFlows) ||
         doc.textFlows.length > 1000
@@ -776,8 +800,13 @@ export function validateImport(payload) {
           const styleId = attribute(tag[0], 'data-ivo-' + attr);
           if (styleId && styleId !== 'none') resolvedTextStyle(normalized, kind, styleId);
         }
-    if (hasPublishingFeatures(doc) && (payload.schemaVersion < 6 || doc.canvasVersion !== 5))
+    if (
+      hasPublishingFeatures(doc) &&
+      (payload.schemaVersion < 6 || ![5, 6].includes(doc.canvasVersion))
+    )
       fail(`${label} requires archive 6 / canvas 5 for publishing features`);
+    if (hasFrameComposition(doc) && (payload.schemaVersion < 7 || doc.canvasVersion !== 6))
+      fail(`${label} requires archive 7 / canvas 6 for frame composition`);
     if (doc.extensions !== undefined)
       normalized.extensions = extensions(doc.extensions, `${label}.extensions`);
     return normalized;

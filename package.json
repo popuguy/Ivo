@@ -71,7 +71,14 @@
     "test:fonts": "electron tests/runtime/fonts/runner.mjs",
     "pretest:fonts": "node scripts/reference-art.mjs",
     "test:clipboard": "electron tests/runtime/clipboard/runner.mjs",
-    "pretest:clipboard": "node scripts/reference-art.mjs"
+    "pretest:clipboard": "node scripts/reference-art.mjs",
+    "test:flow-selection": "electron tests/runtime/flow-selection/runner.mjs",
+    "pretest:flow-selection": "node scripts/reference-art.mjs",
+    "test:frame-composition": "electron tests/runtime/frame-composition/runner.mjs",
+    "pretest:frame-composition": "node scripts/reference-art.mjs",
+    "test:document-clipboard": "npm run build && electron tests/runtime/document-clipboard/runner.mjs",
+    "test:native-text-menu": "npm run build && electron tests/runtime/native-text-menu/runner.mjs",
+    "pretest:native-text-menu": "node scripts/reference-art.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

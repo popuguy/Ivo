@@ -53,7 +53,7 @@ try {
     doc.pages.length > 5 && !plan.status.get(textFlow.id).overset,
     'Automatic continuation did not fit textFlow',
   );
-  assert(plan.fragments.get(frame.id).html.includes('<strong>'), 'Rich type disappeared');
+  assert(/<strong(?:\s|>)/.test(plan.fragments.get(frame.id).html), 'Rich type disappeared');
   validateImport({ schemaVersion: 5, documents: [doc], assets: [] });
   const layoutMs = performance.now() - began,
     pages = doc.pages.length;

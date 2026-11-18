@@ -10,7 +10,14 @@ export function textFlowForFrame(document, frame) {
 }
 /** Threaded text has one style owner. Frame geometry must not revive old character defaults. */
 export function frameTextSettings(document, frame) {
-  return textFlowForFrame(document, frame)?.style || frame;
+  const flow = textFlowForFrame(document, frame);
+  if (flow) return flow.style;
+  const settings = typeof frame === 'string' ? document.blocks.find((b) => b.id === frame) : frame;
+  // Quote is a source-owned default, not a hidden CSS-only character override.
+  // Named styles and explicit textOverrides resolve above this base as usual.
+  return settings?.type === 'quote' && settings.italic === undefined
+    ? { ...settings, italic: true }
+    : settings;
 }
 export function startTextFlow(
   document,
@@ -21,13 +28,14 @@ export function startTextFlow(
   if (!frame || !['text', 'quote'].includes(frame.type)) throw new Error('Choose a text frame.');
   const current = textFlowForFrame(document, frame);
   if (current) return current;
-  const style = Object.fromEntries(
-    STYLE_KEYS.filter((key) => frame[key] !== undefined).map((key) => [key, frame[key]]),
-  );
+  const settings = frameTextSettings(document, frame),
+    style = Object.fromEntries(
+      STYLE_KEYS.filter((key) => settings[key] !== undefined).map((key) => [key, settings[key]]),
+    );
   if (frame.textOverrides) style.textOverrides = structuredClone(frame.textOverrides);
   const textFlow = {
     id: uid('flow-'),
-    html: frame.type === 'quote' ? `<div data-ivo-italic="true">${frame.html}</div>` : frame.html,
+    html: frame.html,
     frameIds: [frame.id],
     style,
     automaticPages,

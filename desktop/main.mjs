@@ -1,3 +1,5 @@
+import { NATIVE_TEXT_COMMANDS, nativeTextMenuState } from '../src/domain/text/native-commands.js';
+import { createDocumentClipboard } from './document-clipboard.mjs';
 import { createSystemFonts } from './system-fonts.mjs';
 import {
   app,
@@ -10,6 +12,7 @@ import {
   Menu,
   screen,
   clipboard,
+  ClipboardItem,
 } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -33,6 +36,7 @@ import {
   navigationMenuItems,
 } from './workspace-windows.mjs';
 import { normalizeWorkspace } from '../src/domain/workspace/state.js';
+const documentClipboard = createDocumentClipboard({ clipboard, ClipboardItem });
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
   systemFonts = createSystemFonts(
     app.isPackaged
@@ -256,23 +260,13 @@ else {
           return true;
         }
         if (action === 'copy-path' && ['relative', 'absolute'].includes(kind)) {
-          clipboard.writeText(kind === 'relative' ? value.relativePath : value.absolutePath);
+          await documentClipboard.copyPath(value, kind);
           return true;
         }
         if (action === 'copy-link') {
           const doc = (await record.vault.loadDocuments()).find((doc) => doc.id === id);
           if (!doc) throw new Error('This document is no longer available.');
-          const title = String(doc.title || 'Untitled'),
-            escape = (value) =>
-              String(value).replace(
-                /[&<>"']/g,
-                (char) =>
-                  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
-              );
-          clipboard.write({
-            text: '[[' + title + ']]',
-            html: `<a data-doc-id="${escape(id)}" href="#doc=${encodeURIComponent(id)}">${escape(title)}</a>`,
-          });
+          await documentClipboard.copyLink(doc);
           return true;
         }
         throw new Error('Invalid document file operation.');
@@ -502,6 +496,7 @@ else {
           redoLabel: state.redoLabel,
           canGoBack: state.canGoBack === true,
           canGoForward: state.canGoForward === true,
+          ...nativeTextMenuState(state),
         };
         if (record === activeRecord() && !record.nativeDialogOpen) applyHistory(record);
       });
@@ -812,7 +807,13 @@ function createWindow(
     installMenu();
     if (entry) {
       registry.setOpen(entry.id, true).catch(() => {});
-      if (record.ready) group.lease.request(record).catch((error) => report(record, error));
+      if (record.ready)
+        group.lease
+          .request(record)
+          .then(() => {
+            if (record === activeRecord() && !record.nativeDialogOpen) applyHistory(record);
+          })
+          .catch((error) => report(record, error));
     }
   });
   window.on('blur', () => closeDragPreview(record));
@@ -1189,6 +1190,19 @@ function sendCommand(name) {
   if (!record.vault && name === 'close-tab') return record.window.close();
   record.window.webContents.send('ivo:command', name);
 }
+function sendTextCommand(name) {
+  const record = activeRecord(),
+    state = nativeTextMenuState(record?.history);
+  if (
+    !record?.vault ||
+    !record.group?.lease.canWrite(record) ||
+    record.nativeDialogOpen ||
+    !state.canFormat ||
+    !NATIVE_TEXT_COMMANDS.includes(name)
+  )
+    return;
+  record.window.webContents.send('ivo:command', { name, textTarget: state.textTarget });
+}
 function applyHistory(record) {
   const menu = Menu.getApplicationMenu(),
     state = record.history || {};
@@ -1202,6 +1216,16 @@ function applyHistory(record) {
       const title = (id === 'undo' ? 'Undo' : 'Redo') + (label ? ' ' + label : '');
       if (item.label !== title) item.label = title;
     }
+  }
+  const text = nativeTextMenuState(state);
+  for (const name of NATIVE_TEXT_COMMANDS) {
+    const item = menu?.getMenuItemById('type-' + name);
+    if (item)
+      item.enabled =
+        !!record.vault &&
+        !!record.group?.lease.canWrite(record) &&
+        !record.nativeDialogOpen &&
+        text.canFormat;
   }
   for (const [id, value] of [
     ['go-back', state.canGoBack],
@@ -1307,6 +1331,16 @@ function installMenu() {
       {
         label: 'Insert',
         submenu: [{ label: 'Document Link…', enabled: hasVault, click: () => sendCommand('link') }],
+      },
+      {
+        label: 'Type',
+        submenu: NATIVE_TEXT_COMMANDS.map((name) => ({
+          id: 'type-' + name,
+          label: name[0].toUpperCase() + name.slice(1),
+          enabled: false,
+          accelerator: 'CmdOrCtrl+' + name[0].toUpperCase(),
+          click: () => sendTextCommand(name),
+        })),
       },
       {
         label: 'Select',

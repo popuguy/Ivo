@@ -1,3 +1,4 @@
+import { caretInterval } from '../../domain/text/flow-selection.js';
 import { cleanHTML } from '../../shared/html/sanitize.js';
 import {
   captureTextSelection,
@@ -63,10 +64,10 @@ export function projectFlowInput(root, start) {
 }
 
 /** Physical columns expose their source intervals as well as their frame geometry. */
-export function inputColumn(fragment, item, offset) {
+export function inputColumn(fragment, item, offset, affinity = 'forward') {
   if (fragment?.columns?.length) {
     return (
-      fragment.columns.find((part) => offset >= part.start && offset < part.end) ||
+      caretInterval({ index: offset, affinity }, fragment.columns) ||
       [...fragment.columns].reverse().find((part) => offset >= part.start) ||
       fragment.columns[0]
     );

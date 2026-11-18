@@ -126,7 +126,22 @@ export function frameProperties(item) {
   const f = item.frameOptions || {};
   return section(
     'Text Frame',
-    `<div class="canvas-geometry">${frameField('Columns', 'columns', f.columns || 1)}${frameField('Gutter · pt', 'gutter', f.gutter ?? 12)}</div><details class="publishing-more"><summary data-tooltip="Text frame options">Options</summary><div class="canvas-geometry">${['Top', 'Right', 'Bottom', 'Left'].map((side) => frameField(side + ' inset · pt', 'inset' + side, f['inset' + side] || 0)).join('')}</div>${field('Vertical justification', `<select data-frame-prop="verticalAlign" aria-label="Vertical justification">${['top', 'center', 'bottom'].map((v) => `<option value="${v}" ${f.verticalAlign === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}</details>`,
+    `<div class="canvas-geometry">${frameField('Columns', 'columns', f.columns || 1)}${frameField('Gutter · pt', 'gutter', f.gutter ?? 12)}</div><details class="publishing-more"><summary data-tooltip="Text frame options">Options</summary><div class="canvas-geometry">${['Top', 'Right', 'Bottom', 'Left'].map((side) => frameField(side + ' inset · pt', 'inset' + side, f['inset' + side] || 0)).join('')}</div>${field('Vertical justification', `<select data-frame-prop="verticalAlign" aria-label="Vertical justification">${['top', 'center', 'bottom'].map((v) => `<option value="${v}" ${f.verticalAlign === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}${field(
+      'First baseline offset',
+      `<select data-frame-prop="firstBaseline" aria-label="First baseline offset">${[
+        ['legacy', 'Automatic'],
+        ['ascent', 'Ascent'],
+        ['cap-height', 'Cap Height'],
+        ['x-height', 'x Height'],
+        ['leading', 'Leading'],
+        ['fixed', 'Fixed'],
+      ]
+        .map(
+          ([v, label]) =>
+            `<option value="${v}" ${(f.firstBaseline || 'legacy') === v ? 'selected' : ''}>${label}</option>`,
+        )
+        .join('')}</select>`,
+    )}${frameField('Minimum first baseline · pt', 'minimumFirstBaseline', f.minimumFirstBaseline || 0)}</details>`,
   );
 }
 export function layersContent(doc, state, selected, editing) {

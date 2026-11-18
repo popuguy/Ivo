@@ -203,3 +203,41 @@ export function textIndexMap(element) {
 export function textIndexAt(map, node, offset) {
   return pointIndex(map, node, offset);
 }
+
+/** Authored paragraphs include their structural marks; BR remains inside its paragraph. */
+export function textParagraphRanges(element) {
+  const map = textPositions(element),
+    ranges = [];
+  const blocks = [...element.querySelectorAll('p,div,li,h1,h2,h3,h4,h5,h6,blockquote')].filter(
+    (node) => !node.querySelector('p,div,li,h1,h2,h3,h4,h5,h6,blockquote'),
+  );
+  for (const node of blocks) {
+    const siblings = [...node.parentNode.childNodes],
+      at = siblings.indexOf(node),
+      parent = map.boundaries.get(node.parentNode),
+      points = map.boundaries.get(node);
+    if (parent && points)
+      ranges.push({
+        start: parent[at],
+        end: parent[at + 1],
+        contentStart: points[0],
+        contentEnd: points.at(-1),
+      });
+  }
+  ranges.sort((a, b) => a.start - b.start);
+  const result = [],
+    end = map.boundaries.get(element).at(-1);
+  let start = 0;
+  for (const range of [...ranges, { start: end, end }]) {
+    if (
+      range.start > start &&
+      map.segments.some(
+        (part) => part.end > start && part.start < range.start && part.node.data.trim(),
+      )
+    )
+      result.push({ start, end: range.start, contentStart: start, contentEnd: range.start });
+    if (range.end > range.start) result.push(range);
+    start = range.end;
+  }
+  return result.length ? result : [{ start: 0, end, contentStart: 0, contentEnd: end }];
+}

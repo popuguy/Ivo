@@ -1,3 +1,5 @@
+import { caretInterval } from '../../domain/text/flow-selection.js';
+import { installFlowSelection } from './text/flow-selection.js';
 import {
   copyObjectSelection,
   readObjectClipboard,
@@ -13,7 +15,10 @@ import { summarizeTextStyle, reflectTextStyle } from '../../rendering/text/selec
 import { clearRangeOverrides } from '../../rendering/text/overrides.js';
 import { editReferenceRect } from '../../domain/geometry/transform-reference.js';
 import { openParentEditor } from './ui/parent-editor.js';
-import { markTypographyVersion } from '../../domain/documents/capabilities.js';
+import {
+  CURRENT_ARCHIVE_VERSION,
+  markTypographyVersion,
+} from '../../domain/documents/capabilities.js';
 import {
   enablePublishing,
   effectiveTextStyle,
@@ -162,7 +167,8 @@ export function mountCanvasEditor(host, options) {
   let flowPlan = { fragments: new Map(), status: new Map() },
     flowSignature = '',
     flowPreviewDirty = true,
-    threadFrom = null;
+    threadFrom = null,
+    sceneRevision = 0;
   const flowRenderCache = new Map();
   let alive = true,
     raf = 0,
@@ -180,7 +186,9 @@ export function mountCanvasEditor(host, options) {
     applyingText = false,
     restoring = false,
     savedTextSelection = null,
-    pendingMarks = {};
+    pendingMarks = {},
+    pendingTextPosition = null,
+    flowSelection;
   const compositionWaiters = [];
   const pointers = new Map();
   let pinch = null,
@@ -283,6 +291,7 @@ export function mountCanvasEditor(host, options) {
     const zoomLabel = host.querySelector('.zoom-value');
     if (zoomLabel.textContent !== label) zoomLabel.textContent = label;
     renderSelection();
+    flowSelection?.sync();
   }
   // Input owns the camera immediately. RAF only coalesces painting to the next display frame.
   function cameraTo(value) {
@@ -403,6 +412,7 @@ export function mountCanvasEditor(host, options) {
     };
   }
   function paint() {
+    sceneRevision++;
     updateFlowPlan();
     setSelectionState(state.selection);
     selectionDirty = true;
@@ -651,7 +661,7 @@ export function mountCanvasEditor(host, options) {
     const item = object();
     if (!item || !['text', 'quote'].includes(item.type)) return null;
     const flow = textFlowForFrame(doc(), item),
-      settings = effectiveTextStyle(doc(), flow?.style || item),
+      settings = effectiveTextStyle(doc(), frameTextSettings(doc(), item)),
       live = activeTextId === item.id ? activeText() : null,
       root = live || document.createElement('div');
     if (!live) root.innerHTML = flow?.html ?? item.html;
@@ -673,7 +683,20 @@ export function mountCanvasEditor(host, options) {
     reflectTextStyle(editor, textSummary);
     publishingControls.refreshTextState();
   }
+  function rebasePendingMarks() {
+    const element = activeText(),
+      current = element && captureTextSelection(element);
+    if (
+      pendingTextPosition !== null &&
+      current &&
+      (current.anchor.index !== current.focus.index || current.focus.index !== pendingTextPosition)
+    ) {
+      pendingMarks = {};
+      pendingTextPosition = null;
+    }
+  }
   function refreshTextControls() {
+    rebasePendingMarks();
     const element = activeText();
     if (element && document.activeElement === element) syncTextStyle();
   }
@@ -761,16 +784,21 @@ export function mountCanvasEditor(host, options) {
   }
   function hideFlowInput() {
     host.querySelector('.canvas-input-world').hidden = true;
+    host.querySelector('.canvas-input-world').classList.remove('flow-range-active');
     for (const preview of world.querySelectorAll('[data-flow-editing]'))
       delete preview.dataset.flowEditing;
   }
-  function positionFlowInput(item, offset) {
+  function positionFlowInput(
+    item,
+    offset,
+    affinity = captureTextSelection(activeText())?.focus.affinity || 'forward',
+  ) {
     if (!item) return;
     const element = host.querySelector('.canvas-flow-input'),
       layer = host.querySelector('.canvas-input-world'),
       clip = layer.querySelector('.canvas-flow-clip'),
       fragment = flowPlan.fragments.get(item.id),
-      column = inputColumn(fragment, item, offset),
+      column = inputColumn(fragment, item, offset, affinity),
       position = objectWorld(item),
       sx = item.textScale?.x || 1,
       sy = item.textScale?.y || 1;
@@ -806,8 +834,17 @@ export function mountCanvasEditor(host, options) {
       textFlow = sourceTextFlow(element);
     if (!textFlow || !element?.classList.contains('canvas-flow-input')) return;
     const offset = sourceCaretIndex();
-    if (offset === null) return;
+    if (offset === null || flowSelection?.dragging || flowSelection?.sync()?.collapsed === false)
+      return;
+    const affinity = captureTextSelection(element)?.focus.affinity || 'forward',
+      owner = caretInterval(
+        { index: offset, affinity },
+        textFlow.frameIds
+          .map((id) => ({ ...flowPlan.fragments.get(id), frameId: id }))
+          .filter((part) => part.start !== undefined),
+      );
     let id =
+      owner?.frameId ||
       textFlow.frameIds.find((id) => {
         const f = flowPlan.fragments.get(id);
         return f && offset >= f.start && offset < f.end;
@@ -817,7 +854,7 @@ export function mountCanvasEditor(host, options) {
         return f && f.end === offset && f.end > f.start;
       }) ||
       textFlow.frameIds[0];
-    positionFlowInput(sceneObject(doc(), id), offset);
+    positionFlowInput(sceneObject(doc(), id), offset, affinity);
     if (id === activeTextId) return;
     activeTextId = id;
     element.dataset.sceneText = id;
@@ -856,7 +893,7 @@ export function mountCanvasEditor(host, options) {
     applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
     applyNamedTextStyles(element, doc());
     delete element.dataset.projectedStart;
-    positionFlowInput(item, index);
+    positionFlowInput(item, index, 'forward');
     element.contentEditable = 'true';
     element.removeAttribute('aria-readonly');
     element.setAttribute('role', 'textbox');
@@ -941,6 +978,7 @@ export function mountCanvasEditor(host, options) {
       textFlow = sourceTextFlow(element);
     if (!item && !textFlow) return;
     writeText(item, element.innerHTML, element);
+    if (!composing) applyNamedTextStyles(element, doc());
     if (textFlow && !composing) {
       refreshFlowPreview();
       followTextFlowCaret();
@@ -990,6 +1028,7 @@ export function mountCanvasEditor(host, options) {
     updateObject(item);
   }
   function endTextEditing() {
+    flowSelection?.cancel();
     const element = activeText();
     if (element && document.activeElement === element) element.blur();
     finishText();
@@ -1003,6 +1042,7 @@ export function mountCanvasEditor(host, options) {
     activeTextId = null;
     savedTextSelection = null;
     pendingMarks = {};
+    flowSelection?.sync();
     selectionDirty = true;
     return true;
   }
@@ -1059,6 +1099,9 @@ export function mountCanvasEditor(host, options) {
     state.inside = sceneObject(doc(), view.inside) ? view.inside : null;
     state.tool = activeTextId ? 'text' : view.tool || 'select';
     pendingMarks = view.pendingMarks || {};
+    pendingTextPosition = Object.keys(pendingMarks).length
+      ? (view.textSelection?.focus.index ?? null)
+      : null;
     savedTextSelection =
       activeTextId && view.textSelection
         ? { id: activeTextId, bookmark: view.textSelection }
@@ -1092,6 +1135,7 @@ export function mountCanvasEditor(host, options) {
     publishingControls.prepareLegacyFonts();
   }
   function deactivate() {
+    flowSelection?.cancel();
     if (composing) return false;
     finishGesture(true);
     finishText();
@@ -1218,6 +1262,7 @@ export function mountCanvasEditor(host, options) {
     }
     if (activeTextId === item.id && CHARACTER_FIELDS[field] && range?.collapsed) {
       pendingMarks[field] = value;
+      pendingTextPosition = bookmarkForRange(element, range)?.focus.index ?? null;
       Object.assign(pendingMarks, faceDefaults);
       syncTextStyle();
       requestFrame();
@@ -2356,7 +2401,11 @@ export function mountCanvasEditor(host, options) {
             );
           resources.set(asset.id, asset);
         }
-        validateImport({ schemaVersion: 6, documents: [planned], assets: [...resources.values()] });
+        validateImport({
+          schemaVersion: CURRENT_ARCHIVE_VERSION,
+          documents: [planned],
+          assets: [...resources.values()],
+        });
         for (const asset of archive.assets)
           if (!existing.some((a) => a.id === asset.id)) await onAsset(asset);
         if (!alive || !ownsInput() || busy || documentContent(doc()) !== before)
@@ -2747,7 +2796,10 @@ export function mountCanvasEditor(host, options) {
     if (!applyingText && !restoring) {
       rememberTextSelection();
       refreshTextControls();
-      if (!composing) followTextFlowCaret();
+      if (!composing) {
+        flowSelection?.sync();
+        followTextFlowCaret();
+      }
     }
   });
   listen(host, 'compositionstart', () => {
@@ -2776,6 +2828,17 @@ export function mountCanvasEditor(host, options) {
       command(event.inputType === 'historyUndo' ? 'undo' : 'redo');
       return;
     }
+    const nativeFormat = {
+      formatBold: 'bold',
+      formatItalic: 'italic',
+      formatUnderline: 'underline',
+    }[event.inputType];
+    if (nativeFormat) {
+      event.preventDefault();
+      void command(nativeFormat);
+      return;
+    }
+    rebasePendingMarks();
     beginTextInput(event.inputType);
     // Native replacement skips display:none content. Reveal the canonical range
     // for the synchronous edit, then project the result during the input event.
@@ -3042,7 +3105,7 @@ export function mountCanvasEditor(host, options) {
     }
     if (activeTextId && event.target.closest('[data-scene-text]') && modifier) {
       const key = event.key.toLowerCase();
-      if (event.shiftKey && ['b', 'i', 'u'].includes(key)) {
+      if (['b', 'i', 'u'].includes(key)) {
         event.preventDefault();
         command({ b: 'bold', i: 'italic', u: 'underline' }[key]);
         return;
@@ -3251,6 +3314,53 @@ export function mountCanvasEditor(host, options) {
     fonts: options.fonts,
     parentMode: options.parentMode,
   });
+  flowSelection = installFlowSelection(viewport, {
+    allowed: (event) =>
+      ownsInput() &&
+      options.editing &&
+      !busy &&
+      !composing &&
+      !dialogOpen() &&
+      (!event || (!space && (state.tool === 'text' || !!sourceTextFlow()))),
+    input: () => (sourceTextFlow() ? activeText() : null),
+    flow: () => sourceTextFlow(),
+    frames: () =>
+      (sourceTextFlow()?.frameIds || []).map((id) => sceneObject(doc(), id)).filter(Boolean),
+    fragment: (id) => flowPlan.fragments.get(id),
+    layoutKey: () => flowSignature + ':' + sceneRevision,
+    preview: (id) => world.querySelector(`[data-flow-frame="${CSS.escape(id)}"]`),
+    activate: (id, event) => {
+      const native = activeText() && captureTextSelection(activeText());
+      if (
+        activeTextId !== id ||
+        !activeText()?.isContentEditable ||
+        (native && native.anchor.index !== native.focus.index)
+      )
+        focusText(id, event);
+    },
+    selection: () => {
+      const element = activeText();
+      return (
+        element &&
+        (captureTextSelection(element) ||
+          (savedTextSelection?.id === activeTextId ? savedTextSelection.bookmark : null))
+      );
+    },
+    onSelection: () => {
+      rememberTextSelection();
+      refreshTextControls();
+      selectionDirty = true;
+      requestFrame();
+    },
+    showRange: (value) => {
+      const layer = host.querySelector('.canvas-input-world');
+      layer.classList.toggle('flow-range-active', value);
+      if (value)
+        for (const node of world.querySelectorAll('[data-flow-editing]'))
+          delete node.dataset.flowEditing;
+    },
+    pan: (x, y) => cameraTo({ ...state.camera, x: state.camera.x + x, y: state.camera.y + y }),
+  });
   publishingControls.prepareLegacyFonts();
   function editParent(id) {
     if (parentEditor || options.parentMode || !options.editing) return;
@@ -3294,6 +3404,35 @@ export function mountCanvasEditor(host, options) {
   });
   return {
     command,
+    textCommandTarget() {
+      const target = document.activeElement,
+        item = object();
+      if (
+        !ownsInput() ||
+        !options.editing ||
+        busy ||
+        composing ||
+        dialogOpen() ||
+        !target ||
+        !viewport.contains(target) ||
+        target.closest('input,textarea,select,button') ||
+        !item ||
+        !['text', 'quote'].includes(item.type)
+      )
+        return null;
+      const flow = textFlowForFrame(doc(), item),
+        view = captureView();
+      return JSON.stringify([
+        doc().id,
+        doc().version,
+        item.id,
+        flow?.id || null,
+        view.textSelection?.anchor.index ?? null,
+        view.textSelection?.focus.index ?? null,
+        view.textSelection?.anchor.affinity || null,
+        view.textSelection?.focus.affinity || null,
+      ]);
+    },
     refreshFonts() {
       const choices = fontChoices(
         options.fonts?.() || [],
@@ -3321,7 +3460,10 @@ export function mountCanvasEditor(host, options) {
     refreshExternal,
     setBusy(value) {
       busy = value;
-      if (value) previews.hide();
+      if (value) {
+        previews.hide();
+        flowSelection.cancel();
+      }
       editor.inert = value;
       editor.classList.toggle('interaction-busy', value);
       if (value) {
@@ -3360,6 +3502,7 @@ export function mountCanvasEditor(host, options) {
       tooltips.destroy();
       publishingControls.destroy();
       contextualBar.destroy();
+      flowSelection.destroy();
       parentEditor?.destroy();
 
       workspacePanels.destroy();

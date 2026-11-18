@@ -1,3 +1,4 @@
+import { applyTextDecorations } from './decorations.js';
 import { resolvedTextStyle } from '../../domain/documents/publishing.js';
 import {
   CHARACTER_FIELDS,
@@ -58,4 +59,5 @@ export function applyNamedTextStyles(root, doc) {
     for (const child of node.children) visit(child, style);
   };
   visit(root, TEXT_DEFAULTS);
+  applyTextDecorations(root, doc);
 }

@@ -44,8 +44,8 @@ export function applySceneTypography(root, doc) {
     );
     if (element) {
       applyFrameTypography(element, effectiveTextStyle(doc, frameTextSettings(doc, item)));
-      applyTextLayout(element, item);
       applyNamedTextStyles(element, doc);
+      applyTextLayout(element, item);
     }
   }
 }

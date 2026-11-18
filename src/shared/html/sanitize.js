@@ -1,3 +1,4 @@
+import { nativeTextAttributes } from '../dom/native-text-format.js';
 import { normalizeInlineMetrics } from '../dom/inline-metrics.js';
 import { resolveDocumentLink } from '../../domain/knowledge/index.js';
 import { validTextAttribute, TEXT_ATTRIBUTE_NAMES } from '../../domain/text/typography.js';
@@ -60,20 +61,35 @@ export function cleanHTML(value) {
     if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
     if (node.nodeType !== Node.ELEMENT_NODE || DROP.has(node.tagName))
       return document.createTextNode('');
-    if (!TAGS.has(node.tagName)) {
+    if (
+      !TAGS.has(node.tagName) ||
+      (node.tagName === 'SPAN' && node.hasAttribute('data-ivo-decoration-run'))
+    ) {
       const frag = document.createDocumentFragment();
       node.childNodes.forEach((c) => frag.append(clean(c)));
       return frag;
     }
     const out = document.createElement(node.tagName.toLowerCase());
-    if (['SPAN', 'P', 'DIV', 'LI', 'H2', 'H3', 'H4', 'BLOCKQUOTE'].includes(node.tagName)) {
-      for (const name of TEXT_ATTRIBUTE_NAMES) {
-        const raw = node.getAttribute('data-ivo-' + name),
-          value = raw === null ? null : validTextAttribute(name, raw);
-        if (value !== null) out.setAttribute('data-ivo-' + name, value);
-      }
-      applyTextAttributes(out);
+    const authored = {};
+    for (const name of TEXT_ATTRIBUTE_NAMES) {
+      const raw = node.getAttribute('data-ivo-' + name),
+        valid = raw === null ? null : validTextAttribute(name, raw);
+      if (valid !== null) authored[name] = valid;
     }
+    // Named-style CSS is a disposable projection, not a native direct override.
+    const native =
+      'pstyle' in authored || 'cstyle' in authored ? {} : nativeTextAttributes(node.style);
+    // Both flags share one generated CSS property. Do not reinterpret that
+    // derived CSS as a newly authored sibling mark on subsequent serialization.
+    if ('underline' in authored || 'strike' in authored) {
+      delete native.underline;
+      delete native.strike;
+    }
+    for (const name of TEXT_ATTRIBUTE_NAMES) {
+      const value = authored[name] ?? native[name];
+      if (value !== undefined) out.setAttribute('data-ivo-' + name, value);
+    }
+    applyTextAttributes(out);
     if (node.tagName === 'A') {
       const target = node.getAttribute('data-doc-id');
       const href = safeURL(node.getAttribute('href'));

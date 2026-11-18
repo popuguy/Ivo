@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 6,
+  "documents": [{
+    "id": "publishing-v6-document",
+    "title": "Frozen publishing frame",
+    "canvasVersion": 5,
+    "pages": [{ "id": "publishing-v6-page", "name": "Page 1", "width": 612, "height": 792 }],
+    "blocks": [{ "id": "publishing-v6-frame", "type": "text", "pageId": "publishing-v6-page", "layerId": "publishing-v6-layer", "x": 40.125, "y": 51.75, "w": 300.5, "h": 220.25, "html": "<p>Keep <em>original typography</em> and layout.</p>", "textStyle": "cmu-serif", "fontSize": 16, "frameOptions": { "columns": 1, "gutter": 12, "insetTop": 8, "insetRight": 10, "insetBottom": 8, "insetLeft": 10, "verticalAlign": "top" } }],
+    "publishing": { "version": 1, "layers": [{ "id": "publishing-v6-layer", "name": "Layer 1", "color": "#4b80ff", "visible": true, "locked": false }], "paragraphStyles": [], "characterStyles": [], "parents": [] },
+    "extensions": { "kept": { "description": "Unrelated source metadata" } }
+  }],
+  "assets": []
+}

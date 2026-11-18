@@ -1,3 +1,4 @@
+import { CURRENT_ARCHIVE_VERSION } from '../../src/domain/documents/capabilities.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { uid, createDocument, createBlock } from '../../src/domain/documents/model.js';
@@ -203,7 +204,10 @@ test('CMU Serif survives document and backup validation', () => {
 });
 
 test('import rejects invalid shapes, layout overflow, nonfinite values and oversized counts', () => {
-  assert.throws(() => validateImport({ schemaVersion: 7, documents: [] }), /schema version/);
+  assert.throws(
+    () => validateImport({ schemaVersion: CURRENT_ARCHIVE_VERSION + 1, documents: [] }),
+    /schema version/,
+  );
   assert.throws(
     () => validateImport({ schemaVersion: 1, documents: new Array(5001).fill({}) }),
     /at most 5000/,

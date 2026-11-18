@@ -1,3 +1,4 @@
+import { composeFrameText, measureFrameText } from './frame-composition.js';
 import { effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { cleanHTML } from '../../shared/html/sanitize.js';
 import { applyFrameTypography } from './format.js';
@@ -30,6 +31,20 @@ function annotatedSource(html) {
       element.parentNode,
       [...element.parentNode.childNodes].indexOf(element),
     );
+    const points = map.boundaries.get(element);
+    if (points && blockTags.has(element.tagName)) {
+      element.dataset.flowBlockStart = points[0];
+      element.dataset.flowBlockEnd = points.at(-1);
+      const at = [...element.parentNode.childNodes].indexOf(element);
+      element.dataset.flowBlockBefore = textIndexAt(map, element.parentNode, at);
+      element.dataset.flowBlockAfter = textIndexAt(map, element.parentNode, at + 1);
+      if (
+        !['OL', 'UL'].includes(element.tagName) &&
+        !element.querySelector('p,div,li,h2,h3,h4,blockquote')
+      )
+        element.dataset.flowParagraph = 'true';
+    }
+    if (element.tagName === 'BR') element.dataset.flowBreak = points?.[0];
     origins.set(id, {
       tag: element.tagName,
       before: Number(element.dataset.flowBefore),
@@ -60,8 +75,15 @@ function lift(node, offset) {
   return { node: node.parentNode, offset: [...node.parentNode.childNodes].indexOf(node) };
 }
 function globalIndex(point, total) {
-  if (point.node.nodeType === Node.TEXT_NODE)
-    return Number(point.node.parentElement.dataset.flowText) + point.offset;
+  if (point.node.nodeType === Node.TEXT_NODE) {
+    const marker = point.node.parentElement.closest('[data-flow-text]');
+    if (marker) {
+      const prefix = document.createRange();
+      prefix.selectNodeContents(marker);
+      prefix.setEnd(point.node, point.offset);
+      return Number(marker.dataset.flowText) + prefix.toString().length;
+    }
+  }
   const next = point.node.childNodes[point.offset];
   return next
     ? Number(next.dataset?.flowBefore ?? next.parentElement?.dataset.flowText ?? total)
@@ -80,10 +102,10 @@ function copyRange(range, start) {
     context = context.parentElement;
   }
   if (start.node.nodeType === Node.TEXT_NODE) {
-    const marker = start.node.parentElement.dataset.flowText,
-      first = fragment.querySelector(`[data-flow-text="${marker}"]`);
+    const marker = start.node.parentElement.closest('[data-flow-text]')?.dataset.flowText,
+      first = marker !== undefined && fragment.querySelector(`[data-flow-text="${marker}"]`);
     if (first) {
-      first.dataset.flowText = Number(marker) + start.offset;
+      first.dataset.flowText = globalIndex(start, 0);
       first.dataset.flowBefore = first.dataset.flowText;
     }
   }
@@ -119,10 +141,17 @@ function splitColumns(probe, width, total, start) {
     verticalOverset = false;
   const column = (rect) => Math.max(0, Math.floor((rect.left - base.left + 0.01) / visualWidth));
   const range = document.createRange();
+  const leaves = [];
   for (const element of probe.querySelectorAll('[data-flow-text],br')) {
-    const node = element.hasAttribute('data-flow-text') ? element.firstChild : element;
-    if (!node) continue;
-    range.selectNodeContents(element);
+    if (!element.hasAttribute('data-flow-text')) leaves.push(element);
+    else {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) leaves.push(node);
+    }
+  }
+  for (const node of leaves) {
+    range.selectNodeContents(node);
     if (node.nodeType !== Node.TEXT_NODE) range.selectNode(node);
     const rects = [...range.getClientRects()].filter((r) => r.height > 0);
     if (rects.some((r) => r.bottom > base.bottom + 0.75 || r.top < base.top - 0.75))
@@ -180,8 +209,10 @@ export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
       const frame = doc.blocks.find((b) => b.id === textFlow.frameIds[index]),
         size = metrics(frame);
       let group = 1;
-      while (index + group < textFlow.frameIds.length) {
-        const next = metrics(doc.blocks.find((b) => b.id === textFlow.frameIds[index + group]));
+      while (!frame.compositionOptions && index + group < textFlow.frameIds.length) {
+        const nextFrame = doc.blocks.find((b) => b.id === textFlow.frameIds[index + group]);
+        if (nextFrame.compositionOptions) break;
+        const next = metrics(nextFrame);
         if (Math.abs(next.w - size.w) > 0.001 || Math.abs(next.h - size.h) > 0.001) break;
         group++;
       }
@@ -209,6 +240,22 @@ export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
         columnCount: 'auto',
         whiteSpace: 'normal',
       });
+      if (frame.compositionOptions) {
+        probe.classList.add('flow-fragment');
+        for (const node of probe.querySelectorAll('[data-flow-origin]')) {
+          const origin = source.origins.get(node.dataset.flowOrigin);
+          if (origin && origin.before < start && blockTags.has(node.tagName))
+            node.dataset.flowContinuation = 'true';
+        }
+        if (frame.compositionOptions.firstBaseline) {
+          const firstLine = composeFrameText(
+            probe,
+            { ...frame.compositionOptions, verticalAlign: 'top' },
+            size.h,
+          );
+          probe.style.height = Math.max(1, size.h - firstLine.baselineShift) + 'px';
+        }
+      }
       const columns = splitColumns(probe, size.w, source.total, start);
       overset ||= columns.verticalOverset;
       if (
@@ -234,10 +281,21 @@ export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
           range = document.createRange();
         range.setStart(a.node, a.offset);
         range.setEnd(b.node, b.offset);
+        const html = displayHTML(copyRange(range, a), source.origins, a.index, b.index);
         fragments.set(textFlow.frameIds[index + i], {
-          html: displayHTML(copyRange(range, a), source.origins, a.index, b.index),
+          html,
           start: a.index,
           end: b.index,
+          ...(frame.compositionOptions
+            ? {
+                composition: composeFrameText(
+                  probe,
+                  frame.compositionOptions,
+                  size.h,
+                  measureFrameText(probe, { html, width: size.w }),
+                ),
+              }
+            : {}),
         });
         used = index + i + 1;
       }
@@ -304,6 +362,12 @@ function layoutFrameColumns(doc, { allowPages }) {
           h: height,
         };
         delete slot.frameOptions;
+        if (f.firstBaseline || ['center', 'bottom'].includes(f.verticalAlign))
+          slot.compositionOptions = {
+            firstBaseline: f.firstBaseline,
+            minimumFirstBaseline: (f.minimumFirstBaseline || 0) / sy,
+            verticalAlign: f.verticalAlign || 'top',
+          };
         values.push({
           id: slot.id,
           left: ((f.insetLeft || 0) + i * (width + gutter)) / sx,
@@ -341,7 +405,16 @@ function layoutFrameColumns(doc, { allowPages }) {
     for (const flow of doc.textFlows || []) {
       let used = 0;
       for (const [index, id] of flow.frameIds.entries()) {
-        const parts = slots.get(id).map((slot) => ({ ...slot, ...result.fragments.get(slot.id) }));
+        const parts = slots.get(id).map((slot) => {
+          const fragment = result.fragments.get(slot.id),
+            composition = fragment.composition;
+          return {
+            ...slot,
+            ...fragment,
+            top: slot.top + (composition?.top || 0),
+            height: composition?.height || slot.height,
+          };
+        });
         if (parts.some((p) => p.end > p.start)) used = index + 1;
         fragments.set(id, {
           start: parts[0].start,

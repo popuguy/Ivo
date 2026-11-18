@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, clipboard, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, clipboard, ClipboardItem, shell } from 'electron';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -33,8 +33,26 @@ dialog.showErrorBox = (title, message) => {
   console.error(title, message);
   app.exit(1);
 };
-clipboard.writeText = (value) => copies.push(value);
-clipboard.write = (value) => links.push(value);
+clipboard.writeText = async (value) => {
+  assert.equal(typeof value, 'string');
+  await Promise.resolve();
+  copies.push(value);
+};
+clipboard.write = async (items) => {
+  assert.ok(
+    Array.isArray(items) && items.length === 1,
+    'Native rich copy requires ClipboardItem[]',
+  );
+  assert.ok(
+    items[0] instanceof ClipboardItem,
+    'Native rich copy must construct a real ClipboardItem',
+  );
+  const [item] = items;
+  assert.deepEqual([...item.types].sort(), ['text/html', 'text/plain']);
+  const text = await (await item.getType('text/plain')).text();
+  const html = await (await item.getType('text/html')).text();
+  links.push({ text, html });
+};
 shell.showItemInFolder = (value) => revealed.push(value);
 shell.openPath = async (value) => {
   opened.push(value);
@@ -104,7 +122,7 @@ const focus = async (window) => {
             state: await execute(item, 'ivoNative.windows.info()'),
             view: await execute(
               item,
-              "({inert:document.querySelector('#app').inert,focus:document.hasFocus(),source:document.querySelector('.canvas-document-source')?.isContentEditable,toast:document.querySelector('#toast')?.textContent})",
+              "({inert:document.querySelector('#app').inert,focus:document.hasFocus(),source:document.querySelector('.canvas-flow-input')?.isContentEditable,toast:document.querySelector('#toast')?.textContent})",
             ),
           })),
         ),
@@ -129,12 +147,12 @@ async function edit(window, text) {
   window.webContents.send('ivo:command', 'document-text');
   await wait(
     async () =>
-      execute(window, "!!document.querySelector('.canvas-document-source[contenteditable=true]')"),
+      execute(window, "!!document.querySelector('.canvas-flow-input[contenteditable=true]')"),
     'Writable textFlow source',
   );
   await execute(
     window,
-    `(()=>{const source=document.querySelector('.canvas-document-source[contenteditable=true]');source.focus();document.execCommand('selectAll');document.execCommand('insertText',false,${JSON.stringify(text)});})()`,
+    `(()=>{const source=document.querySelector('.canvas-flow-input[contenteditable=true]');source.focus();document.execCommand('selectAll');document.execCommand('insertText',false,${JSON.stringify(text)});})()`,
   );
   await wait(
     async () =>

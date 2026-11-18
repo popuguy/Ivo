@@ -1,0 +1,201 @@
+import { app, BrowserWindow, Menu, ipcMain } from 'electron';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { openVault } from '../../../desktop/vault.mjs';
+import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
+import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
+const directory = await mkdtemp(path.join(tmpdir(), 'ivo-native-text-menu-')),
+  vaultPath = path.join(directory, 'Vault');
+process.env.IVO_USER_DATA_DIR = path.join(directory, 'Profile');
+process.env.IVO_ATLAS_DIR = vaultPath;
+app.setPath('userData', process.env.IVO_USER_DATA_DIR);
+const doc = createSceneDocument('Native menu text');
+doc.id = 'native-text-menu-document';
+const frame = insertObject(doc, 'text', doc.pages[0].id, {
+  x: 48,
+  y: 48,
+  w: 480,
+  h: 300,
+  html: '<p>Alpha beta gamma.</p><p>Second regular paragraph.</p>',
+});
+startTextFlow(doc, frame.id, { automaticPages: false });
+const vault = await openVault(vaultPath);
+await vault.saveImport({ schemaVersion: 5, documents: [doc], assets: [] });
+const original = doc.textFlows[0].html;
+let window,
+  state = null,
+  settled = false;
+const pause = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));
+const timer = setTimeout(() => void finish(1, { error: 'Native text menu timeout' }), 45000);
+ipcMain.on('ivo:history-state', (event, value) => {
+  if (event.sender === window?.webContents) state = value;
+});
+async function wait(predicate, label) {
+  for (let i = 0; i < 600; i++) {
+    const result = await predicate();
+    if (result) return result;
+    await pause();
+  }
+  throw new Error(label + ' timed out.');
+}
+async function finish(code, result) {
+  if (settled) return;
+  settled = true;
+  clearTimeout(timer);
+  app.removeAllListeners('window-all-closed');
+  for (const item of BrowserWindow.getAllWindows()) if (!item.isDestroyed()) item.destroy();
+  await rm(directory, { recursive: true, force: true }).catch(() => {});
+  console.log(JSON.stringify(result, null, 2));
+  app.exit(code);
+}
+void (async () => {
+  try {
+    await import('../../../desktop/main.mjs');
+    window = await wait(
+      () =>
+        BrowserWindow.getAllWindows().find(
+          (item) =>
+            !item.isDestroyed() &&
+            item.webContents.getURL().startsWith('ivo://app/index.html') &&
+            !item.webContents.getURL().includes('#vault-manager'),
+        ),
+      'Production window',
+    );
+    const execute = (code) => window.webContents.executeJavaScript(code, true),
+      item = (name) => Menu.getApplicationMenu()?.getMenuItemById('type-' + name),
+      send = (name) => window.webContents.send('ivo:command', name),
+      source = async () => (await execute('ivoNative.store.loadDocuments()'))[0].textFlows[0].html;
+    await wait(() => execute("!!document.querySelector('.workspace-pane')"), 'Workspace');
+    window.show();
+    window.focus();
+    await wait(() => execute('ivoNative.windows.info().then(s=>s.active)'), 'Writer');
+    send('toggle-edit');
+    await wait(() => execute("!!document.querySelector('.scene-editing')"), 'Edit view');
+    await execute(
+      `(()=>{const element=document.querySelector('[data-object="${frame.id}"]'),r=element.getBoundingClientRect();element.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true,detail:2,clientX:r.x+10,clientY:r.y+10}));})()`,
+    );
+    send('document-text');
+    await wait(
+      () => execute("!!document.querySelector('.canvas-flow-input[contenteditable=true]')"),
+      'Live text',
+    );
+    const select = async (word) => {
+      const selection = await execute(
+        `(async()=>{const {captureTextSelection}=await import('ivo://app/src/shared/dom/text-selection.js');const root=document.querySelector('.canvas-flow-input'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const at=node.data.indexOf(${JSON.stringify(word)});if(at<0)continue;root.focus({preventScroll:true});const range=document.createRange();range.setStart(node,at);range.setEnd(node,at+${word.length});window.getSelection().removeAllRanges();window.getSelection().addRange(range);return captureTextSelection(root);}throw new Error('Missing selected word');})()`,
+      );
+      await wait(() => {
+        if (!state?.canFormat || !state.textTarget || !item('italic')?.enabled) return false;
+        const parts = JSON.parse(state.textTarget);
+        return (
+          parts[4] === selection.anchor.index &&
+          parts[5] === selection.focus.index &&
+          parts[6] === selection.anchor.affinity &&
+          parts[7] === selection.focus.affinity
+        );
+      }, 'Enabled text menu');
+    };
+    const style = (word) =>
+      execute(
+        `(()=>{const input=document.querySelector('.canvas-flow-input'),root=input.isContentEditable?input:document.querySelector('[data-flow-frame="${frame.id}"]'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode()))if(node.data.includes(${JSON.stringify(word)})){const s=getComputedStyle(node.parentElement);return {italic:s.fontStyle==='italic',bold:Number(s.fontWeight)>=600,underline:s.textDecorationLine.includes('underline')};}throw new Error('Missing styled word');})()`,
+      );
+    await select('beta');
+    item('italic').click();
+    await wait(async () => (await style('beta')).italic, 'Menu italic');
+    await wait(async () => (await source()).includes('data-ivo-italic="true"'), 'Saved italic');
+    assert.equal((await style('Alpha')).italic, false);
+    assert.equal((await style('gamma')).italic, false);
+    send('undo');
+    await wait(async () => (await source()) === original, 'One-step menu undo');
+    send('redo');
+    await wait(async () => (await style('beta')).italic, 'Menu redo');
+    await wait(async () => (await source()).includes('data-ivo-italic="true"'), 'Saved menu redo');
+    await select('beta');
+    const staleRangeToken = state.textTarget;
+    await select('gamma');
+    const changedToken = state.textTarget;
+    assert.notEqual(changedToken, staleRangeToken);
+    assert.equal(
+      JSON.parse(changedToken)[1],
+      JSON.parse(staleRangeToken)[1],
+      'A pure selection changed the document version',
+    );
+    const beforeStale = await source();
+    window.webContents.send('ivo:command', { name: 'bold', textTarget: staleRangeToken });
+    await pause(100);
+    assert.equal(await source(), beforeStale, 'Stale range changed source');
+    item('bold').click();
+    await wait(async () => (await style('gamma')).bold, 'Current bold menu');
+    assert.equal((await style('beta')).bold, false);
+    await wait(async () => (await source()).includes('data-ivo-bold="true"'), 'Saved range bold');
+    send('undo');
+    await wait(async () => !(await style('gamma')).bold, 'Bold undo');
+    await wait(async () => (await source()) === beforeStale, 'Saved bold undo');
+    for (const selector of ['[data-document-title]', 'input[data-object-prop="fontSize"]']) {
+      const token = state.textTarget,
+        before = await source();
+      await execute(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+      await wait(
+        () => state?.canFormat === false && item('italic')?.enabled === false,
+        'Disabled native field',
+      );
+      window.webContents.send('ivo:command', { name: 'italic', textTarget: token });
+      await pause(100);
+      assert.equal(await source(), before, 'Native field formatted the document');
+    }
+    await select('Alpha');
+    // Trusted Chromium input must not be double-dispatched by both menu and browser formatting.
+    window.webContents.sendInputEvent({
+      type: 'keyDown',
+      keyCode: 'U',
+      modifiers: [process.platform === 'darwin' ? 'meta' : 'control'],
+    });
+    window.webContents.sendInputEvent({
+      type: 'keyUp',
+      keyCode: 'U',
+      modifiers: [process.platform === 'darwin' ? 'meta' : 'control'],
+    });
+    await wait(async () => (await style('Alpha')).underline, 'Native underline shortcut');
+    assert.equal((await style('beta')).underline, false);
+    await wait(
+      async () => (await source()).includes('data-ivo-underline="true"'),
+      'Saved native underline',
+    );
+    send('undo');
+    await wait(async () => !(await style('Alpha')).underline, 'One-step shortcut undo');
+    await wait(async () => (await source()) === beforeStale, 'Saved shortcut undo');
+    send('tool-select');
+    await pause();
+    await execute("document.querySelector('.canvas-viewport').focus()");
+    await wait(
+      () =>
+        state?.canFormat &&
+        item('bold')?.enabled &&
+        JSON.parse(state.textTarget)[4] === null &&
+        JSON.parse(state.textTarget)[5] === null,
+      'Frame target menu',
+    );
+    item('bold').click();
+    await wait(
+      async () => (await style('Alpha')).bold && (await style('Second')).bold,
+      'Whole-frame menu formatting',
+    );
+    await wait(async () => (await source()).includes('data-ivo-bold="true"'), 'Saved frame bold');
+    send('undo');
+    await wait(async () => !(await style('Second')).bold, 'Whole-frame undo');
+    await wait(async () => (await source()) === beforeStale, 'Saved frame undo');
+    await finish(0, {
+      ok: true,
+      actualTypeMenu: true,
+      partialRange: true,
+      oneStepUndoRedo: true,
+      staleTargetRejected: true,
+      titleAndNumericDisabled: true,
+      trustedShortcutNoDoubleDispatch: true,
+      wholeFrameSameCommand: true,
+    });
+  } catch (error) {
+    await finish(1, { error: error.stack });
+  }
+})();

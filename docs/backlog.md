@@ -6,6 +6,8 @@ Status meanings: **Foundation** works in a bounded first implementation; **Next*
 
 **Current priority: implement the expanded text/publishing scope in dependency order.** The [publishing foundation](publishing-foundation.md) adds validated styles, highlighting, frame columns/insets, reusable parent pages, layers, vault fonts and closable/rearrangeable panels, while retaining the existing text-input/viewport model. The full InDesign composer/editorial feature set and exact UI/gesture parity remain open. Word import is deferred; AI features and the Adobe online font service are excluded by the 18 November instruction.
 
+The [text parity programme](indesign/text-parity-programme.md) now accounts for all 66 included capability IDs and their acceptance gates. The current [text-interaction milestone](text-interaction-core.md) delivers linked-frame range selection/painting, Unicode/paragraph navigation, native formatting ownership and the reported Command-I/save/reopen regression coverage. [First-baseline and frame alignment](frame-composition.md) adds real measured placement with an opt-in archive 7 / canvas 6 gate. Paragraph composition, richer structures and editorial tools remain ordered work; visible controls are not treated as completed engines.
+
 Installed font discovery and automatic vault font packaging are delivered for the desktop/shared Apple bridge, with CMU Serif as the new-text default. See [font portability](font-portability.md). Existing note typography is preserved; unsupported/oversized fonts, direct collection-file imports, glyph-fallback capture and physical iPhone/iPad verification remain scoped boundaries.
 
 ## Delivered: object clipboard and shared text-style correction
@@ -64,7 +66,7 @@ Option/Alt-drag now copies one object or the selected roots, including clipping 
 
 ## Continuous document text: delivered foundation
 
-Paul explicitly reiterated InDesign-style text threading for long notes: one mass of text must flow across linked frames and multiple pages. The canonical text flow/linked-frame model, automatic continuation, safe page removal, direct on-page text editing, shared undo and paginated PDF output are now implemented and verified. See [text-flow.md](text-flow.md). Cross-frame selection painting/dragging, complete native keyboard behavior across unequal columns, primary frames and advanced composition remain explicit extensions.
+Paul explicitly reiterated InDesign-style text threading for long notes: one mass of text must flow across linked frames and multiple pages. The canonical text flow/linked-frame model, automatic continuation, safe page removal, direct on-page text editing, shared undo and paginated PDF output are implemented. Cross-frame drag/range painting and measured line navigation now have a tested foundation; see [text-flow.md](text-flow.md). Complete native keyboard/IME/bidi/device behavior, primary frames and advanced composition remain explicit extensions.
 
 ## Page composition, sharing and geometry
 

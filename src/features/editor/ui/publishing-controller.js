@@ -1,6 +1,7 @@
 import { legacyFontFamilies } from '../../../domain/text/font-references.js';
 import {
   enablePublishing,
+  enableFrameComposition,
   layersFor,
   addLayer,
   removeLayer,
@@ -347,7 +348,13 @@ export function installPublishingControls(
         )
           throw new Error('Insets and gutters must leave room for text.');
         mutate(() => {
-          enablePublishing(doc());
+          if (key === 'firstBaseline' || key === 'minimumFirstBaseline') {
+            enableFrameComposition(doc());
+            if (key === 'firstBaseline' && value === 'legacy') {
+              delete candidate.firstBaseline;
+              delete candidate.minimumFirstBaseline;
+            } else candidate.firstBaseline ||= 'ascent';
+          } else enablePublishing(doc());
           objects()[0].frameOptions = candidate;
         }, 'Text frame options');
       }

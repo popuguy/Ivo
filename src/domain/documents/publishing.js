@@ -11,7 +11,7 @@ const baseLayer = () => ({
 export const layersFor = (doc) => doc.publishing?.layers || [baseLayer()];
 /** New capabilities are opt-in on authored mutations; opening an older note does not migrate it. */
 export function enablePublishing(doc) {
-  doc.canvasVersion = 5;
+  doc.canvasVersion = Math.max(doc.canvasVersion || 1, 5);
   if (!doc.publishing) {
     const layer = { ...baseLayer(), id: uid('layer-') };
     doc.publishing = {
@@ -24,6 +24,12 @@ export function enablePublishing(doc) {
     for (const item of doc.blocks) item.layerId = layer.id;
   }
   return doc.publishing;
+}
+/** Author the new composition capability only when an extended frame policy is chosen. */
+export function enableFrameComposition(doc) {
+  const publishing = enablePublishing(doc);
+  doc.canvasVersion = 6;
+  return publishing;
 }
 export function layerFor(doc, item) {
   const layers = layersFor(doc);
@@ -216,6 +222,7 @@ export function commitParentDefinition(doc, id, edited) {
   for (const block of doc.blocks)
     if (!layerIds.has(block.layerId)) block.layerId = next.layers[0].id;
   doc.publishing = next;
+  if (edited.canvasVersion === 6) enableFrameComposition(doc);
 }
 /** Parent art is derived with deterministic instance IDs; it never duplicates text source on the page. */
 export function parentObjects(doc, page) {

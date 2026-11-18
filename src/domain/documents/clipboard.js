@@ -1,3 +1,4 @@
+import { archiveVersion } from './capabilities.js';
 import { uid } from './model.js';
 import { copyDocument } from './copy.js';
 import { descendantsOf, worldRect, pagePositions } from './scene.js';
@@ -83,7 +84,11 @@ export function copyObjectSelection(doc, selection, assets = []) {
   );
   return {
     version: 1,
-    archive: validateImport({ schemaVersion: 6, documents: [fragment], assets: resources }),
+    archive: validateImport({
+      schemaVersion: archiveVersion([fragment], resources),
+      documents: [fragment],
+      assets: resources,
+    }),
   };
 }
 
@@ -176,7 +181,8 @@ export function pasteObjectSelection(
     (next.textFlows ||= []).push(...incoming.textFlows);
     next.canvasVersion = Math.max(next.canvasVersion, 4);
   }
-  if (incoming.canvasVersion === 5) next.canvasVersion = 5;
+  if (incoming.canvasVersion >= 5)
+    next.canvasVersion = Math.max(next.canvasVersion, incoming.canvasVersion);
   Object.assign(doc, next);
   return roots;
 }

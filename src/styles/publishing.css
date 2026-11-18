@@ -652,3 +652,16 @@
 .canvas-contextual-bar {
   flex-wrap: wrap;
 }
+
+/* Decorations belong to effective text runs, so explicit false can cancel a
+   frame/style/semantic ancestor without introducing typography/layout owners. */
+.ivo-decoration-source {
+  text-decoration-line: none !important;
+}
+.ivo-decoration-run[data-ivo-decoration-link] {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.ivo-decoration-run[data-ivo-decoration-link='unresolved'] {
+  text-decoration-style: dashed;
+}
