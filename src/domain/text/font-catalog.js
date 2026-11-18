@@ -36,3 +36,24 @@ export function regularFace(rows, family, bold = false, italic = false) {
       return score(a) - score(b) || a.postscript.localeCompare(b.postscript);
     })[0];
 }
+
+/** Resolve an authored face/companion identically for browser and native composition. */
+export function fontVariantAsset(alias, family, { bold = false, italic = false } = {}) {
+  if (!alias?.font) return null;
+  const variable = alias.font.axes?.some((axis) => axis.tag === 'wght');
+  if (alias.font.italic === italic && (variable || alias.font.weight >= 600 === bold)) return alias;
+  return (
+    family
+      .filter(
+        (asset) =>
+          asset.font.italic === italic &&
+          (asset.font.axes?.some((axis) => axis.tag === 'wght') ||
+            asset.font.weight >= 600 === bold),
+      )
+      .sort(
+        (a, b) =>
+          Math.abs(a.font.weight - (bold ? 700 : 400)) -
+            Math.abs(b.font.weight - (bold ? 700 : 400)) || a.id.localeCompare(b.id),
+      )[0] || null
+  );
+}

@@ -1,0 +1,150 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  PDFDocument,
+  PDFName,
+  PDFArray,
+  PDFRawStream,
+  decodePDFRawStream,
+  StandardFonts,
+  TextRenderingMode,
+  setTextRenderingMode,
+} from 'pdf-lib';
+import { embedComposedTextLayers } from '../../desktop/composed-pdf.mjs';
+
+async function sourcePDF({ blank = false } = {}) {
+  const source = await PDFDocument.create(),
+    page = source.addPage([220, 100]);
+  if (!blank) {
+    const font = await source.embedFont(StandardFonts.Helvetica);
+    page.pushOperators(setTextRenderingMode(TextRenderingMode.Invisible));
+    page.drawText('Invisible native stand-in', { x: 0, y: 75, size: 14, font });
+  }
+  return source.save();
+}
+function pageOperators(page) {
+  const contents = page.node.Contents();
+  const values = contents instanceof PDFArray ? contents.asArray() : [contents];
+  return values
+    .map((ref) => page.doc.context.lookup(ref))
+    .map((stream) =>
+      new TextDecoder().decode(
+        stream instanceof PDFRawStream
+          ? decodePDFRawStream(stream).decode()
+          : stream.getUnencodedContents(),
+      ),
+    )
+    .join('\n');
+}
+
+test('composed PDF layers retain their embedded text resources and explicit affine/clip placement', async () => {
+  const bytes = await sourcePDF(),
+    original = bytes.slice(),
+    destination = await PDFDocument.create();
+  destination.addPage([612, 792]);
+  destination.addPage([400, 400]);
+  const layers = [
+    {
+      bytes,
+      placements: [
+        {
+          sourcePageIndex: 0,
+          destinationPageIndex: 0,
+          matrix: [0, 1.25, -0.75, 0, 350.5, 100.25],
+          clips: [
+            [
+              { x: 10, y: 20 },
+              { x: 580, y: 20 },
+              { x: 580, y: 720 },
+              { x: 10, y: 720 },
+            ],
+          ],
+        },
+        { sourcePageIndex: 0, destinationPageIndex: 1, matrix: [1, 0.2, 0.1, 1, 30, 40] },
+      ],
+    },
+  ];
+  const input = structuredClone(layers),
+    result = await embedComposedTextLayers(destination, layers);
+  assert.deepEqual(result, { layers: 1, placements: 2, drawnPlacements: 2, emptyPlacements: 0 });
+  assert.deepEqual(bytes, original);
+  assert.deepEqual(layers, input);
+  assert.match(pageOperators(destination.getPage(0)), /0 1\.25 -0\.75 0 350\.5 100\.25 cm/);
+  assert.match(pageOperators(destination.getPage(0)), /W\s+n/);
+  const saved = await PDFDocument.load(await destination.save());
+  assert.deepEqual(
+    saved.getPages().map((p) => p.getSize()),
+    [
+      { width: 612, height: 792 },
+      { width: 400, height: 400 },
+    ],
+  );
+  const xobjects = saved.getPage(0).node.Resources().lookup(PDFName.of('XObject'));
+  const form = saved.context.lookup(xobjects.values()[0]);
+  const operators = new TextDecoder().decode(decodePDFRawStream(form).decode());
+  assert.match(operators, /3 Tr/);
+  assert.match(operators, /Tj/);
+  assert.ok(form.dict.lookup(PDFName.of('Resources')).lookup(PDFName.of('Font')).keys().length);
+});
+
+test('invalid composed geometry and missing pages reject before changing destination content', async () => {
+  const bytes = await sourcePDF(),
+    destination = await PDFDocument.create();
+  destination.addPage([612, 792]);
+  const valid = { sourcePageIndex: 0, destinationPageIndex: 0, matrix: [1, 0, 0, 1, 0, 0] };
+  const invalid = [
+    { ...valid, matrix: [1, 0, 0, 1, NaN, 0] },
+    { ...valid, matrix: [0, 0, 0, 0, 0, 0] },
+    { ...valid, matrix: [1, 0, 0, 1] },
+    { ...valid, destinationPageIndex: 1 },
+    { ...valid, sourcePageIndex: 1 },
+    {
+      ...valid,
+      clips: [
+        [
+          { x: 1, y: 1 },
+          { x: 2, y: 2 },
+        ],
+      ],
+    },
+    {
+      ...valid,
+      clips: [
+        [
+          { x: 1, y: 1 },
+          { x: 2, y: 2 },
+          { x: Infinity, y: 3 },
+        ],
+      ],
+    },
+  ];
+  const before = await destination.save({ useObjectStreams: false });
+  for (const placement of invalid) {
+    await assert.rejects(
+      embedComposedTextLayers(destination, [{ bytes, placements: [valid, placement] }]),
+    );
+    assert.deepEqual(await destination.save({ useObjectStreams: false }), before);
+  }
+});
+
+test('blank native source pages add no content, and no requested layers is a no-op', async () => {
+  const destination = await PDFDocument.create();
+  destination.addPage([612, 792]);
+  const before = await destination.save({ useObjectStreams: false });
+  assert.deepEqual(await embedComposedTextLayers(destination, []), {
+    layers: 0,
+    placements: 0,
+    drawnPlacements: 0,
+    emptyPlacements: 0,
+  });
+  assert.deepEqual(await destination.save({ useObjectStreams: false }), before);
+  const result = await embedComposedTextLayers(destination, [
+    {
+      bytes: await sourcePDF({ blank: true }),
+      placements: [{ sourcePageIndex: 0, destinationPageIndex: 0, matrix: [1, 0, 0, 1, 20, 30] }],
+    },
+  ]);
+  assert.equal(result.emptyPlacements, 1);
+  assert.equal(result.drawnPlacements, 0);
+  assert.deepEqual(await destination.save({ useObjectStreams: false }), before);
+});

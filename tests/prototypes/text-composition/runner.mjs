@@ -60,6 +60,7 @@ await run(
     '-O',
     '-module-cache-path',
     path.join(out, 'module-cache'),
+    path.join(root, 'src/platform/apple/TextComposition.swift'),
     path.join(here, 'CoreTextProof.swift'),
     '-o',
     binary,

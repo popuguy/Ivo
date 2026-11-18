@@ -30,7 +30,7 @@ export default [
     },
   },
   {
-    files: ['src/**/*.js', 'tests/runtime/**/*.js', 'tests/prototypes/**/*.js'],
+    files: ['src/**/*.js', 'tests/runtime/**/*.js', 'tests/prototypes/**/*.js', 'tools/**/*.js'],
     languageOptions: { globals: globals.browser },
   },
   {

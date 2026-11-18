@@ -1,4 +1,4 @@
-import { regularFace } from '../../domain/text/font-catalog.js';
+import { regularFace, fontVariantAsset } from '../../domain/text/font-catalog.js';
 const loaded = new Map();
 let generation = 0;
 /** Preserve an explicitly chosen face (e.g. Medium/Semibold), with real companion styles. */
@@ -6,22 +6,7 @@ function registrations(alias, family) {
   const result = new Map();
   for (const italic of [false, true])
     for (const bold of [false, true]) {
-      const variable = alias.font.axes.find((axis) => axis.tag === 'wght');
-      const selected =
-        alias.font.italic === italic && (variable || alias.font.weight >= 600 === bold);
-      const asset = selected
-        ? alias
-        : family
-            .filter(
-              (a) =>
-                a.font.italic === italic &&
-                (a.font.axes.some((axis) => axis.tag === 'wght') || a.font.weight >= 600 === bold),
-            )
-            .sort(
-              (a, b) =>
-                Math.abs(a.font.weight - (bold ? 700 : 400)) -
-                Math.abs(b.font.weight - (bold ? 700 : 400)),
-            )[0];
+      const asset = fontVariantAsset(alias, family, { bold, italic });
       if (!asset) continue;
       const weight = asset.font.axes.find((axis) => axis.tag === 'wght');
       const descriptor = weight ? `${weight.min} ${weight.max}` : bold ? '700' : '400';

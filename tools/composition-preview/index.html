@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ivo — Text composition</title>
+  </head>
+  <body>
+    <header>
+      <strong>Text composition</strong><span class="offline-badge">Self-contained preview</span>
+    </header>
+    <div class="preview-workspace">
+      <aside>
+        <h1>Paragraph layout</h1>
+        <p>Compare line-by-line wrapping with a decision made across the whole paragraph.</p>
+        <label>Frame width<select id="width"></select></label>
+        <label
+          >View size<input id="zoom" type="range" min="75" max="250" step="5" value="160" /><output
+            id="zoom-value"
+            >160%</output
+          ></label
+        >
+        <label class="check"><input id="show-lines" type="checkbox" /> Show line boundaries</label>
+        <label class="check"
+          ><input id="show-carets" type="checkbox" /> Show insertion positions</label
+        >
+        <button id="reset">Reset view</button>
+        <div class="hint">
+          Hover or click a letter to inspect its source text. Try a narrow frame to see earlier
+          breaks change.
+        </div>
+        <div id="selection" role="status" aria-live="polite">Select a letter on either page.</div>
+        <details>
+          <summary>About this preview</summary>
+          <p>
+            The pages show saved native layouts from Ivo’s composition engine using bundled CMU
+            Serif. Changing width selects another measured layout. Glyph outlines stay sharp at
+            every view size.
+          </p>
+          <p>
+            This file contains its scripts, interface font and layout data. It needs no local server
+            or internet connection.
+          </p>
+        </details>
+      </aside>
+      <main>
+        <div class="comparison">
+          <section>
+            <h2>Single-line</h2>
+            <div class="paper" id="single-line"></div>
+            <p class="caption" id="single-caption"></p>
+          </section>
+          <section>
+            <h2>Paragraph</h2>
+            <div class="paper" id="paragraph"></div>
+            <p class="caption" id="paragraph-caption"></p>
+          </section>
+        </div>
+        <noscript>This preview needs JavaScript enabled.</noscript>
+        <p id="error" role="alert" hidden></p>
+      </main>
+    </div>
+    <script type="application/json" id="preview-data">
+      __IVO_PREVIEW_DATA__
+    </script>
+  </body>
+</html>
