@@ -52,7 +52,7 @@ async function inspect(url) {
     await poll(window, "!!document.querySelector('.scene-editor')");
     assert(
       await window.webContents.executeJavaScript(
-        "!!document.querySelector('.canvas-document-text') && !/story/i.test(document.querySelector('.scene-editor').textContent)",
+        "!!document.querySelector('.canvas-flow-input') && !document.querySelector('.canvas-document-text') && !/story/i.test(document.querySelector('.scene-editor').textContent)",
       ),
       'Obsolete product terminology in built editor',
     );

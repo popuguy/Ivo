@@ -20,10 +20,6 @@ export function dockWidth(value, width) {
     Math.max(0, Math.min(480, width - 224)),
   );
 }
-export function textFlowHeight(value, height) {
-  return clamp(finite(value, height * 0.32), Math.min(120, height / 2), Math.max(0, height - 150));
-}
-
 /** Retained context groups. Only their containers move; the document's input DOM never does. */
 export function installWorkspacePanels(
   editor,
@@ -40,7 +36,6 @@ export function installWorkspacePanels(
 ) {
   const original = editor.querySelector('.canvas-properties'),
     template = original.cloneNode(true),
-    source = editor.querySelector('.canvas-document-text'),
     dock = document.createElement('aside'),
     groups = new Map(),
     panels = new Map(),
@@ -84,13 +79,6 @@ export function installWorkspacePanels(
     menu = null,
     selectedGroup = saved.groups[0].id;
   const size = () => ({ w: editor.clientWidth, h: editor.clientHeight });
-  const divider = document.createElement('div');
-  divider.className = 'workspace-document-divider';
-  divider.tabIndex = 0;
-  divider.setAttribute('role', 'separator');
-  divider.setAttribute('aria-orientation', 'horizontal');
-  divider.setAttribute('aria-label', 'Resize document text');
-  source.prepend(divider);
   const drop = document.createElement('div');
   drop.className = 'workspace-dock-target';
   drop.hidden = true;
@@ -173,13 +161,6 @@ export function installWorkspacePanels(
       if (dock.children[at] !== element) dock.insertBefore(element, dock.children[at] || null);
       at++;
     }
-    const height = textFlowHeight(saved.textFlow ?? bounds.h * 0.32, bounds.h);
-    source.style.flexBasis = height + 'px';
-    source.style.minHeight = '0';
-    source.style.maxHeight = 'none';
-    divider.setAttribute('aria-valuemin', '0');
-    divider.setAttribute('aria-valuemax', String(Math.round(bounds.h)));
-    divider.setAttribute('aria-valuenow', String(Math.round(height)));
   }
   function store() {
     const first = saved.groups[0];
@@ -248,16 +229,14 @@ export function installWorkspacePanels(
       box = element?.getBoundingClientRect(),
       before = structuredClone(saved),
       target = event.target.closest(
-        '.canvas-panel-microbar,.workspace-panel-resize,[data-canvas-panel],.workspace-document-divider',
+        '.canvas-panel-microbar,.workspace-panel-resize,[data-canvas-panel]',
       );
     selectedGroup = group?.id || selectedGroup;
-    if (kind === 'resize' || kind === 'textFlow') {
+    if (kind === 'resize') {
       target.dataset.pointerFocus = '';
       target.focus({ preventScroll: true });
     }
-    for (const control of editor.querySelectorAll(
-      '.workspace-panel-resize,.workspace-document-divider',
-    ))
+    for (const control of editor.querySelectorAll('.workspace-panel-resize'))
       if (document.activeElement === control) control.dataset.pointerFocus = '';
     gesture = {
       kind,
@@ -299,8 +278,7 @@ export function installWorkspacePanels(
             value.id === event.target.closest('[data-context-group]')?.dataset.contextGroup,
         ),
         tab = event.target.closest('[data-canvas-panel]');
-      if (event.target === divider) begin(event, 'textFlow');
-      else if (group && tab) begin(event, 'tab', group, tab.dataset.canvasPanel);
+      if (group && tab) begin(event, 'tab', group, tab.dataset.canvasPanel);
       else if (group && event.target.closest('.workspace-panel-resize'))
         begin(event, 'resize', group);
       else if (
@@ -361,7 +339,7 @@ export function installWorkspacePanels(
         if (group.floating)
           group.rect = panelBounds({ ...g.rect, w: g.rect.w + dx, h: g.rect.h + dy }, bounds);
         else saved.dock = dockWidth(g.before.dock - dx, bounds.w);
-      } else saved.textFlow = textFlowHeight((g.before.textFlow ?? bounds.h * 0.32) - dy, bounds.h);
+      }
       apply();
       if (g.kind === 'move') {
         try {
@@ -419,8 +397,7 @@ export function installWorkspacePanels(
     closeMenu();
   });
   listen(editor, 'focusout', (event) => {
-    if (event.target.matches('.workspace-panel-resize,.workspace-document-divider'))
-      delete event.target.dataset.pointerFocus;
+    if (event.target.matches('.workspace-panel-resize')) delete event.target.dataset.pointerFocus;
   });
   function floating() {
     if (!allowed()) return;
@@ -716,7 +693,7 @@ export function installWorkspacePanels(
       );
       return;
     }
-    if ((!resize && event.target !== divider) || !event.key.startsWith('Arrow')) return;
+    if (!resize || !event.key.startsWith('Arrow')) return;
     event.preventDefault();
     event.stopPropagation();
     delete event.target.dataset.pointerFocus;
@@ -725,9 +702,7 @@ export function installWorkspacePanels(
       dx = event.key === 'ArrowLeft' ? -amount : event.key === 'ArrowRight' ? amount : 0,
       dy = event.key === 'ArrowUp' ? -amount : event.key === 'ArrowDown' ? amount : 0,
       bounds = size();
-    if (event.target === divider)
-      saved.textFlow = textFlowHeight((saved.textFlow ?? bounds.h * 0.32) - dy, bounds.h);
-    else {
+    {
       const group = saved.groups.find(
         (value) => value.id === resize.closest('[data-context-group]').dataset.contextGroup,
       );
@@ -775,7 +750,6 @@ export function installWorkspacePanels(
       closeMenu();
       controller.abort();
       observer.disconnect();
-      divider.remove();
       drop.remove();
       dock.remove();
       for (const element of groups.values()) element.remove();

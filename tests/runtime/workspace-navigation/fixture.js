@@ -75,7 +75,7 @@ globalThis.ivoNative = {
 };
 const panes = () => [...document.querySelectorAll('[data-workspace-group]')],
   active = () => document.querySelector('.workspace-pane.active'),
-  source = () => active().querySelector('.canvas-document-source'),
+  source = () => active().querySelector('.canvas-flow-input'),
   title = () => active()?.querySelector('[data-document-title]')?.value,
   zoom = () => active().querySelector('.zoom-value').textContent;
 function key(target, key, extra = {}) {
@@ -100,7 +100,7 @@ function pointer(type, target, x, y, extra = {}) {
 }
 function activate(pane) {
   const el =
-    pane.querySelector('.canvas-document-source') || pane.querySelector('.canvas-viewport') || pane;
+    pane.querySelector('.canvas-flow-input') || pane.querySelector('.canvas-viewport') || pane;
   const r = el.getBoundingClientRect();
   pointer('pointerdown', el, r.x + 14, r.y + 14);
   pointer('pointerup', el, r.x + 14, r.y + 14);
@@ -121,7 +121,7 @@ try {
     assert(panes().length === 3, 'Split layout did not reopen');
     assert(title() === 'Beta', 'Active pane/document did not reopen');
     assert(
-      active().querySelector('.canvas-document-source')?.isContentEditable,
+      active().querySelector('.canvas-flow-input')?.isContentEditable,
       'Active textFlow editor did not reopen',
     );
     assert(source().textContent === 'Beta edited in its pane.', 'Reopened source differs');
@@ -230,12 +230,12 @@ try {
     );
     assert(
       first.querySelector('.canvas-world') === firstWorld &&
-        first.querySelector('.canvas-document-source') === firstSource,
+        first.querySelector('.canvas-flow-input') === firstSource,
       'Splitting replaced neighboring source DOM',
     );
     assert(
       !firstSource.isContentEditable &&
-        document.querySelectorAll('.canvas-document-source[contenteditable=true]').length === 1,
+        document.querySelectorAll('.canvas-flow-input[contenteditable=true]').length === 1,
       'Two panes retained live text write ownership',
     );
     assert(
@@ -283,7 +283,7 @@ try {
     await wait(() => title() === 'Beta');
     assert(
       first.querySelector('.canvas-world') === firstWorld &&
-        first.querySelector('.canvas-document-source') === firstSource,
+        first.querySelector('.canvas-flow-input') === firstSource,
       'Navigating the right pane rebuilt its neighbor',
     );
     await command('toggle-edit');

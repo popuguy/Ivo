@@ -144,7 +144,7 @@ globalThis.ivoNative = {
 };
 const active = () => document.querySelector('.workspace-pane.active'),
   title = () => active()?.querySelector('[data-document-title]')?.value,
-  source = () => active()?.querySelector('.canvas-document-source'),
+  source = () => active()?.querySelector('.canvas-flow-input'),
   panes = () => [...document.querySelectorAll('[data-workspace-group]')],
   tabs = () => [...document.querySelectorAll('#app [data-tab-id]')],
   row = (id) => document.querySelector(`#document-list [data-open="${id}"]`),

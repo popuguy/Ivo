@@ -47,7 +47,7 @@ try {
   await tick();
   await editor.command('document-text');
   const shell = host.querySelector('.scene-editor'),
-    source = host.querySelector('.canvas-document-source'),
+    source = host.querySelector('.canvas-flow-input'),
     world = host.querySelector('.canvas-world'),
     panel = host.querySelector('.canvas-properties');
   let selection = window.getSelection();
@@ -74,15 +74,12 @@ try {
         ...extra,
       }),
     );
-  for (const el of host.querySelectorAll(
-    '.canvas-panel-microbar,.workspace-panel-resize,.workspace-document-divider',
-  )) {
+  for (const el of host.querySelectorAll('.canvas-panel-microbar,.workspace-panel-resize')) {
     el.setPointerCapture = () => {};
     el.releasePointerCapture = () => {};
   }
   const resize = host.querySelector('.workspace-panel-resize'),
     grip = host.querySelector('.canvas-panel-microbar'),
-    divider = host.querySelector('.workspace-document-divider'),
     initialPanelWidth = panel.getBoundingClientRect().width;
   pointer(resize, 'pointerdown', panel.getBoundingClientRect().x, 200);
   pointer(resize, 'pointermove', panel.getBoundingClientRect().x - 60, 200);
@@ -114,7 +111,7 @@ try {
     'Pointer resize inherited the preceding keyboard focus ring',
   );
   assert(
-    host.querySelector('.canvas-document-source') === source &&
+    host.querySelector('.canvas-flow-input') === source &&
       host.querySelector('.canvas-world') === world &&
       selection.toString() === 'Paragraph',
     'Resizing panel replaced text/camera DOM or selection',
@@ -146,28 +143,9 @@ try {
   assert(!host.querySelector('.workspace-dock-target').hidden, 'Dock drop target did not appear');
   pointer(grip, 'pointerup', shell.getBoundingClientRect().right - 2, 100);
   assert(!shell.classList.contains('panel-floating'), 'Right-edge drop did not dock panel');
-  const oldHeight = host.querySelector('.canvas-document-text').getBoundingClientRect().height;
-  pointer(divider, 'pointerdown', 500, 600);
-  pointer(divider, 'pointermove', 500, 550);
-  pointer(divider, 'pointerup', 500, 550);
-  await tick();
   assert(
-    host.querySelector('.canvas-document-text').getBoundingClientRect().height > oldHeight + 40,
-    'TextFlow divider did not resize',
-  );
-  assert(
-    source === host.querySelector('.canvas-document-source') &&
-      selection.toString() === 'Paragraph',
-    'TextFlow divider lost source selection',
-  );
-  assert(
-    getComputedStyle(divider).outlineStyle === 'none',
-    'TextFlow divider retained a pointer focus highlight',
-  );
-  await keyboard('textFlow');
-  assert(
-    getComputedStyle(divider).outlineStyle === 'solid',
-    'TextFlow divider keyboard focus is no longer visible',
+    !host.querySelector('.canvas-document-text,.workspace-document-divider'),
+    'Retired bottom text pane is still mounted',
   );
   const tabs = [...host.querySelectorAll('[data-canvas-panel]')];
   tabs[0].focus();
@@ -207,7 +185,7 @@ try {
         floatAndMove: true,
         dockDrop: true,
         cancel: true,
-        textFlowDivider: true,
+        onPageInput: true,
         sourceAndSelectionRetained: true,
         keyboardTabs: true,
         viewOnly: true,

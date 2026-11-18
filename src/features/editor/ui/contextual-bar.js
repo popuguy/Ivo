@@ -2,11 +2,21 @@ import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
 import { effectiveTextStyle } from '../../../domain/documents/publishing.js';
 import { textFlowForFrame } from '../../../domain/documents/text-flows.js';
+import { reflectTextStyle } from '../../../rendering/text/selection-style.js';
 /** Retained, draggable contextual controls. Moving the bar never changes a document or its camera. */
 export function createContextualBar(
   editor,
   viewport,
-  { doc, state, objects, editing, textEditing = () => false, fonts = () => [], allowed },
+  {
+    doc,
+    state,
+    objects,
+    editing,
+    textEditing = () => false,
+    textState = () => null,
+    fonts = () => [],
+    allowed,
+  },
 ) {
   const bar = document.createElement('aside');
   bar.className = 'canvas-contextual-bar';
@@ -89,7 +99,9 @@ export function createContextualBar(
     }
     bar.hidden = false;
     const item = selected[0],
-      settings = effectiveTextStyle(doc(), textFlowForFrame(doc(), item)?.style || item),
+      summary = textState(),
+      settings =
+        summary?.values || effectiveTextStyle(doc(), textFlowForFrame(doc(), item)?.style || item),
       next = JSON.stringify([
         item.id,
         state.tool,
@@ -98,6 +110,7 @@ export function createContextualBar(
         settings.fontSize,
         settings.textColor,
         settings.align,
+        summary?.mixed,
         fonts().map((a) => a.id),
       ]);
     if (token !== next && !bar.contains(document.activeElement)) {
@@ -109,6 +122,7 @@ export function createContextualBar(
         ['display', 'Display'],
         ...fonts().map((a) => [a.id, a.font.family + ' ' + a.font.subfamily]),
       ];
+      delete bar.dataset.reflected;
       bar.innerHTML = `<button data-bar-grip aria-label="Move contextual bar" data-tooltip="Drag contextual bar">${icon('menu')}</button><select data-object-prop="textStyle" aria-label="Contextual font family">${choices.map(([id, name]) => `<option value="${id}" ${settings.textStyle === id ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select><button data-canvas-command="bold" aria-label="Bold" data-tooltip="Bold">${icon('bold')}</button><button data-canvas-command="italic" aria-label="Italic" data-tooltip="Italic">${icon('italic')}</button><input type="number" step="any" min="1" max="2000" data-object-prop="fontSize" aria-label="Contextual point size" value="${settings.fontSize || 16}"><span>pt</span><input type="color" data-object-prop="textColor" aria-label="Contextual text fill" value="${settings.textColor || '#252525'}"><select data-object-prop="align" aria-label="Contextual paragraph alignment">${[
         ['left', 'Left'],
         ['center', 'Center'],
@@ -121,7 +135,12 @@ export function createContextualBar(
         )
         .join(
           '',
-        )}</select><button data-canvas-command="type-options" aria-label="Explore more type options" data-tooltip="Explore more type options">${icon('text')}</button><button data-canvas-command="highlight-options" aria-label="Text highlight" data-tooltip="Text highlight">${icon('highlighter')}</button><button data-close-contextual aria-label="Hide contextual bar" data-tooltip="Hide contextual bar">${icon('close')}</button>`;
+        )}</select><button data-canvas-command="type-options" aria-label="Explore more type options" data-tooltip="Explore more type options">${icon('opentype')}</button><button data-canvas-command="highlight-options" aria-label="Text highlight" data-tooltip="Text highlight">${icon('highlighter')}</button><button data-close-contextual aria-label="Hide contextual bar" data-tooltip="Hide contextual bar">${icon('close')}</button>`;
+    }
+    const reflected = JSON.stringify(summary);
+    if (bar.dataset.reflected !== reflected) {
+      reflectTextStyle(bar, summary);
+      bar.dataset.reflected = reflected;
     }
     const offset = state.contextBarOffset || { x: 0, y: 0 },
       selection = lastRect;

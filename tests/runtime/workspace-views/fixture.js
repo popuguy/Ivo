@@ -177,7 +177,7 @@ try {
   );
   // Context groups keep editor and source nodes alive across independent floating and regrouping.
   const owner = view(first.id),
-    source = owner.querySelector('.canvas-document-source'),
+    source = owner.querySelector('.canvas-flow-input'),
     world = owner.querySelector('.canvas-world'),
     pages = owner.querySelector('[data-canvas-panel="pages"]');
   await panelMenu(pages, 'detach');
@@ -186,7 +186,7 @@ try {
   assert(float.dataset.floating === 'true', 'Detached panel did not float');
   assert(
     owner.querySelector('.canvas-world') === world &&
-      owner.querySelector('.canvas-document-source') === source,
+      owner.querySelector('.canvas-flow-input') === source,
     'Panel grouping replaced document DOM',
   );
   const main = owner
@@ -306,10 +306,10 @@ try {
   await tick();
   await nativeCommand('document-text');
   await wait(
-    () => view(first.id).querySelector('.canvas-document-source')?.isContentEditable,
+    () => view(first.id).querySelector('.canvas-flow-input')?.isContentEditable,
     'Stacked text editing',
   );
-  const editable = view(first.id).querySelector('.canvas-document-source');
+  const editable = view(first.id).querySelector('.canvas-flow-input');
   editable.focus();
   editable.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
   betaNode.querySelector('.canvas-viewport').dispatchEvent(
@@ -387,7 +387,7 @@ try {
   assert(
     document.querySelector('.workspace-pane.active') ===
       destination.closest('[data-workspace-group]') &&
-      view(first.id).querySelector('.canvas-document-source') === editable,
+      view(first.id).querySelector('.canvas-flow-input') === editable,
     'Moved link activated or replaced the previous group',
   );
   if (new URL(location.href).searchParams.has('capture')) {

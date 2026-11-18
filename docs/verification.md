@@ -2,6 +2,16 @@
 
 Current publishing increment: 18 November 2026. All automated data uses isolated profiles/vaults. Personal notes and global permission settings are not test fixtures.
 
+## On-page text and properties corrections — 18 November 2026
+
+The bottom continuous-text pane and its divider are removed. Linked text is edited in its physical page/column using one retained canonical input. Standard checks pass with 181 unit tests. Across the retained logs, 22 targeted desktop groups pass: editor, scene, viewport, render, interaction, text, publishing, inline-metrics, PDF, templates, text-flows, workspace, daily-use, duplication, previews, navigation, tabs, shell, window-refresh, workspace-features, workspace-views and build. The previously recorded native-window observation limits below were not rerun or declared resolved.
+
+New regressions verify actual and mixed source fonts in frame/range controls, whole-frame source formatting, checked feature paint after control focus, preserved word selection, font-table applicability, edge-clamped popup placement, combined inherited OpenType features, canonical-source/selection retention through projection, on-page continuation bounds and copy across page frames. The existing 123→12→250→12 size regression passes for independent and linked frames. Source and generated pages undo together; IME completion retains its canonical owner. Navigation verifies passive split-view text refresh, paste ownership and shared history.
+
+A separate browser preview with synthetic text was exercised using actual pointer clicks: double-clicking a word on page 2 entered that frame, Small Caps updated the selected word and remained checked, the popup retained its selection, and Fit Page repositioned the same editing surface. This caught a focus-dependent checkbox failure missed by the earlier programmatic fixture; the corrected focused-control regression now passes. Evidence and logs remain in parent `work/text-parity-2026-11-18/`. No personal note was opened or changed for verification.
+
+The review package is `release/2026-11-18-text-parity/Ivo-darwin-arm64/Ivo.app`. All 173 generated web files are byte-identical across the static build, desktop package and synchronized iOS assets; this is not physical iPhone/iPad input or native Xcode verification. The source format remains unchanged. Cross-frame selection painting/dragging and complete native keyboard/composition equivalence remain explicitly open in text-flow.md and the publishing backlog.
+
 ## Publishing foundation — 18 November 2026
 
 The [publishing foundation](publishing-foundation.md) records implemented scope and remaining parity work. Standard checks cover 179 unit tests, formatting/lint, acyclic imports/architecture boundaries and static/standalone builds. The expanded publishing fixture verifies eight frame handles, independent in/out ports, type-options pointer ownership, named-style/direct-override ownership through threading, authored highlight removal, columns/insets, layers/locking, actual closed-panel visibility, isolated parent editing and shared-layer reconciliation, archive round-trips and remounting. Frozen archive 5 remains readable without implicit upgrading; new publishing capabilities use archive 6 / canvas 5.

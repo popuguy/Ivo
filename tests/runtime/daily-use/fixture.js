@@ -83,7 +83,7 @@ try {
   title.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
   );
-  await wait(() => document.activeElement?.classList.contains('canvas-document-source'));
+  await wait(() => document.activeElement?.classList.contains('canvas-flow-input'));
   const source = document.activeElement;
   document.execCommand('insertText', false, 'Notes typed directly after naming.');
   await close();
@@ -144,9 +144,9 @@ try {
   );
   document.querySelector(`[data-tab-id="${selectedTab}"]`).click();
   await wait(() => document.querySelector('[data-document-title]')?.value === 'Daily fitting');
-  await wait(() => document.querySelector('.canvas-document-source[contenteditable=true]'));
+  await wait(() => document.querySelector('.canvas-flow-input[contenteditable=true]'));
   assert(
-    document.querySelector('.canvas-document-source').textContent ===
+    document.querySelector('.canvas-flow-input').textContent ===
       'Notes typed directly after naming.',
     'Tab return lost source or editing ownership',
   );
@@ -192,8 +192,8 @@ try {
   );
   document.querySelector(`[data-tab-id="${selectedTab}"]`).click();
   await wait(() => document.querySelector('[data-document-title]')?.value === 'Daily fitting');
-  await wait(() => document.querySelector('.canvas-document-source[contenteditable=true]'));
-  const retainedSource = document.querySelector('.canvas-document-source'),
+  await wait(() => document.querySelector('.canvas-flow-input[contenteditable=true]'));
+  const retainedSource = document.querySelector('.canvas-flow-input'),
     retainedText = retainedSource.firstChild;
   retainedSource.focus();
   window.getSelection().setBaseAndExtent(retainedText, 0, retainedText, 5);
@@ -249,7 +249,7 @@ try {
     'Pointer tab reorder did not complete',
   );
   assert(
-    retainedSource === document.querySelector('.canvas-document-source') &&
+    retainedSource === document.querySelector('.canvas-flow-input') &&
       window.getSelection().toString() === 'Notes' &&
       document.querySelector('.zoom-value').textContent === savedZoom,
     'Tab reorder replaced source, selection or camera',

@@ -346,10 +346,11 @@ function layoutFrameColumns(doc, { allowPages }) {
         fragments.set(id, {
           start: parts[0].start,
           end: parts.at(-1).end,
+          columns: parts.map((part, index) => ({ ...part, index })),
           html: parts
             .map(
               (p) =>
-                `<div class="flow-column" style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;overflow:hidden">${p.html}</div>`,
+                `<div class="flow-column" data-flow-column="${p.id}" style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;overflow:hidden">${p.html}</div>`,
             )
             .join(''),
         });

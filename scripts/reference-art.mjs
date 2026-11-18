@@ -34,6 +34,7 @@ export async function prepareReferenceArt({
   }
   // Workspace tab Close follows Obsidian even when other controls prefer Illustrator.
   icons['tab-close'] = icons.close;
+  icons.opentype = icons.text;
   const native = await optionalJSON(path.join(privateRoot, 'ui-icon-sources/manifest.json'));
   for (const [name, item] of Object.entries(native?.icons || {})) {
     const bytes = await fs.readFile(item.file);

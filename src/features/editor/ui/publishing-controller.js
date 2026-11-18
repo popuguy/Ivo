@@ -14,7 +14,7 @@ import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../../../domain/text/typogra
 import { prepareFont } from '../assets/font-import.js';
 import { dialogMarkup, installDialogDismissal } from '../../../shared/ui/dialog.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
-import { icon } from '../../../shared/ui/icons.js';
+import { createOpenTypePopover } from './opentype-popover.js';
 
 /** Nonmodal publishing controls. Document edits use the same transaction/history owner as canvas edits. */
 export function installPublishingControls(
@@ -36,6 +36,7 @@ export function installPublishingControls(
     clearOverrides,
     fonts = () => [],
     parentMode = false,
+    textState,
   },
 ) {
   const controller = new AbortController(),
@@ -58,7 +59,7 @@ export function installPublishingControls(
     fontWork = Promise.resolve(),
     fontPending = 0;
   function closePopover() {
-    popover?.remove();
+    popover?.destroy();
     popover = null;
   }
   function run(action) {
@@ -148,50 +149,32 @@ export function installPublishingControls(
       },
     );
   }
-  function openType() {
+  function openType(anchor) {
     closePopover();
-    popover = document.createElement('section');
-    popover.className = 'type-options-popover';
-    popover.setAttribute('aria-label', 'Explore more type options');
-    const item = objects()[0],
-      flow = doc().textFlows?.find((f) => f.id === item?.textFlowId),
-      settings = flow?.style || item || {};
-    popover.innerHTML = `<header><strong>OpenType</strong><button data-close-type aria-label="Close type options">${icon('close')}</button></header>${[
-      ['ligatures', 'Standard ligatures'],
-      ['discretionaryLigatures', 'Discretionary ligatures'],
-      ['smallCaps', 'Small capitals'],
-      ['oldstyleFigures', 'Oldstyle figures'],
-      ['tabularFigures', 'Tabular figures'],
-      ['slashedZero', 'Slashed zero'],
-      ['fractions', 'Fractions'],
-      ['ordinals', 'Ordinals'],
-      ['stylisticAlternates', 'Stylistic alternates'],
-    ]
-      .map(
-        ([key, label]) =>
-          `<label><input type="checkbox" data-type-feature="${key}" ${settings[key] || (key === 'ligatures' && settings[key] !== false) ? 'checked' : ''}>${label}</label>`,
-      )
-      .join('')}<p>Available glyph substitutions depend on the selected font.</p>`;
-    const font = fonts().find((a) => a.id === settings.textStyle)?.font;
-    if (font?.axes.length) {
-      const values = Object.fromEntries(
-        (settings.fontVariations === 'normal' ? '' : settings.fontVariations || '')
-          .split(',')
-          .filter(Boolean)
-          .map((e) => e.split(':')),
-      );
-      const axes = document.createElement('fieldset');
-      axes.innerHTML =
-        '<legend>Variable font axes</legend>' +
-        font.axes
-          .map(
-            (axis) =>
-              `<label>${esc(axis.tag)}<input type="range" min="${axis.min}" max="${axis.max}" step="any" value="${values[axis.tag] ?? axis.default}" data-variation-axis="${axis.tag}" aria-label="${esc(axis.tag)} axis"></label>`,
-          )
-          .join('');
-      popover.append(axes);
-    }
-    editor.append(popover);
+    if (!textState()) return;
+    const trigger =
+      anchor ||
+      editor.querySelector('.canvas-type-options') ||
+      editor.querySelector('.canvas-contextual-bar [data-canvas-command="type-options"]');
+    if (!trigger) return;
+    popover = createOpenTypePopover(editor, {
+      anchor: trigger,
+      textState,
+      fonts,
+      preserveRange,
+      previewText: () => {
+        const selected = window.getSelection();
+        if (selected?.rangeCount && editor.contains(selected.anchorNode) && selected.toString())
+          return selected.toString();
+        const item = objects()[0],
+          flow = doc().textFlows?.find((f) => f.id === item?.textFlowId),
+          root = document.createElement('div');
+        root.innerHTML = flow?.html ?? item?.html ?? '';
+        return root.textContent;
+      },
+      apply: (field, value) => run(() => applyTextProperty(field, value)),
+      onClose: closePopover,
+    });
   }
   listen(editor, 'pointerdown', (event) => {
     if (event.target.closest('[data-highlight-color],[data-type-feature]')) {
@@ -202,8 +185,9 @@ export function installPublishingControls(
   listen(window, 'pointerdown', (event) => {
     if (
       popover &&
-      !popover.contains(event.target) &&
-      !event.target.closest('[data-canvas-command="type-options"]')
+      !popover.element.contains(event.target) &&
+      event.target.closest('[data-canvas-command="type-options"]')?.closest('.scene-editor') !==
+        editor
     )
       closePopover();
   });
@@ -222,10 +206,6 @@ export function installPublishingControls(
   listen(editor, 'click', (event) => {
     const t = event.target.closest('button');
     if (!t) return;
-    if (t.hasAttribute('data-close-type')) {
-      closePopover();
-      return;
-    }
     if (t.dataset.styleKind) {
       state.styleKind = t.dataset.styleKind;
       render();
@@ -306,17 +286,6 @@ export function installPublishingControls(
   listen(editor, 'change', (event) =>
     run(() => {
       const t = event.target;
-      if (t.dataset.variationAxis) {
-        const axes = [...popover.querySelectorAll('[data-variation-axis]')]
-          .map((input) => input.dataset.variationAxis + ':' + Number(input.value))
-          .join(',');
-        applyTextProperty('fontVariations', axes);
-        return;
-      }
-      if (t.dataset.typeFeature) {
-        applyTextProperty(t.dataset.typeFeature, t.checked);
-        return;
-      }
       if (t.dataset.frameProp && objects().length === 1) {
         const key = t.dataset.frameProp,
           value = t.type === 'number' ? Number(t.value) : t.value;
@@ -403,7 +372,10 @@ export function installPublishingControls(
     get pending() {
       return fontPending > 0;
     },
-    command(name) {
+    refreshTextState() {
+      popover?.refresh();
+    },
+    command(name, { anchor } = {}) {
       if (name.startsWith('show-panel-')) {
         const kind = name.slice(11);
         if (['properties', 'pages', 'layers', 'links'].includes(kind)) {
@@ -428,7 +400,7 @@ export function installPublishingControls(
       }
       if (!allowed()) return false;
       if (name === 'type-options') {
-        openType();
+        openType(anchor);
         return true;
       }
       if (name === 'import-font') {

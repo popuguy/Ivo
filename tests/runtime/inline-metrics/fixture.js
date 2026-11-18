@@ -152,7 +152,7 @@ try {
     editor.restoreView({ selection: [frame.id], activeTextId: frame.id, tool: 'text' });
     await tick();
     const element = flow
-        ? host.querySelector('.canvas-document-source')
+        ? host.querySelector('.canvas-flow-input')
         : host.querySelector('[data-scene-text="' + frame.id + '"]'),
       text = element.textContent;
     selectAll(element);
@@ -179,7 +179,7 @@ try {
       assert(element.textContent === text, 'Repeated formatting changed characters');
       assert(
         (flow
-          ? host.querySelector('.canvas-document-source')
+          ? host.querySelector('.canvas-flow-input')
           : host.querySelector('[data-scene-text="' + frame.id + '"]')) === element,
         'Repeated formatting replaced live editor',
       );
@@ -219,12 +219,12 @@ try {
         editor.restoreView(result.view);
         await tick();
         const restored = flow
-          ? host.querySelector('.canvas-document-source')
+          ? host.querySelector('.canvas-flow-input')
           : host.querySelector('[data-scene-text="' + frame.id + '"]');
         assert(restored?.textContent === text, 'Formatting history lost source/caret ownership');
       }
     const restored = flow
-      ? host.querySelector('.canvas-document-source')
+      ? host.querySelector('.canvas-flow-input')
       : host.querySelector('[data-scene-text="' + frame.id + '"]');
     assert(
       restored.querySelector('p').getBoundingClientRect().height < 35,

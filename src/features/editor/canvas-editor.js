@@ -1,4 +1,6 @@
+import { flowInputHTML, projectFlowInput, inputColumn } from '../../rendering/text/flow-input.js';
 import { createContextualBar } from './ui/contextual-bar.js';
+import { summarizeTextStyle, reflectTextStyle } from '../../rendering/text/selection-style.js';
 import { clearRangeOverrides } from '../../rendering/text/overrides.js';
 import { editReferenceRect } from '../../domain/geometry/transform-reference.js';
 import { openParentEditor } from './ui/parent-editor.js';
@@ -175,6 +177,7 @@ export function mountCanvasEditor(host, options) {
     selectionMembers = [],
     touchBeforeIds = [];
   let parentEditor = null;
+  let textSummary = null;
   const ownsInput = () => options.isActive?.() !== false && !parentEditor;
   const doc = () => getDocument();
   const objects = () => selectionRoots(doc(), state.selection);
@@ -194,7 +197,7 @@ export function mountCanvasEditor(host, options) {
     .map(([name, label]) => control('tool-' + name, label, name))
     .join(
       '',
-    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div><section class="canvas-document-text" hidden><header><span>Document text</span>${control('close-document-text', 'Close document text', 'close')}</header><div class="canvas-document-scroll"><div class="rich-text canvas-document-source"></div></div></section><footer class="canvas-status"><span class="canvas-tool-status"></span><label class="canvas-snap"><input type="checkbox" data-canvas-snap checked>Snap</label><button class="canvas-panel-toggle" data-canvas-command="toggle-properties" aria-label="Toggle properties">Properties</button><div class="canvas-zoom">${control('zoom-out', 'Zoom out', 'minus')}<button data-canvas-command="zoom-100" class="zoom-value" title="Actual size">100%</button>${control('zoom-in', 'Zoom in', 'plus')}${control('fit-page', 'Fit page', 'fit')}${control('fit-all', 'Fit all pages', 'fit')}</div></footer></div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
+    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-input-world" hidden><div class="canvas-flow-clip"><div class="rich-text canvas-text canvas-flow-input"></div></div></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div><footer class="canvas-status"><span class="canvas-tool-status"></span><label class="canvas-snap"><input type="checkbox" data-canvas-snap checked>Snap</label><button class="canvas-panel-toggle" data-canvas-command="toggle-properties" aria-label="Toggle properties">Properties</button><div class="canvas-zoom">${control('zoom-out', 'Zoom out', 'minus')}<button data-canvas-command="zoom-100" class="zoom-value" title="Actual size">100%</button>${control('zoom-in', 'Zoom in', 'plus')}${control('fit-page', 'Fit page', 'fit')}${control('fit-all', 'Fit all pages', 'fit')}</div></footer></div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
   const editor = host.firstElementChild,
     viewport = host.querySelector('.canvas-viewport'),
     world = host.querySelector('.canvas-world'),
@@ -261,6 +264,7 @@ export function mountCanvasEditor(host, options) {
     raf = 0;
     if (!alive) return;
     applyPageCamera(world, state.camera);
+    applyPageCamera(host.querySelector('.canvas-input-world'), state.camera);
     const label = (state.camera.zoom * 100).toFixed(2) + '%';
     const zoomLabel = host.querySelector('.zoom-value');
     if (zoomLabel.textContent !== label) zoomLabel.textContent = label;
@@ -425,7 +429,7 @@ export function mountCanvasEditor(host, options) {
     }
     const text = element.querySelector(':scope > .canvas-text');
     if (text) {
-      applyFrameTypography(text, item);
+      applyFrameTypography(text, effectiveTextStyle(doc(), item));
       applyTextLayout(text, item);
     }
     for (const child of childrenOf(doc(), item.id)) updateObject(child);
@@ -512,13 +516,15 @@ export function mountCanvasEditor(host, options) {
       ) {
         const textFlow = textFlowForFrame(doc(), item),
           index = textFlow?.frameIds.indexOf(item.id) ?? 0;
-        const more = document.createElement('button');
-        more.className = 'canvas-type-options';
-        more.dataset.canvasCommand = 'type-options';
-        more.setAttribute('aria-label', 'Open explore more type options');
-        more.dataset.tooltip = 'Open explore more type options';
-        more.innerHTML = svg('text');
-        selectionFrame.append(more);
+        if (!textFlow) {
+          const more = document.createElement('button');
+          more.className = 'canvas-type-options';
+          more.dataset.canvasCommand = 'type-options';
+          more.setAttribute('aria-label', 'Open explore more type options');
+          more.dataset.tooltip = 'Open explore more type options';
+          more.innerHTML = svg('opentype');
+          selectionFrame.append(more);
+        }
         for (const direction of ['previous', 'next']) {
           const port = document.createElement('button');
           port.className = 'canvas-flow-port ' + direction;
@@ -605,6 +611,7 @@ export function mountCanvasEditor(host, options) {
     }
   }
   function renderPanel() {
+    textSummary = readSelectedTextStyle();
     workspacePanels.select(state.panel);
     const selectedObjects = objects(),
       index = options.index?.();
@@ -621,67 +628,39 @@ export function mountCanvasEditor(host, options) {
         index,
         flowStatus: flowPlan.status,
         fonts: options.fonts?.() || [],
+        textSummary,
       });
+    reflectTextStyle(editor, textSummary);
+  }
+  function readSelectedTextStyle() {
+    const item = object();
+    if (!item || !['text', 'quote'].includes(item.type)) return null;
+    const flow = textFlowForFrame(doc(), item),
+      settings = effectiveTextStyle(doc(), flow?.style || item),
+      live = activeTextId === item.id ? activeText() : null,
+      root = live || document.createElement('div');
+    if (!live) root.innerHTML = flow?.html ?? item.html;
+    const fragment = !live && flow && flowPlan.fragments.get(item.id),
+      point = (index, affinity) => ({ path: [], offset: 0, index, kind: 'text', affinity }),
+      frameRange =
+        fragment &&
+        rangeFromBookmark(root, {
+          anchor: point(fragment.start, 'forward'),
+          focus: point(fragment.end, 'backward'),
+        });
+    return summarizeTextStyle(root, doc(), settings, {
+      range: live ? preserveRange() : frameRange || null,
+      pending: live ? pendingMarks : {},
+    });
+  }
+  function syncTextStyle() {
+    textSummary = readSelectedTextStyle();
+    reflectTextStyle(editor, textSummary);
+    publishingControls.refreshTextState();
   }
   function refreshTextControls() {
     const element = activeText();
-    if (!element || document.activeElement !== element) return;
-    const range = preserveRange();
-    if (!range) return;
-    const node =
-        range.startContainer.nodeType === Node.ELEMENT_NODE
-          ? range.startContainer
-          : range.startContainer.parentElement,
-      style = getComputedStyle(node),
-      fontSize = parseFloat(style.fontSize) || 16;
-    const declared = node.closest('[data-ivo-font]')?.getAttribute('data-ivo-font'),
-      font =
-        declared ||
-        (style.fontFamily.includes('ivo-font-')
-          ? style.fontFamily.match(/font-[a-f0-9]{64}/)?.[0]
-          : style.fontFamily.includes('CMU Serif')
-            ? 'cmu-serif'
-            : style.fontFamily.includes('Georgia')
-              ? 'serif'
-              : object()?.textStyle === 'display'
-                ? 'display'
-                : 'sans');
-    const color = style.color
-      .match(/\d+/g)
-      ?.slice(0, 3)
-      .map((n) => Number(n).toString(16).padStart(2, '0'))
-      .join('');
-    const leadingNode = node.closest('[data-ivo-leading]'),
-      declaredLeading =
-        leadingNode && element.contains(leadingNode)
-          ? Number(leadingNode.getAttribute('data-ivo-leading'))
-          : (sourceTextFlow(element)?.style || object())?.leading;
-    const values = {
-      fontSize,
-      textStyle: font,
-      // Automatic leading is a setting, not the current computed pixel distance.
-      leading: declaredLeading === 0 ? 0 : parseFloat(style.lineHeight) || 0,
-      tracking:
-        style.letterSpacing === 'normal'
-          ? 0
-          : ((parseFloat(style.letterSpacing) || 0) / fontSize) * 1000,
-      textColor: color ? '#' + color : '#252525',
-      align: style.textAlign,
-      ...pendingMarks,
-    };
-    for (const [key, attr] of Object.entries({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS })) {
-      const owner = node.closest('[data-ivo-' + attr + ']');
-      if (owner && element.contains(owner) && !(key in values))
-        values[key] = owner.getAttribute('data-ivo-' + attr);
-    }
-    for (const [key, value] of Object.entries(values)) {
-      for (const input of editor.querySelectorAll(`[data-object-prop="${key}"]`)) {
-        if (input && document.activeElement !== input) {
-          if (input.type === 'checkbox') input.checked = value === true || value === 'true';
-          else input.value = typeof value === 'number' ? Number(value.toFixed(4)) : value;
-        }
-      }
-    }
+    if (element && document.activeElement === element) syncTextStyle();
   }
 
   function updateFlowPlan() {
@@ -754,19 +733,63 @@ export function mountCanvasEditor(host, options) {
   function sourceCaretIndex() {
     const element = activeText(),
       selection = window.getSelection();
-    return element && selection.rangeCount && element.contains(selection.focusNode)
-      ? textIndexAt(textIndexMap(element), selection.focusNode, selection.focusOffset)
-      : null;
+    if (!element || !selection.rangeCount || !element.contains(selection.focusNode)) return null;
+    // Keep a cross-frame range anchored in its first physical column. Hiding its
+    // selected prefix makes Chromium collapse the native range during reflow.
+    const range = selection.getRangeAt(0);
+    return textIndexAt(textIndexMap(element), range.startContainer, range.startOffset);
   }
   function sourceTextFlow(element = activeText()) {
     return element?.dataset.textFlow
       ? doc().textFlows?.find((textFlow) => textFlow.id === element.dataset.textFlow)
       : null;
   }
+  function hideFlowInput() {
+    host.querySelector('.canvas-input-world').hidden = true;
+    for (const preview of world.querySelectorAll('[data-flow-editing]'))
+      delete preview.dataset.flowEditing;
+  }
+  function positionFlowInput(item, offset) {
+    if (!item) return;
+    const element = host.querySelector('.canvas-flow-input'),
+      layer = host.querySelector('.canvas-input-world'),
+      clip = layer.querySelector('.canvas-flow-clip'),
+      fragment = flowPlan.fragments.get(item.id),
+      column = inputColumn(fragment, item, offset),
+      position = objectWorld(item),
+      sx = item.textScale?.x || 1,
+      sy = item.textScale?.y || 1;
+    for (const preview of world.querySelectorAll('[data-flow-editing]'))
+      delete preview.dataset.flowEditing;
+    const preview = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`),
+      physical = preview?.querySelectorAll('.flow-column')[column.index || 0] || preview;
+    if (physical) physical.dataset.flowEditing = '';
+    Object.assign(clip.style, {
+      left: position.x + column.left * sx + 'px',
+      top: position.y + column.top * sy + 'px',
+      width: column.width * sx + 'px',
+      height: column.height * sy + 'px',
+      transform: `rotate(${item.rotation || 0}deg)`,
+      transformOrigin: `${item.w / 2 - column.left * sx}px ${item.h / 2 - column.top * sy}px`,
+    });
+    Object.assign(element.style, {
+      width: column.width + 'px',
+      height: column.height + 'px',
+      columnWidth: column.width + 'px',
+      columnGap: '0px',
+      columnFill: 'auto',
+      columnCount: 'auto',
+      transform: `scale(${sx},${sy})`,
+    });
+    projectFlowInput(element, column.start);
+    // Native selection scrolling must not move the input independently of its page.
+    element.scrollTop = element.scrollLeft = clip.scrollTop = clip.scrollLeft = 0;
+    applyPageCamera(layer, state.camera);
+  }
   function followTextFlowCaret() {
     const element = activeText(),
       textFlow = sourceTextFlow(element);
-    if (!textFlow || !element?.classList.contains('canvas-document-source')) return;
+    if (!textFlow || !element?.classList.contains('canvas-flow-input')) return;
     const offset = sourceCaretIndex();
     if (offset === null) return;
     let id =
@@ -779,6 +802,7 @@ export function mountCanvasEditor(host, options) {
         return f && f.end === offset && f.end > f.start;
       }) ||
       textFlow.frameIds[0];
+    positionFlowInput(sceneObject(doc(), id), offset);
     if (id === activeTextId) return;
     activeTextId = id;
     element.dataset.sceneText = id;
@@ -806,25 +830,28 @@ export function mountCanvasEditor(host, options) {
           Number(marker.dataset.flowText) +
           (caret.startContainer.nodeType === Node.TEXT_NODE ? caret.startOffset : 0);
     }
-    const pane = host.querySelector('.canvas-document-text'),
-      element = pane.querySelector('.canvas-document-source');
+    const pane = host.querySelector('.canvas-input-world'),
+      element = pane.querySelector('.canvas-flow-input');
     pane.hidden = false;
-    if (element.dataset.textFlow !== textFlow.id || cleanHTML(element.innerHTML) !== textFlow.html)
+    if (element.dataset.textFlow !== textFlow.id || flowInputHTML(element) !== textFlow.html)
       element.innerHTML = cleanHTML(textFlow.html);
     element.dataset.textFlow = textFlow.id;
     element.dataset.sceneText = item.id;
     element.dataset.textKind = 'area';
     applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
     applyNamedTextStyles(element, doc());
+    delete element.dataset.projectedStart;
+    positionFlowInput(item, index);
     element.contentEditable = 'true';
     element.removeAttribute('aria-readonly');
     element.setAttribute('role', 'textbox');
-    element.setAttribute('aria-label', 'Edit document text');
+    element.setAttribute('aria-label', 'Edit text frame');
     activeTextId = item.id;
     state.tool = 'text';
     setSelectionState(item.id);
     state.activePage = item.pageId;
     if (!focus) {
+      hideFlowInput();
       element.contentEditable = 'false';
       element.setAttribute('aria-readonly', 'true');
       activeTextId = null;
@@ -835,7 +862,7 @@ export function mountCanvasEditor(host, options) {
     }
     const map = textIndexMap(element),
       part =
-        map.segments.find((p) => index >= p.start && index <= p.end) ||
+        map.segments.find((p) => index >= p.start && index < p.end) ||
         map.segments.find((p) => p.start > index) ||
         map.segments.at(-1);
     element.focus({ preventScroll: true });
@@ -854,7 +881,11 @@ export function mountCanvasEditor(host, options) {
   }
   function writeText(item, html, element) {
     const textFlow = (element && sourceTextFlow(element)) || textFlowForFrame(doc(), item);
-    if (textFlow) textFlow.html = cleanHTML(html);
+    if (element?.classList.contains('canvas-flow-input')) delete element.dataset.projectedStart;
+    if (textFlow)
+      textFlow.html = element?.classList.contains('canvas-flow-input')
+        ? flowInputHTML(element)
+        : cleanHTML(html);
     else if (item) item.html = cleanHTML(html);
   }
   function activeText() {
@@ -910,12 +941,12 @@ export function mountCanvasEditor(host, options) {
     if (
       element &&
       (sourceTextFlow(element)?.html ?? sceneObject(doc(), activeTextId)?.html) !==
-        cleanHTML(element.innerHTML)
+        (sourceTextFlow(element) ? flowInputHTML(element) : cleanHTML(element.innerHTML))
     ) {
       beginTextInput();
       syncText(element);
     }
-    if (activeText()?.classList.contains('canvas-document-source')) {
+    if (activeText()?.classList.contains('canvas-flow-input')) {
       refreshFlowPreview();
       followTextFlowCaret();
     }
@@ -953,8 +984,7 @@ export function mountCanvasEditor(host, options) {
       element.removeAttribute('role');
       element.removeAttribute('aria-label');
     }
-    if (element?.classList.contains('canvas-document-source'))
-      host.querySelector('.canvas-document-text').hidden = true;
+    if (element?.classList.contains('canvas-flow-input')) hideFlowInput();
     activeTextId = null;
     savedTextSelection = null;
     pendingMarks = {};
@@ -997,7 +1027,7 @@ export function mountCanvasEditor(host, options) {
   }
   function restoreView(view = {}, { focus = true } = {}) {
     restoring = true;
-    host.querySelector('.canvas-document-text').hidden = true;
+    hideFlowInput();
     textBefore = null;
     textViewBefore = null;
     const old = activeText();
@@ -1056,6 +1086,7 @@ export function mountCanvasEditor(host, options) {
       element.setAttribute('aria-readonly', 'true');
       if (document.activeElement === element) element.blur();
     }
+    hideFlowInput();
     activeTextId = null;
     textBefore = null;
     textViewBefore = null;
@@ -1082,19 +1113,19 @@ export function mountCanvasEditor(host, options) {
       textViewBefore = null;
       savedTextSelection = null;
     }
-    const pane = host.querySelector('.canvas-document-text'),
-      element = pane.querySelector('.canvas-document-source'),
+    const pane = host.querySelector('.canvas-input-world'),
+      element = pane.querySelector('.canvas-flow-input'),
       textFlow = doc().textFlows?.find((value) => value.id === element.dataset.textFlow);
     paint();
-    if (!pane.hidden) {
-      if (textFlow) {
-        element.innerHTML = cleanHTML(textFlow.html);
-        applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
-        applyNamedTextStyles(element, doc());
-        element.contentEditable = 'false';
-        element.setAttribute('aria-readonly', 'true');
-      } else pane.hidden = true;
+    if (textFlow) {
+      element.innerHTML = cleanHTML(textFlow.html);
+      delete element.dataset.projectedStart;
+      applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
+      applyNamedTextStyles(element, doc());
+      element.contentEditable = 'false';
+      element.setAttribute('aria-readonly', 'true');
     }
+    hideFlowInput();
   }
   function prepareHistory() {
     if (composing || pendingCount || busy) return false;
@@ -1115,25 +1146,45 @@ export function mountCanvasEditor(host, options) {
     const fontFace =
       field === 'textStyle' ? options.fonts?.().find((asset) => asset.id === value)?.font : null;
     const faceDefaults = fontFace ? { bold: fontFace.weight >= 600, italic: fontFace.italic } : {};
-    if (
-      textFlow &&
-      activeTextId !== item.id &&
-      !['bold', 'italic', 'underline', 'highlight', 'strikethrough', 'characterStyle'].includes(
-        field,
-      )
-    ) {
+    if (activeTextId !== item.id) {
       const before = structuredClone(doc()),
-        viewBefore = captureView();
-      textFlow.style[field] = value;
-      Object.assign(textFlow.style, faceDefaults);
+        viewBefore = captureView(),
+        settings = textFlow?.style || item,
+        root = document.createElement('div');
+      root.innerHTML = cleanHTML(textFlow?.html ?? item.html);
+      const all = document.createRange();
+      all.selectNodeContents(root);
+      if (CHARACTER_FIELDS[field]) {
+        formatRange(root, all, field, value);
+        for (const [key, setting] of Object.entries(faceDefaults))
+          formatRange(root, all, key, setting);
+        for (const blank of root.querySelectorAll('p,div,li'))
+          if (!blank.textContent && !blank.querySelector('p,div,li'))
+            setTextAttribute(blank, CHARACTER_FIELDS[field], value);
+      } else formatParagraphs(root, all, field, value);
+      settings[field] = value;
+      Object.assign(settings, faceDefaults);
       if (
-        (textFlow.style.paragraphStyle || textFlow.style.characterStyle) &&
+        (settings.paragraphStyle || settings.characterStyle) &&
         !['paragraphStyle', 'characterStyle'].includes(field)
       )
-        Object.assign((textFlow.style.textOverrides ||= {}), { [field]: value, ...faceDefaults });
+        Object.assign((settings.textOverrides ||= {}), { [field]: value, ...faceDefaults });
+      writeText(item, root.innerHTML);
       markTypographyVersion(doc());
-      refreshFlowPreview();
-      onCommit(before, { label: 'TextFlow formatting', viewBefore, viewAfter: captureView() });
+      if (textFlow) refreshFlowPreview();
+      else {
+        const text = world.querySelector(`[data-scene-text="${CSS.escape(item.id)}"]`);
+        if (text) text.innerHTML = cleanHTML(item.html);
+        updateObject(item);
+        if (text) {
+          applyNamedTextStyles(text, doc());
+          measureText(item, text);
+        }
+      }
+      syncTextStyle();
+      selectionDirty = true;
+      onCommit(before, { label: 'Text formatting', viewBefore, viewAfter: captureView() });
+      requestFrame();
       return true;
     }
     const element =
@@ -1150,6 +1201,8 @@ export function mountCanvasEditor(host, options) {
     if (activeTextId === item.id && CHARACTER_FIELDS[field] && range?.collapsed) {
       pendingMarks[field] = value;
       Object.assign(pendingMarks, faceDefaults);
+      syncTextStyle();
+      requestFrame();
       return true;
     }
     if (
@@ -1167,17 +1220,17 @@ export function mountCanvasEditor(host, options) {
       for (const [key, setting] of Object.entries(faceDefaults))
         formatRange(element, range, key, setting);
       savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };
-      if (document.activeElement === element)
-        restoreTextSelection(element, savedTextSelection.bookmark);
-      writeText(item, element.innerHTML);
+      restoreTextSelection(element, savedTextSelection.bookmark, { focus: false });
+      writeText(item, element.innerHTML, element);
     } else if (
       activeTextId === item.id &&
       range &&
       PARAGRAPH_FIELDS[field] &&
       formatParagraphs(element, range, field, value)
     ) {
-      writeText(item, element.innerHTML);
+      writeText(item, element.innerHTML, element);
       savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };
+      restoreTextSelection(element, savedTextSelection.bookmark, { focus: false });
     } else if (
       ['bold', 'italic', 'underline', 'highlight', 'strikethrough', 'characterStyle'].includes(
         field,
@@ -1186,7 +1239,7 @@ export function mountCanvasEditor(host, options) {
       const all = document.createRange();
       all.selectNodeContents(element);
       formatRange(element, all, field, value);
-      writeText(item, element.innerHTML);
+      writeText(item, element.innerHTML, element);
     } else {
       const textFlow = textFlowForFrame(doc(), item);
       if (textFlow) {
@@ -1239,6 +1292,7 @@ export function mountCanvasEditor(host, options) {
     measureText(item, element);
     selectionDirty = true;
     onCommit(before, { label: 'Text formatting', viewBefore, viewAfter: captureView() });
+    syncTextStyle();
     requestFrame();
     return true;
   }
@@ -1257,7 +1311,7 @@ export function mountCanvasEditor(host, options) {
     if (!live) range.selectNodeContents(element);
     const bookmark = live ? bookmarkForRange(element, range) : null;
     clearRangeOverrides(element, range);
-    writeText(item, element.innerHTML);
+    writeText(item, element.innerHTML, element);
     if (!live) delete (flow?.style || item).textOverrides;
     pendingMarks = {};
     if (live && bookmark) {
@@ -1267,6 +1321,7 @@ export function mountCanvasEditor(host, options) {
     }
     refreshFlowPreview();
     onCommit(before, { label: 'Clear text overrides', viewBefore, viewAfter: captureView() });
+    syncTextStyle();
     selectionDirty = true;
     requestFrame();
   }
@@ -1551,6 +1606,18 @@ export function mountCanvasEditor(host, options) {
     }
     const text = event.target.closest('[data-scene-text],[data-flow-frame]');
     if (activeTextId && text?.dataset.sceneText === activeTextId && !space) return;
+    if (
+      activeTextId &&
+      text?.dataset.flowFrame &&
+      !space &&
+      state.tool === 'text' &&
+      textFlowForFrame(doc(), text.dataset.flowFrame)?.id === sourceTextFlow()?.id
+    ) {
+      event.preventDefault();
+      finishText();
+      openTextFlowEditor(sceneObject(doc(), text.dataset.flowFrame), event, false);
+      return;
+    }
     if (activeTextId && !space) {
       if (endTextEditing() === false) {
         event.preventDefault();
@@ -1914,7 +1981,7 @@ export function mountCanvasEditor(host, options) {
     mutate(() => {
       if (item.textKind !== 'point') {
         preserveTextLines(element);
-        writeText(item, element.innerHTML);
+        writeText(item, element.innerHTML, element);
         item.textKind = 'point';
         applyTextLayout(element, item);
         measureText(item, element);
@@ -1935,7 +2002,7 @@ export function mountCanvasEditor(host, options) {
       ? rangeFromBookmark(element, savedTextSelection.bookmark)
       : null;
   }
-  async function command(name) {
+  async function command(name, { anchor } = {}) {
     if (!ownsInput() || busy || dialogOpen() || composing) return;
     if (
       options.parentMode &&
@@ -1958,7 +2025,7 @@ export function mountCanvasEditor(host, options) {
       requestFrame();
       return;
     }
-    if (publishingControls.command(name)) return;
+    if (publishingControls.command(name, { anchor })) return;
     if (['document-text', 'start-flow', 'thread'].includes(name) && !options.editing) return;
     if (name === 'flow-previous' || name === 'flow-next') {
       const item = object(),
@@ -1986,13 +2053,12 @@ export function mountCanvasEditor(host, options) {
       }
       return;
     }
-    if (name === 'close-document-text') {
-      endTextEditing();
-      tool('select');
-      return;
-    }
     if (name === 'document-text') {
-      const item = object() || doc().blocks.find((b) => b.textFlowId);
+      const selected = object(),
+        item = selected?.textFlowId
+          ? selected
+          : doc().blocks.find((b) => b.textFlowId) ||
+            (['text', 'quote'].includes(selected?.type) ? selected : null);
       if (item) focusText(item.id);
       return;
     }
@@ -2045,7 +2111,10 @@ export function mountCanvasEditor(host, options) {
         return;
       }
       if (document.activeElement?.isContentEditable) {
-        document.execCommand('selectAll');
+        const range = document.createRange();
+        range.selectNodeContents(document.activeElement);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
         return;
       }
       select(
@@ -2210,7 +2279,7 @@ export function mountCanvasEditor(host, options) {
         else anchor.append(currentRange.extractContents());
         currentRange.insertNode(anchor);
         currentRange.selectNodeContents(anchor);
-        writeText(sceneObject(doc(), activeTextId), element.innerHTML);
+        writeText(sceneObject(doc(), activeTextId), element.innerHTML, element);
         if (textFlowForFrame(doc(), activeTextId)) refreshFlowPreview();
         savedTextSelection = {
           id: activeTextId,
@@ -2354,7 +2423,7 @@ export function mountCanvasEditor(host, options) {
     if (cmd) {
       event.preventDefault();
       closeContextMenu();
-      Promise.resolve(command(cmd.dataset.canvasCommand)).catch((e) =>
+      Promise.resolve(command(cmd.dataset.canvasCommand, { anchor: cmd })).catch((e) =>
         options.onNotify?.(e.message),
       );
       return;
@@ -2531,7 +2600,7 @@ export function mountCanvasEditor(host, options) {
     }
   });
   listen(host, 'pointerdown', (event) => {
-    const element = event.target.closest('.canvas-document-source');
+    const element = event.target.closest('.canvas-flow-input');
     if (
       ownsInput() &&
       options.editing &&
@@ -2592,6 +2661,15 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     beginTextInput(event.inputType);
+    // Native replacement skips display:none content. Reveal the canonical range
+    // for the synchronous edit, then project the result during the input event.
+    if (
+      sourceTextFlow(element) &&
+      (!window.getSelection().isCollapsed ||
+        (event.inputType.startsWith('delete') &&
+          sourceCaretIndex() <= Number(element.dataset.projectedStart)))
+    )
+      projectFlowInput(element, 0);
     if (event.inputType.startsWith('insert'))
       inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
     if (
@@ -2662,8 +2740,41 @@ export function mountCanvasEditor(host, options) {
       );
     }
   });
+  for (const type of ['copy', 'cut'])
+    listen(host, type, (event) => {
+      const element = activeText(),
+        selection = window.getSelection();
+      if (
+        !ownsInput() ||
+        !sourceTextFlow(element) ||
+        !selection.rangeCount ||
+        selection.isCollapsed ||
+        !element.contains(selection.anchorNode) ||
+        !element.contains(selection.focusNode)
+      )
+        return;
+      const range = selection.getRangeAt(0),
+        copy = document.createElement('div');
+      copy.append(range.cloneContents());
+      const html = flowInputHTML(copy),
+        plain = document.createElement('div');
+      plain.innerHTML = html
+        .replace(/<br\s*\/?\s*>/gi, '\n')
+        .replace(/<\/(p|div|li|h[2-4]|blockquote)>/gi, '\n');
+      event.preventDefault();
+      event.clipboardData.setData('text/html', html);
+      event.clipboardData.setData('text/plain', plain.textContent.replace(/\n$/, ''));
+      if (type === 'cut' && options.editing) {
+        beginTextInput('deleteByCut');
+        range.deleteContents();
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        syncText(element);
+        finishText();
+      }
+    });
   listen(viewport, 'contextmenu', showContextMenu);
-  listen(host.querySelector('.canvas-document-text'), 'contextmenu', showContextMenu);
   listen(window, 'pointerdown', (event) => {
     if (contextMenu && !contextMenu.contains(event.target)) closeContextMenu();
   });
@@ -2748,6 +2859,44 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     const modifier = event.metaKey || event.ctrlKey;
+    const flowInput = activeText();
+    if (sourceTextFlow(flowInput) && event.target === flowInput) {
+      if (modifier && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        command('select-all');
+        return;
+      }
+      if (
+        ['ArrowLeft', 'ArrowUp', 'Home'].includes(event.key) &&
+        Number(flowInput.dataset.projectedStart) > 0
+      ) {
+        const selection = window.getSelection(),
+          offset = sourceCaretIndex(),
+          caret = selection.rangeCount && selection.getRangeAt(0).getBoundingClientRect(),
+          box = flowInput.getBoundingClientRect();
+        if (
+          offset <= Number(flowInput.dataset.projectedStart) ||
+          (event.key === 'ArrowUp' && caret && caret.top < box.top + caret.height)
+        ) {
+          event.preventDefault();
+          projectFlowInput(flowInput, 0);
+          selection.modify(
+            event.shiftKey ? 'extend' : 'move',
+            'backward',
+            event.key === 'ArrowUp'
+              ? 'line'
+              : event.key === 'Home'
+                ? 'lineboundary'
+                : event.altKey || modifier
+                  ? 'word'
+                  : 'character',
+          );
+          followTextFlowCaret();
+          rememberTextSelection();
+          return;
+        }
+      }
+    }
     if (event.target.closest('[data-type-circle]') && ['Enter', ' '].includes(event.key)) {
       event.preventDefault();
       convertText();
@@ -2921,6 +3070,7 @@ export function mountCanvasEditor(host, options) {
     objects,
     editing: () => options.editing,
     textEditing: () => !!activeTextId,
+    textState: () => textSummary,
     fonts: options.fonts,
     allowed: () => ownsInput() && !busy && !composing,
   });
@@ -2937,6 +3087,7 @@ export function mountCanvasEditor(host, options) {
     notify: options.onNotify,
     onAsset: options.onAsset,
     onEditParent: editParent,
+    textState: () => (textSummary = readSelectedTextStyle()),
     showPanel: (kind) => workspacePanels.show(kind),
     clearOverrides: clearTextOverrides,
     fonts: options.fonts,

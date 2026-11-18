@@ -209,7 +209,7 @@ try {
   for (const image of host.querySelectorAll('.reference-icon')) await image.decode();
   assert(
     [...host.querySelectorAll('.reference-icon')].every((image) =>
-      ['Illustrator', 'Obsidian/Lucide'].includes(image.dataset.iconSource),
+      ['Illustrator', 'InDesign', 'Obsidian/Lucide'].includes(image.dataset.iconSource),
     ),
     'Unsourced interface icon',
   );

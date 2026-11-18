@@ -424,7 +424,7 @@ try {
   );
   assert(
     document.querySelectorAll('.canvas-object').length === 1 &&
-      document.querySelector('.canvas-document-source').textContent === '',
+      document.querySelector('.canvas-flow-input').textContent === '',
     'Quick creation inserted authored placeholder content',
   );
   console.log(

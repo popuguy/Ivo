@@ -127,7 +127,7 @@ globalThis.ivoNative = {
     saveImport: async () => {},
   },
 };
-const source = () => document.querySelector('.workspace-pane.active .canvas-document-source'),
+const source = () => document.querySelector('.workspace-pane.active .canvas-flow-input'),
   row = (id) => document.querySelector(`#document-list [data-open="${id}"]`),
   active = () => document.querySelector('.workspace-pane.active');
 async function openSource() {

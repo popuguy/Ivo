@@ -58,7 +58,7 @@ Option/Alt-drag now copies one object or the selected roots, including clipping 
 
 ## Continuous document text: delivered foundation
 
-Paul explicitly reiterated InDesign-style text threading for long notes: one mass of text must flow across linked frames and multiple pages. The canonical text flow/linked-frame model, automatic continuation, safe page removal, continuous Document text editor, shared undo and paginated PDF output are now implemented and verified. See [text-flow.md](text-flow.md). Direct inline cross-page editing, parent/primary frames and advanced composition remain explicit extensions.
+Paul explicitly reiterated InDesign-style text threading for long notes: one mass of text must flow across linked frames and multiple pages. The canonical text flow/linked-frame model, automatic continuation, safe page removal, direct on-page text editing, shared undo and paginated PDF output are now implemented and verified. See [text-flow.md](text-flow.md). Cross-frame selection painting/dragging, complete native keyboard behavior across unequal columns, primary frames and advanced composition remain explicit extensions.
 
 ## Page composition, sharing and geometry
 

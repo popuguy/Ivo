@@ -28,14 +28,18 @@ export function propertiesContent({
   index,
   flowStatus,
   fonts = [],
+  textSummary = null,
 }) {
   const raw = selectedObjects.length === 1 ? selectedObjects[0] : null,
     flow = textFlowForFrame(doc, raw),
     item = raw
-      ? effectiveTextStyle(
-          doc,
-          flow ? { ...raw, ...flow.style, textOverrides: flow.style.textOverrides } : raw,
-        )
+      ? {
+          ...effectiveTextStyle(
+            doc,
+            flow ? { ...raw, ...flow.style, textOverrides: flow.style.textOverrides } : raw,
+          ),
+          ...textSummary?.values,
+        }
       : null,
     disabled = editing ? '' : 'disabled';
   if (state.panel === 'layers') return layersContent(doc, state, selectedObjects, editing);
@@ -69,7 +73,7 @@ export function propertiesContent({
   }
   if (!item)
     return `<div class="canvas-panel-heading">No Selection</div>${section('Document', field('Name', `<input data-scene-meta="title" value="${esc(doc.title)}" ${disabled}>`))}${section('Page', `<p>${esc(activePage.name)} · ${activePage.width} × ${activePage.height} pt</p><button data-canvas-command="show-pages">Edit pages</button>`)}`;
-  return `<div class="canvas-panel-heading">${['text', 'quote'].includes(item.type) ? 'Text Frame' : item.type[0].toUpperCase() + item.type.slice(1)}</div><fieldset ${disabled}>${doc.pages.length > 1 ? field('Page', `<select data-selection-page aria-label="Move selection to page">${doc.pages.map((p) => `<option value="${p.id}" ${p.id === item.pageId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`) : ''}${transformProperties(item, state)}${['text', 'quote'].includes(item.type) ? styleProperties(item, doc, state) : ''}${appearanceProperties(item)}${['text', 'quote'].includes(item.type) ? textProperties(item, fonts) + frameProperties(item) + section('Text Flow', `<div class="canvas-flow-status">${flow ? `${flow.frameIds.length} linked frame${flow.frameIds.length === 1 ? '' : 's'}${flowStatus.get(flow.id)?.overset ? ' · Overset text' : ''}` : 'Unthreaded frame'}</div>${flow ? '<button data-canvas-command="document-text">Edit document text</button><label class="publishing-check"><input type="checkbox" data-flow-auto ' + (flow.automaticPages ? 'checked' : '') + '>Automatic continuation</label>' : '<button data-canvas-command="start-flow">Flow across pages</button><button data-canvas-command="fit-text">Fit frame to text</button>'}<button data-canvas-command="thread">Thread into frame…</button>`) : ''}${item.type === 'polygon' ? section('Mask', `<button data-canvas-command="inside">${state.inside === item.id ? 'Exit draw inside' : 'Draw inside'}</button>${item.clip ? '<button data-canvas-command="release-mask">Release mask</button>' : ''}`) : ''}${item.type === 'image' ? section('Image', `<button data-canvas-command="replace">Replace file</button>${field('Image fit', `<select data-object-prop="fit"><option value="cover" ${item.fit !== 'contain' ? 'selected' : ''}>Fill frame</option><option value="contain" ${item.fit === 'contain' ? 'selected' : ''}>Fit image</option></select>`)}${num('cropX', item.crop?.x ?? 50, 'Crop X · %')}${num('cropY', item.crop?.y ?? 50, 'Crop Y · %')}${field('Description', `<input data-object-prop="alt" value="${esc(item.alt || '')}">`)}${field('Caption', `<input data-object-prop="caption" value="${esc(item.caption || '')}">`)}`) : ''}${alignControls()}${arrangeControls()}${section('Quick Actions', `<button data-canvas-command="duplicate">Duplicate</button><button class="danger" data-canvas-command="delete">Delete</button>`)}</fieldset>`;
+  return `<div class="canvas-panel-heading">${['text', 'quote'].includes(item.type) ? 'Text Frame' : item.type[0].toUpperCase() + item.type.slice(1)}</div><fieldset ${disabled}>${doc.pages.length > 1 ? field('Page', `<select data-selection-page aria-label="Move selection to page">${doc.pages.map((p) => `<option value="${p.id}" ${p.id === item.pageId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`) : ''}${transformProperties(item, state)}${['text', 'quote'].includes(item.type) ? styleProperties(item, doc, state) : ''}${appearanceProperties(item)}${['text', 'quote'].includes(item.type) ? textProperties(item, fonts) + frameProperties(item) + section('Text Flow', `<div class="canvas-flow-status">${flow ? `${flow.frameIds.length} linked frame${flow.frameIds.length === 1 ? '' : 's'}${flowStatus.get(flow.id)?.overset ? ' · Overset text' : ''}` : 'Unthreaded frame'}</div>${flow ? '<button data-canvas-command="document-text">Edit text</button><label class="publishing-check"><input type="checkbox" data-flow-auto ' + (flow.automaticPages ? 'checked' : '') + '>Automatic continuation</label>' : '<button data-canvas-command="start-flow">Flow across pages</button><button data-canvas-command="fit-text">Fit frame to text</button>'}<button data-canvas-command="thread">Thread into frame…</button>`) : ''}${item.type === 'polygon' ? section('Mask', `<button data-canvas-command="inside">${state.inside === item.id ? 'Exit draw inside' : 'Draw inside'}</button>${item.clip ? '<button data-canvas-command="release-mask">Release mask</button>' : ''}`) : ''}${item.type === 'image' ? section('Image', `<button data-canvas-command="replace">Replace file</button>${field('Image fit', `<select data-object-prop="fit"><option value="cover" ${item.fit !== 'contain' ? 'selected' : ''}>Fill frame</option><option value="contain" ${item.fit === 'contain' ? 'selected' : ''}>Fit image</option></select>`)}${num('cropX', item.crop?.x ?? 50, 'Crop X · %')}${num('cropY', item.crop?.y ?? 50, 'Crop Y · %')}${field('Description', `<input data-object-prop="alt" value="${esc(item.alt || '')}">`)}${field('Caption', `<input data-object-prop="caption" value="${esc(item.caption || '')}">`)}`) : ''}${alignControls()}${arrangeControls()}${section('Quick Actions', `<button data-canvas-command="duplicate">Duplicate</button><button class="danger" data-canvas-command="delete">Delete</button>`)}</fieldset>`;
 }
 function alignControls() {
   return section(

@@ -1,3 +1,4 @@
+import { verifyTextControls } from './text-controls.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import {
   enablePublishing,
@@ -39,6 +40,7 @@ try {
   });
   frame.html = `<p data-ivo-pstyle="${body.id}">Precision in proportion.</p><p>Text, geometry and materials work together.</p>`;
   const host = document.querySelector('#host');
+  await verifyTextControls(host);
   const mount = () =>
     mountCanvasEditor(host, {
       getDocument: () => doc,
@@ -93,11 +95,13 @@ try {
   );
   typeOptionsControl.click();
   assert(host.querySelector('.type-options-popover'), 'OpenType popover did not open');
-  const liga = host.querySelector('[data-type-feature="discretionaryLigatures"]');
+  const liga = host.querySelector('[data-type-feature="smallCaps"]');
   liga.checked = true;
   liga.dispatchEvent(new Event('change', { bubbles: true }));
-  host.querySelector('[data-close-type]').click();
-  assert(doc.blocks[0].discretionaryLigatures === true, 'OpenType flag not authored');
+  host
+    .querySelector('.type-options-popover')
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert(doc.blocks[0].smallCaps === true, 'OpenType flag not authored');
   host.querySelector('[data-highlight-color="#fff176"]').click();
   assert(
     doc.blocks[0].html.includes('data-ivo-highlight="#fff176"'),
@@ -145,6 +149,11 @@ try {
   editor.finish();
   await tick();
   const flow = doc.textFlows[0];
+  assert(
+    !host.querySelector('.canvas-type-options') &&
+      host.querySelector('.canvas-contextual-bar [data-canvas-command="type-options"]'),
+    'Threaded frames need contextual type options without an unthreaded-frame badge',
+  );
   assert(flow.html === beforeSource, 'Threading changed source');
   assert(flow.style.textOverrides.fontSize === 19, 'Threading lost direct style ownership');
   const plan = layoutDocumentTextFlows(doc);

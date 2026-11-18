@@ -76,12 +76,12 @@ try {
     }),
   );
   document.querySelector('[data-canvas-command="start-flow"]').click();
-  await wait(() => document.querySelector('.canvas-document-source[contenteditable="true"]'));
+  await wait(() => document.querySelector('.canvas-flow-input[contenteditable="true"]'));
   // Match the reported re-entry: read, edit again, then type on an unformatted newline.
   await nativeCommand('toggle-edit');
   await nativeCommand('toggle-edit');
   await nativeCommand('document-text');
-  const root = document.querySelector('.canvas-document-source'),
+  const root = document.querySelector('.canvas-flow-input'),
     initialNode = root;
   assert(root.textContent === 'Initial textFlow.', 'TextFlow source was not retained');
   const blank = root.querySelectorAll('p')[1],
@@ -135,10 +135,42 @@ try {
   document.execCommand('insertHTML', false, long);
   await wait(() => document.querySelectorAll('.canvas-page').length > 4);
   assert(
-    document.querySelector('.canvas-document-source') === initialNode,
+    document.querySelector('.canvas-flow-input') === initialNode,
     'Pagination replaced the live editing DOM',
   );
   const pages = document.querySelectorAll('.canvas-page').length;
+  assert(
+    !document.querySelector('.canvas-document-text'),
+    'Linked text still opened a bottom editor',
+  );
+  const later = root.querySelectorAll('p')[10].firstChild;
+  root.focus();
+  getSelection().setBaseAndExtent(later, 2, later, 6);
+  document.dispatchEvent(new Event('selectionchange'));
+  await frame();
+  const liveBounds = root.getBoundingClientRect(),
+    frameBounds = document
+      .querySelector(`[data-flow-frame="${root.dataset.sceneText}"]`)
+      .getBoundingClientRect();
+  assert(
+    Number(root.dataset.projectedStart) > 0 &&
+      Math.abs(liveBounds.x - frameBounds.x) < 1 &&
+      Math.abs(liveBounds.y - frameBounds.y) < 1,
+    'Continuation editing is not positioned directly in the selected page frame',
+  );
+  await nativeCommand('select-all');
+  document.dispatchEvent(new Event('selectionchange'));
+  const clipboard = new DataTransfer();
+  root.dispatchEvent(
+    new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: clipboard }),
+  );
+  assert(
+    clipboard.getData('text/plain').includes('Paragraph 0') &&
+      clipboard.getData('text/plain').includes('Paragraph 34') &&
+      !clipboard.getData('text/html').includes('data-flow-input'),
+    'Copy across page frames skipped hidden text or leaked projection markers',
+  );
+
   await nativeCommand('undo');
   assert(root.textContent === 'Initial textFlow.', 'TextFlow typing did not share document undo');
   assert(
@@ -151,12 +183,11 @@ try {
       document.querySelectorAll('.canvas-page').length === pages,
     'TextFlow redo did not restore source and pagination together',
   );
-  // Select All follows the focus to the final frame. Its automatic removal must
-  // never remove the stable textFlow ownership of the live source editor.
+  // A cross-frame selection remains anchored in its first physical column.
+  // Removing later automatic frames must preserve canonical input ownership.
   await nativeCommand('select-all');
   document.dispatchEvent(new Event('selectionchange'));
-  const lastFrame = root.dataset.sceneText,
-    short = 'Native flow edit.';
+  const short = 'Native flow edit.';
   for (const character of short) {
     root.dispatchEvent(
       new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: character }),
@@ -168,7 +199,8 @@ try {
     'Incremental replacement lost the live source',
   );
   assert(
-    document.querySelectorAll('.canvas-page').length === 1 && root.dataset.sceneText !== lastFrame,
+    document.querySelectorAll('.canvas-page').length === 1 &&
+      document.querySelector(`[data-flow-frame="${root.dataset.sceneText}"]`),
     'Shrinking textFlow retained the deleted frame owner',
   );
   assert(
@@ -254,10 +286,10 @@ try {
   await wait(
     () =>
       document.title === 'New long note — Ivo' &&
-      document.querySelector('.canvas-document-source[contenteditable="true"]'),
+      document.querySelector('.canvas-flow-input[contenteditable="true"]'),
   );
   assert(
-    document.querySelector('.canvas-document-source').textContent === '',
+    document.querySelector('.canvas-flow-input').textContent === '',
     'New flowing note inserted placeholder text',
   );
   console.log(

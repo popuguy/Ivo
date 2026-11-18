@@ -1,0 +1,35 @@
+// Feature tags declared by the shipped OFL CMU Serif faces; verified against font bytes in tests.
+export const BUNDLED_FONT_FEATURES = Object.freeze({
+  'cmu-serif': {
+    regular: [
+      'aalt',
+      'c2sc',
+      'case',
+      'kern',
+      'liga',
+      'locl',
+      'mark',
+      'mkmk',
+      'onum',
+      'salt',
+      'smcp',
+      'ss01',
+    ],
+    bold: [
+      'aalt',
+      'c2sc',
+      'case',
+      'kern',
+      'liga',
+      'locl',
+      'mark',
+      'mkmk',
+      'onum',
+      'salt',
+      'smcp',
+      'ss01',
+    ],
+    italic: ['aalt', 'case', 'kern', 'liga', 'locl', 'mark', 'mkmk', 'onum', 'salt', 'ss01'],
+    boldItalic: ['aalt', 'case', 'kern', 'liga', 'locl', 'mark', 'mkmk', 'onum', 'salt', 'ss01'],
+  },
+});

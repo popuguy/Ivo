@@ -30,7 +30,7 @@ export default [
     },
   },
   {
-    files: ['src/**/*.js', 'tests/runtime/**/fixture.js'],
+    files: ['src/**/*.js', 'tests/runtime/**/*.js'],
     languageOptions: { globals: globals.browser },
   },
   {
