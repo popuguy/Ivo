@@ -1,3 +1,5 @@
+import { WORKSPACE_FEATURES } from '../src/domain/workspace/features.js';
+import { configureTextInput } from './text-input-policy.mjs';
 import { NATIVE_TEXT_COMMANDS, nativeTextMenuState } from '../src/domain/text/native-commands.js';
 import { createDocumentClipboard } from './document-clipboard.mjs';
 import { createSystemFonts } from './system-fonts.mjs';
@@ -13,6 +15,7 @@ import {
   screen,
   clipboard,
   ClipboardItem,
+  systemPreferences,
 } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -100,6 +103,7 @@ else {
   app
     .whenReady()
     .then(async () => {
+      configureTextInput(systemPreferences);
       registry = await openVaultRegistry(path.join(app.getPath('userData'), 'vaults.json'));
       resourceHandler = async (request) => {
         const url = new URL(request.url),
@@ -1428,13 +1432,17 @@ function installMenu() {
             click: () => sendCommand('show-contextual'),
           },
           { type: 'separator' },
-          { label: 'Workspaces…', enabled: hasVault, click: () => sendCommand('workspaces') },
-          {
-            label: 'Restore Previous Workspace',
-            enabled: hasVault,
-            click: () => sendCommand('restore-workspace'),
-          },
-          { type: 'separator' },
+          ...(WORKSPACE_FEATURES.savedLayouts
+            ? [
+                { label: 'Workspaces…', enabled: hasVault, click: () => sendCommand('workspaces') },
+                {
+                  label: 'Restore Previous Workspace',
+                  enabled: hasVault,
+                  click: () => sendCommand('restore-workspace'),
+                },
+                { type: 'separator' },
+              ]
+            : []),
           { label: 'Split Right', enabled: hasVault, click: () => sendCommand('split-right') },
           { label: 'Split Down', enabled: hasVault, click: () => sendCommand('split-down') },
           { label: 'Merge This Pane', enabled: hasVault, click: () => sendCommand('merge-pane') },

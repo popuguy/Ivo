@@ -2,6 +2,12 @@
 
 Native commands must preserve the same source, selection and document ownership as the editor controls. Tests that replace a native API must validate its real argument and completion contract; a permissive mock does not establish desktop interoperability.
 
+## Force Click lookup
+
+Ivo disables pressure-triggered macOS Look Up throughout its desktop app, as permitted by Paul's 18 November request. `desktop/text-input-policy.mjs` sets `com.apple.trackpad.forceClick` to integer zero through Electron's application-domain `setUserDefault` before creating windows. It does not write `NSGlobalDomain`, change system trackpad preferences or change ChatGPT/Codex permissions. Ordinary clicks, word/paragraph selection, dragging, keyboard input and explicit dictionary commands retain their own paths.
+
+This follows Chromium's actual Cocoa [force-touch responder](https://github.com/chromium/chromium/blob/main/content/app_shim_remote_cocoa/render_widget_host_view_cocoa.mm) and [preference lookup](https://github.com/chromium/chromium/blob/main/ui/base/cocoa/appkit_utils.mm), via Electron's [NSUserDefaults API](https://www.electronjs.org/docs/latest/api/system-preferences). DOM pressure/click cancellation alone cannot establish that native policy. The production-main runtime test checks the effective application value and unchanged global preference; the portable unit checks the macOS-only API contract. Physical pressure hardware cannot be synthesized by `sendInputEvent`, so a physical Force Click remains a manual qualification check. Development Electron launches use their host application's preference domain; packaged Ivo uses `com.paulcantrell.ivo`.
+
 ## Document clipboard
 
 The pinned Electron runtime uses asynchronous `clipboard.write(ClipboardItem[])` and `clipboard.writeText(...)`. `desktop/document-clipboard.mjs` constructs one real item containing `text/plain` and `text/html` for document links and awaits the native write. Path copy also awaits completion. The production `ivo:document-file` IPC returns success only afterward; failed native writes reject through the existing UI error path. Stable document IDs remain in rich links and titles are escaped. Trusted file lookup and window/frame/origin validation remain in the main process.

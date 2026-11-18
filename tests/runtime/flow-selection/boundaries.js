@@ -111,10 +111,23 @@ export async function verifyFlowSelectionBoundaries(host, nativeBridge) {
         buttons: ['pointerup', 'pointercancel', 'lostpointercapture'].includes(type) ? 0 : 1,
         clientX: position[0],
         clientY: position[1],
-        detail: 1,
         ...extra,
+        detail: 0,
       });
       target.dispatchEvent(event);
+      if (type === 'pointerdown' && !event.defaultPrevented)
+        target.dispatchEvent(
+          new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            buttons: 1,
+            clientX: position[0],
+            clientY: position[1],
+            detail: 1,
+            ...extra,
+          }),
+        );
       return event;
     }
     function wordPoint(id, word, offset = 2) {

@@ -127,6 +127,20 @@ try {
     }
     return results;
   }
+  function wordPoint(word) {
+    const walker = document.createTreeWalker(preview(a.id), NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const index = node.data.indexOf(word);
+      if (index < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, index + 2);
+      range.setEnd(node, index + 3);
+      const bounds = range.getBoundingClientRect();
+      return [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2];
+    }
+    throw Error('Missing visible fixture word: ' + word);
+  }
   if (reopening) {
     assert(
       wordStyles('bravo').includes('italic'),
@@ -166,6 +180,35 @@ try {
         }),
     );
   } else {
+    const beforeClicks = JSON.stringify(doc);
+    await editor.command('document-text');
+    await tick();
+    await window.textCoreTest.select({ from: wordPoint('bravo'), clicks: 2 });
+    await tick();
+    assert(
+      window.getSelection().toString() === 'bravo',
+      'Active browser flow double-click did not select the clicked word: ' +
+        JSON.stringify(window.getSelection().toString()),
+    );
+    await window.textCoreTest.select({
+      from: wordPoint('bravo'),
+      to: wordPoint('charlie'),
+      clicks: 2,
+    });
+    await tick();
+    assert(
+      window.getSelection().toString() === 'bravo charlie',
+      'Browser flow double-click drag did not extend by whole words',
+    );
+    await window.textCoreTest.select({ from: wordPoint('charlie'), clicks: 3 });
+    await tick();
+    assert(
+      window.getSelection().toString().startsWith('Paragraph 1.') &&
+        window.getSelection().toString().includes('zulu.') &&
+        !window.getSelection().toString().includes('Paragraph 2.'),
+      'Browser flow triple-click did not select its structural paragraph',
+    );
+    assert(JSON.stringify(doc) === beforeClicks && commits === 0, 'Clicks wrote authored data');
     const source = JSON.stringify(doc),
       from = charPoint(a.id),
       to = charPoint(c.id, true);

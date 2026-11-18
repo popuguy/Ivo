@@ -33,8 +33,26 @@ try {
   await document.fonts.ready;
   const host = document.querySelector('#host'),
     notices = [],
+    mouseTrace = [],
     calls = [],
     phase = new URL(location.href).searchParams.get('phase');
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'lostpointercapture'])
+    window.addEventListener(
+      type,
+      (event) => {
+        mouseTrace.push({
+          type,
+          detail: event.detail,
+          target: event.target
+            .closest?.('[data-flow-frame],.canvas-flow-input')
+            ?.outerHTML.slice(0, 160),
+          x: event.clientX,
+          y: event.clientY,
+        });
+        if (mouseTrace.length > 30) mouseTrace.shift();
+      },
+      { capture: true },
+    );
   let doc,
     editor,
     commits = 0,
@@ -231,14 +249,18 @@ try {
       focus: { path: [], offset: 0, kind: 'text', index: end, affinity: 'backward' },
     });
   }
-  function selectWord(word) {
+  function wordIndices(word) {
     const root = input(),
       map = textIndexMap(root),
       part = map.segments.find((s) => s.node.data.includes(word));
     assert(part, 'Canonical source word missing: ' + word);
     const offset = part.node.data.indexOf(word);
-    selectIndices(part.start + offset, part.start + offset + word.length);
     return { start: part.start + offset, end: part.start + offset + word.length };
+  }
+  function selectWord(word) {
+    const indices = wordIndices(word);
+    selectIndices(indices.start, indices.end);
+    return indices;
   }
   function nativeWordFont(word) {
     const { request, result } = latest(),
@@ -336,6 +358,36 @@ try {
       window.getSelection().toString() === 'charlie',
       'Object-tool double-click did not enter the clicked native word',
     );
+    const activeWord = wordIndices('bravo');
+    await window.nativeEditorTest.doubleClick(
+      point(a.id, { index: activeWord.start + 2, affinity: 'forward' }),
+    );
+    await tick();
+    assert(
+      window.getSelection().toString() === 'bravo',
+      'Double-click inside the active native editor did not select the clicked word: ' +
+        JSON.stringify(window.getSelection().toString()),
+    );
+    const endWord = wordIndices('foxtrot');
+    await window.nativeEditorTest.select({
+      from: point(a.id, { index: activeWord.start + 2, affinity: 'forward' }),
+      to: point(a.id, { index: endWord.start + 2, affinity: 'forward' }),
+      clicks: 2,
+    });
+    await tick();
+    assert(
+      window.getSelection().toString() === 'bravo charlie delta echo foxtrot',
+      'Native double-click drag did not extend by complete words: ' +
+        JSON.stringify({ text: window.getSelection().toString(), mouseTrace }),
+    );
+    await window.nativeEditorTest.select({ from: doublePoint, clicks: 3 });
+    await tick();
+    assert(
+      window.getSelection().toString().startsWith('Heading.') &&
+        window.getSelection().toString().includes('juliet.') &&
+        !window.getSelection().toString().includes('Paragraph 1'),
+      'Native triple-click did not select the containing paragraph',
+    );
     assert(
       JSON.stringify(doc) === beforeDoubleClick && commits === beforeDoubleHistory,
       'Native double-click changed source/history',
@@ -391,7 +443,15 @@ try {
     const selection = captureTextSelection(input());
     assert(
       selection && selection.focus.index > selection.anchor.index,
-      'Trusted drag did not select across native frames/pages',
+      'Trusted drag did not select across native frames/pages: ' +
+        JSON.stringify({
+          selection,
+          from: point(a.id, { index: fromIndex, affinity: 'forward' }),
+          to: point(b.id, { index: toIndex, affinity: 'backward' }),
+          viewport: host.querySelector('.canvas-viewport').getBoundingClientRect().toJSON(),
+          state: editor.getState(),
+          mouseTrace,
+        }),
     );
     assert(
       selection.anchor.index < firstCol.end && selection.focus.index >= secondCol.start,
@@ -662,6 +722,8 @@ try {
       vectorInk: true,
       trustedCrossPageDrag: true,
       nativeObjectToolDoubleClick: true,
+      activeEditorWordAndParagraphSelection: true,
+      wordGranularityDrag: true,
       styledBlankParagraphInsertion: true,
       trustedTyping: true,
       partialItalic: true,

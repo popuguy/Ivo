@@ -1,8 +1,10 @@
-# Stacked views, linked views and window transfers
+# Linked views and window transfers
+
+Stacked tabs are paused at Paul's request on 18 November 2026. They have no active menu or command, and existing stacks display as ordinary tabs. Their saved `stacked` metadata is retained. `WORKSPACE_FEATURES.stackedTabs` in `src/domain/workspace/features.js` is the single production switch for reconsidering the retained implementation; the explicit legacy runtime fixture still exercises it. This does not remove ordinary tabs, splits or panel docking.
 
 The workspace extends the existing Obsidian-style shell while keeping Ivo's page editor inside each document tab. Reference behavior comes from Obsidian's official [tabs and linked views documentation](https://obsidian.md/help/tabs). This increment does not claim exact native motion, hardware timing or every Obsidian view/plugin.
 
-## Stacked tabs
+## Retained stacked-tab implementation (inactive)
 
 Right-click a tab or open its view-options menu and choose **Stack tabs**. The group's documents become horizontally sliding, retained views. Vertical document spines identify the compressed views and activate/reveal them. Normal tab selection reveals the chosen view; horizontal scrolling lets several documents remain visible. **Unstack tabs** restores the ordinary single-view group. Splits and stacked groups can coexist. Mode, tab/pin order, active views and individual document/graph cameras persist and belong to saved workspaces.
 

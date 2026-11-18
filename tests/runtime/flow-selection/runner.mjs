@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { selectWithMouse } from '../helpers/text-mouse.mjs';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-text-core-'));
 app.setPath('userData', profile);
@@ -37,6 +38,10 @@ app
     const owned = (event) => {
       if (event.sender !== window.webContents) throw Error('Not the test window');
     };
+    ipcMain.handle('ivo-text-core-select', (event, gesture) => {
+      owned(event);
+      return selectWithMouse(window.webContents, gesture);
+    });
     ipcMain.handle('ivo-text-core-drag', async (event, from, to) => {
       owned(event);
       for (const p of [from, to])

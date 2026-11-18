@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('nativeEditorTest', {
     ipcRenderer.invoke('ivo-native-editor-test', 'key', { key, modifiers }),
   drag: (from, to) => ipcRenderer.invoke('ivo-native-editor-test', 'drag', { from, to }),
   doubleClick: (point) => ipcRenderer.invoke('ivo-native-editor-test', 'doubleClick', point),
+  select: (gesture) => ipcRenderer.invoke('ivo-native-editor-test', 'select', gesture),
   save: (archive) => ipcRenderer.invoke('ivo-native-editor-test', 'save', archive),
   load: () => ipcRenderer.invoke('ivo-native-editor-test', 'load'),
 });

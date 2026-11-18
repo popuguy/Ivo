@@ -124,6 +124,7 @@ export function installFlowSelection(
   const listen = (target, name, fn, options = {}) =>
     target.addEventListener(name, fn, { signal: controller.signal, ...options });
   let drag = null,
+    pendingMouse = null,
     scrolling = 0,
     lastTime = 0,
     alive = true,
@@ -467,6 +468,7 @@ export function installFlowSelection(
     }
   }
   function stop(cancel = false, focus = true) {
+    pendingMouse = null;
     if (!drag) return;
     const old = drag;
     drag = null;
@@ -480,6 +482,40 @@ export function installFlowSelection(
     onSelection();
     sync();
   }
+  function begin(event, id, pointerId, clickCount) {
+    const oldFlow = flow()?.id,
+      before = current();
+    // A preview is visible while a range is selected. Hit it before activating its canonical owner.
+    activate(id, event);
+    if (!input() || !flow() || !allowed(event)) return;
+    const destination = hit(event.clientX, event.clientY, id);
+    if (!destination) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const state = navigationState(),
+      focus = state.navigation.snap(destination),
+      extending = event.shiftKey && before && oldFlow === flow().id,
+      initial =
+        clickCount >= 3
+          ? state.navigation.paragraph(focus)
+          : clickCount === 2
+            ? state.navigation.word(focus)
+            : logicalSelection(extending ? before.anchor : focus, focus);
+    drag = {
+      pointerId,
+      navigation: state.navigation,
+      flowId: flow().id,
+      source: flow().html,
+      anchor: initial.anchor,
+      initial,
+      before: oldFlow === flow().id ? before : null,
+      unit: clickCount >= 3 ? 'paragraph' : clickCount === 2 ? 'word' : 'character',
+      start: { x: event.clientX, y: event.clientY },
+      last: { x: event.clientX, y: event.clientY },
+    };
+    viewport.setPointerCapture(pointerId);
+    set(initial);
+  }
   listen(
     viewport,
     'pointerdown',
@@ -488,39 +524,24 @@ export function installFlowSelection(
       const target = event.target instanceof Element ? event.target : null;
       const text = target?.closest('[data-flow-frame],.canvas-flow-input');
       if (!text) return;
-      const id = text.dataset.flowFrame || text.dataset.sceneText,
-        oldFlow = flow()?.id,
-        before = current();
-      // A preview is visible while a range is selected. Hit it before activating its canonical owner.
-      activate(id, event);
-      if (!input() || !flow() || !allowed(event)) return;
-      const destination = hit(event.clientX, event.clientY, id);
-      if (!destination) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const state = navigationState(),
-        focus = state.navigation.snap(destination),
-        extending = event.shiftKey && before && oldFlow === flow().id;
-      const initial =
-        event.detail >= 3
-          ? state.navigation.paragraph(focus)
-          : event.detail === 2
-            ? state.navigation.word(focus)
-            : logicalSelection(extending ? before.anchor : focus, focus);
-      drag = {
-        pointerId: event.pointerId,
-        navigation: state.navigation,
-        flowId: flow().id,
-        source: flow().html,
-        anchor: initial.anchor,
-        initial,
-        before: oldFlow === flow().id ? before : null,
-        unit: event.detail >= 3 ? 'paragraph' : event.detail === 2 ? 'word' : 'character',
-        start: { x: event.clientX, y: event.clientY },
-        last: { x: event.clientX, y: event.clientY },
-      };
-      viewport.setPointerCapture(event.pointerId);
-      set(initial);
+      const id = text.dataset.flowFrame || text.dataset.sceneText;
+      if (event.pointerType === 'mouse') {
+        // PointerEvent.detail is zero. Leave compatibility mousedown enabled so the
+        // OS/browser click count (including its accessibility settings) owns granularity.
+        pendingMouse = { id, pointerId: event.pointerId };
+        event.stopImmediatePropagation();
+      } else begin(event, id, event.pointerId, 1);
+    },
+    { capture: true },
+  );
+  listen(
+    viewport,
+    'mousedown',
+    (event) => {
+      const pending = pendingMouse;
+      pendingMouse = null;
+      if (pending && event.button === 0 && allowed(event))
+        begin(event, pending.id, pending.pointerId, event.detail);
     },
     { capture: true },
   );
@@ -546,6 +567,7 @@ export function installFlowSelection(
     viewport,
     'pointerup',
     (event) => {
+      pendingMouse = null;
       if (drag?.pointerId === event.pointerId) {
         event.preventDefault();
         event.stopImmediatePropagation();

@@ -41,6 +41,16 @@ app
       app.exit(code);
     }
     window.webContents.on('console-message', async (event) => {
+      if (event.message?.startsWith('IVO_PAUSED_WORKSPACE_RESULT:')) {
+        const result = JSON.parse(event.message.slice('IVO_PAUSED_WORKSPACE_RESULT:'.length));
+        if (result.error) return finish(1, result);
+        console.log(JSON.stringify(result, null, 2));
+        await window.loadURL(
+          'ivo-workspace-features-test://app/tests/runtime/workspace-features/fixture.html' +
+            (process.env.IVO_REVIEW_DIR ? '?capture=1' : ''),
+        );
+        return;
+      }
       if (process.env.IVO_WORKSPACE_DEBUG)
         console.log(event.message, event.sourceId || '', event.lineNumber || '');
       if (event.message?.startsWith('IVO_WORKSPACE_CHROME:')) {
@@ -109,8 +119,7 @@ app
     });
     window.webContents.on('render-process-gone', (_event, details) => void finish(1, details));
     await window.loadURL(
-      'ivo-workspace-features-test://app/tests/runtime/workspace-features/fixture.html' +
-        (process.env.IVO_REVIEW_DIR ? '?capture=1' : ''),
+      'ivo-workspace-features-test://paused/tests/runtime/workspace-features/paused.html',
     );
     window.focus();
     window.webContents.focus();

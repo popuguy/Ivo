@@ -6,6 +6,7 @@ import path from 'node:path';
 import { buildNativeText } from '../../../scripts/build-native-text.mjs';
 import { createTextComposition } from '../../../desktop/text-composition.mjs';
 import { installTextCompositionBridge } from '../../../desktop/text-composition-bridge.mjs';
+import { selectWithMouse } from '../helpers/text-mouse.mjs';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-native-editor-'));
 app.setPath('userData', profile);
@@ -63,6 +64,7 @@ app
         return JSON.parse(await readFile(path.join(profile, 'archive.json'), 'utf8'));
       window.focus();
       window.webContents.focus();
+      if (action === 'select') return selectWithMouse(window.webContents, value);
       if (action === 'insert' && typeof value === 'string' && value.length < 20000)
         return window.webContents.insertText(value);
       if (

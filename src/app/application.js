@@ -1,3 +1,4 @@
+import { WORKSPACE_FEATURES } from '../domain/workspace/features.js';
 import {
   nativeTextMenuState,
   nativeTextCommand,
@@ -102,7 +103,8 @@ import { initializePlatform } from '../platform/initialize.js';
 import { promoteTextLayout } from '../domain/documents/derived-text-layout.js';
 
 /** One application instance per native/browser window. Authored data and view state have separate owners. */
-export function startApplication({ root, dialog }) {
+export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_FEATURES }) {
+  const isStacked = (group) => workspaceFeatures.stackedTabs && !!group?.stacked;
   installReferenceCursors(document.documentElement);
   installTooltips(root, { exclude: '.scene-editor' });
 
@@ -700,10 +702,10 @@ export function startApplication({ root, dialog }) {
     const owner = paneGroups.get(group.id),
       deck = owner?.element.querySelector('.workspace-view-deck');
     if (!deck) return;
-    const visible = group.stacked
+    const visible = isStacked(group)
       ? groupTabs(workspace, group.id)
       : [workspace.tabs.find((tab) => tab.id === group.active)];
-    owner.element.classList.toggle('tabs-stacked', !!group.stacked);
+    owner.element.classList.toggle('tabs-stacked', isStacked(group));
     for (const [index, tab] of visible.entries()) {
       let pane = panes.get(tab.id);
       if (!pane) {
@@ -885,7 +887,7 @@ export function startApplication({ root, dialog }) {
         button.tabIndex = selected ? 0 : -1;
         button.setAttribute(
           'aria-controls',
-          group.stacked ? 'pane-content-' + button.dataset.tabId : paneContentId(group),
+          isStacked(group) ? 'pane-content-' + button.dataset.tabId : paneContentId(group),
         );
         button.closest('.document-tab').classList.toggle('active', selected);
       }
@@ -897,7 +899,7 @@ export function startApplication({ root, dialog }) {
       const selected = pane.tabId === workspace.active,
         content = pane.element.querySelector('.workspace-pane-content');
       pane.element.classList.toggle('active', selected);
-      content.id = group.stacked ? 'pane-content-' + tab.id : paneContentId(group);
+      content.id = isStacked(group) ? 'pane-content-' + tab.id : paneContentId(group);
       content.setAttribute('aria-labelledby', tab.id);
       const canvas = pane.element.querySelector('[data-canvas-host]');
       if (canvas) canvas.id = selected ? 'canvas-host' : 'canvas-host-' + tab.id;
@@ -986,7 +988,7 @@ export function startApplication({ root, dialog }) {
       }
     for (const [id, pane] of panes) {
       const group = groupForTab(workspace, id);
-      if (!group || (!group.stacked && group.active !== id)) {
+      if (!group || (!isStacked(group) && group.active !== id)) {
         pane.canvas?.destroy();
         pane.graph?.destroy();
         pane.element.remove();
@@ -1008,7 +1010,7 @@ export function startApplication({ root, dialog }) {
   function revealStackTab(id) {
     const group = groupForTab(workspace, id),
       deck = paneGroups.get(group?.id)?.element.querySelector('.workspace-view-deck');
-    if (!group?.stacked || !deck) return;
+    if (!isStacked(group) || !deck) return;
     const index = group.tabIds.indexOf(id),
       cards = [...deck.children];
     deck.scrollLeft = cards
@@ -1721,10 +1723,14 @@ export function startApplication({ root, dialog }) {
     const tab = workspace.tabs.find((tab) => tab.id === id),
       doc = tab?.kind === 'document' && docs.find((doc) => doc.id === tab.docId);
     return [
-      {
-        action: 'toggle-stack',
-        label: groupForTab(workspace, id)?.stacked ? 'Unstack tabs' : 'Stack tabs',
-      },
+      ...(workspaceFeatures.stackedTabs
+        ? [
+            {
+              action: 'toggle-stack',
+              label: isStacked(groupForTab(workspace, id)) ? 'Unstack tabs' : 'Stack tabs',
+            },
+          ]
+        : []),
       ...(tab?.linkedTo ? [{ action: 'unlink-view', label: 'Unlink view' }] : []),
       ...(doc
         ? [
@@ -1746,6 +1752,7 @@ export function startApplication({ root, dialog }) {
     ];
   }
   async function tabAction(name, id) {
+    if (name === 'toggle-stack' && !workspaceFeatures.stackedTabs) return;
     const tab = workspace.tabs.find((tab) => tab.id === id);
     if (!tab) return;
     if (name.startsWith('document-')) return documentAction(name.slice(9), tab.docId);
@@ -1816,17 +1823,25 @@ export function startApplication({ root, dialog }) {
     const id = workspace.active,
       tab = activeTab(workspace),
       items = [
-        { id: 'workspaces', label: 'Workspaces…' },
-        {
-          id: 'restore-workspace',
-          label: 'Restore previous workspace',
-          enabled: workspaceManager.canRestorePrevious,
-        },
-        { type: 'separator' },
-        {
-          id: 'toggle-stack',
-          label: activeGroup(workspace).stacked ? 'Unstack tabs' : 'Stack tabs',
-        },
+        ...(workspaceFeatures.savedLayouts
+          ? [
+              { id: 'workspaces', label: 'Workspaces…' },
+              {
+                id: 'restore-workspace',
+                label: 'Restore previous workspace',
+                enabled: workspaceManager.canRestorePrevious,
+              },
+              { type: 'separator' },
+            ]
+          : []),
+        ...(workspaceFeatures.stackedTabs
+          ? [
+              {
+                id: 'toggle-stack',
+                label: isStacked(activeGroup(workspace)) ? 'Unstack tabs' : 'Stack tabs',
+              },
+            ]
+          : []),
         ...(tab.linkedTo ? [{ id: 'unlink-view', label: 'Unlink view' }] : []),
         ...(tab.kind === 'document'
           ? [
@@ -1879,8 +1894,9 @@ export function startApplication({ root, dialog }) {
       .catch((error) => toast(error.message));
   }
   async function action(name) {
-    if (name === 'workspaces') return manageWorkspaces();
-    if (name === 'restore-workspace') return workspaceManager.restorePrevious();
+    if (name === 'workspaces') return workspaceFeatures.savedLayouts && manageWorkspaces();
+    if (name === 'restore-workspace')
+      return workspaceFeatures.savedLayouts && workspaceManager.restorePrevious();
     if (name.startsWith('focus-pane-')) {
       if (!(await flush())) return;
       const next = adjacentPane(workspace, activeGroup(workspace).id, name.slice(11));

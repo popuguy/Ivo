@@ -125,6 +125,7 @@ async function panelMenu(element, action) {
 }
 try {
   await startApplication({
+    workspaceFeatures: { stackedTabs: true, savedLayouts: true },
     root: document.querySelector('#app'),
     dialog: document.querySelector('#dialog'),
   });

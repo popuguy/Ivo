@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, systemPreferences } from 'electron';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -24,6 +25,13 @@ startTextFlow(doc, frame.id, { automaticPages: false });
 const vault = await openVault(vaultPath);
 await vault.saveImport({ schemaVersion: 5, documents: [doc], assets: [] });
 const original = doc.textFlows[0].html;
+const globalForceClick = () => {
+  const result = spawnSync('/usr/bin/defaults', ['read', '-g', 'com.apple.trackpad.forceClick'], {
+    encoding: 'utf8',
+  });
+  return { status: result.status, value: result.stdout };
+};
+const originalGlobalForceClick = process.platform === 'darwin' && globalForceClick();
 let window,
   state = null,
   settled = false;
@@ -76,6 +84,22 @@ void (async () => {
       send = (name) => window.webContents.send('ivo:command', name),
       source = async () => (await execute('ivoNative.store.loadDocuments()'))[0].textFlows[0].html;
     await wait(() => execute("!!document.querySelector('.workspace-pane')"), 'Workspace');
+    if (process.platform === 'darwin') {
+      assert.equal(systemPreferences.getUserDefault('com.apple.trackpad.forceClick', 'integer'), 0);
+      assert.deepEqual(
+        globalForceClick(),
+        originalGlobalForceClick,
+        'Ivo changed the global trackpad preference',
+      );
+    }
+    const labels = (menu) =>
+      menu.items.flatMap((item) => [item.label, ...(item.submenu ? labels(item.submenu) : [])]);
+    assert.ok(
+      !labels(Menu.getApplicationMenu()).some((label) =>
+        ['Workspaces…', 'Restore Previous Workspace'].includes(label),
+      ),
+      'Paused workspace commands remain in the native menu',
+    );
     window.show();
     window.focus();
     await wait(() => execute('ivoNative.windows.info().then(s=>s.active)'), 'Writer');

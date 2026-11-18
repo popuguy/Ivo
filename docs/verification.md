@@ -1,5 +1,15 @@
 # Verification
 
+## Selection and workspace simplification — 18 November 2026
+
+The standard formatting/lint/architecture/unit/build checks pass with **273 unit tests**, and the full **36 desktop groups** pass sequentially. A new active-editor double-click case first reproduced the collapsed-selection failure; the corrected path uses native `mousedown` click counts. Trusted browser/native tests now cover active-editor word selection, complete-word drag extension and structural-paragraph triple-clicks alongside cross-page selection, source/history preservation, delayed geometry and save/reopen. The final native case finds word coordinates without preselecting the requested word and passes separately after the full run. Tests retain bounded mouse traces for useful failure diagnostics.
+
+The default-policy workspace fixture restores legacy stacked metadata, renders ordinary tabs, checks tab/pane/native command removal and tab accessibility ownership, switches tabs and splits panes, then reopens while retaining saved catalog bytes, stack flags and authored source. Explicit legacy fixtures still exercise the paused implementation and its failure fences. Production-main native checks verify the effective application Force Click lookup preference is zero and the global trackpad preference is unchanged. Actual physical pressure is not synthesized or claimed.
+
+Fresh review build: `release/2026-11-18-editing-navigation/Ivo-darwin-arm64/Ivo.app`. A launch of that packaged executable with a temporary vault verifies active-editor double-click selection of **bravo**, unchanged authored source, the `com.paulcantrell.ivo` Force Click setting and unchanged system trackpad preference. The packaged inspection explicitly brings its page forward before trusted input. The asset sync/package comparison finds **197 identical web files** across static/iOS/ASAR output, **124 source files**, **16 desktop source files**, and both matching executable native helpers. Tests, docs and private research remain excluded from the app archive. This pass does not change the Swift helpers or claim new physical iPhone/iPad qualification.
+
+Evidence: parent `work/editing-navigation-2026-11-18/` contains the complete desktop log, standard checks, strengthened final selection result, asset preparation/package logs, byte comparison and isolated packaged-app smoke result. Personal vaults and existing installations were not changed.
+
 ## Native composition editor preview — 18 November 2026
 
 The [actual-editor connection](native-composition-editor.md) now uses the [shared engine](indesign/shared-composition-engine.md) through production preloads and a persistent worker. The standard source/format/lint/architecture/unit/build checks pass with **272 units**. A complete sequential desktop run passes **all 36 groups**, including the new bridge, native input geometry and actual native editor groups. Eight native tests pass, covering font export, Foundation vault interoperability and real composition/PDF behavior. Targeted native-editor and PDF runs pass again after the final SVG integration changes.

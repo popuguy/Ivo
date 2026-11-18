@@ -1,6 +1,8 @@
 # Saved workspaces and navigation
 
-Open **Window → Workspaces…** in the Mac menu, or **Workspaces…** in a pane’s view-options menu. Save a named layout, load it, rename it, update it from the current layout or delete the saved entry. **Restore Previous Workspace** returns to the view arrangement before the last successful load. Deleting a saved layout never deletes a document.
+The named **Workspaces…** feature is paused at Paul's request on 18 November 2026. Its manager and restore commands are absent from the Mac and pane menus, and stale commands cannot invoke them. Existing profile-local catalogs are neither deleted nor rewritten. Ordinary automatic restoration of open tabs/windows and sidebar state, plus independent contextual panel presets, remain active. `WORKSPACE_FEATURES.savedLayouts` in `src/domain/workspace/features.js` retains a single route for reconsidering the implementation; explicit legacy fixtures continue to exercise it.
+
+The following saved-layout behavior describes the retained, inactive implementation: save a named layout, load it, rename it, update it from the current layout or delete the saved entry. Restore Previous Workspace returns to the view arrangement before the last successful load. Deleting a saved layout never deletes a document.
 
 A saved layout includes tab/pin order, splits and ratios, active panes, document/graph cameras, sidebar width/collapse/mode, folder disclosure state, sorting, search/tag filters graph display preferences, stacked/linked view relationships and contextual panel layouts. It excludes authored HTML, original assets, live text bookmarks, navigation trails and undo snapshots. Up to 16 named layouts fit in a bounded profile-local catalog. Missing documents are removed from a loaded view without changing the catalog or other notes.
 
