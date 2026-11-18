@@ -2,6 +2,8 @@
 
 **Status: proposed; prototype required.** Researched 18 November 2026. No new composition engine, worker, native drawing surface or input adapter is implemented by this document. Existing first-baseline/selection improvements remain browser-derived working increments. This draft extends [the shared-engine decision](0001-shared-document-engine.md); it does not replace the shared document, storage, undo or knowledge model.
 
+The first [native geometry/PDF proof](../indesign/native-composition-prototype.md) now runs separately from production: current-source maps, exact CMU resources, native glyph/caret geometry and same-line PDF output have bounded evidence. It exposes fallback and PDF ligature-extraction differences explicitly. This is partial P1/P2/P6 evidence; the paragraph scheduler, native presentation/input and mobile gates still block adopting a new layout authority.
+
 The [66-capability programme](../indesign/text-parity-programme.md) requires more than font controls over browser layout. Whole-paragraph choices, custom spacing tolerances, contour exclusions, footnote/table pagination, parent text frames and vertical CJK rules need an owned composition pipeline. A low-level library may supply shaping and drawing, but it must not become another mutable document model.
 
 ## Proposed choice

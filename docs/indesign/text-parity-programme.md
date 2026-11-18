@@ -6,6 +6,8 @@ The requested scope contains 66 included capability IDs after applying the later
 
 A visible control, a stored attribute, a successful browser render and an observed native InDesign behavior are four different kinds of evidence. None alone establishes feature parity. Rows below state **Foundation** where a bounded Ivo implementation exists and **Open** where the capability or its essential fidelity is missing. No row is currently certified as full InDesign parity. A future completion entry must name the exact tested implementation commit, reference build, fixture and remaining differences.
 
+Post-baseline increments: commit `693f2dc` delivers the [linked-selection/native-formatting milestone](../text-interaction-core.md) and [measured first baselines](../frame-composition.md), verified with 222 units and 33 desktop groups across retained runs. The subsequent isolated [Core Text geometry/PDF proof](native-composition-prototype.md) supplies bounded source/font/glyph/caret/export evidence and identifies fallback/extraction limits. The capability tables below retain the original acceptance baseline; neither increment certifies full parity or replaces the remaining programme.
+
 ## Order of work
 
 1. **Source and command contracts.** Fix the coordinate, selection, paragraph-mark, style and undo contracts first. The existing canonical HTML can continue to store source while adapters expose the required logical positions; introducing a new persisted representation requires a versioned migration and frozen fixtures. A large format replacement must not become a prerequisite for the first usable cross-frame selection increment.

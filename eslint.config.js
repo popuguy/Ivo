@@ -30,7 +30,7 @@ export default [
     },
   },
   {
-    files: ['src/**/*.js', 'tests/runtime/**/*.js'],
+    files: ['src/**/*.js', 'tests/runtime/**/*.js', 'tests/prototypes/**/*.js'],
     languageOptions: { globals: globals.browser },
   },
   {
@@ -40,6 +40,7 @@ export default [
       'tests/unit/*.js',
       'tests/native/*.js',
       'tests/runtime/**/*.mjs',
+      'tests/prototypes/**/*.mjs',
       'eslint.config.js',
     ],
     languageOptions: { globals: globals.node },

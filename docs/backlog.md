@@ -8,6 +8,8 @@ Status meanings: **Foundation** works in a bounded first implementation; **Next*
 
 The [text parity programme](indesign/text-parity-programme.md) now accounts for all 66 included capability IDs and their acceptance gates. The current [text-interaction milestone](text-interaction-core.md) delivers linked-frame range selection/painting, Unicode/paragraph navigation, native formatting ownership and the reported Command-I/save/reopen regression coverage. [First-baseline and frame alignment](frame-composition.md) adds real measured placement with an opt-in archive 7 / canvas 6 gate. Paragraph composition, richer structures and editorial tools remain ordered work; visible controls are not treated as completed engines.
 
+The [native composition experiment](indesign/native-composition-prototype.md) verifies source-to-glyph/caret mapping and selectable PDF from the same frozen native lines without replacing the live editor. The next engine step is an owned paragraph decision and scheduler; fallback capture, native input/rendering, device evidence and the rest of the parity scope remain required.
+
 Installed font discovery and automatic vault font packaging are delivered for the desktop/shared Apple bridge, with CMU Serif as the new-text default. See [font portability](font-portability.md). Existing note typography is preserved; unsupported/oversized fonts, direct collection-file imports, glyph-fallback capture and physical iPhone/iPad verification remain scoped boundaries.
 
 ## Delivered: object clipboard and shared text-style correction
