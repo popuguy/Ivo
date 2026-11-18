@@ -38,13 +38,18 @@ export function sceneObjectHTML(
   return `<div class="canvas-object object-${item.type}" data-object="${esc(item.id)}" tabindex="${editing ? 0 : -1}" role="group" aria-label="${esc(item.type)} object" style="left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;${item.frameOptions ? `background:${item.frameOptions.fill === 'none' ? 'transparent' : item.frameOptions.fill || 'transparent'};border:${item.frameOptions.strokeWidth || 0}px solid ${item.frameOptions.stroke === 'none' ? 'transparent' : item.frameOptions.stroke || 'transparent'};border-radius:${item.frameOptions.corner || 0}px;box-sizing:border-box;` : ''}opacity:${(item.opacity ?? 100) / 100};transform:rotate(${item.rotation || 0}deg);${objectAvailable(doc, item) ? '' : 'pointer-events:none;'}">${content}</div>`;
 }
 export function applySceneTypography(root, doc) {
+  const composedFlows = new Set(
+    (doc.textFlows || []).filter((flow) => flow.composition).map((flow) => flow.id),
+  );
   for (const item of doc.blocks) {
     const element = root.querySelector(
       `[data-scene-text="${CSS.escape(item.id)}"],[data-flow-frame="${CSS.escape(item.id)}"]`,
     );
     if (element) {
       applyFrameTypography(element, effectiveTextStyle(doc, frameTextSettings(doc, item)));
-      applyNamedTextStyles(element, doc);
+      // Native glyphs already carry resolved run paint. Walking every SVG path
+      // as browser rich text duplicates work and can decorate SVG title nodes.
+      if (!composedFlows.has(item.textFlowId)) applyNamedTextStyles(element, doc);
       applyTextLayout(element, item);
     }
   }

@@ -1,4 +1,9 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
+const textComposition = Object.freeze({
+  compose: (request) => ipcRenderer.invoke('ivo:text-composition', 'compose', request),
+  pdf: (token, options = {}) => ipcRenderer.invoke('ivo:text-composition', 'pdf', token, options),
+});
+contextBridge.exposeInMainWorld('ivoTextComposition', textComposition);
 const methods = [
   'loadDocuments',
   'saveDocument',
@@ -12,6 +17,7 @@ const methods = [
 ];
 contextBridge.exposeInMainWorld('ivoNative', {
   platform: 'macos',
+  textComposition,
   fonts: Object.freeze({
     list: (refresh = false) => ipcRenderer.invoke('ivo:fonts', 'list', refresh),
     read: (postscript) => ipcRenderer.invoke('ivo:fonts', 'read', postscript),

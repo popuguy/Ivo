@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { SHIPPED_TEXT_FONT_FILES } from '../src/rendering/text/font-resources.js';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (file) => fs.readFile(path.join(root, file), 'utf8');
 /** Real ESM bundling, including the physics worker and embedded original font bytes. */
@@ -30,6 +31,24 @@ export async function buildPortable() {
             loader: 'js',
             contents: `const url=URL.createObjectURL(new Blob([${JSON.stringify(worker.outputFiles[0].text)}],{type:'text/javascript'}));export function createGraphWorker(){return new Worker(url,{type:'module'});}`,
           }));
+          builder.onLoad(
+            { filter: /[/\\]rendering[/\\]text[/\\]font-resources\.js$/ },
+            async () => {
+              const fonts = Object.fromEntries(
+                await Promise.all(
+                  Object.entries(SHIPPED_TEXT_FONT_FILES).map(async ([id, file]) => [
+                    id,
+                    'data:font/ttf;base64,' +
+                      (await fs.readFile(path.join(root, 'public/fonts', file))).toString('base64'),
+                  ]),
+                ),
+              );
+              return {
+                loader: 'js',
+                contents: `const fonts=${JSON.stringify(fonts)};export function shippedTextFontURL(id){if(!fonts[id])throw Error('Unknown bundled text font.');return fonts[id];}`,
+              };
+            },
+          );
         },
       },
     ],

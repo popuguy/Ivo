@@ -1,5 +1,13 @@
 import { caretInterval } from '../../domain/text/flow-selection.js';
 import { installFlowSelection } from './text/flow-selection.js';
+import { createNativeInputAnchor } from './text/native-input-anchor.js';
+import { hitNativeColumn } from './text/native-composition-geometry.js';
+import { createCompositionSession, compositionLayoutKey } from './text/composition-session.js';
+import {
+  composeNativeTextFlows,
+  validateNativeFlowSource,
+  nativeFlowColumns,
+} from '../../rendering/text/native-flow-layout.js';
 import {
   copyObjectSelection,
   readObjectClipboard,
@@ -38,6 +46,7 @@ import {
   textFlowForFrame,
   frameTextSettings,
   threadFrame,
+  enableNativeComposition,
 } from '../../domain/documents/text-flows.js';
 import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
 import { sceneObjectHTML, applySceneTypography } from '../../rendering/page-content.js';
@@ -188,7 +197,13 @@ export function mountCanvasEditor(host, options) {
     savedTextSelection = null,
     pendingMarks = {},
     pendingTextPosition = null,
-    flowSelection;
+    flowSelection,
+    nativeSession,
+    inputAnchor,
+    compositionNotice;
+  let nativePlan = { fragments: new Map(), status: new Map() },
+    nativePlanKey = '',
+    nativeError = '';
   const compositionWaiters = [];
   const pointers = new Map();
   let pinch = null,
@@ -201,6 +216,18 @@ export function mountCanvasEditor(host, options) {
   let parentEditor = null;
   let textSummary = null;
   const ownsInput = () => options.isActive?.() !== false && !parentEditor;
+  const canWrite = () => options.canWrite?.() !== false;
+  const flowLayoutKey = () => compositionLayoutKey(doc()) + ':' + canWrite();
+  const nativeGeometryReady = (event) => {
+    const target =
+        event?.target instanceof Element
+          ? event.target.closest('[data-flow-frame],.canvas-flow-input')
+          : null,
+      flow = target
+        ? textFlowForFrame(doc(), target.dataset.flowFrame || target.dataset.sceneText)
+        : sourceTextFlow();
+    return !flow?.composition || nativePlanKey === compositionLayoutKey(doc());
+  };
   const doc = () => getDocument();
   const objects = () => selectionRoots(doc(), state.selection);
   const object = () => {
@@ -364,6 +391,7 @@ export function mountCanvasEditor(host, options) {
     const before = structuredClone(doc());
     try {
       callback();
+      validateNativeSources();
       updateFlowPlan();
     } catch (error) {
       const current = doc();
@@ -374,6 +402,13 @@ export function mountCanvasEditor(host, options) {
     }
     onCommit(before, { label, viewBefore, viewAfter: captureView() });
     paint();
+  }
+  function validateNativeSources() {
+    for (const flow of doc().textFlows || [])
+      if (flow.composition) {
+        validateNativeFlowSource(doc(), flow, options.assets?.() || options.fonts?.() || []);
+        nativeFlowColumns(doc(), flow);
+      }
   }
   function polygonPoints(item, local = false) {
     return item.points
@@ -654,6 +689,7 @@ export function mountCanvasEditor(host, options) {
         fonts: options.fonts?.() || [],
         systemFonts: options.systemFonts?.() || [],
         textSummary,
+        nativeComposition: !!options.textComposition,
       });
     reflectTextStyle(editor, textSummary);
   }
@@ -701,23 +737,59 @@ export function mountCanvasEditor(host, options) {
     if (element && document.activeElement === element) syncTextStyle();
   }
 
+  async function setFlowComposer(composer) {
+    finishText();
+    const flow = textFlowForFrame(doc(), object());
+    if (!flow || !ownsInput() || !options.editing) return;
+    if (composer === 'browser') {
+      mutate(() => {
+        delete flow.composition;
+      }, 'Change text composer');
+      nativeError = '';
+      if (compositionNotice) compositionNotice.hidden = true;
+      delete editor.dataset.compositionError;
+      return;
+    }
+    const key = compositionLayoutKey(doc()),
+      candidate = structuredClone(doc()),
+      target = candidate.textFlows.find((f) => f.id === flow.id);
+    try {
+      if (!options.textComposition) throw Error('This composer requires the native app.');
+      enableNativeComposition(candidate, target, composer);
+      await composeNativeTextFlows(candidate, {
+        compose: options.textComposition.compose,
+        allowPages: false,
+        assets: options.assets?.() || options.fonts?.() || [],
+      });
+      if (!alive || key !== compositionLayoutKey(doc())) return;
+      mutate(() => enableNativeComposition(doc(), flow, composer), 'Change text composer');
+    } catch (error) {
+      if (alive && compositionLayoutKey(doc()) === key) {
+        options.onNotify?.(error.message);
+        renderPanel();
+      }
+    }
+  }
+
   function updateFlowPlan() {
-    const key = JSON.stringify([
-      doc().textFlows || [],
-      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale, b.frameOptions]),
-      doc().pages,
-      doc().publishing?.paragraphStyles,
-      doc().publishing?.characterStyles,
-    ]);
+    const key = flowLayoutKey();
     if (key === flowSignature) return false;
-    flowPlan = layoutDocumentTextFlows(doc());
-    flowSignature = JSON.stringify([
-      doc().textFlows || [],
-      doc().blocks.map((b) => [b.id, b.pageId, b.w, b.h, b.textScale, b.frameOptions]),
-      doc().pages,
-      doc().publishing?.paragraphStyles,
-      doc().publishing?.characterStyles,
-    ]);
+    flowPlan = layoutDocumentTextFlows(doc(), { allowPages: canWrite() });
+    for (const flow of doc().textFlows || [])
+      if (flow.composition) {
+        for (const id of flow.frameIds)
+          if (nativePlan.fragments.has(id))
+            flowPlan.fragments.set(id, nativePlan.fragments.get(id));
+        if (nativePlan.status.has(flow.id))
+          flowPlan.status.set(flow.id, nativePlan.status.get(flow.id));
+      }
+    flowSignature = flowLayoutKey();
+    if (doc().textFlows?.some((flow) => flow.composition))
+      nativeSession?.request(doc(), {
+        assets: options.assets?.() || options.fonts?.() || [],
+        allowPages: canWrite(),
+      });
+    else if (compositionNotice) compositionNotice.hidden = true;
     flowPreviewDirty = true;
     return true;
   }
@@ -751,16 +823,20 @@ export function mountCanvasEditor(host, options) {
     for (const item of frames) {
       const element = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`);
       if (!element) continue;
-      const sourceHTML = flowPlan.fragments.get(item.id)?.html || '',
+      const part = flowPlan.fragments.get(item.id),
+        sourceHTML = part?.html || '',
         cached = flowRenderCache.get(item.id);
+      element.toggleAttribute('data-native-flow', !!textFlowForFrame(doc(), item)?.composition);
       if (cached?.sourceHTML === sourceHTML && cached.element === element) continue;
       const html =
         cached?.sourceHTML === sourceHTML
           ? cached.html
-          : readableHTML(sourceHTML, options.documents, doc().id, {
-              preserveWikiText: true,
-              trustedFlow: true,
-            });
+          : part?.native
+            ? sourceHTML
+            : readableHTML(sourceHTML, options.documents, doc().id, {
+                preserveWikiText: true,
+                trustedFlow: true,
+              });
       if (element.innerHTML !== html) element.innerHTML = html;
       flowRenderCache.set(item.id, { sourceHTML, html, element });
     }
@@ -783,6 +859,7 @@ export function mountCanvasEditor(host, options) {
       : null;
   }
   function hideFlowInput() {
+    inputAnchor?.reset();
     host.querySelector('.canvas-input-world').hidden = true;
     host.querySelector('.canvas-input-world').classList.remove('flow-range-active');
     for (const preview of world.querySelectorAll('[data-flow-editing]'))
@@ -802,11 +879,14 @@ export function mountCanvasEditor(host, options) {
       position = objectWorld(item),
       sx = item.textScale?.x || 1,
       sy = item.textScale?.y || 1;
+    const native = !!sourceTextFlow(element)?.composition;
+    element.classList.toggle('native-composition-input', native);
+    if (!native) inputAnchor?.reset();
     for (const preview of world.querySelectorAll('[data-flow-editing]'))
       delete preview.dataset.flowEditing;
     const preview = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`),
       physical = preview?.querySelectorAll('.flow-column')[column.index || 0] || preview;
-    if (physical) physical.dataset.flowEditing = '';
+    if (physical && !native) physical.dataset.flowEditing = '';
     Object.assign(clip.style, {
       left: position.x + column.left * sx + 'px',
       top: position.y + column.top * sy + 'px',
@@ -824,7 +904,7 @@ export function mountCanvasEditor(host, options) {
       columnCount: 'auto',
       transform: `scale(${sx},${sy})`,
     });
-    projectFlowInput(element, column.start);
+    projectFlowInput(element, native ? 0 : column.start);
     // Native selection scrolling must not move the input independently of its page.
     element.scrollTop = element.scrollLeft = clip.scrollTop = clip.scrollLeft = 0;
     applyPageCamera(layer, state.camera);
@@ -833,6 +913,11 @@ export function mountCanvasEditor(host, options) {
     const element = activeText(),
       textFlow = sourceTextFlow(element);
     if (!textFlow || !element?.classList.contains('canvas-flow-input')) return;
+    if (textFlow.composition && !nativeGeometryReady()) {
+      flowSelection?.sync();
+      inputAnchor?.reset();
+      return;
+    }
     const offset = sourceCaretIndex();
     if (offset === null || flowSelection?.dragging || flowSelection?.sync()?.collapsed === false)
       return;
@@ -872,9 +957,45 @@ export function mountCanvasEditor(host, options) {
   function openTextFlowEditor(item, event, word, { focus = true } = {}) {
     const textFlow = textFlowForFrame(doc(), item);
     if (!textFlow) return;
+    if (event && textFlow.composition && nativePlanKey !== compositionLayoutKey(doc())) return;
     const preview = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`);
-    let index = flowPlan.fragments.get(item.id)?.start || 0;
-    if (event) {
+    const fragment = flowPlan.fragments.get(item.id);
+    let index = fragment?.start || 0,
+      nativeHit = null;
+    if (textFlow.composition) {
+      const elements = [...(preview?.querySelectorAll(':scope > .flow-column') || [])],
+        columns = (fragment?.columns || []).map((column, i) => ({
+          ...column,
+          frameId: item.id,
+          element: elements[i],
+        }));
+      if (event) {
+        const point = { x: event.clientX, y: event.clientY },
+          closest = columns
+            .map((column) => {
+              const matrix = column.element
+                ?.querySelector('svg[data-composed-text]')
+                ?.getScreenCTM();
+              if (!matrix || !column.native?.lines.length) return null;
+              const local = new DOMPoint(point.x, point.y).matrixTransform(matrix.inverse()),
+                dx = Math.max(0, -local.x, local.x - column.width),
+                dy = Math.max(0, -local.y, local.y - column.height);
+              return { column, distance: dx * dx + dy * dy };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.distance - b.distance)[0];
+        if (closest) nativeHit = hitNativeColumn(closest.column, point);
+      } else {
+        const column = columns.find((part) => part.native?.lines.length);
+        if (column)
+          nativeHit = hitNativeColumn(
+            column,
+            { x: 0, y: column.native.lines[0].baseline },
+            { coordinateSpace: 'column' },
+          );
+      }
+      if (nativeHit) index = nativeHit.index;
+    } else if (event) {
       const caret = document.caretRangeFromPoint?.(event.clientX, event.clientY),
         marker = caret?.startContainer.parentElement?.closest('[data-flow-text]');
       if (marker && preview?.contains(marker))
@@ -893,7 +1014,7 @@ export function mountCanvasEditor(host, options) {
     applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
     applyNamedTextStyles(element, doc());
     delete element.dataset.projectedStart;
-    positionFlowInput(item, index, 'forward');
+    positionFlowInput(item, index, nativeHit?.affinity || 'forward');
     element.contentEditable = 'true';
     element.removeAttribute('aria-readonly');
     element.setAttribute('role', 'textbox');
@@ -918,14 +1039,27 @@ export function mountCanvasEditor(host, options) {
         map.segments.find((p) => p.start > index) ||
         map.segments.at(-1);
     element.focus({ preventScroll: true });
-    const range = document.createRange();
-    if (part)
-      range.setStart(part.node, Math.max(0, Math.min(part.node.length, index - part.start)));
-    else range.selectNodeContents(element);
-    range.collapse(!part);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-    if (word) selectCaretWord(element, range);
+    let range;
+    if (textFlow.composition) {
+      const position = {
+        path: [],
+        offset: 0,
+        index,
+        kind: 'text',
+        affinity: nativeHit?.affinity || 'forward',
+      };
+      restoreTextSelection(element, { anchor: position, focus: position }, { focus: true });
+      range = window.getSelection().rangeCount ? window.getSelection().getRangeAt(0) : null;
+    } else {
+      range = document.createRange();
+      if (part)
+        range.setStart(part.node, Math.max(0, Math.min(part.node.length, index - part.start)));
+      else range.selectNodeContents(element);
+      range.collapse(!part);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+    }
+    if (word && range) selectCaretWord(element, range);
     rememberTextSelection();
     renderTools();
     renderPanel();
@@ -933,6 +1067,16 @@ export function mountCanvasEditor(host, options) {
   }
   function writeText(item, html, element) {
     const textFlow = (element && sourceTextFlow(element)) || textFlowForFrame(doc(), item);
+    if (textFlow?.composition) {
+      const canonical = element?.classList.contains('canvas-flow-input')
+        ? flowInputHTML(element)
+        : cleanHTML(html);
+      validateNativeFlowSource(
+        doc(),
+        { ...textFlow, html: canonical },
+        options.assets?.() || options.fonts?.() || [],
+      );
+    }
     if (element?.classList.contains('canvas-flow-input')) delete element.dataset.projectedStart;
     if (textFlow)
       textFlow.html = element?.classList.contains('canvas-flow-input')
@@ -977,7 +1121,17 @@ export function mountCanvasEditor(host, options) {
     const item = sceneObject(doc(), element.dataset.sceneText),
       textFlow = sourceTextFlow(element);
     if (!item && !textFlow) return;
-    writeText(item, element.innerHTML, element);
+    try {
+      writeText(item, element.innerHTML, element);
+    } catch (error) {
+      if (!textFlow?.composition) throw error;
+      element.innerHTML = cleanHTML(textFlow.html);
+      applyNamedTextStyles(element, doc());
+      if (textViewBefore?.textSelection)
+        restoreTextSelection(element, textViewBefore.textSelection);
+      options.onNotify?.(error.message);
+      return false;
+    }
     if (!composing) applyNamedTextStyles(element, doc());
     if (textFlow && !composing) {
       refreshFlowPreview();
@@ -1199,6 +1353,36 @@ export function mountCanvasEditor(host, options) {
     return true;
   }
   function applyTextProperty(field, value, { commit = true } = {}) {
+    const flow = textFlowForFrame(doc(), object());
+    if (!flow?.composition) return applyTextPropertyValue(field, value, { commit });
+    finishText();
+    const before = structuredClone(doc()),
+      view = captureView(),
+      marks = { ...pendingMarks };
+    try {
+      const result = applyTextPropertyValue(field, value, { commit: false });
+      validateNativeSources();
+      // Validate pending insertion formatting as well as existing source runs.
+      if (Object.keys(pendingMarks).length) {
+        const probe = structuredClone(flow);
+        probe.style = { ...probe.style, ...readSelectedTextStyle()?.values, ...pendingMarks };
+        validateNativeFlowSource(doc(), probe, options.assets?.() || options.fonts?.() || []);
+      }
+      if (commit && documentContent(before) !== documentContent(doc()))
+        onCommit(before, { label: 'Text formatting', viewBefore: view, viewAfter: captureView() });
+      return result;
+    } catch (error) {
+      for (const key of Object.keys(doc())) delete doc()[key];
+      Object.assign(doc(), before);
+      pendingMarks = marks;
+      flowSignature = '';
+      restoreView(view);
+      if (!commit) throw error;
+      options.onNotify?.(error.message);
+      return false;
+    }
+  }
+  function applyTextPropertyValue(field, value, { commit = true } = {}) {
     const item = object();
     if (!item || !['text', 'quote'].includes(item.type)) return false;
     finishText();
@@ -2624,6 +2808,10 @@ export function mountCanvasEditor(host, options) {
   });
   listen(host, 'change', (event) => {
     const el = event.target;
+    if (el.matches('[data-flow-composer]')) {
+      void setFlowComposer(el.value);
+      return;
+    }
     if (el.matches('[data-flow-auto]')) {
       mutate(() => {
         textFlowForFrame(doc(), object()).automaticPages = el.checked;
@@ -2705,9 +2893,11 @@ export function mountCanvasEditor(host, options) {
           return;
         }
       }
-      if ((CHARACTER_FIELDS[prop] || PARAGRAPH_FIELDS[prop]) && applyTextProperty(prop, value)) {
-        if (el.type === 'number') el.value = String(value);
-        el.dataset.focusValue = el.value;
+      if (CHARACTER_FIELDS[prop] || PARAGRAPH_FIELDS[prop]) {
+        if (applyTextProperty(prop, value)) {
+          if (el.type === 'number') el.value = String(value);
+          el.dataset.focusValue = el.value;
+        }
         return;
       }
       mutate(() => {
@@ -3297,14 +3487,22 @@ export function mountCanvasEditor(host, options) {
       finishText();
       const before = structuredClone(doc()),
         viewBefore = captureView();
-      for (const [key, value] of Object.entries(settings)) {
-        if (
-          key === 'fontVariations' &&
-          value === 'normal' &&
-          readSelectedTextStyle()?.values.fontVariations === 'normal'
-        )
-          continue;
-        applyTextProperty(key, value, { commit: false });
+      try {
+        for (const [key, value] of Object.entries(settings)) {
+          if (
+            key === 'fontVariations' &&
+            value === 'normal' &&
+            readSelectedTextStyle()?.values.fontVariations === 'normal'
+          )
+            continue;
+          applyTextProperty(key, value, { commit: false });
+        }
+      } catch (error) {
+        for (const key of Object.keys(doc())) delete doc()[key];
+        Object.assign(doc(), before);
+        flowSignature = '';
+        restoreView(viewBefore);
+        throw error;
       }
       if (documentContent(before) !== documentContent(doc()))
         onCommit(before, { label: 'Font', viewBefore, viewAfter: captureView() });
@@ -3314,12 +3512,80 @@ export function mountCanvasEditor(host, options) {
     fonts: options.fonts,
     parentMode: options.parentMode,
   });
+  inputAnchor = createNativeInputAnchor(host.querySelector('.canvas-flow-input'), {
+    allowed: () => !!sourceTextFlow()?.composition && alive,
+    isComposing: () => composing,
+  });
+  nativeSession = createCompositionSession({
+    getDocument: doc,
+    scope: canWrite,
+    compose: (snapshot, settings) => {
+      if (!options.textComposition)
+        throw Error(
+          'This document requires the native text composer. Open it in the current Mac or iPhone/iPad app.',
+        );
+      return composeNativeTextFlows(snapshot, {
+        ...settings,
+        compose: options.textComposition.compose,
+      });
+    },
+    onResult: (plan, snapshot) => {
+      nativeError = '';
+      compositionNotice.hidden = true;
+      delete editor.dataset.compositionError;
+      nativePlan = plan;
+      nativePlanKey = compositionLayoutKey(snapshot);
+      if (plan.changed) {
+        doc().blocks = snapshot.blocks;
+        doc().pages = snapshot.pages;
+        for (const flow of doc().textFlows || []) {
+          const derived = snapshot.textFlows?.find((value) => value.id === flow.id);
+          if (flow.composition && derived) {
+            flow.frameIds = derived.frameIds;
+            flow.autoPages = derived.autoPages;
+          }
+        }
+        onChange();
+      }
+      flowSignature = '';
+      refreshFlowPreview();
+      followTextFlowCaret();
+      renderPanel();
+      flowSelection?.sync();
+    },
+    onError: (error) => {
+      editor.dataset.compositionError = error.message;
+      if (nativeError !== error.message)
+        options.onNotify?.('Text is saved; composition paused. ' + error.message);
+      nativeError = error.message;
+      compositionNotice.hidden = false;
+      compositionNotice.querySelector('span').textContent = error.message;
+      renderPanel();
+    },
+  });
+  compositionNotice = document.createElement('div');
+  compositionNotice.className = 'canvas-composition-notice';
+  compositionNotice.hidden = true;
+  compositionNotice.setAttribute('role', 'alert');
+  compositionNotice.innerHTML = '<span></span><button type="button">Retry</button>';
+  compositionNotice.querySelector('button').addEventListener(
+    'click',
+    () => {
+      nativeSession.retry(doc(), {
+        assets: options.assets?.() || options.fonts?.() || [],
+        allowPages: canWrite(),
+      });
+    },
+    { signal: controller.signal },
+  );
+  editor.append(compositionNotice);
   flowSelection = installFlowSelection(viewport, {
     allowed: (event) =>
       ownsInput() &&
       options.editing &&
       !busy &&
       !composing &&
+      nativeGeometryReady(event) &&
       !dialogOpen() &&
       (!event || (!space && (state.tool === 'text' || !!sourceTextFlow()))),
     input: () => (sourceTextFlow() ? activeText() : null),
@@ -3329,6 +3595,7 @@ export function mountCanvasEditor(host, options) {
     fragment: (id) => flowPlan.fragments.get(id),
     layoutKey: () => flowSignature + ':' + sceneRevision,
     preview: (id) => world.querySelector(`[data-flow-frame="${CSS.escape(id)}"]`),
+    onNativeCaret: (rect) => inputAnchor.update(rect),
     activate: (id, event) => {
       const native = activeText() && captureTextSelection(activeText());
       if (
@@ -3489,20 +3756,29 @@ export function mountCanvasEditor(host, options) {
       }
       finishText();
       while (pendingCount) await pendingFiles;
+      await nativeSession.flush();
     },
     get pending() {
-      return pendingCount > 0 || composing || publishingControls.pending || parentEditor?.pending;
+      return (
+        pendingCount > 0 ||
+        composing ||
+        nativeSession.pending ||
+        publishingControls.pending ||
+        parentEditor?.pending
+      );
     },
     destroy() {
       finishGesture();
       endTextEditing();
       alive = false;
+      nativeSession.destroy();
       closeContextMenu();
       previews.destroy();
       tooltips.destroy();
       publishingControls.destroy();
       contextualBar.destroy();
       flowSelection.destroy();
+      inputAnchor.destroy();
       parentEditor?.destroy();
 
       workspacePanels.destroy();

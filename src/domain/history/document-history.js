@@ -1,7 +1,8 @@
 /** One document timeline for text, formatting, geometry and structural commands. */
+import { authoredLayoutDocument } from '../documents/derived-text-layout.js';
 const clone = (value) => (value == null ? value : structuredClone(value));
 export function documentContent(document) {
-  const { version, updatedAt, ...content } = document;
+  const { version, updatedAt, ...content } = authoredLayoutDocument(document);
   return JSON.stringify(content);
 }
 export function createDocumentHistory({

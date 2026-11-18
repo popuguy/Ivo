@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 7,
+  "documents": [{
+    "id": "composition-v7-document",
+    "title": "Frozen linked text before native composition",
+    "canvasVersion": 6,
+    "pages": [{ "id": "composition-v7-page", "name": "Page 1", "width": 612, "height": 792 }],
+    "blocks": [{ "id": "composition-v7-frame", "type": "text", "textKind": "area", "textFlowId": "composition-v7-flow", "pageId": "composition-v7-page", "layerId": "composition-v7-layer", "x": 40.125, "y": 51.75, "w": 300.5, "h": 220.25, "html": "", "textStyle": "cmu-serif", "fontSize": 16, "frameOptions": { "columns": 1, "gutter": 12, "insetTop": 8, "insetRight": 10, "insetBottom": 8, "insetLeft": 10, "verticalAlign": "top", "firstBaseline": "cap-height", "minimumFirstBaseline": 17.125 } }],
+    "textFlows": [{ "id": "composition-v7-flow", "html": "<p>Keep the <em>original linked source</em> before native opt-in.</p>", "frameIds": ["composition-v7-frame"], "style": { "textStyle": "cmu-serif", "fontSize": 16, "align": "left" }, "automaticPages": true, "deleteEmptyPages": true, "autoPages": [] }],
+    "publishing": { "version": 1, "layers": [{ "id": "composition-v7-layer", "name": "Layer 1", "color": "#4b80ff", "visible": true, "locked": false }], "paragraphStyles": [], "characterStyles": [], "parents": [] },
+    "extensions": { "kept": { "description": "Original frame policy and canonical flow" } }
+  }],
+  "assets": []
+}

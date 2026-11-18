@@ -141,5 +141,8 @@ export function composedSVG(
   const definitions = [...used]
     .map((id) => `<path id="${idPrefix}-${id}" d="${vectors.get(id)}"/>`)
     .join('');
-  return `<svg data-composed-text="true" class="composed-text" xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}" role="img" aria-label="${esc(label)}"><defs>${definitions}</defs>${decorations.join('')}${ink.join('')}${linkRegions.join('')}</svg>`;
+  const token = /^ct1-[a-f0-9]{64}$/.test(result.token || '')
+    ? ` data-composition-token="${result.token}"`
+    : '';
+  return `<svg data-composed-text="true"${token} class="composed-text" xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}" role="img" aria-label="${esc(label)}"><defs>${definitions}</defs>${decorations.join('')}${ink.join('')}${linkRegions.join('')}</svg>`;
 }

@@ -4,6 +4,8 @@ import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/t
 import { sceneObjectHTML, applySceneTypography } from '../../rendering/page-content.js';
 import { readableHTML } from '../../shared/html/sanitize.js';
 import { intersectPDFRect, pdfRectInsidePolygon } from './pdf-plan.js';
+import { composeNativeTextFlows } from '../../rendering/text/native-flow-layout.js';
+import { composedPDFMatrix, composedPDFPolygon, screenToPageMatrix } from './composed-geometry.js';
 
 /** The only renderer used for PDF output: no editor, camera, user scripts or external requests. */
 export async function renderPDFSnapshot(snapshot) {
@@ -15,16 +17,29 @@ export async function renderPDFSnapshot(snapshot) {
   const pages = [],
     documents = snapshot.documents,
     warnings = new Set(),
-    destinations = new Map();
+    destinations = new Map(),
+    nativeDocuments = new Map();
   root.replaceChildren();
   let rules = '';
   for (const doc of documents) {
     const flow = layoutDocumentTextFlows(doc);
-    for (const [_id, part] of flow.fragments)
-      part.html = readableHTML(part.html, documents, doc.id, {
-        preserveWikiText: true,
-        trustedFlow: true,
+    if (doc.textFlows?.some((f) => f.composition)) {
+      const port = globalThis.ivoTextComposition || globalThis.ivoNative?.textComposition;
+      if (!port) throw Error('This document requires the native text composer for PDF export.');
+      const native = await composeNativeTextFlows(doc, {
+        compose: port.compose,
+        assets: snapshot.assets,
       });
+      nativeDocuments.set(doc.id, native);
+      for (const [id, part] of native.fragments) flow.fragments.set(id, part);
+      for (const [id, value] of native.status) flow.status.set(id, value);
+    }
+    for (const [_id, part] of flow.fragments)
+      if (!part.native)
+        part.html = readableHTML(part.html, documents, doc.id, {
+          preserveWikiText: true,
+          trustedFlow: true,
+        });
     for (const value of flow.status.values())
       if (value.overset)
         warnings.add(`${doc.title}: document text has overset text that is not included.`);
@@ -88,7 +103,8 @@ export async function renderPDFSnapshot(snapshot) {
       }),
     ),
   );
-  const links = [];
+  const links = [],
+    composedText = new Map();
   for (const [pageIndex, page] of pages.entries()) {
     const pageRect = page.section.getBoundingClientRect(),
       factor = 4 / 3;
@@ -98,6 +114,44 @@ export async function renderPDFSnapshot(snapshot) {
       w: value.width / factor,
       h: value.height / factor,
     });
+    for (const composition of nativeDocuments.get(page.documentId)?.compositions || []) {
+      for (const [sourcePageIndex, frame] of composition.frames.entries()) {
+        if (frame.pageId !== page.pageId) continue;
+        const svg = page.section.querySelector(
+          `[data-flow-column="${CSS.escape(frame.id)}"] svg[data-composed-text]`,
+        );
+        // Nonprinting/hidden layers have no physical text placement in this export.
+        if (!svg) continue;
+        const matrix = screenToPageMatrix(svg.getScreenCTM(), pageRect, factor),
+          clips = [];
+        let clip = svg.closest('.canvas-clip');
+        while (clip) {
+          const owner = clip.parentElement,
+            item = page.doc.blocks.find((block) => block.id === owner.dataset.object);
+          if (!item?.points) throw Error('A frozen text mask lost its source shape.');
+          const probe = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          probe.setAttribute('viewBox', `0 0 ${item.w} ${item.h}`);
+          probe.style.cssText =
+            'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+          clip.append(probe);
+          const maskMatrix = screenToPageMatrix(probe.getScreenCTM(), pageRect, factor);
+          probe.remove();
+          clips.push(composedPDFPolygon(item.points, item.w, item.h, maskMatrix, page.height));
+          clip = owner.parentElement.closest('.canvas-clip');
+        }
+        const layer = composedText.get(composition.token) || {
+          token: composition.token,
+          placements: [],
+        };
+        layer.placements.push({
+          sourcePageIndex,
+          destinationPageIndex: pageIndex,
+          matrix: composedPDFMatrix(matrix, frame.height, page.height),
+          clips,
+        });
+        composedText.set(composition.token, layer);
+      }
+    }
     for (const anchor of page.section.querySelectorAll('a')) {
       const targetId = anchor.dataset.docId;
       let target;
@@ -156,6 +210,7 @@ export async function renderPDFSnapshot(snapshot) {
     createdAt: snapshot.createdAt,
     pages: pages.map(({ section, doc, ...page }) => page),
     links,
+    composedText: [...composedText.values()],
     warnings: [...warnings],
   };
 }

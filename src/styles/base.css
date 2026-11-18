@@ -3021,6 +3021,33 @@ dialog li {
   cursor: text;
   user-select: text;
 }
+.canvas-flow-input.native-composition-input {
+  opacity: 0;
+  caret-color: transparent;
+}
+.composed-text {
+  display: block;
+  overflow: hidden;
+}
+.canvas-composition-notice {
+  position: absolute;
+  bottom: 38px;
+  left: 54px;
+  right: 12px;
+  padding: 8px 12px;
+  background: var(--background-primary, #f7f7f8);
+  color: var(--text-normal, #30343b);
+  border: 1px solid var(--background-modifier-border, #d6d9df);
+  z-index: 20;
+  font-size: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.canvas-composition-notice[hidden] {
+  display: none;
+}
 .canvas-flow-input [data-flow-input-hidden],
 .canvas-flow-input [data-flow-input-prefix] {
   display: none !important;

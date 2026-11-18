@@ -11,7 +11,7 @@
     "test": "node --test tests/unit/*.test.js",
     "test:graph": "electron tests/runtime/graph/runner.mjs",
     "build": "node scripts/build.mjs",
-    "desktop": "npm run build && node scripts/build-native-fonts.mjs && electron .",
+    "desktop": "npm run build && node scripts/build-native-fonts.mjs && node scripts/build-native-text.mjs && electron .",
     "desktop:package": "npm run build && node scripts/package-desktop.mjs",
     "ios:prepare": "npm run build && cap sync ios",
     "ios:open": "cap open ios",
@@ -51,9 +51,9 @@
     "pretest:window-refresh": "node scripts/reference-art.mjs",
     "test:text-flows": "electron tests/runtime/text-flow-layout/runner.mjs && electron tests/runtime/document-text/runner.mjs",
     "pretest:text-flows": "node scripts/reference-art.mjs",
-    "format": "prettier --write src desktop scripts tests *.js *.json *.html docs README.md CONTRIBUTING.md",
-    "format:check": "prettier --check src desktop scripts tests *.js *.json *.html docs README.md CONTRIBUTING.md",
-    "lint": "eslint src desktop scripts tests eslint.config.js",
+    "format": "prettier --write src desktop scripts tests tools *.js *.json *.html docs README.md CONTRIBUTING.md",
+    "format:check": "prettier --check src desktop scripts tests tools *.js *.json *.html docs README.md CONTRIBUTING.md",
+    "lint": "eslint src desktop scripts tests tools eslint.config.js",
     "precheck:architecture": "node scripts/reference-art.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
     "check": "node scripts/check.mjs",
@@ -79,7 +79,12 @@
     "test:document-clipboard": "npm run build && electron tests/runtime/document-clipboard/runner.mjs",
     "test:composition-prototype": "node tests/prototypes/text-composition/runner.mjs",
     "test:native-text-menu": "npm run build && electron tests/runtime/native-text-menu/runner.mjs",
-    "pretest:native-text-menu": "node scripts/reference-art.mjs"
+    "pretest:native-text-menu": "node scripts/reference-art.mjs",
+    "test:text-composition-bridge": "electron tests/runtime/text-composition-bridge/runner.mjs",
+    "test:native-composition-geometry": "electron tests/runtime/native-composition-geometry/runner.mjs",
+    "test:native-editor-composition": "electron tests/runtime/native-editor-composition/runner.mjs",
+    "pretest:native-editor-composition": "node scripts/reference-art.mjs",
+    "preview:composition": "node scripts/build-composition-preview.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

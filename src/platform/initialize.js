@@ -51,6 +51,10 @@ export async function initializePlatform({ prepareForSuspend, createPlugin } = {
       list: async () => (await plugin.listFonts()).fonts,
       read: (postscript) => plugin.readFont({ postscript }),
     },
+    textComposition: {
+      compose: (request) => plugin.composeText({ request: JSON.stringify(request) }),
+      pdf: (token, { invisible = true } = {}) => plugin.textPDF({ token, invisible }),
+    },
     store,
     onPrepareClose: (callback) => {
       prepare = callback;

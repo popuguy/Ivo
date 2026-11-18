@@ -13,9 +13,13 @@ public final class IvoAtlasPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "finishSuspend", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listFonts", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "readFont", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "readFont", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "composeText", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "textPDF", returnType: CAPPluginReturnPromise)
     ]
     private let queue = DispatchQueue(label: "com.paulcantrell.ivo.atlas", qos: .userInitiated)
+    private let compositionQueue = DispatchQueue(label: "com.paulcantrell.ivo.text", qos: .userInitiated)
+    private let textComposition = TextCompositionEngine()
     private var atlas: AtlasFiles?
     private var observer: NSObjectProtocol?
     private var suspendToken: String?
@@ -103,6 +107,34 @@ public final class IvoAtlasPlugin: CAPPlugin, CAPBridgedPlugin {
                 let bytes = try JSONEncoder().encode(SystemFonts.read(name))
                 let value = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] ?? [:]
                 call.resolve(value)
+            } catch { call.reject(error.localizedDescription) }
+        }
+    }
+    @objc func composeText(_ call: CAPPluginCall) {
+        guard let request = call.getString("request"), let data = request.data(using: .utf8),
+              data.count <= 32 * 1024 * 1024 else {
+            call.reject("Invalid native text request."); return
+        }
+        compositionQueue.async {
+            do {
+                let bytes = try self.textComposition.execute(data)
+                guard let value = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else {
+                    throw self.invalidCall()
+                }
+                call.resolve(value)
+            } catch { call.reject(error.localizedDescription) }
+        }
+    }
+    @objc func textPDF(_ call: CAPPluginCall) {
+        guard let token = call.getString("token"), token.count == 68,
+              token.range(of: "^ct1-[0-9a-f]{64}$", options: .regularExpression) != nil else {
+            call.reject("Invalid composed text token."); return
+        }
+        let invisible = call.getBool("invisible") ?? true
+        compositionQueue.async {
+            do {
+                let bytes = try self.textComposition.pdf(token: token, invisible: invisible)
+                call.resolve(["data": bytes.base64EncodedString(), "mimeType": "application/pdf", "token": token])
             } catch { call.reject(error.localizedDescription) }
         }
     }

@@ -6,7 +6,7 @@ const owns = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 export function migrateArchive(payload) {
   if (
     !payload ||
-    ![1, 2, 3, 4, 5, 6, 7].includes(payload.schemaVersion) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8].includes(payload.schemaVersion) ||
     !Array.isArray(payload.documents)
   )
     return payload;

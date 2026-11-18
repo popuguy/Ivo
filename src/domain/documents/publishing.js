@@ -28,7 +28,7 @@ export function enablePublishing(doc) {
 /** Author the new composition capability only when an extended frame policy is chosen. */
 export function enableFrameComposition(doc) {
   const publishing = enablePublishing(doc);
-  doc.canvasVersion = 6;
+  doc.canvasVersion = Math.max(doc.canvasVersion || 1, 6);
   return publishing;
 }
 export function layerFor(doc, item) {
@@ -222,7 +222,8 @@ export function commitParentDefinition(doc, id, edited) {
   for (const block of doc.blocks)
     if (!layerIds.has(block.layerId)) block.layerId = next.layers[0].id;
   doc.publishing = next;
-  if (edited.canvasVersion === 6) enableFrameComposition(doc);
+  if (edited.canvasVersion >= 6) enableFrameComposition(doc);
+  doc.canvasVersion = Math.max(doc.canvasVersion, edited.canvasVersion);
 }
 /** Parent art is derived with deterministic instance IDs; it never duplicates text source on the page. */
 export function parentObjects(doc, page) {

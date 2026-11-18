@@ -1,6 +1,52 @@
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 import { uid, createBlock } from './model.js';
 const STYLE_KEYS = Object.keys({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS });
+const nativeComposition = (flow) =>
+  flow.composition?.version === 1 &&
+  ['paragraph', 'single-line'].includes(flow.composition.composer);
+
+/** Explicitly choose the new authority without rewriting older flows on read. */
+export function enableNativeComposition(document, textFlow, composer = 'paragraph') {
+  if (!document.textFlows?.includes(textFlow) || !['paragraph', 'single-line'].includes(composer))
+    throw new Error('Choose a document text flow and a supported composer.');
+  textFlow.composition = { version: 1, composer };
+  document.canvasVersion = Math.max(document.canvasVersion || 1, 7);
+  return textFlow;
+}
+
+function continuationIds(document, textFlow) {
+  // Normal UUID flow identities are retained verbatim. Long imported identities
+  // receive a compact deterministic suffix to stay inside the stable-ID budget.
+  let identity = textFlow.id;
+  if (identity.length > 85) {
+    let hash = 2166136261;
+    for (const character of identity)
+      hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+    identity = identity.slice(0, 70) + '-' + hash.toString(36);
+  }
+  const used = new Set([
+    document.id,
+    ...document.pages.map((page) => page.id),
+    ...document.blocks.map((frame) => frame.id),
+    ...document.blocks.flatMap((frame) => (frame.points || []).map((point) => point.id)),
+    ...(document.textFlows || []).map((flow) => flow.id),
+    ...(document.publishing?.layers || []).map((layer) => layer.id),
+    ...(document.publishing?.parents || []).flatMap((parent) => [
+      parent.id,
+      ...parent.blocks.map((block) => block.id),
+      ...parent.blocks.flatMap((block) => (block.points || []).map((point) => point.id)),
+    ]),
+    ...(document.publishing?.paragraphStyles || []).map((style) => style.id),
+    ...(document.publishing?.characterStyles || []).map((style) => style.id),
+  ]);
+  let ordinal = textFlow.frameIds.length;
+  while (
+    used.has(`page-auto-${identity}-${ordinal}`) ||
+    used.has(`frame-auto-${identity}-${ordinal}`)
+  )
+    ordinal++;
+  return { page: `page-auto-${identity}-${ordinal}`, frame: `frame-auto-${identity}-${ordinal}` };
+}
 export function textFlowForFrame(document, frame) {
   const id =
     typeof frame === 'string'
@@ -82,8 +128,9 @@ export function appendTextFlowPage(document, textFlow) {
     y += parent.y;
     parentId = parent.parentId;
   }
+  const ids = nativeComposition(textFlow) ? continuationIds(document, textFlow) : null;
   const page = {
-    id: uid('page-'),
+    id: ids?.page || uid('page-'),
     name: `Page ${document.pages.length + 1}`,
     width: previous.width,
     height: previous.height,
@@ -91,6 +138,7 @@ export function appendTextFlowPage(document, textFlow) {
   };
   document.pages.splice(index + 1, 0, page);
   const frame = createBlock('text', {
+    ...(ids ? { id: ids.frame } : {}),
     ...structuredClone(textFlow.style),
     pageId: page.id,
     textFlowId: textFlow.id,
@@ -112,6 +160,8 @@ export function appendTextFlowPage(document, textFlow) {
 export function removeTextFlowFrames(document, ids) {
   const removed = new Set(ids);
   for (const textFlow of document.textFlows || []) {
+    if (nativeComposition(textFlow) && textFlow.frameIds.some((id) => removed.has(id)))
+      textFlow.automaticPages = false;
     textFlow.frameIds = textFlow.frameIds.filter((id) => !removed.has(id));
     textFlow.autoPages = textFlow.autoPages.filter((value) => !removed.has(value.frameId));
   }

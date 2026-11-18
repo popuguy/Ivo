@@ -38,7 +38,15 @@ async function wait(predicate, label) {
     if (result) return result;
     await pause();
   }
-  throw new Error(label + ' timed out.');
+  const details =
+    window && !window.isDestroyed()
+      ? await window.webContents
+          .executeJavaScript(
+            `JSON.stringify({active:document.activeElement?.outerHTML?.slice(0,250),tool:document.querySelector('.scene-editor')?.dataset.tool,editor:document.querySelector('.scene-editor')?.className,editable:document.querySelector('.canvas-flow-input')?.contentEditable,selection:window.getSelection()?.toString()})`,
+          )
+          .catch(() => null)
+      : null;
+  throw new Error(label + ' timed out: ' + JSON.stringify({ state, details }));
 }
 async function finish(code, result) {
   if (settled) return;
@@ -166,7 +174,13 @@ void (async () => {
     await wait(async () => !(await style('Alpha')).underline, 'One-step shortcut undo');
     await wait(async () => (await source()) === beforeStale, 'Saved shortcut undo');
     send('tool-select');
-    await pause();
+    await wait(
+      () =>
+        execute(
+          "document.querySelector('.scene-editor')?.dataset.tool === 'select' && !document.querySelector('.scene-editor').inert && document.querySelector('.canvas-flow-input')?.contentEditable !== 'true'",
+        ),
+      'Selection tool activated',
+    );
     await execute("document.querySelector('.canvas-viewport').focus()");
     await wait(
       () =>
@@ -185,6 +199,31 @@ void (async () => {
     send('undo');
     await wait(async () => !(await style('Second')).bold, 'Whole-frame undo');
     await wait(async () => (await source()) === beforeStale, 'Saved frame undo');
+    // Native continuation is delivered after the source command has committed.
+    // Its revision must refresh the native menu token without another selection.
+    await execute(
+      `(()=>{const el=document.querySelector('[data-flow-composer]');el.value='single-line';el.dispatchEvent(new Event('change',{bubbles:true}));})()`,
+    );
+    await wait(
+      () => execute("!!document.querySelector('svg[data-composed-text]')"),
+      'Native composer activation',
+    );
+    await execute(
+      `(()=>{const auto=document.querySelector('[data-flow-auto]');auto.checked=true;auto.dispatchEvent(new Event('change',{bubbles:true}));const height=document.querySelector('[data-object-prop="h"]');height.value='20';height.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('.canvas-viewport').focus();})()`,
+    );
+    await wait(async () => {
+      const stored = (await execute('ivoNative.store.loadDocuments()'))[0];
+      return (
+        stored.pages.length > 1 &&
+        state?.canFormat &&
+        JSON.parse(state.textTarget)[1] === stored.version
+      );
+    }, 'Native continuation menu revision');
+    item('italic').click();
+    await wait(
+      async () => (await style('Alpha')).italic && (await style('Second')).italic,
+      'Native menu after asynchronous continuation',
+    );
     await finish(0, {
       ok: true,
       actualTypeMenu: true,
@@ -194,6 +233,7 @@ void (async () => {
       titleAndNumericDisabled: true,
       trustedShortcutNoDoubleDispatch: true,
       wholeFrameSameCommand: true,
+      nativeContinuationRefreshesMenu: true,
     });
   } catch (error) {
     await finish(1, { error: error.stack });

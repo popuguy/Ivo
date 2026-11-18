@@ -192,6 +192,15 @@ const metrics = (frame) => ({
 });
 /** Native browser column composition with derived fragments; canonical textFlow source is never split or rewritten. */
 export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
+  // Each threaded source has one layout authority. Native flows stay in the
+  // scene for page ownership checks, but never enter browser line composition.
+  if (doc.textFlows?.some((flow) => flow.composition)) {
+    const projection = { ...doc, textFlows: doc.textFlows.filter((flow) => !flow.composition) };
+    const result = layoutDocumentTextFlows(projection, { allowPages });
+    doc.pages = projection.pages;
+    doc.blocks = projection.blocks;
+    return result;
+  }
   if (doc.blocks.some((b) => b.textFlowId && b.frameOptions))
     return layoutFrameColumns(doc, { allowPages });
   const fragments = new Map(),

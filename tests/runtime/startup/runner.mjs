@@ -6,6 +6,11 @@ import path from 'node:path';
 import { openVault } from '../../../desktop/vault.mjs';
 import { openVaultRegistry } from '../../../desktop/vault-registry.mjs';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
+import {
+  startTextFlow,
+  enableNativeComposition,
+} from '../../../src/domain/documents/text-flows.js';
+import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
 
 const directory = await mkdtemp(path.join(tmpdir(), 'ivo-quiet-startup-')),
   profile = path.join(directory, 'Profile'),
@@ -16,14 +21,20 @@ for (const [vault, title] of [
   [b, 'Quiet Beta'],
 ]) {
   const doc = createSceneDocument(title);
-  insertObject(doc, 'text', doc.pages[0].id, {
+  const frame = insertObject(doc, 'text', doc.pages[0].id, {
     x: 48.125,
     y: 48,
     w: 400,
     h: 200,
     html: '<p>Preserved startup source.</p>',
   });
-  await vault.saveImport({ schemaVersion: 5, documents: [doc], assets: [] });
+  if (title === 'Quiet Beta')
+    enableNativeComposition(
+      doc,
+      startTextFlow(doc, frame.id, { automaticPages: false }),
+      'single-line',
+    );
+  await vault.saveImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
 }
 const originalA = JSON.stringify(await a.loadDocuments()),
   originalB = JSON.stringify(await b.loadDocuments()),
@@ -37,6 +48,9 @@ let releaseDocuments,
   releaseManager,
   holdDocuments = true,
   holdManager = false,
+  holdNative = false,
+  nativeStarted = false,
+  releaseNative,
   failedContents = null,
   writes = 0;
 const documentGate = new Promise((resolve) => {
@@ -44,6 +58,9 @@ const documentGate = new Promise((resolve) => {
   }),
   managerGate = new Promise((resolve) => {
     releaseManager = resolve;
+  }),
+  nativeGate = new Promise((resolve) => {
+    releaseNative = resolve;
   }),
   originalHandle = ipcMain.handle.bind(ipcMain),
   created = [],
@@ -61,6 +78,10 @@ ipcMain.handle = (channel, callback) =>
     )
       writes++;
     if (channel === 'ivo:vaults' && args[0] === 'list' && holdManager) await managerGate;
+    if (channel === 'ivo:text-composition' && args[0] === 'compose' && holdNative) {
+      nativeStarted = true;
+      await nativeGate;
+    }
     return callback(event, ...args);
   });
 dialog.showErrorBox = (title, message) => {
@@ -212,7 +233,20 @@ void (async () => {
     );
     assert.equal(writes, 0, 'Startup/recovery rewrote authored data');
     failedContents = null;
+    holdNative = true;
     await execute(failed, "document.querySelector('[data-retry-startup]').click()");
+    await wait(() => nativeStarted, 'Restored native composition did not start');
+    await execute(
+      failed,
+      'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))',
+    );
+    assert.equal(
+      (await execute(failed, 'ivoNative.windows.info()')).ready,
+      false,
+      'Native startup was declared ready before its first text result',
+    );
+    holdNative = false;
+    releaseNative();
     await wait(
       async () =>
         await execute(
@@ -224,6 +258,10 @@ void (async () => {
     await wait(
       async () => (await execute(failed, 'ivoNative.windows.info()')).ready,
       'Retry did not restore native readiness',
+    );
+    assert.ok(
+      await execute(failed, "document.querySelectorAll('svg[data-composed-text] use').length > 0"),
+      'Native startup reveal contained no text ink',
     );
     assert.equal(JSON.stringify(await a.loadDocuments()), originalA);
     assert.equal(JSON.stringify(await b.loadDocuments()), originalB);
@@ -238,6 +276,7 @@ void (async () => {
           managerWaitsForContent: true,
           visibleReadableError: true,
           retryRestoresOriginalDocument: true,
+          nativeFirstInkBeforeReveal: true,
           sourceUnchanged: true,
         },
         null,

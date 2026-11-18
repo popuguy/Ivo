@@ -6,15 +6,27 @@ import {
   applyParent,
   addLayer,
 } from '../../../src/domain/documents/publishing.js';
-import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
-import { app, nativeImage } from 'electron';
+import {
+  startTextFlow,
+  enableNativeComposition,
+} from '../../../src/domain/documents/text-flows.js';
+import { app, ipcMain, nativeImage } from 'electron';
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName } from 'pdf-lib';
-import { renderPDF } from '../../../desktop/pdf-export.mjs';
+import { renderPDF as renderNativePDF, pdfRendererOwner } from '../../../desktop/pdf-export.mjs';
+import { installTextCompositionBridge } from '../../../desktop/text-composition-bridge.mjs';
+import { createTextComposition } from '../../../desktop/text-composition.mjs';
+import { buildNativeText } from '../../../scripts/build-native-text.mjs';
+let compositionBridge;
+const renderPDF = (snapshot, options) =>
+  renderNativePDF(snapshot, {
+    ...options,
+    compositionPDF: (contents, token) => compositionBridge.readPDF(contents, token),
+  });
 import {
   createSceneDocument,
   addPage,
@@ -36,6 +48,11 @@ app.on('window-all-closed', () => {});
 app
   .whenReady()
   .then(async () => {
+    compositionBridge = installTextCompositionBridge({
+      ipcMain,
+      authorize: pdfRendererOwner,
+      createService: async () => createTextComposition(await buildNativeText()),
+    });
     await mkdir(output, { recursive: true });
     const a = createSceneDocument('PDF typography'),
       b = createSceneDocument('Linked reference');
@@ -276,6 +293,86 @@ app
       ),
     );
     await writeFile(path.join(output, 'publishing.pdf'), pubPDF.bytes);
+    const nativeDoc = createSceneDocument('Native transformed PDF');
+    const nativeMask = insertObject(nativeDoc, 'polygon', {
+      x: 60,
+      y: 70,
+      w: 380,
+      h: 240,
+      rotation: -7,
+      clip: true,
+      fill: '#eef1f4',
+      points: [
+        { id: 'n1', x: 0.1, y: 0 },
+        { id: 'n2', x: 1, y: 0.1 },
+        { id: 'n3', x: 0.9, y: 1 },
+        { id: 'n4', x: 0, y: 0.9 },
+      ],
+    });
+    const nativeFrame = insertObject(nativeDoc, 'text', {
+      parentId: nativeMask.id,
+      x: 30,
+      y: 45,
+      w: 280,
+      h: 120,
+      rotation: 17,
+      textScale: { x: 1.1, y: 0.9 },
+      textStyle: 'cmu-serif',
+      fontSize: 16,
+      html: '<p>Native <em>italic affinity</em> and regular.</p><p><a href="https://example.com/native">Native link</a></p>',
+    });
+    enableNativeComposition(
+      nativeDoc,
+      startTextFlow(nativeDoc, nativeFrame.id, { automaticPages: false }),
+      'single-line',
+    );
+    const nativeSnapshot = createPDFSnapshot([nativeDoc], [], nativeDoc.id),
+      nativeBefore = JSON.stringify(nativeSnapshot);
+    const nativePDF = await renderPDF(nativeSnapshot, {
+      project: root,
+      onRendered: async (window) => {
+        const details = await window.webContents.executeJavaScript(
+          `({svgs:document.querySelectorAll('svg[data-composed-text]').length,paths:document.querySelectorAll('svg[data-composed-text] path').length})`,
+        );
+        assert(
+          details.svgs > 0 && details.paths > 5,
+          'Native flow did not paint actual glyph paths',
+        );
+      },
+    });
+    assert.equal(JSON.stringify(nativeSnapshot), nativeBefore);
+    assert.equal(nativePDF.manifest.composedText.length, 1);
+    const nativePlacement = nativePDF.manifest.composedText[0].placements[0];
+    assert(
+      Math.abs(nativePlacement.matrix[1]) > 0.01 && Math.abs(nativePlacement.matrix[2]) > 0.01,
+      'Frozen PDF text lost frame rotation',
+    );
+    assert.equal(nativePlacement.clips.length, 1, 'Frozen PDF text lost polygon mask');
+    const nativeParsed = await PDFDocument.load(nativePDF.bytes),
+      nativeFonts = new Set();
+    let embeddedNative = 0;
+    for (const [_reference, object] of nativeParsed.context.enumerateIndirectObjects()) {
+      const face = object.get?.(PDFName.of('BaseFont'));
+      if (face) nativeFonts.add(face.toString());
+      if (
+        object.get?.(PDFName.of('FontFile')) ||
+        object.get?.(PDFName.of('FontFile2')) ||
+        object.get?.(PDFName.of('FontFile3'))
+      )
+        embeddedNative++;
+    }
+    assert([...nativeFonts].some((name) => name.includes('CMUSerif-Roman')));
+    assert([...nativeFonts].some((name) => name.includes('CMUSerif-Italic')));
+    assert(embeddedNative >= 2, 'Native text fonts were not embedded after finalization');
+    await writeFile(path.join(output, 'native.pdf'), nativePDF.bytes);
+    await writeFile(
+      path.join(output, 'native-manifest.json'),
+      JSON.stringify(nativePDF.manifest, null, 2),
+    );
+    await writeFile(
+      path.join(output, 'native-source.json'),
+      JSON.stringify(nativeSnapshot, null, 2),
+    );
     console.log(
       JSON.stringify(
         {
@@ -290,6 +387,8 @@ app
           flowPages: flowPDF.manifest.pages.length,
           flowSnapshotUnchanged: true,
           publishingFontsParentsLayersHighlights: true,
+          nativeRotatedScaledMaskedItalicText: true,
+          nativeFontNames: [...nativeFonts],
           warnings: manifest.warnings,
         },
         null,
@@ -297,10 +396,12 @@ app
       ),
     );
     await rm(profile, { recursive: true, force: true });
+    compositionBridge.close();
     app.exit(0);
   })
   .catch(async (error) => {
     console.error(error);
+    compositionBridge?.close();
     await rm(profile, { recursive: true, force: true }).catch(() => {});
     app.exit(1);
   });

@@ -29,7 +29,10 @@ import {
 } from 'node:fs/promises';
 import { openVault } from './vault.mjs';
 import { openVaultRegistry } from './vault-registry.mjs';
-import { renderPDF } from './pdf-export.mjs';
+import { renderPDF, pdfRendererOwner } from './pdf-export.mjs';
+import { createTextComposition } from './text-composition.mjs';
+import { installTextCompositionBridge } from './text-composition-bridge.mjs';
+import { buildNativeText } from '../scripts/build-native-text.mjs';
 import {
   createWindowLease,
   workspaceWindowBounds,
@@ -67,6 +70,7 @@ const records = new Map(),
 let registry,
   manager,
   resourceHandler,
+  textCompositionBridge,
   quitting = false;
 const activeRecord = () =>
   records.get(BrowserWindow.getFocusedWindow()?.webContents.id) ||
@@ -85,6 +89,7 @@ function owner(event) {
 const lock = app.requestSingleInstanceLock();
 if (!lock) app.quit();
 else {
+  app.on('will-quit', () => textCompositionBridge?.close());
   app.on('before-quit', () => {
     quitting = true;
   });
@@ -125,6 +130,24 @@ else {
         'saveImport',
         'changeLibrary',
       ]);
+      textCompositionBridge = installTextCompositionBridge({
+        ipcMain,
+        authorize(event) {
+          try {
+            return owner(event);
+          } catch {
+            return pdfRendererOwner(event);
+          }
+        },
+        async createService() {
+          const executable = app.isPackaged
+            ? path.join(process.resourcesPath, 'app.asar.unpacked/desktop/native/bin/ivo-text')
+            : await buildNativeText();
+          if (!executable)
+            throw new Error('Native text composition is unavailable on this platform.');
+          return createTextComposition(executable);
+        },
+      });
       ipcMain.handle('ivo:fonts', async (event, action, value) => {
         owner(event);
         if (action === 'list') return systemFonts.list(value === true);
@@ -278,7 +301,10 @@ else {
         record.exportingPDF = true;
         let directory;
         try {
-          const { bytes, manifest } = await renderPDF(snapshot, { project });
+          const { bytes, manifest } = await renderPDF(snapshot, {
+            project,
+            compositionPDF: (contents, token) => textCompositionBridge.readPDF(contents, token),
+          });
           directory = await mkdtemp(path.join(app.getPath('temp'), 'ivo-preview-'));
           const name =
               String(snapshot?.title || 'Document')
@@ -453,7 +479,10 @@ else {
             installMenu();
           }
           if (choice.canceled || !choice.filePath) return { canceled: true };
-          const { bytes, manifest } = await renderPDF(snapshot, { project }),
+          const { bytes, manifest } = await renderPDF(snapshot, {
+              project,
+              compositionPDF: (contents, token) => textCompositionBridge.readPDF(contents, token),
+            }),
             temporary = path.join(
               path.dirname(choice.filePath),
               '.ivo-pdf-' + crypto.randomUUID() + '.tmp',

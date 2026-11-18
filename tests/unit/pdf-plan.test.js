@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSceneDocument, insertObject as insert } from '../../src/domain/documents/scene.js';
+import { startTextFlow, enableNativeComposition } from '../../src/domain/documents/text-flows.js';
 import {
   createPDFSnapshot,
   intersectPDFRect,
@@ -13,6 +14,18 @@ const insertObject = (doc, type, options = {}) => {
   if (type === 'polygon') Object.assign(item, rest);
   return item;
 };
+test('frozen export rejects more native flow tokens than its recovery budget before rendering', () => {
+  const doc = createSceneDocument('Bounded native publication');
+  for (let index = 0; index < 257; index++) {
+    const frame = insertObject(doc, 'text', { html: '<p>Text</p>' });
+    enableNativeComposition(
+      doc,
+      startTextFlow(doc, frame.id, { automaticPages: false }),
+      'single-line',
+    );
+  }
+  assert.throws(() => createPDFSnapshot([doc], [], doc.id), /256 independently composed/);
+});
 
 test('PDF sharing freezes a deterministic linked closure without changing source documents', () => {
   const a = createSceneDocument('A'),

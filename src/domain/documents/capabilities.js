@@ -1,5 +1,5 @@
-export const CURRENT_ARCHIVE_VERSION = 7;
-export const CURRENT_CANVAS_VERSION = 6;
+export const CURRENT_ARCHIVE_VERSION = 8;
+export const CURRENT_CANVAS_VERSION = 7;
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 const oldFields = new Set([
   'textStyle',
@@ -25,7 +25,7 @@ const newAttrs = new RegExp(
 export function hasPublishingFeatures(doc) {
   return (
     !!doc.publishing ||
-    [5, 6].includes(doc.canvasVersion) ||
+    [5, 6, 7].includes(doc.canvasVersion) ||
     doc.blocks.some(
       (b) =>
         b.frameOptions ||
@@ -65,7 +65,7 @@ export function hasAdvancedTypography(document) {
 /** First-baseline policies require an explicit format gate; older readers reject archive 7. */
 export function hasFrameComposition(doc) {
   return (
-    doc.canvasVersion === 6 ||
+    [6, 7].includes(doc.canvasVersion) ||
     [...doc.blocks, ...(doc.publishing?.parents || []).flatMap((p) => p.blocks)].some(
       (b) =>
         b.frameOptions?.firstBaseline !== undefined ||
@@ -74,7 +74,15 @@ export function hasFrameComposition(doc) {
   );
 }
 
+/** Native line decisions are authored opt-in data, not a read-time migration. */
+export function hasNativeTextComposition(doc) {
+  return (
+    doc.canvasVersion === 7 || (doc.textFlows || []).some((flow) => flow.composition !== undefined)
+  );
+}
+
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasNativeTextComposition)) return 8;
   if (documents.some(hasFrameComposition)) return 7;
   if (assets.some((asset) => asset.font || asset.mimeType?.startsWith('font/'))) return 6;
   if (documents.some(hasPublishingFeatures)) return 6;
@@ -88,6 +96,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasNativeTextComposition(document)) {
+    document.canvasVersion = 7;
+    return document;
+  }
   if (hasFrameComposition(document)) {
     document.canvasVersion = 6;
     return document;

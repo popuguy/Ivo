@@ -1,3 +1,12 @@
+import {
+  hasNativeColumn,
+  hitNativeColumn,
+  nativeCaretRect,
+  nativeCaretLines,
+  nativeSelectionRects,
+  nativeRectScreenPoints,
+  nativeRectScreenBounds,
+} from './native-composition-geometry.js';
 import { measureFlowCaretLines } from '../../../rendering/text/flow-geometry.js';
 import {
   logicalSelection,
@@ -90,6 +99,7 @@ export function installFlowSelection(
     showRange,
     pan,
     layoutKey = () => flow()?.html,
+    onNativeCaret = () => {},
   },
 ) {
   const controller = new AbortController(),
@@ -98,6 +108,19 @@ export function installFlowSelection(
   fallback.className = 'canvas-flow-range';
   fallback.setAttribute('aria-hidden', 'true');
   viewport.append(fallback);
+  const nativeOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  nativeOverlay.classList.add('canvas-native-selection');
+  nativeOverlay.setAttribute('aria-hidden', 'true');
+  Object.assign(nativeOverlay.style, {
+    position: 'absolute',
+    inset: '0',
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    zIndex: '2',
+    overflow: 'visible',
+  });
+  viewport.append(nativeOverlay);
   const listen = (target, name, fn, options = {}) =>
     target.addEventListener(name, fn, { signal: controller.signal, ...options });
   let drag = null,
@@ -105,10 +128,13 @@ export function installFlowSelection(
     lastTime = 0,
     alive = true,
     painted = null,
+    paintedNative = false,
     textCache = null,
     geometryCache = null,
-    preferredX = null;
-  function columns() {
+    preferredX = null,
+    nativeHint = null,
+    nativeAnimation = null;
+  function columns({ measureBounds = true } = {}) {
     return (frames() || []).flatMap((frame) => {
       const root = preview(frame.id),
         part = fragment(frame.id);
@@ -121,7 +147,7 @@ export function installFlowSelection(
         scaleX: frame.textScale?.x || 1,
         frameId: frame.id,
         element: nodes[i] || root,
-        bounds: (nodes[i] || root).getBoundingClientRect(),
+        bounds: measureBounds ? (nodes[i] || root).getBoundingClientRect() : null,
       }));
     });
   }
@@ -141,30 +167,130 @@ export function installFlowSelection(
     const state = navigationState();
     return (state.edges ||= new Set(state.navigation.graphemeBoundaries));
   }
+  function nativePaint(columnList, range, showing) {
+    nativeAnimation?.cancel();
+    nativeAnimation = null;
+    nativeOverlay.replaceChildren();
+    nativeOverlay.setAttribute(
+      'viewBox',
+      `0 0 ${Math.max(1, viewport.clientWidth)} ${Math.max(1, viewport.clientHeight)}`,
+    );
+    const inverse = nativeOverlay.getScreenCTM()?.inverse();
+    if (!inverse) {
+      onNativeCaret(null);
+      return;
+    }
+    function polygon(column, rect, caret = false) {
+      const points = nativeRectScreenPoints(column, rect).map((point) =>
+        point.matrixTransform(inverse),
+      );
+      if (!points.length) return;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M${points.map((p) => `${p.x},${p.y}`).join('L')}Z`);
+      path.setAttribute('fill', caret ? 'none' : 'var(--selection, #4b80ff)');
+      path.setAttribute('fill-opacity', '0.25');
+      path.setAttribute('stroke', caret ? 'var(--ink, #252525)' : 'var(--selection, #4b80ff)');
+      path.setAttribute('stroke-width', caret || !rect.width ? '1' : '0');
+      path.dataset.nativeSelection = caret ? 'caret' : 'range';
+      nativeOverlay.append(path);
+      if (caret && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+        nativeAnimation = path.animate(
+          [
+            { opacity: 1, offset: 0 },
+            { opacity: 1, offset: 0.49 },
+            { opacity: 0, offset: 0.5 },
+            { opacity: 0, offset: 1 },
+          ],
+          { duration: 1000, iterations: Infinity },
+        );
+    }
+    if (showing)
+      for (const part of selectionIntervals(range, columnList)) {
+        if (!hasNativeColumn(part)) continue;
+        for (const rect of nativeSelectionRects(part, range).rects) polygon(part, rect);
+      }
+    const column =
+      range?.collapsed && allowed() && document.activeElement === input()
+        ? caretInterval(range.focus, columnList)
+        : null;
+    const hint =
+        nativeHint?.key === layoutKey() &&
+        nativeHint?.index === range?.focus.index &&
+        nativeHint?.frameId === column?.frameId
+          ? nativeHint
+          : null,
+      caret = column && hasNativeColumn(column) && nativeCaretRect(column, range.focus, { hint });
+    if (caret) {
+      polygon(column, caret, true);
+      onNativeCaret(nativeRectScreenBounds(column, caret), { column, caret });
+    } else onNativeCaret(null);
+  }
   function sync() {
     const root = input(),
-      range = root && flow() && current();
-    const showing = !!range && !range.collapsed && allowed();
+      range = root && flow() && current(),
+      showing = !!range && !range.collapsed && allowed();
     showRange(showing);
-    const paintKey = [layoutKey(), showing, range?.anchor.index, range?.focus.index, root];
+    const baseKey = [
+        layoutKey(),
+        showing,
+        range?.anchor.index,
+        range?.focus.index,
+        range?.focus.affinity,
+        nativeHint?.lineIndex,
+        nativeHint?.side,
+        nativeHint?.frameId,
+        document.activeElement,
+        root,
+      ],
+      hasNativeData = (frames() || []).some((frame) => {
+        const part = fragment(frame.id);
+        return part?.native || part?.columns?.some((column) => column.native);
+      });
+    if (
+      !hasNativeData &&
+      !paintedNative &&
+      globalThis.CSS?.highlights &&
+      globalThis.Highlight &&
+      painted?.length === baseKey.length &&
+      painted.every((v, i) => v === baseKey[i])
+    )
+      return range;
+    const columnList = columns({ measureBounds: false }),
+      nativeColumns = columnList.filter(hasNativeColumn);
+    const nativeKey = nativeColumns.flatMap((column) => {
+      const matrix = column.element.querySelector('svg[data-composed-text]')?.getScreenCTM();
+      return [
+        column.native,
+        column.element,
+        matrix?.a,
+        matrix?.b,
+        matrix?.c,
+        matrix?.d,
+        matrix?.e,
+        matrix?.f,
+      ];
+    });
+    const paintKey = [...baseKey, ...nativeKey];
     if (
       globalThis.CSS?.highlights &&
       globalThis.Highlight &&
-      painted?.every((v, i) => v === paintKey[i])
+      painted?.length === paintKey.length &&
+      painted.every((v, i) => v === paintKey[i])
     )
       return range;
     painted = paintKey;
+    paintedNative = nativeColumns.length > 0;
     const ranges = showing
-      ? selectionIntervals(range, columns())
+      ? selectionIntervals(
+          range,
+          columnList.filter((column) => !hasNativeColumn(column)),
+        )
           .map((part) =>
             previewRange(
               part.element,
               part.start,
               part.end,
-              {
-                start: part.sourceStart,
-                end: part.sourceEnd,
-              },
+              { start: part.sourceStart, end: part.sourceEnd },
               layoutKey(),
             ),
           )
@@ -187,6 +313,13 @@ export function installFlowSelection(
           fallback.append(box);
         }
     }
+    if (nativeColumns.length) nativePaint(columnList, range, showing);
+    else {
+      nativeAnimation?.cancel();
+      nativeAnimation = null;
+      if (nativeOverlay.childNodes.length) nativeOverlay.replaceChildren();
+      onNativeCaret(null);
+    }
     return range;
   }
   function hit(x, y, frameId = null) {
@@ -198,6 +331,19 @@ export function installFlowSelection(
       r = column.bounds;
     const px = Math.max(r.left + 0.5, Math.min(r.right - 0.5, x)),
       py = Math.max(r.top + 0.5, Math.min(r.bottom - 0.5, y));
+    if (hasNativeColumn(column)) {
+      const destination = hitNativeColumn(column, { x, y });
+      if (destination) {
+        nativeHint = {
+          ...destination.nativeCaretHint,
+          frameId: destination.frameId,
+          index: destination.index,
+          key: layoutKey(),
+        };
+        return destination;
+      }
+    }
+    nativeHint = null;
     // The invisible canonical input must not cover the preview used for provenance hits.
     const pane = input()?.closest('.canvas-input-world'),
       previous = pane?.style.pointerEvents;
@@ -268,8 +414,8 @@ export function installFlowSelection(
     if (!range.collapsed) projectFlowInput(root, 0);
     restoreTextSelection(root, bookmark(range), { focus });
     onSelection();
-    sync();
     root.scrollTop = root.scrollLeft = 0;
+    sync();
   }
   function extend(x, y) {
     if (!drag || !input() || flow()?.id !== drag.flowId) return;
@@ -324,6 +470,7 @@ export function installFlowSelection(
     if (!drag) return;
     const old = drag;
     drag = null;
+    if (cancel) nativeHint = null;
     cancelAnimationFrame(scrolling);
     scrolling = 0;
     lastTime = 0;
@@ -346,7 +493,7 @@ export function installFlowSelection(
         before = current();
       // A preview is visible while a range is selected. Hit it before activating its canonical owner.
       activate(id, event);
-      if (!input() || !flow()) return;
+      if (!input() || !flow() || !allowed(event)) return;
       const destination = hit(event.clientX, event.clientY, id);
       if (!destination) return;
       event.preventDefault();
@@ -423,12 +570,32 @@ export function installFlowSelection(
   );
   listen(window, 'blur', () => stop(true, false));
   function geometry() {
-    const key = layoutKey();
-    if (geometryCache?.key !== key)
-      geometryCache = {
-        key,
-        value: measureFlowCaretLines(columns(), { graphemeBoundaries: graphemeSet() }),
-      };
+    const key = layoutKey(),
+      columnList = columns({ measureBounds: false }),
+      native = columnList.map((column) => (hasNativeColumn(column) ? column.native : null));
+    if (
+      geometryCache?.key !== key ||
+      !geometryCache.native?.every((value, i) => value === native[i]) ||
+      geometryCache.native.length !== native.length
+    ) {
+      let value;
+      if (native.every(Boolean) && native.length) value = nativeCaretLines(columnList);
+      else if (!native.some(Boolean))
+        value = measureFlowCaretLines(columnList, { graphemeBoundaries: graphemeSet() });
+      else {
+        value = { lines: [], measuredStops: 0, truncated: false, limitations: [] };
+        for (const [i, column] of columnList.entries()) {
+          const part = native[i]
+            ? nativeCaretLines([column])
+            : measureFlowCaretLines([column], { graphemeBoundaries: graphemeSet() });
+          value.lines.push(...part.lines.map((line) => ({ ...line, columnOrder: i })));
+          value.measuredStops += part.measuredStops;
+          value.truncated ||= part.truncated;
+          value.limitations.push(...part.limitations);
+        }
+      }
+      geometryCache = { key, native, value };
+    }
     return geometryCache.value;
   }
   listen(
@@ -450,6 +617,7 @@ export function installFlowSelection(
         forward = ['ArrowRight', 'ArrowDown', 'End'].includes(event.key),
         command = mac ? event.metaKey : event.ctrlKey;
       let next;
+      nativeHint = null;
       if (
         command &&
         (['ArrowUp', 'ArrowDown'].includes(event.key) || ['Home', 'End'].includes(event.key))
@@ -492,7 +660,7 @@ export function installFlowSelection(
           const all = measured.lines.flatMap((line, i) =>
               line.stops.map((stop) => ({ ...stop, lineIndex: i })),
             ),
-            ownColumn = caretInterval(range.focus, columns()),
+            ownColumn = caretInterval(range.focus, columns({ measureBounds: false })),
             candidates = all.filter(
               (stop) =>
                 stop.index === range.focus.index &&
@@ -516,19 +684,37 @@ export function installFlowSelection(
           if (horizontal || ['Home', 'End'].includes(event.key))
             destination = forward ? line.stops.at(-1) : line.stops[0];
           else {
-            preferredX ??= at.x * (columns()[line.columnOrder]?.scaleX || 1);
+            preferredX ??=
+              at.x * (columns({ measureBounds: false })[line.columnOrder]?.scaleX || 1);
             const target = measured.lines[at.lineIndex + (forward ? 1 : -1)];
             destination =
               target?.stops.reduce(
                 (best, stop) =>
                   !best ||
-                  Math.abs(stop.x * (columns()[target.columnOrder]?.scaleX || 1) - preferredX) <
-                    Math.abs(best.x * (columns()[target.columnOrder]?.scaleX || 1) - preferredX)
+                  Math.abs(
+                    stop.x * (columns({ measureBounds: false })[target.columnOrder]?.scaleX || 1) -
+                      preferredX,
+                  ) <
+                    Math.abs(
+                      best.x *
+                        (columns({ measureBounds: false })[target.columnOrder]?.scaleX || 1) -
+                        preferredX,
+                    )
                     ? stop
                     : best,
                 null,
               ) || at;
           }
+          if (destination?.nativeCaretHint)
+            nativeHint = {
+              ...destination.nativeCaretHint,
+              frameId:
+                destination.frameId ||
+                measured.lines[destination.lineIndex ?? at.lineIndex]?.frameId ||
+                line.frameId,
+              index: destination.index,
+              key: layoutKey(),
+            };
           next = logicalSelection(event.shiftKey ? range.anchor : destination, destination);
         }
       }
@@ -554,6 +740,10 @@ export function installFlowSelection(
       controller.abort();
       publish(owner, []);
       fallback.remove();
+      nativeAnimation?.cancel();
+      nativeAnimation = null;
+      nativeOverlay.remove();
+      onNativeCaret(null);
       showRange(false);
     },
   };

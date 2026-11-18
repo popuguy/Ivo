@@ -99,6 +99,7 @@ import { escapeHTML as esc, cleanHTML, safeURL } from '../shared/html/sanitize.j
 import { mountGraph } from '../features/graph/view.js';
 import { createDocumentSession } from './document-session.js';
 import { initializePlatform } from '../platform/initialize.js';
+import { promoteTextLayout } from '../domain/documents/derived-text-layout.js';
 
 /** One application instance per native/browser window. Authored data and view state have separate owners. */
 export function startApplication({ root, dialog }) {
@@ -373,6 +374,7 @@ export function startApplication({ root, dialog }) {
   function commitDocument(id, tabId, before, metadata = {}) {
     const doc = docs.find((doc) => doc.id === id);
     if (!doc) return;
+    promoteTextLayout(before, doc);
     markTypographyVersion(doc);
     const tagged = {
       ...metadata,
@@ -789,10 +791,12 @@ export function startApplication({ root, dialog }) {
         },
         initialState: tab.canvasState,
         isActive: () => windowLease && workspace.active === tab.id,
+        canWrite: () => windowLease,
         source,
         fonts: () => [...assets.values()].filter((asset) => asset.font),
         assets: () => [...assets.values()],
         systemFonts: () => fontLibrary?.rows || [],
+        textComposition: globalThis.ivoNative?.textComposition || globalThis.ivoTextComposition,
         refreshSystemFonts: async () => {
           await fontLibrary.load(true);
           for (const other of panes.values()) other.canvas?.refreshFonts();
@@ -801,7 +805,12 @@ export function startApplication({ root, dialog }) {
         prepareDocumentFonts: (doc) => fontLibrary.prepareDocument(doc),
         ensureFontVariant: (id, bold, italic) => fontLibrary.ensureVariant(id, bold, italic),
         onCommit: (before, metadata) => commitDocument(id, tab.id, before, metadata),
-        onChange: () => changed(docs.find((doc) => doc.id === id)),
+        onChange: () => {
+          changed(docs.find((doc) => doc.id === id));
+          // Derived native pagination advances the saved revision asynchronously.
+          // Refresh the selection-bound menu token after that delivery completes.
+          queueMicrotask(updateNativeHistory);
+        },
         onOpen: (id, options) =>
           openDocument(id, {
             ...options,
@@ -2885,6 +2894,9 @@ export function startApplication({ root, dialog }) {
       initialized = true;
       adoptTab();
       render();
+      // Restored native flows must have their first ink/error ready before the
+      // quiet startup reveal, just as local font metrics already do.
+      await Promise.all([...panes.values()].map((pane) => pane.canvas?.flush()));
       await presentStartup(root);
       startupPresented = true;
       void fontLibrary

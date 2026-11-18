@@ -48,6 +48,13 @@ export function createPDFSnapshot(documents, assets, documentId, { includeLinked
   const scenes = archive.documents.map((doc) =>
     isSceneDocument(doc) ? doc : upgradeDocument(doc),
   );
+  if (
+    scenes.reduce(
+      (sum, doc) => sum + (doc.textFlows || []).filter((flow) => flow.composition).length,
+      0,
+    ) > 256
+  )
+    throw Error('Export up to 256 independently composed text flows at a time.');
   const count = scenes.reduce((sum, doc) => sum + doc.pages.length, 0);
   if (count > 256) throw new Error('Export up to 256 pages at a time.');
   const errors = [];

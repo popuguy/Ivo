@@ -1,27 +1,29 @@
 import { CURRENT_ARCHIVE_VERSION } from '../src/domain/documents/capabilities.js';
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, net } from 'electron';
 import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateImport } from '../src/domain/documents/schema.js';
 import { createPDFSnapshot } from '../src/features/export/pdf-plan.js';
+import { embedComposedTextLayers } from './composed-pdf.mjs';
+import { resolveCompositionPDFLayers } from './composition-pdf-layers.mjs';
 const jobs = new Map();
-const owner = (event) => {
+export const pdfRendererOwner = (event) => {
   const job = jobs.get(event.sender.id);
   if (!job || event.senderFrame !== event.sender.mainFrame || event.senderFrame.url !== job.url)
     throw new Error('Invalid PDF renderer request.');
   return job;
 };
-ipcMain.handle('ivo:pdf-snapshot', (event) => owner(event).snapshot);
+ipcMain.handle('ivo:pdf-snapshot', (event) => pdfRendererOwner(event).snapshot);
 ipcMain.handle('ivo:pdf-ready', (event, result) => {
-  const job = owner(event);
+  const job = pdfRendererOwner(event);
   if (result?.error) job.reject(new Error(String(result.error).slice(0, 1000)));
   else job.resolve(result?.manifest);
   return true;
 });
 
 /** Print browser-shaped text and paths, then normalize physical sizes and rebuild semantic links. */
-export async function finalizePDF(bytes, manifest) {
+export async function finalizePDF(bytes, manifest, { composedLayers = [] } = {}) {
   const pdf = await PDFDocument.load(bytes),
     pages = pdf.getPages();
   if (pages.length !== manifest.pages.length)
@@ -60,12 +62,16 @@ export async function finalizePDF(bytes, manifest) {
     }
     page.node.addAnnot(pdf.context.register(pdf.context.obj(annotation)));
   }
+  if (composedLayers.length) await embedComposedTextLayers(pdf, composedLayers);
   pdf.setTitle(manifest.title);
   pdf.setCreator('Ivo');
   pdf.setProducer('Ivo');
   return pdf.save();
 }
-export async function renderPDF(snapshot, { project, timeout = 60000, onRendered } = {}) {
+export async function renderPDF(
+  snapshot,
+  { project, timeout = 60000, onRendered, compositionPDF } = {},
+) {
   if (snapshot?.format !== 'ivo-pdf-1') throw new Error('Invalid PDF snapshot.');
   const archive = validateImport({
     schemaVersion: CURRENT_ARCHIVE_VERSION,
@@ -81,7 +87,9 @@ export async function renderPDF(snapshot, { project, timeout = 60000, onRendered
     includeLinked: true,
   });
   frozen.createdAt = String(snapshot.createdAt || frozen.createdAt);
-  const url = pathToFileURL(path.join(project, 'dist/pdf.html')).href;
+  const pdfOrigin = 'https://ivo-pdf.invalid',
+    url = pdfOrigin + '/pdf.html',
+    webRoot = path.resolve(project, 'dist');
   const window = new BrowserWindow({
     show: false,
     width: 1200,
@@ -95,11 +103,28 @@ export async function renderPDF(snapshot, { project, timeout = 60000, onRendered
     },
   });
   const session = window.webContents.session;
+  await session.protocol.handle('https', async (request) => {
+    const parsed = new URL(request.url),
+      pathname = decodeURIComponent(parsed.pathname),
+      target = path.resolve(webRoot, '.' + pathname);
+    if (
+      parsed.origin !== pdfOrigin ||
+      !target.startsWith(webRoot + path.sep) ||
+      pathname.split('/').some((part) => part.startsWith('.'))
+    )
+      return new Response('Forbidden', { status: 403 });
+    const result = await net.fetch(pathToFileURL(target).href),
+      headers = new Headers(result.headers);
+    headers.set(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; object-src 'none'; frame-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+    );
+    return new Response(result.body, { status: result.status, headers });
+  });
   session.setPermissionRequestHandler((_c, _p, callback) => callback(false));
   session.setPermissionCheckHandler(() => false);
-  session.webRequest.onBeforeRequest(
-    { urls: ['http://*/*', 'https://*/*'] },
-    (_details, callback) => callback({ cancel: true }),
+  session.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) =>
+    callback({ cancel: !details.url.startsWith(pdfOrigin + '/') }),
   );
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, target) => {
@@ -119,6 +144,10 @@ export async function renderPDF(snapshot, { project, timeout = 60000, onRendered
     await window.loadURL(url);
     const manifest = await ready;
     await onRendered?.(window, manifest);
+    const composedLayers = await resolveCompositionPDFLayers(
+      manifest,
+      compositionPDF ? (token) => compositionPDF(window.webContents, token) : undefined,
+    );
     const bytes = await window.webContents.printToPDF({
       preferCSSPageSize: true,
       printBackground: true,
@@ -126,11 +155,12 @@ export async function renderPDF(snapshot, { project, timeout = 60000, onRendered
       margins: { top: 0, bottom: 0, left: 0, right: 0 },
       generateTaggedPDF: true,
     });
-    return { bytes: await finalizePDF(bytes, manifest), manifest };
+    return { bytes: await finalizePDF(bytes, manifest, { composedLayers }), manifest };
   } finally {
     clearTimeout(timer);
     jobs.delete(window.webContents.id);
     window.destroy();
+    session.protocol.unhandle('https');
     await session.clearStorageData();
   }
 }
