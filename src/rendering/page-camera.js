@@ -1,8 +1,8 @@
 /**
- * Paint document text/SVG at the current zoom, then translate the result.
- * CSS layout zoom changes font/vector rasterization scale. The compositor
- * transform only translates: it never enlarges a previously painted bitmap.
- * Document coordinates and editable DOM nodes remain unchanged.
+ * Keep document layout at its authored scale and transform its paint coordinates.
+ * A plain, script-updated 2D transform lets Chromium raster at the current scale
+ * without CSS zoom re-shaping/re-wrapping text. Do not promote this to a fixed
+ * raster with will-change or a 3D transform: live zoom must remain sharp.
  */
 const views = new WeakMap();
 export function applyPageCamera(world, camera) {
@@ -15,18 +15,14 @@ export function applyPageCamera(world, camera) {
     world.style.left = '0px';
     world.style.top = '0px';
     world.style.willChange = 'auto';
+    world.style.zoom = '1';
     previous = {};
     views.set(world, previous);
   }
-  if (previous.zoom !== zoom) {
-    world.style.zoom = String(zoom);
-    previous.zoom = zoom;
-  }
-  // CSS zoom also scales this element's translation units.
-  if (previous.x !== x || previous.y !== y || previous.translationZoom !== zoom) {
-    world.style.transform = `translate3d(${x / zoom}px,${y / zoom}px,0)`;
+  if (previous.x !== x || previous.y !== y || previous.zoom !== zoom) {
+    world.style.transform = `matrix(${zoom},0,0,${zoom},${x},${y})`;
     previous.x = x;
     previous.y = y;
-    previous.translationZoom = zoom;
+    previous.zoom = zoom;
   }
 }

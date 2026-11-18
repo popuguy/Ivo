@@ -2,7 +2,7 @@
 
 Implemented 6 November 2026 following Paul's report of delayed two-finger document movement/zoom and his preference for exact Illustrator, then Obsidian, icons. This is an interaction correction and provisional reference-art pass, not the final visual design.
 
-The subsequent [interaction milestone](interaction-correctness.md) changes page painting to layout zoom to remove transient cached-bitmap enlargement, corrects the proven pinch half-gain error and adds two-decimal zoom display. Its rendering details supersede the original compositor-scale description below.
+The current [stable text zoom correction](stable-text-zoom.md) retains authored layout and uses a plain 2D paint transform, with measured first-frame sharpness. It supersedes the interim CSS layout-zoom correction, which allowed font metrics to jitter. Direct camera feedback, the established pinch-gain correction and two-decimal display remain. Historical implementation details below are not the current paint contract.
 
 ## Delay diagnosis and fix
 

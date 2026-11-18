@@ -2,22 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyPageCamera } from '../../src/rendering/page-camera.js';
 
-test('page camera changes paint zoom while its compositor transform only translates', () => {
+test('page camera maps authored geometry without changing the document layout scale', () => {
   const world = { style: {} };
   applyPageCamera(world, { x: 123.45, y: -45.6, zoom: 2.5 });
-  assert.equal(world.style.zoom, '2.5');
-  const translated = world.style.transform.match(/translate3d\(([^p]+)px,([^p]+)px,0\)/);
-  assert.ok(translated);
-  assert.ok(
-    Math.abs(Number(translated[1]) * 2.5 - 123.45) < 1e-10 &&
-      Math.abs(Number(translated[2]) * 2.5 + 45.6) < 1e-10,
-  );
+  assert.equal(world.style.zoom, '1');
+  const matrix = world.style.transform
+      .match(/^matrix\((.+)\)$/)[1]
+      .split(',')
+      .map(Number),
+    [a, b, c, d, x, y] = matrix;
+  assert.deepEqual([a * 12 + c * 10 + x, b * 12 + d * 10 + y], [153.45, -20.6]);
   assert.equal(world.style.willChange, 'auto');
-  assert.ok(!world.style.transform.includes('scale'));
-  const zoom = world.style.zoom;
-  applyPageCamera(world, { x: 124.45, y: -44.6, zoom: 2.5 });
-  assert.equal(world.style.zoom, zoom);
-  assert.ok(!world.style.transform.includes('scale'));
+  applyPageCamera(world, { x: 124.45, y: -44.6, zoom: 3.125 });
+  assert.equal(world.style.zoom, '1');
+  assert.ok(!world.style.transform.includes('3d'));
 });
 
 test('invalid page camera values are rejected before changing renderer state', () => {

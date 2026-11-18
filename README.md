@@ -8,7 +8,7 @@ npm run desktop        # macOS application with folder vaults
 npm run dev            # browser development at http://127.0.0.1:4173
 ```
 
-The workspace follows Obsidian’s compact navigation model around a page editor informed by Illustrator and InDesign. The interface is still evolving. Current foundations include mixed-size pages, fractional placement, polygons and masks, linked text frames with automatic continuation, original image paste, document links, tabs/splits/windows, named workspaces, sidebar sizing, folder drag/rename, local history and Mac PDF export.
+The workspace follows Obsidian’s compact navigation model around a page editor informed by Illustrator and InDesign. The interface is still evolving. Current foundations include mixed-size pages, fractional placement, polygons and masks, linked text frames with automatic continuation, original image paste, document links, tabs/splits/windows, sidebar sizing, folder drag/rename, local history and Mac PDF export.
 
 ```sh
 npm run check          # formatting, lint, architecture, unit tests and builds

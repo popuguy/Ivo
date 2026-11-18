@@ -9,6 +9,7 @@ import {
 } from '../../../src/shared/dom/text-selection.js';
 import { createNativeInputAnchor } from '../../../src/features/editor/text/native-input-anchor.js';
 import { installFlowSelection } from '../../../src/features/editor/text/flow-selection.js';
+import { applyPageCamera } from '../../../src/rendering/page-camera.js';
 import {
   hitNativeColumn,
   nativeCaretRect,
@@ -200,8 +201,7 @@ try {
       Math.abs(reports.at(-1).residual.bottom) < 0.1,
     'Input did not reanchor after native recomposition',
   );
-  camera.style.zoom = '1.8';
-  camera.style.transform = 'translate3d(80px,50px,0)';
+  applyPageCamera(camera, { x: 80, y: 50, zoom: 1.8 });
   controller.sync();
   await tick();
   assert(

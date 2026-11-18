@@ -1,5 +1,6 @@
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
+import { verifyTextZoom } from './text-zoom.js';
 const next = () => new Promise((resolve) => requestAnimationFrame(resolve));
 const percentile = (values, p) =>
   [...values].sort((a, b) => a - b)[Math.floor((values.length - 1) * p)];
@@ -184,6 +185,7 @@ try {
     throw new Error('Pan cursor remained active after focus loss');
   mutations.disconnect();
   editor.destroy();
+  result.textZoom = await verifyTextZoom(host);
   console.log('IVO_VIEWPORT_RESULT:' + JSON.stringify(result));
 } catch (error) {
   console.log('IVO_VIEWPORT_RESULT:' + JSON.stringify({ error: error.stack || error.message }));
