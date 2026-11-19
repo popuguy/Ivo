@@ -431,8 +431,7 @@ try {
     let sidebar = document.querySelector('.sidebar');
     const toggle = document.querySelector('.workspace-header-toggle-slot [data-action="menu"]'),
       root = document.querySelector('#app'),
-      expandedWidth = sidebar.getBoundingClientRect().width,
-      widths = [];
+      expandedWidth = sidebar.getBoundingClientRect().width;
     let worldMutations = 0;
     const motionObserver = new MutationObserver((records) => (worldMutations += records.length));
     motionObserver.observe(world, { childList: true, subtree: true });
@@ -527,13 +526,30 @@ try {
       sidebar.inert && toggle.getAttribute('aria-expanded') === 'false',
       'Closing sidebar leaves its hidden controls keyboard accessible',
     );
-    for (let frame = 0; frame < 20 && root.classList.contains('sidebar-transition'); frame++) {
-      widths.push(sidebar.getBoundingClientRect().width);
-      await tick();
-    }
+    const collapse = root
+      .getAnimations()
+      .find((animation) => animation.transitionProperty === 'grid-template-columns');
     assert(
-      widths.some((width) => width > 0 && width < expandedWidth),
-      'Sidebar collapse skipped its intermediate frames',
+      collapse,
+      'Missing sidebar width transition: ' +
+        JSON.stringify({
+          width: innerWidth,
+          duration: getComputedStyle(root).transitionDuration,
+          reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        }),
+    );
+    // Inspect the actual interpolated layout even on runners delivering frames slower than the transition.
+    collapse.pause();
+    collapse.currentTime = collapse.effect.getTiming().duration / 2;
+    const middleWidth = sidebar.getBoundingClientRect().width;
+    assert(
+      middleWidth > 0 && middleWidth < expandedWidth,
+      'Sidebar width did not interpolate: ' + JSON.stringify({ middleWidth, expandedWidth }),
+    );
+    collapse.play();
+    await wait(
+      () => !root.classList.contains('sidebar-transition'),
+      'Sidebar did not finish closing',
     );
     assert(
       sidebar.getBoundingClientRect().width === 0 && toggleIsReachable(),

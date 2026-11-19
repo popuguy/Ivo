@@ -33,8 +33,8 @@ window.addEventListener('unhandledrejection', (event) =>
 try {
   await prepareTextFlowFonts();
   const host = document.querySelector('#host');
-  host.style.width = '1360px';
-  host.style.height = '1000px';
+  host.style.width = 'min(1360px, 100vw)';
+  host.style.height = 'min(1000px, 100vh)';
   let doc,
     history = createDocumentHistory(),
     editor,
@@ -265,12 +265,21 @@ try {
       !transfer.getData('text/plain').includes('Unrelated'),
       'Cross-page selection mixed independent text',
     );
-    await window.textCoreTest.drag(to, from);
+    const reverseStart = charPoint(c.id, true),
+      reverseEnd = charPoint(a.id);
+    await window.textCoreTest.drag(reverseStart, reverseEnd);
     await tick();
     const backward = captureTextSelection(input);
     assert(
-      backward.anchor.index > backward.focus.index,
-      'Reverse drag lost anchor/focus direction',
+      backward && backward.anchor.index > backward.focus.index,
+      'Reverse drag lost anchor/focus direction: ' +
+        JSON.stringify({
+          backward,
+          reverseStart,
+          reverseEnd,
+          viewport: [innerWidth, innerHeight],
+          target: document.elementFromPoint(...reverseStart)?.className,
+        }),
     );
     assert(JSON.stringify(doc) === source, 'Reverse selection changed source');
     const fullSource = doc.textFlows[0].html;

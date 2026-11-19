@@ -57,7 +57,7 @@ async function wait(predicate, label) {
     window && !window.isDestroyed()
       ? await window.webContents
           .executeJavaScript(
-            `JSON.stringify({active:document.activeElement?.outerHTML?.slice(0,250),tool:document.querySelector('.scene-editor')?.dataset.tool,editor:document.querySelector('.scene-editor')?.className,editable:document.querySelector('.canvas-flow-input')?.contentEditable,selection:window.getSelection()?.toString()})`,
+            `JSON.stringify({active:document.activeElement?.outerHTML?.slice(0,250),tool:document.querySelector('.scene-editor')?.dataset.tool,editor:document.querySelector('.scene-editor')?.className,notice:document.querySelector('#toast')?.textContent,composer:document.querySelector('[data-flow-composer]')?.value,editable:document.querySelector('.canvas-flow-input')?.contentEditable,selection:window.getSelection()?.toString()})`,
           )
           .catch(() => null)
       : null;

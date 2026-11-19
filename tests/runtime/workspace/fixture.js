@@ -45,6 +45,7 @@ try {
   };
   let editor = mountCanvasEditor(host, options);
   await tick();
+  await editor.command('show-panel-properties');
   await editor.command('document-text');
   const shell = host.querySelector('.scene-editor'),
     source = host.querySelector('.canvas-flow-input'),
@@ -87,7 +88,14 @@ try {
   await tick();
   assert(
     Math.abs(panel.getBoundingClientRect().width - (initialPanelWidth + 60)) < 1,
-    'Dock resize did not change panel width',
+    'Dock resize did not change panel width: ' +
+      JSON.stringify({
+        initialPanelWidth,
+        finalWidth: panel.getBoundingClientRect().width,
+        viewport: innerWidth,
+        editor: shell.clientWidth,
+        dock: shell.style.getPropertyValue('--context-panel-width'),
+      }),
   );
   assert(document.activeElement === resize, 'Pointer resize did not acquire keyboard ownership');
   assert(
@@ -167,6 +175,7 @@ try {
   const saved = JSON.parse(localStorage.getItem('ivo:workspace-panels:1'));
   editor.destroy();
   editor = mountCanvasEditor(host, options);
+  await editor.command('show-panel-properties');
   await tick();
   assert(
     Math.abs(host.querySelector('.canvas-properties').getBoundingClientRect().width - saved.dock) <

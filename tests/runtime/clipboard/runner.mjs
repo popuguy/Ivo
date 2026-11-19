@@ -1,4 +1,5 @@
-import { app, BrowserWindow, protocol, net, ipcMain, clipboard, ClipboardItem } from 'electron';
+import { app, BrowserWindow, protocol, net, ipcMain, clipboard } from 'electron';
+import { snapshotClipboard } from '../helpers/clipboard.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,16 +18,7 @@ app
   .whenReady()
   .then(async () => {
     // Preserve every native clipboard representation while testing our own copy.
-    const previous = await Promise.all(
-      (await clipboard.read()).map(
-        async (item) =>
-          new ClipboardItem(
-            Object.fromEntries(
-              await Promise.all(item.types.map(async (type) => [type, await item.getType(type)])),
-            ),
-          ),
-      ),
-    );
+    const previous = await snapshotClipboard();
     protocol.handle('ivo-clipboard-test', (request) => {
       const target = path.resolve(root, '.' + new URL(request.url).pathname);
       if (!target.startsWith(root + path.sep)) return new Response('Forbidden', { status: 403 });

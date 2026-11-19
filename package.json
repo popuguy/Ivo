@@ -78,7 +78,7 @@
     "pretest:frame-composition": "node scripts/reference-art.mjs",
     "test:document-clipboard": "npm run build && electron tests/runtime/document-clipboard/runner.mjs",
     "test:composition-prototype": "node tests/prototypes/text-composition/runner.mjs",
-    "test:native-text-menu": "npm run build && electron tests/runtime/native-text-menu/runner.mjs",
+    "test:native-text-menu": "npm run build && node scripts/build-native-text.mjs && electron tests/runtime/native-text-menu/runner.mjs",
     "pretest:native-text-menu": "node scripts/reference-art.mjs",
     "test:text-composition-bridge": "electron tests/runtime/text-composition-bridge/runner.mjs",
     "test:native-composition-geometry": "electron tests/runtime/native-composition-geometry/runner.mjs",

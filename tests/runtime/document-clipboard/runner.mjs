@@ -1,4 +1,5 @@
 import { app, BrowserWindow, clipboard, ClipboardItem } from 'electron';
+import { snapshotClipboard } from '../helpers/clipboard.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -58,22 +59,13 @@ async function finish(code, result) {
 }
 void (async () => {
   try {
-    const snapshotClipboard = app.whenReady().then(async () => {
-      previous = await Promise.all(
-        (await clipboard.read()).map(
-          async (item) =>
-            new ClipboardItem(
-              Object.fromEntries(
-                await Promise.all(item.types.map(async (type) => [type, await item.getType(type)])),
-              ),
-            ),
-        ),
-      );
+    const snapshotReady = app.whenReady().then(async () => {
+      previous = await snapshotClipboard();
       captured = true;
     });
     timer = setTimeout(() => void finish(1, { error: 'Native document clipboard timeout' }), 40000);
     await import('../../../desktop/main.mjs');
-    await snapshotClipboard;
+    await snapshotReady;
     window = await wait(
       () =>
         BrowserWindow.getAllWindows().find(
