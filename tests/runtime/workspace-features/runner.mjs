@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const profile = await mkdtemp(path.join(tmpdir(), 'ivo-workspace-features-'));
+// Exercise the animated path independently of the host's accessibility preference.
+app.commandLine.appendSwitch('force-prefers-no-reduced-motion');
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
@@ -119,11 +121,6 @@ app
       }
     });
     window.webContents.on('render-process-gone', (_event, details) => void finish(1, details));
-    const debuggerSession = window.webContents.debugger;
-    debuggerSession.attach();
-    await debuggerSession.sendCommand('Emulation.setEmulatedMedia', {
-      features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
-    });
     await window.loadURL(
       'ivo-workspace-features-test://paused/tests/runtime/workspace-features/paused.html',
     );
