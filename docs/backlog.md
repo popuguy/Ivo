@@ -1,5 +1,11 @@
 # Ivo implementation backlog
 
+## Editing engine priorities
+
+1. Move insertion, deletion, replacement and paragraph breaks into shared document operations. Exercise linked frames, formatting inheritance, selection direction and undo with tests that run without a window. Verify the same operations through platform input, including marked text during composition.
+2. Profile object drags on a dense page with a clipped group and wrapped text. The current pointer path builds snap candidates and updates object elements during a move. Measure their cost, then retain stable candidates or geometry where it removes repeated work. Check that object ink, masks, handles and guides reflect the same gesture position.
+3. Extend the existing lock, typing and zoom checks to sustained mixed editing. Track slow frames and memory over the session, exercise autosave and delayed composition during gestures, and check crisp ink, stable on-screen control sizes and pointer or touch targeting at fractional zoom. Use the [editor interaction design](architecture.md#editor-interaction-design) when assessing the results.
+
 ## Editing responsiveness — 19 November 2026
 
 The [Mac desktop benchmark](verification.md#desktop-editing-responsiveness--19-november-2026) covers visible Layers lock feedback and typing in browser-composed and native-composed flows. Lock updates retain page objects. Typing retains matching native line data and vector ink. The workspace styles now depend on an explicit mount state. Keep these paths covered when adding layout features.

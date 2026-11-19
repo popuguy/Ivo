@@ -2,6 +2,16 @@
 
 Ivo is a shared document engine with platform-specific hosts. Precise page composition, long-form text and a document knowledge graph must survive changes to the interface and operate on Mac, iPhone and iPad. The browser build remains useful for development.
 
+## Editor interaction design
+
+Ivo owns the meaning of text edits, object transforms, selections and undo across its hosts. Use established platform engines for font shaping, system text input, accessibility and display where they deliver the required behavior. As editing moves out of the browser's editable surface, express an insertion, deletion or replacement against a range in the document. Resolve commands such as delete-to-start-of-line against the line the user sees. A frame or page boundary is a layout decision within its text flow.
+
+Keep authored paths, text geometry and transforms in fractional document coordinates. Project an anchor into the view once for its visible handle and hit target. The handle and Smart Guide retain their optical size during document zoom, with adequate touch targets on mobile. Authored strokes follow the document transform. Render fine edges at the current display scale and preserve the authored coordinates at fractional zoom.
+
+For continuous gestures, aim to present the latest input on the next available display frame. The object, its mask, selection outline and snap guide should agree on the transform in that frame. When text recomposes, publish compatible glyphs, caret and hit geometry together for the affected view. Keep the active manipulation responsive while distant pages, saving, indexing and cloud replicas catch up.
+
+Qualify these behaviors under sustained use of representative layouts. Measure slow frames as well as median input-to-visible feedback during typing, dragging and zooming. Exercise cancellation and undo with work in flight, memory growth over repeated edits, and reopening a saved document after an interrupted write. Include display scale, refresh rate and physical device when reporting measurements.
+
 ## Source structure
 
 ```text
