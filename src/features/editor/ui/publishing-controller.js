@@ -34,6 +34,7 @@ import { prepareFont } from '../assets/font-import.js';
 import { dialogMarkup, installDialogDismissal } from '../../../shared/ui/dialog.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { createOpenTypePopover } from './opentype-popover.js';
+import { openKeepOptionsForm } from './keep-options-dialog.js';
 import { createWordSpacingDialog } from './word-spacing-dialog.js';
 
 /** Publishing controls use the same transaction/history owner as canvas edits. */
@@ -64,7 +65,7 @@ export function installPublishingControls(
     canPrepareFonts,
     ensureFontVariant,
     fontSelection,
-    applyFontSettings,
+    applyTextSettings,
   },
 ) {
   const controller = new AbortController(),
@@ -84,6 +85,7 @@ export function installPublishingControls(
       );
   let popover = null,
     wordSpacingDialog = null,
+    keepDialog = null,
     fontWork = Promise.resolve(),
     fontPending = 0,
     preparedLegacy = '';
@@ -141,7 +143,7 @@ export function installPublishingControls(
       .then(async () => {
         const settings = await prepare();
         if (!allowed() || fontSelection() !== target) return false;
-        applyFontSettings(settings);
+        applyTextSettings(settings, 'Font');
         render();
         return true;
       })
@@ -164,6 +166,36 @@ export function installPublishingControls(
   function nativeTextFlow() {
     const item = objects()[0];
     return doc().textFlows?.find((flow) => flow.id === item?.textFlowId && flow.composition);
+  }
+  function openKeepOptions() {
+    preserveRange();
+    const flow = nativeTextFlow(),
+      summary = textState();
+    if (!flow || !summary || keepDialog?.open) return;
+    const source = flow.html,
+      target = fontSelection();
+    closePopover();
+    closeWordSpacingDialog();
+    const dialog = openKeepOptionsForm(form, summary, (patch) => {
+      const current = nativeTextFlow();
+      if (
+        !dialogAllowed?.() ||
+        current?.id !== flow.id ||
+        current?.html !== source ||
+        target !== fontSelection()
+      )
+        throw Error('The text selection changed. Reopen Keep Options for the current text.');
+      if (Object.keys(patch).length) applyTextSettings(patch, 'Keep Options');
+      render();
+    });
+    keepDialog = dialog;
+    dialog.addEventListener(
+      'close',
+      () => {
+        if (keepDialog === dialog) keepDialog = null;
+      },
+      { once: true },
+    );
   }
   function openWordSpacing() {
     preserveRange();
@@ -423,7 +455,7 @@ export function installPublishingControls(
   listen(editor, 'pointerdown', (event) => {
     if (
       event.target.closest(
-        '[data-highlight-color],[data-type-feature],[data-canvas-command="word-spacing"],[data-property-step],[data-paragraph-align],[data-font-style],[data-property-disclosure],[data-property-presets]',
+        '[data-highlight-color],[data-type-feature],[data-canvas-command="word-spacing"],[data-canvas-command="keep-options"],[data-property-step],[data-paragraph-align],[data-font-style],[data-property-disclosure],[data-property-presets]',
       )
     ) {
       preserveRange();
@@ -852,6 +884,10 @@ export function installPublishingControls(
         openType(anchor);
         return true;
       }
+      if (name === 'keep-options') {
+        openKeepOptions();
+        return true;
+      }
       if (name === 'word-spacing') {
         openWordSpacing();
         return true;
@@ -976,6 +1012,7 @@ export function installPublishingControls(
     destroy() {
       closePopover();
       closeWordSpacingDialog();
+      keepDialog?.close();
       controller.abort();
     },
   };

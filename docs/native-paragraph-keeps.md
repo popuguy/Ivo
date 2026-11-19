@@ -2,6 +2,8 @@
 
 In a text flow using either native composer, open Properties → Paragraph → More Options. **Keep paragraph together** keeps all the lines of one paragraph in one column. **Keep with next** holds its last line with one to five lines of the following paragraph. **Keep with previous** keeps the first line of the current paragraph with the last line above. A heading can carry body lines onto the next page, and a caption can stay with the paragraph it describes. Named paragraph styles can inherit and override these settings.
 
+To edit the rules together, choose **Keep Options…** in Paragraph Properties or the desktop Type menu. Press **Option–Command–K** on Mac or **Ctrl–Alt–K** on Windows. Keep with Next accepts zero to disable the join. Keep Lines Together offers all lines or independent beginning/end counts. Changes apply on OK and undo together. Mixed selections retain each untouched paragraph setting.
+
 ## Placement and impossible constraints
 
 All moves an entire paragraph out of occupied column space when it cannot fit there. It recomposes for the destination width, retaining the first-line indent and suppressing incoming top spacing. It does not move a fixed list of narrow-column breaks into a wider frame.

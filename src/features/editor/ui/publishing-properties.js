@@ -343,6 +343,7 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
               ],
               'Direction',
             ) +
+            (nativeFlow ? button('keep-options', 'Keep Options…') : '') +
             button('word-spacing', 'Word Spacing…'),
           state,
         ),

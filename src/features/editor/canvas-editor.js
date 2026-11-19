@@ -3655,6 +3655,19 @@ export function mountCanvasEditor(host, options) {
       if (event.key === 'Tab') closeContextMenu();
       else return;
     }
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      event.altKey &&
+      !event.shiftKey &&
+      event.code === 'KeyK' &&
+      options.editing &&
+      viewport.contains(event.target) &&
+      textFlowForFrame(doc(), object())?.composition
+    ) {
+      event.preventDefault();
+      command('keep-options');
+      return;
+    }
     editor.dataset.option = String(event.altKey);
     if (['Alt', 'Shift'].includes(event.key) && replayMoveModifiers(event)) {
       event.preventDefault();
@@ -4045,7 +4058,7 @@ export function mountCanvasEditor(host, options) {
         view.textSelection?.focus.index,
       ]);
     },
-    applyFontSettings: (settings) => {
+    applyTextSettings: (settings, label) => {
       finishText();
       const before = structuredClone(doc()),
         viewBefore = captureView();
@@ -4067,7 +4080,7 @@ export function mountCanvasEditor(host, options) {
         throw error;
       }
       if (documentContent(before) !== documentContent(doc()))
-        onCommit(before, { label: 'Font', viewBefore, viewAfter: captureView() });
+        onCommit(before, { label, viewBefore, viewAfter: captureView() });
     },
     showPanel: (kind) => workspacePanels.show(kind),
     clearOverrides: clearTextOverrides,
@@ -4366,6 +4379,7 @@ export function mountCanvasEditor(host, options) {
       if (raf) cancelAnimationFrame(raf);
     },
     getMenuState: () => ({
+      canKeepOptions: !!(object() && textFlowForFrame(doc(), object())?.composition),
       canvasView: ownsInput() && !busy && !dialogOpen(),
       canArrange:
         ownsInput() &&

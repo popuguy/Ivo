@@ -130,6 +130,12 @@ void (async () => {
     await wait(() => nativeItem('send-backward')?.enabled, 'Object arrangement menu');
     assert.equal(nativeItem('send-backward').accelerator, 'CmdOrCtrl+[');
     assert.equal(nativeItem('send-back').accelerator, 'CmdOrCtrl+Shift+[');
+    assert.equal(nativeItem('type-keep-options').accelerator, 'CmdOrCtrl+Alt+K');
+    assert.equal(
+      nativeItem('type-keep-options').enabled,
+      false,
+      'Keep Options enabled for an unrelated selection',
+    );
     assert.equal(nativeItem('go-back').accelerator, 'CmdOrCtrl+Alt+[');
     for (const type of ['keyDown', 'keyUp'])
       window.webContents.sendInputEvent({

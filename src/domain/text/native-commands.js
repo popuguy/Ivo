@@ -1,5 +1,6 @@
-export const NATIVE_TEXT_COMMANDS = Object.freeze(['bold', 'italic', 'underline']);
+export const NATIVE_TEXT_COMMANDS = Object.freeze(['bold', 'italic', 'underline', 'keep-options']);
 export const NATIVE_TEXT_ACCELERATORS = Object.freeze({
+  'keep-options': 'CmdOrCtrl+Alt+K',
   bold: 'CmdOrCtrl+B',
   italic: 'CmdOrCtrl+I',
   underline: 'CmdOrCtrl+Shift+U',
@@ -11,7 +12,11 @@ const validTarget = (value) =>
 /** An opaque selection identity, not document text or executable IPC fields. Invalid state disables formatting. */
 export function nativeTextMenuState(value) {
   return value?.canFormat === true && validTarget(value.textTarget)
-    ? { canFormat: true, textTarget: value.textTarget }
+    ? {
+        canFormat: true,
+        textTarget: value.textTarget,
+        ...(value.canKeepOptions === true ? { canKeepOptions: true } : {}),
+      }
     : { canFormat: false, textTarget: '' };
 }
 

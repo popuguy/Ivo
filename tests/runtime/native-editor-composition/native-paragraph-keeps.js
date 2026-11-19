@@ -6,7 +6,10 @@ import {
   threadFrame,
   enableNativeComposition,
 } from '../../../src/domain/documents/text-flows.js';
-import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
+import {
+  archiveVersion,
+  markTypographyVersion,
+} from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
 import { TEXT_DEFAULTS } from '../../../src/domain/text/typography.js';
 import {
@@ -139,6 +142,7 @@ export async function verifyNativeParagraphKeeps({
       frames.push(next);
     }
     enableNativeComposition(doc, flow, 'paragraph');
+    markTypographyVersion(doc);
     // The same complete publishing/schema state as a vault open, before snapshots.
     doc = validateImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] })
       .documents[0];
@@ -734,6 +738,111 @@ export async function verifyNativeParagraphKeeps({
       !commits && paragraphMark(2, 'keepedges') === 'true',
       'Opening the split paragraph rewrote its source',
     );
+    ownFixture(
+      'Keep Options as one editing action',
+      '<p>PRE1</p><p>PRE2</p><p>A1 body<br>A2 body<br>A3 body<br>A4 body</p><p>T1 tail</p>',
+    );
+    mount();
+    await settle();
+    await selectWord('A1', { collapsed: false });
+    const beforeOptions = source(),
+      beforeHistory = commits;
+    const shortcut = () =>
+      input().dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'k',
+          code: 'KeyK',
+          metaKey: true,
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    shortcut();
+    await tick();
+    const dialog = document.querySelector('dialog[aria-label="Keep Options"]');
+    assert(dialog?.open, 'Keep Options shortcut did not open');
+    const form = dialog.querySelector('form'),
+      fields = form.elements;
+    fields.together.click();
+    fields.start.value = '3';
+    fields.start.dispatchEvent(new Event('input', { bubbles: true }));
+    fields.end.value = '21';
+    fields.end.dispatchEvent(new Event('input', { bubbles: true }));
+    form.requestSubmit();
+    await tick();
+    assert(
+      dialog.open && dialog.querySelector('[role=alert]').textContent && source() === beforeOptions,
+      'Invalid line count changed the document',
+    );
+    fields.end.value = '2';
+    fields.end.dispatchEvent(new Event('input', { bubbles: true }));
+    form.requestSubmit();
+    await settle();
+    assert(
+      !dialog.open &&
+        paragraphMark(2, 'keepedges') === 'true' &&
+        paragraphMark(2, 'orphans') === '3' &&
+        commits === beforeHistory + 1,
+      'Keep Options did not apply the controls as one command: ' +
+        dialog.querySelector('[role=alert]').textContent,
+    );
+    verifyPlan(splitRows, protectedSplit);
+    await editor.command('undo');
+    await settle();
+    assert(source() === beforeOptions, 'One undo did not restore all original settings');
+    verifyPlan(splitRows, ordinarySplit);
+    await selectWord('A1');
+    const action = host.querySelector('[data-canvas-command="keep-options"]');
+    assert(action, 'Keep Options missing in Paragraph Properties');
+    action.click();
+    await tick();
+    const cancel = document.querySelector('dialog[aria-label="Keep Options"]');
+    cancel.querySelector('[name=previous]').click();
+    cancel.querySelector('button[data-dialog-close]:not(.dialog-close)').click();
+    await settle();
+    assert(!cancel.open && source() === beforeOptions, 'Cancel applied a pending keep change');
+    ownFixture(
+      'Mixed paragraph keeps',
+      '<p data-ivo-previous="true">Alpha</p><p>Beta</p><p>Tail</p>',
+    );
+    mount();
+    await settle();
+    await selectWord('Alpha');
+    const rich = input(),
+      segments = textIndexMap(rich).segments,
+      range = document.createRange();
+    const beta = segments.find((s) => s.node.data === 'Beta').node;
+    range.setStart(segments.find((s) => s.node.data === 'Alpha').node, 0);
+    range.setEnd(beta, 4);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    await tick();
+    const mixedSource = source(),
+      mixedHistory = commits;
+    await editor.command('keep-options');
+    const mixedDialog = document.querySelector('dialog[aria-label="Keep Options"]');
+    const mf = mixedDialog.querySelector('form');
+    assert(mf.elements.previous.indeterminate, 'A mixed range hid its paragraph differences');
+    mf.elements.next.value = '2';
+    mf.elements.next.dispatchEvent(new Event('input', { bubbles: true }));
+    mf.requestSubmit();
+    await settle();
+    assert(
+      !mixedDialog.open &&
+        commits === mixedHistory + 1 &&
+        paragraphMark(0, 'previous') === 'true' &&
+        paragraphMark(1, 'previous') !== 'true' &&
+        paragraphMark(0, 'nextlines') === '2' &&
+        paragraphMark(1, 'nextlines') === '2' &&
+        !paragraphMark(2, 'nextlines'),
+      'Mixed selection changed untouched preferences or the next paragraph',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(source() === mixedSource, 'Mixed-range Keep Options did not undo exactly');
     const phrase = 'fine wool blends and silk lining with a long matching fabric reference';
     ownFixture('Character No Break', '<p>Start ' + phrase + ' after.</p>', {
       automaticPages: true,
@@ -903,6 +1012,7 @@ export async function verifyNativeParagraphKeeps({
       nativeKeepNamedStyleReflow: true,
       nativeParagraphStarts: true,
       nativeSplitParagraphCounts: true,
+      keepOptionsAtomicApplyAndCancel: true,
       nativeNoBreakSelectionUndoAndOverset: true,
       ...(diagnosticsChecked ? { nativeKeepDerivedViolations: true } : {}),
     };

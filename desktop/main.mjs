@@ -1240,6 +1240,7 @@ function sendTextCommand(name) {
     !record.group?.lease.canWrite(record) ||
     record.nativeDialogOpen ||
     !state.canFormat ||
+    (name === 'keep-options' && !state.canKeepOptions) ||
     !NATIVE_TEXT_COMMANDS.includes(name)
   )
     return;
@@ -1282,7 +1283,8 @@ function applyHistory(record) {
         !!record.vault &&
         !!record.group?.lease.canWrite(record) &&
         !record.nativeDialogOpen &&
-        text.canFormat;
+        text.canFormat &&
+        (name !== 'keep-options' || text.canKeepOptions === true);
   }
   for (const [id, value] of [
     ['go-back', state.canGoBack],
@@ -1415,7 +1417,7 @@ function installMenu() {
         label: 'Type',
         submenu: NATIVE_TEXT_COMMANDS.map((name) => ({
           id: 'type-' + name,
-          label: name[0].toUpperCase() + name.slice(1),
+          label: name === 'keep-options' ? 'Keep Options…' : name[0].toUpperCase() + name.slice(1),
           enabled: false,
           accelerator: NATIVE_TEXT_ACCELERATORS[name],
           click: () => sendTextCommand(name),

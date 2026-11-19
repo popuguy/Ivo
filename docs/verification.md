@@ -1,5 +1,9 @@
 # Verification
 
+## Keep Options — 19 November 2026
+
+The installed default Mac shortcut set binds Keep Options to Option–Command–K. The editor regression opens it with that combination, changes several paragraph attributes, rejects an out-of-range value and verifies one-step undo and Cancel. A mixed-range case changes only the selected settings. A native menu check verifies the accelerator and its disabled state on a shape selection.
+
 ## No Break — 19 November 2026
 
 Thirteen temporary InDesign layouts and Ivo’s native composers agreed on all 37 visible line endings, columns and local baselines, including two overset cases. The same Minion Pro Regular face was used in both apps. Selecting just the breaking space protected the phrase. Selecting the start of the next word left the preceding space free. Manual line and paragraph breaks still took effect.
