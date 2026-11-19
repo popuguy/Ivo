@@ -1,4 +1,4 @@
-import { BREAK_COMMANDS } from '../../domain/text/native-commands.js';
+import { INSERT_CHARACTERS } from '../../domain/text/native-commands.js';
 import { PANEL_LABELS } from '../../domain/workspace/panels.js';
 import { reflectPropertyFormatting } from './ui/publishing-properties.js';
 import { globalIndex as flowIndexAtPoint } from '../../rendering/text/flow-source.js';
@@ -2580,7 +2580,7 @@ export function mountCanvasEditor(host, options) {
       options.onNotify?.('Parent frames are independent text containers.');
       return;
     }
-    if (Object.hasOwn(BREAK_COMMANDS, name)) {
+    if (Object.hasOwn(INSERT_CHARACTERS, name)) {
       const text = activeText(),
         range = preserveRange();
       if (!options.editing || !text?.isContentEditable || !range) return;
@@ -2590,11 +2590,9 @@ export function mountCanvasEditor(host, options) {
       selection.addRange(range);
       rebasePendingMarks();
       finishText();
-      beginTextInput('insertBreakCharacter');
+      beginTextInput('insertSpecialCharacter');
       inheritInputTypography(text);
-      const manual = name === 'forced-line-break',
-        type = manual ? 'insertLineBreak' : 'insertText',
-        value = manual ? '' : '\u200b';
+      const { inputType: type, text: value } = INSERT_CHARACTERS[name];
       const result = applyDocumentInput(text, type, value, pendingMarks);
       if (result) finishDocumentInput(text, result);
       else {
@@ -3109,9 +3107,9 @@ export function mountCanvasEditor(host, options) {
     contextMenu.setAttribute('role', 'menu');
     contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button>${
       context.textEditing
-        ? Object.entries(BREAK_COMMANDS)
+        ? Object.entries(INSERT_CHARACTERS)
             .map(
-              ([id, label]) =>
+              ([id, { label }]) =>
                 `<button role="menuitem" data-canvas-command="${id}">${label}</button>`,
             )
             .join('')
@@ -4413,7 +4411,7 @@ export function mountCanvasEditor(host, options) {
       if (raf) cancelAnimationFrame(raf);
     },
     getMenuState: () => ({
-      canInsertBreak: !!activeText()?.isContentEditable,
+      canInsertCharacter: !!activeText()?.isContentEditable,
       canKeepOptions: !!(object() && textFlowForFrame(doc(), object())?.composition),
       canvasView: ownsInput() && !busy && !dialogOpen(),
       canArrange:

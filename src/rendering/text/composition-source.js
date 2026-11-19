@@ -81,7 +81,7 @@ function sameRunStyle(previous, current) {
  * A source-preserving transport projection. Virtual marks and collapsed HTML
  * whitespace retain their canonical UTF-16 intervals instead of entering saved text.
  */
-export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
+export function compositionSource(root, { id, doc, settings, fontFor, authoredHTML } = {}) {
   const sourceHTML = root.innerHTML,
     map = textIndexMap(root),
     logicalLength = map.boundaries.get(root).at(-1),
@@ -291,7 +291,9 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
         : 2,
     id,
     mode: 'greedy-geometry-proof',
-    sourceHTML,
+    // DOM serialization may spell a literal hard space as &nbsp;. Bind the proof
+    // to the saved HTML while the DOM map continues to own character offsets.
+    sourceHTML: authoredHTML ?? sourceHTML,
     logicalLength,
     text,
     spans,

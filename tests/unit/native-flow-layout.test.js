@@ -814,19 +814,32 @@ test('word spacing is paragraph-owned and explicitly activates native protocol5 
   assert.deepEqual(validateNativeFlowSource(doc, flow), baseline);
 });
 
+test('justified hard spaces resolve ordinary spacing defaults without authoring paragraph preferences', () => {
+  for (const space of ['\u00a0', '\u202f']) {
+    const doc = fixture({ text: 'Pair' + space + 'one with room' });
+    const flow = doc.textFlows[0];
+    flow.style.align = 'justify-all';
+    const before = structuredClone(doc);
+    const projected = validateNativeFlowSource(doc, flow);
+    assert.equal(projected.protocol, 5);
+    assert.equal(projected.paragraphs[0].wordSpacing, '80:100:133');
+    assert.deepEqual(doc, before);
+  }
+});
+
 test('unsupported word-spacing combinations reject synchronously and before native calls or authored writes', async () => {
-  for (const text of ['A\tB', 'A\u00a0B', 'A\u202fB']) {
+  for (const text of ['A\tB', 'A\u2009B']) {
     const doc = fixture({ text }),
       native = port();
     doc.textFlows[0].style.wordSpacing = '0:100:133';
     const before = structuredClone(doc);
     assert.throws(
       () => validateNativeFlowSource(doc, doc.textFlows[0]),
-      /word spacing with tabs or nonbreaking/,
+      /word spacing with (tabs|fixed or special spaces)/,
     );
     await assert.rejects(
       composeNativeTextFlows(doc, native),
-      /word spacing with tabs or nonbreaking/,
+      /word spacing with (tabs|fixed or special spaces)/,
     );
     assert.equal(native.calls.length, 0);
     assert.deepEqual(doc, before);

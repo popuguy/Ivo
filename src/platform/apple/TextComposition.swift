@@ -296,9 +296,9 @@ public final class TextCompositionEngine {
           try require(
             value.unicodeScalars.allSatisfy {
               !CharacterSet.whitespacesAndNewlines.contains($0)
-                || [0x20, 10, 13, 0x2028, 0x2029].contains($0.value)
+                || [0x20, 0xA0, 0x202F, 10, 13, 0x2028, 0x2029].contains($0.value)
             },
-            "Explicit word spacing requires qualified ordinary spaces without tabs or fixed spaces")
+            "Explicit word spacing requires qualified qualified word spaces")
           try require(
             !value.unicodeScalars.contains {
               (0x202A...0x202E).contains($0.value) || (0x2066...0x2069).contains($0.value)
@@ -704,10 +704,18 @@ public final class TextCompositionEngine {
       xHeight: struts.map { CTFontGetXHeight($0) }.max() ?? 0,
       inkAscent: inkAscent, inkDescent: inkDescent)
   }
-  func attributedSource(_ request: Request, fonts: [String: CGFont]) -> NSMutableAttributedString {
+  func attributedSource(_ request: Request, fonts: [String: CGFont]) throws
+    -> NSMutableAttributedString
+  {
     // Equal-length engine normalization: paragraph identity remains in the source map.
-    let attributed = NSMutableAttributedString(
-      string: request.text.replacingOccurrences(of: "\u{2029}", with: "\n"))
+    var shapingText = request.text.replacingOccurrences(of: "\u{2029}", with: "\n")
+    // An owned break plan retains NBSP in the canonical source. Shape its
+    // advance with the actual face's ordinary space, even if it lacks U+00A0.
+    if request.mode == "planned-lines-proof" || request.mode == "measure-lines-proof" {
+      shapingText = shapingText.replacingOccurrences(of: "\u{00A0}", with: " ")
+        .replacingOccurrences(of: "\u{202F}", with: " ")
+    }
+    let attributed = NSMutableAttributedString(string: shapingText)
     // Repeating half-inch stops. Custom/decimal/right-indent tabs remain a
     // separate paragraph capability; U+0009 stays source text, never spaces.
     var interval: CGFloat = 36
@@ -750,13 +758,39 @@ public final class TextCompositionEngine {
           range: NSRange(location: run.start, length: run.end - run.start))
       }
     }
+    // The fixed space follows Desired Word Spacing, then keeps that advance
+    // while the other gaps take up the remainder of a justified line.
+    if request.text.contains("\u{202F}")
+      && (request.mode == "planned-lines-proof" || request.mode == "measure-lines-proof")
+    {
+      let source = request.text as NSString
+      let key = NSAttributedString.Key(kCTTrackingAttributeName as String)
+      for paragraph in request.paragraphs ?? [] {
+        guard let desired = paragraph.wordSpacing?.desired, desired != 100 else { continue }
+        for index in paragraph.start..<paragraph.end where source.character(at: index) == 0x202F {
+          let font =
+            attributed.attribute(
+              NSAttributedString.Key(kCTFontAttributeName as String),
+              at: index, effectiveRange: nil) as! CTFont
+          let tracking =
+            (attributed.attribute(key, at: index, effectiveRange: nil) as? NSNumber)?.doubleValue
+            ?? 0
+          let advance = try fontSpaceAdvance(font)
+          attributed.addAttribute(
+            key, value: tracking + advance * (desired / 100 - 1),
+            range: NSRange(location: index, length: 1))
+        }
+      }
+    }
     return attributed
   }
   struct WordSpaceShape {
     let start: Int
     let contentEnd: Int
     let trailingStart: Int
-    let spaces: [Int]
+    let adjustable: [Int]
+    let gapCount: Int
+    let hangingStart: Int
     let nominalSpaceWidth: Double
   }
   func fontSpaceAdvance(_ font: CTFont) throws -> Double {
@@ -770,17 +804,25 @@ public final class TextCompositionEngine {
     try require(advance.width.isFinite && advance.width > 0, "Invalid native space advance")
     return Double(advance.width)
   }
-  func wordSpaceShape(_ source: NSAttributedString, start: Int, contentEnd: Int) throws
+  func wordSpaceShape(_ source: NSAttributedString, text: NSString, start: Int, contentEnd: Int)
+    throws
     -> WordSpaceShape
   {
-    let text = source.string as NSString
     var trailingStart = contentEnd
-    while trailingStart > start && text.character(at: trailingStart - 1) == 32 {
+    while trailingStart > start && [0x20, 0x202F].contains(text.character(at: trailingStart - 1)) {
       trailingStart -= 1
     }
-    let spaces = (start..<trailingStart).filter { text.character(at: $0) == 32 }
+    func flexible(_ index: Int) -> Bool {
+      let point = text.character(at: index)
+      return point == 0x20 || point == 0xA0
+    }
+    var hangingStart = trailingStart
+    while hangingStart > start
+      && (flexible(hangingStart - 1) || text.character(at: hangingStart - 1) == 0x202F)
+    { hangingStart -= 1 }
+    let gaps = (start..<hangingStart).filter(flexible)
     var nominal = 0.0
-    for index in spaces {
+    for index in gaps {
       let font =
         source.attribute(
           NSAttributedString.Key(kCTFontAttributeName as String), at: index,
@@ -789,7 +831,8 @@ public final class TextCompositionEngine {
     }
     return WordSpaceShape(
       start: start, contentEnd: contentEnd, trailingStart: trailingStart,
-      spaces: spaces, nominalSpaceWidth: nominal)
+      adjustable: gaps + Array(hangingStart..<contentEnd), gapCount: gaps.count,
+      hangingStart: hangingStart, nominalSpaceWidth: nominal)
   }
   func wordSpaceCapacities(_ shape: WordSpaceShape, naturalWidth: Double, policy: WordSpacing)
     -> [String: Any]
@@ -801,19 +844,19 @@ public final class TextCompositionEngine {
     }
     return [
       "minimumWidth": width(policy.minimum), "desiredWidth": width(policy.desired),
-      "maximumWidth": width(policy.maximum), "eligibleGaps": shape.spaces.count,
+      "maximumWidth": width(policy.maximum), "eligibleGaps": shape.gapCount,
       "nominalSpaceWidth": shape.nominalSpaceWidth,
     ]
   }
   func wordSpacedLine(
-    _ source: NSAttributedString, shape: WordSpaceShape, percent: Double,
+    _ source: NSAttributedString, text: NSString, shape: WordSpaceShape, percent: Double,
     collapseTrailing: Bool, offset: Double
   ) throws -> CTLine {
     if shape.contentEnd == shape.start {
       return CTLineCreateWithAttributedString(NSAttributedString(string: ""))
     }
     let attributed = NSMutableAttributedString(attributedString: source)
-    for index in shape.spaces + Array(shape.trailingStart..<shape.contentEnd) {
+    for index in shape.adjustable {
       let font =
         source.attribute(
           NSAttributedString.Key(kCTFontAttributeName as String), at: index,
@@ -825,14 +868,51 @@ public final class TextCompositionEngine {
       // CoreText tracking is already in transformed point units. Adding a kern
       // while tracking exists is ignored; changing only this source-space
       // tracking preserves nonspace shaping, ligatures and source clusters.
-      let adjusted =
-        collapseTrailing && index >= shape.trailingStart
-        ? -nominal : tracking + nominal * (percent / 100 - 1)
+      let point = text.character(at: index)
+      let adjusted: Double
+      if collapseTrailing && index >= shape.hangingStart && point != 0xA0 {
+        adjusted = -nominal
+      } else if point == 0x202F {
+        adjusted = tracking
+      } else {
+        adjusted = tracking + nominal * (percent / 100 - 1)
+      }
       attributed.addAttribute(key, value: adjusted, range: NSRange(location: index, length: 1))
     }
     return CTTypesetterCreateLineWithOffset(
       CTTypesetterCreateWithAttributedString(attributed),
       CFRange(location: shape.start, length: shape.contentEnd - shape.start), offset)
+  }
+  // With only fixed gaps, distribute the remaining space between shaped
+  // clusters. Core Text otherwise expands the space glyph as a word gap.
+  func justifyFixedPair(
+    _ source: NSAttributedString, text: NSString, shape: WordSpaceShape,
+    line: CTLine, width: Double, target: Double, offset: Double
+  ) -> CTLine? {
+    let range = NSRange(location: shape.start, length: shape.contentEnd - shape.start)
+    guard shape.adjustable.isEmpty, range.length > 1,
+      text.range(of: "\u{202F}", options: [], range: range).location != NSNotFound
+    else { return nil }
+    var clusters = Set<Int>()
+    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+      var indices = [CFIndex](repeating: 0, count: CTRunGetGlyphCount(run))
+      CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+      clusters.formUnion(indices)
+    }
+    guard let last = clusters.max(), clusters.count > 1, last > shape.start else { return nil }
+    let delta = (target - width) / Double(clusters.count - 1)
+    let adjusted = NSMutableAttributedString(attributedString: source)
+    let adjustmentRange = NSRange(location: shape.start, length: last - shape.start)
+    let key = NSAttributedString.Key(kCTTrackingAttributeName as String)
+    source.enumerateAttribute(key, in: adjustmentRange) { value, part, _ in
+      let tracking = (value as? NSNumber)?.doubleValue ?? 0
+      adjusted.addAttribute(key, value: tracking + delta, range: part)
+    }
+    let result = CTTypesetterCreateLineWithOffset(
+      CTTypesetterCreateWithAttributedString(adjusted),
+      CFRange(location: range.location, length: range.length), offset)
+    let actual = CTLineGetTypographicBounds(result, nil, nil, nil)
+    return abs(actual - target) < 0.000001 ? result : nil
   }
   func collapsedSpaceEdge(_ line: CTLine, shape: WordSpaceShape) throws -> Double? {
     guard shape.trailingStart < shape.contentEnd else { return nil }
@@ -870,7 +950,7 @@ public final class TextCompositionEngine {
   func wordSpaceChanges(_ original: CTLine, final: CTLine, shape: WordSpaceShape) throws
     -> [WordSpaceChange]
   {
-    let sourceSpaces = Set(shape.spaces + Array(shape.trailingStart..<shape.contentEnd))
+    let sourceSpaces = Set(shape.adjustable)
     func advances(_ line: CTLine) throws -> [Int: Double] {
       var result: [Int: Double] = [:]
       for run in CTLineGetGlyphRuns(line) as! [CTRun] {
@@ -902,7 +982,7 @@ public final class TextCompositionEngine {
       }, "Explicit word spacing requires qualified left-to-right shaping")
   }
   func measureCandidates(_ request: Request, fonts: [String: CGFont]) throws -> [[String: Any]] {
-    let attributed = attributedSource(request, fonts: fonts)
+    let attributed = try attributedSource(request, fonts: fonts)
     let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let string = request.text as NSString
     return try request.candidates!.map { candidate in
@@ -966,7 +1046,8 @@ public final class TextCompositionEngine {
         $0.start <= candidate.start && $0.end > candidate.start
       })?.wordSpacing {
         try validateWordSpaceDirection(line)
-        let shape = try wordSpaceShape(attributed, start: candidate.start, contentEnd: end)
+        let shape = try wordSpaceShape(
+          attributed, text: string, start: candidate.start, contentEnd: end)
         row["wordSpacing"] = wordSpaceCapacities(shape, naturalWidth: width, policy: policy)
       }
       return row
@@ -975,7 +1056,8 @@ public final class TextCompositionEngine {
   func compose(_ request: Request, fonts: [String: CGFont]) throws -> (
     [FrozenLine], [[String: Any]], [String], [[String: String]]
   ) {
-    let attributed = attributedSource(request, fonts: fonts)
+    let canonicalString = request.text as NSString
+    let attributed = try attributedSource(request, fonts: fonts)
     let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let textLength = attributed.length
     let boundaries = graphemeBoundaries(request.text)
@@ -1051,7 +1133,8 @@ public final class TextCompositionEngine {
         if let policy = paragraph?.wordSpacing {
           let original = line
           try validateWordSpaceDirection(line)
-          let shape = try wordSpaceShape(attributed, start: position, contentEnd: contentEnd)
+          let shape = try wordSpaceShape(
+            attributed, text: canonicalString, start: position, contentEnd: contentEnd)
           let nominal = shape.nominalSpaceWidth
           let desired = max(0, visibleWidth + nominal * (policy.desired / 100 - 1))
           let minimum = max(0, visibleWidth + nominal * (policy.minimum / 100 - 1))
@@ -1077,11 +1160,14 @@ public final class TextCompositionEngine {
             percentage.isFinite && percentage >= -0.000001,
             "Invalid solved native word spacing")
           line = try wordSpacedLine(
-            attributed, shape: shape, percent: max(0, percentage),
+            attributed, text: canonicalString, shape: shape, percent: max(0, percentage),
             collapseTrailing: adjustsToArea, offset: indent)
           var fallback = false
           if justified && nominal == 0 && visibleWidth > 0.000001 && visibleWidth < availableWidth,
-            let expanded = CTLineCreateJustifiedLine(line, 1, availableWidth)
+            let expanded = justifyFixedPair(
+              attributed, text: canonicalString, shape: shape, line: line,
+              width: visibleWidth, target: availableWidth, offset: indent)
+              ?? CTLineCreateJustifiedLine(line, 1, availableWidth)
           {
             // Preserve the already-qualified native single-word letter-spreading
             // fallback. This does not implement authored letter-spacing limits.
@@ -1099,12 +1185,12 @@ public final class TextCompositionEngine {
             collapsedEdge = try collapsedSpaceEdge(line, shape: shape)
             if collapsedEdge != nil { collapsedShape = shape }
           }
-          if !fallback && (!shape.spaces.isEmpty || shape.trailingStart < shape.contentEnd) {
+          if !fallback && !shape.adjustable.isEmpty {
             originalWordSpaceLine = original
             wordSpaceChanges = try self.wordSpaceChanges(original, final: line, shape: shape)
           }
           wordSpacingRow = [
-            "percentage": max(0, percentage), "eligibleGaps": shape.spaces.count,
+            "percentage": max(0, percentage), "eligibleGaps": shape.gapCount,
             "nominalSpaceWidth": nominal, "justified": adjustsToArea,
             "offPreference": percentage < policy.minimum - 0.000001
               || percentage > policy.maximum + 0.000001,

@@ -1,19 +1,36 @@
-export const BREAK_COMMANDS = Object.freeze({
-  'forced-line-break': 'Forced Line Break',
-  'discretionary-line-break': 'Discretionary Line Break',
+export const CHARACTER_MENUS = Object.freeze({
+  'Insert Break Character': {
+    'forced-line-break': { label: 'Forced Line Break', inputType: 'insertLineBreak', text: '' },
+    'discretionary-line-break': {
+      label: 'Discretionary Line Break',
+      inputType: 'insertText',
+      text: '\u200b',
+    },
+  },
+  'Insert White Space': {
+    'nonbreaking-space': { label: 'Nonbreaking Space', inputType: 'insertText', text: '\u00a0' },
+    'fixed-nonbreaking-space': {
+      label: 'Nonbreaking Space (Fixed Width)',
+      inputType: 'insertText',
+      text: '\u202f',
+    },
+  },
 });
+export const INSERT_CHARACTERS = Object.freeze(
+  Object.assign({}, ...Object.values(CHARACTER_MENUS)),
+);
 export const NATIVE_TEXT_COMMANDS = Object.freeze([
   'bold',
   'italic',
   'underline',
   'keep-options',
-  ...Object.keys(BREAK_COMMANDS),
+  ...Object.keys(INSERT_CHARACTERS),
 ]);
 export function textCommandEnabled(name, state) {
   return (
     state.canFormat &&
     (name !== 'keep-options' || state.canKeepOptions === true) &&
-    (!Object.hasOwn(BREAK_COMMANDS, name) || state.canInsertBreak === true)
+    (!Object.hasOwn(INSERT_CHARACTERS, name) || state.canInsertCharacter === true)
   );
 }
 export const NATIVE_TEXT_ACCELERATORS = Object.freeze({
@@ -32,7 +49,7 @@ export function nativeTextMenuState(value) {
     ? {
         canFormat: true,
         textTarget: value.textTarget,
-        ...(value.canInsertBreak === true ? { canInsertBreak: true } : {}),
+        ...(value.canInsertCharacter === true ? { canInsertCharacter: true } : {}),
         ...(value.canKeepOptions === true ? { canKeepOptions: true } : {}),
       }
     : { canFormat: false, textTarget: '' };

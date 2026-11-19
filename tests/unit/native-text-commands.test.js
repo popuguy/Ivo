@@ -49,10 +49,15 @@ test('inserting a break requires a live text insertion target and Keep Options r
   const frame = { canFormat: true, canKeepOptions: true };
   assert.equal(textCommandEnabled('keep-options', frame), true);
   assert.equal(textCommandEnabled('discretionary-line-break', frame), false);
-  for (const name of ['forced-line-break', 'discretionary-line-break'])
-    assert.equal(textCommandEnabled(name, { ...frame, canInsertBreak: true }), true);
+  for (const name of [
+    'forced-line-break',
+    'discretionary-line-break',
+    'nonbreaking-space',
+    'fixed-nonbreaking-space',
+  ])
+    assert.equal(textCommandEnabled(name, { ...frame, canInsertCharacter: true }), true);
   assert.equal(
-    textCommandEnabled('forced-line-break', { canFormat: false, canInsertBreak: true }),
+    textCommandEnabled('forced-line-break', { canFormat: false, canInsertCharacter: true }),
     false,
   );
 });

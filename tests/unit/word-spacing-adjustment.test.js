@@ -398,8 +398,7 @@ test('unqualified source/profile combinations reject before backend I/O and malf
     { ...source, protocol: 4 },
     { ...source, runs: [{ ...source.runs[0], tracking: -1 }] },
     requestFor('AA\tBB'),
-    requestFor('AA\u00a0BB'),
-    requestFor('AA\u202fBB'),
+    requestFor('AA\u2009BB'),
     { ...source, paragraphs: [{ ...source.paragraphs[0], wordSpacing: null }] },
   ])
     await assert.rejects(composer.compose(invalid, columns));

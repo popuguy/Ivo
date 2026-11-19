@@ -758,7 +758,37 @@ export async function verifyNativeWordSpacing({
     await selectWord('Advanced', { collapsed: true });
     await reset();
     verifyProtocol(4);
-    await rejectedFixture('Unsupported NBSP word spacing', '<p>Rejected\u00a0neighbor</p>');
+    ownFixture('Flexible nonbreaking space', '<p>Selected&nbsp;neighbor and next</p>');
+    mount();
+    await settle();
+    await selectWord('Selected');
+    await apply([50, 200, 250]);
+    const nonbreaking = verifyProtocol(5);
+    assert(
+      nonbreaking.request.text.includes('Selected\u00a0neighbor') &&
+        nonbreaking.result.layout.lines[0].wordSpacing.eligibleGaps > 0,
+      'Applying word spacing changed the nonbreaking source or lost its adjustable gaps.',
+    );
+    await selectWord('\u00a0');
+    const flexibleSource = source(),
+      beforeFixed = commits;
+    await editor.command('fixed-nonbreaking-space');
+    await settle();
+    assert(
+      painted().request.text.includes('Selected\u202fneighbor') && commits === beforeFixed + 1,
+      'Inserting a fixed nonbreaking space lost its source or undo boundary.',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(source() === flexibleSource, 'Undo did not restore the flexible space.');
+    await selectWord('\u00a0');
+    await editor.command('nonbreaking-space');
+    await settle();
+    assert(
+      painted().request.text.includes('Selected\u00a0neighbor'),
+      'Flexible-space menu changed its character.',
+    );
+    await rejectedFixture('Unsupported thin space word spacing', '<p>Rejected\u2009neighbor</p>');
     await rejectedFixture('Unsupported tab word spacing', '<p>Rejected\tneighbor</p>');
     await rejectedFixture(
       'Unsupported negative tracking word spacing',

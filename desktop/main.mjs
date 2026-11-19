@@ -5,7 +5,8 @@ import { WORKSPACE_FEATURES } from '../src/domain/workspace/features.js';
 import { configureTextInput } from './text-input-policy.mjs';
 import {
   NATIVE_TEXT_COMMANDS,
-  BREAK_COMMANDS,
+  INSERT_CHARACTERS,
+  CHARACTER_MENUS,
   textCommandEnabled,
   NATIVE_TEXT_ACCELERATORS,
   nativeTextMenuState,
@@ -560,13 +561,7 @@ else {
           ];
         if (context.textEditing)
           items.push(
-            {
-              label: 'Insert Break Character',
-              submenu: Object.entries(BREAK_COMMANDS).map(([name, label]) => ({
-                label,
-                click: () => sendTextCommand(name),
-              })),
-            },
+            ...characterMenuItems(true),
             { type: 'separator' },
             { role: 'cut' },
             { role: 'copy' },
@@ -1247,6 +1242,16 @@ function sendCommand(name) {
   if (!record.vault && name === 'close-tab') return record.window.close();
   record.window.webContents.send('ivo:command', name);
 }
+function characterMenuItems(contextMenu) {
+  return Object.entries(CHARACTER_MENUS).map(([label, commands]) => ({
+    label,
+    submenu: Object.entries(commands).map(([name, item]) => ({
+      label: item.label,
+      ...(contextMenu ? {} : { id: 'type-' + name, enabled: false }),
+      click: () => sendTextCommand(name),
+    })),
+  }));
+}
 function sendTextCommand(name) {
   const record = activeRecord(),
     state = nativeTextMenuState(record?.history);
@@ -1429,7 +1434,7 @@ function installMenu() {
       {
         label: 'Type',
         submenu: [
-          ...NATIVE_TEXT_COMMANDS.filter((name) => !Object.hasOwn(BREAK_COMMANDS, name)).map(
+          ...NATIVE_TEXT_COMMANDS.filter((name) => !Object.hasOwn(INSERT_CHARACTERS, name)).map(
             (name) => ({
               id: 'type-' + name,
               label:
@@ -1440,15 +1445,7 @@ function installMenu() {
             }),
           ),
           { type: 'separator' },
-          {
-            label: 'Insert Break Character',
-            submenu: Object.entries(BREAK_COMMANDS).map(([name, label]) => ({
-              id: 'type-' + name,
-              label,
-              enabled: false,
-              click: () => sendTextCommand(name),
-            })),
-          },
+          ...characterMenuItems(false),
         ],
       },
       {

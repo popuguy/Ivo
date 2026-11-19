@@ -59,6 +59,14 @@ const near = (actual, expected, label, tolerance = 0.001) =>
       targets: ['AA', 'BB', 'CC'],
     },
     {
+      name: 'nonbreaking-spaces',
+      width: 240,
+      policy: '60:150:200',
+      align: 'justify-all',
+      text: 'Pair\u00a0One with\u202fTwo  ',
+      targets: ['Pair', 'One', 'with', 'Two'],
+    },
+    {
       name: 'fixed-preferences',
       width: 300,
       policy: '100:100:100',

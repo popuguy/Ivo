@@ -225,6 +225,29 @@ test('qualified prefix-corrected caret tags apply to visible or trailing spaces,
   });
 });
 
+test('unplaceable source keeps its full paragraph map and only the measured prefix is painted', () => {
+  const sample = fixture([
+    { text: 'One gap here\u2029', policy: defaultPolicy },
+    { text: 'Protected characters\u2029', policy: defaultPolicy },
+  ]);
+  const boundary = sample.request.placements[0].end;
+  sample.request.oversetStart = boundary;
+  sample.plan.pop();
+  sample.request.placements.pop();
+  sample.result.layout.lines.pop();
+  validate(sample);
+  for (const value of [-1, boundary - 1, boundary + 1, sample.request.text.length, null])
+    rejectChange(sample, ({ request }) => {
+      request.oversetStart = value;
+    });
+  rejectChange(sample, ({ request }) => {
+    delete request.oversetStart;
+  });
+  sample.request.oversetStart = 0;
+  sample.request.placements.length = sample.plan.length = sample.result.layout.lines.length = 0;
+  validate(sample);
+});
+
 test('future local plan entries and inactive visible paragraphs cannot be confused with actual native metadata', () => {
   const sample = fixture([
     { text: 'AA BB\u2029', align: 'justify-all', policy: defaultPolicy },

@@ -889,9 +889,13 @@ export async function verifyNativeParagraphKeeps({
         JSON.stringify(painted().request.text),
     );
     const phrase = 'fine wool blends and silk lining with a long matching fabric reference';
-    ownFixture('Character No Break', '<p>Start ' + phrase + ' after.</p>', {
-      automaticPages: true,
-    });
+    ownFixture(
+      'Character No Break',
+      '<p data-ivo-wordspace="80:120:200">Start ' + phrase + ' after.</p>',
+      {
+        automaticPages: true,
+      },
+    );
     mount();
     await settle();
     const sourceBeforeNoBreak = source();
@@ -899,7 +903,8 @@ export async function verifyNativeParagraphKeeps({
     await property('noBreak', true);
     const marked = painted();
     assert(
-      marked.request.oversetStart === 6 &&
+      marked.request.protocol === 5 &&
+        marked.request.oversetStart === 6 &&
         marked.result.layout.coveredLength === 6 &&
         marked.request.text === 'Start ' + phrase + ' after.\u2029',
       'An overset protected phrase lost its visible prefix or source: ' +

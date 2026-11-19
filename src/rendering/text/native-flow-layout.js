@@ -15,7 +15,12 @@ import { escapeHTML } from '../../shared/html/sanitize.js';
 import { documentHasObjectWrap } from './object-wrap-layout.js';
 import { nativeWrapColumns, validateNativeWrapping } from './native-wrap-columns.js';
 import { PARAGRAPH_LAYOUT_FIELDS, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
-import { wordSpacingSettings, wordSpacingSourceError } from '../../domain/text/word-spacing.js';
+import {
+  DEFAULT_WORD_SPACING,
+  wordSpacingValue,
+  wordSpacingSettings,
+  wordSpacingSourceError,
+} from '../../domain/text/word-spacing.js';
 import { validateWordSpacingResult } from './word-spacing-result.js';
 import {
   PARAGRAPH_KEEP_FIELDS,
@@ -508,6 +513,17 @@ const assetSignature = (assets) =>
   assets.filter((a) => a.font).flatMap((a) => [a.id, a.data, JSON.stringify(a.font)]);
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
+function requiresParagraphPlan(flow, source, wrapped) {
+  return (
+    flow.composition?.composer === 'paragraph' ||
+    wrapped ||
+    hasKeeps(source) ||
+    source.noBreakRanges?.length ||
+    /[\u200b\u00a0\u202f]/u.test(source.text) ||
+    source.protocol === 5
+  );
+}
+
 function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) {
   const root = document.createElement('div');
   root.innerHTML = flow.html;
@@ -517,16 +533,16 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
         .filter((key) => effective[key] !== undefined)
         .map((key) => [key, effective[key]]),
     );
-  const source = compositionSource(root, { id: flow.id, doc, settings, fontFor: fonts.fontFor });
+  const source = compositionSource(root, {
+    id: flow.id,
+    doc,
+    settings,
+    fontFor: fonts.fontFor,
+    authoredHTML: flow.html,
+  });
   const columns = compositionColumns(doc, flow),
     wrapped = columns.some((column) => column.obstacles?.length),
-    planned =
-      flow.composition?.composer === 'paragraph' ||
-      wrapped ||
-      hasKeeps(source) ||
-      source.noBreakRanges?.length ||
-      source.text.includes('\u200b') ||
-      source.protocol === 5,
+    planned = requiresParagraphPlan(flow, source, wrapped),
     limit = planned ? 10000 : 100000;
   if (
     source.text.length > limit ||
@@ -541,6 +557,22 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
   for (const paragraph of source.paragraphs) {
+    const content = source.text.slice(paragraph.start, paragraph.end);
+    const specialJustification =
+      !paragraph.wordSpacing &&
+      paragraph.align?.startsWith('justify') &&
+      /[\u00a0\u202f]/u.test(content) &&
+      !wrapped &&
+      !wordSpacingSourceError(content) &&
+      !source.runs.some(
+        (run) => run.start < paragraph.end && run.end > paragraph.start && run.tracking < 0,
+      );
+    // A disposable projection gives default justified hard spaces the same
+    // spacing authority as an authored policy without adding a document mark.
+    if (specialJustification) {
+      paragraph.wordSpacing = wordSpacingValue(DEFAULT_WORD_SPACING);
+      source.protocol = 5;
+    }
     if (wordSpacingSettings(paragraph.wordSpacing)) {
       if (wrapped) throw new UnsupportedComposition('word spacing with wrapped fragments');
       const issue = wordSpacingSourceError(source.text.slice(paragraph.start, paragraph.end));
@@ -631,13 +663,7 @@ export async function composeNativeTextFlows(
       source = projectNativeFlow(projection, flow, fonts, { deferUnavailable: true }),
       initial = compositionColumns(projection, flow),
       wrapped = initial.some((column) => column.obstacles?.length),
-      planned =
-        flow.composition.composer === 'paragraph' ||
-        wrapped ||
-        hasKeeps(source) ||
-        source.noBreakRanges?.length ||
-        source.text.includes('\u200b') ||
-        source.protocol === 5;
+      planned = requiresParagraphPlan(flow, source, wrapped);
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.

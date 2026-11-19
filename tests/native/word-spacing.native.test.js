@@ -94,6 +94,41 @@ function nonspaces(req, line) {
   return glyphs(line).filter((glyph) => !/^\s+$/u.test(req.text.slice(glyph.index, glyph.end)));
 }
 
+test(
+  'flexible and fixed nonbreaking spaces keep their source and use the face’s ordinary advance',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    const text = 'AA\u00a0BB\u202fCC DD\u2029';
+    const policy = { minimum: 50, desired: 200, maximum: 250 };
+    const req = await request(text, { policy });
+    const draw = async (input) => (await service.compose(input)).layout.lines[0];
+    const gap = (line, index) => glyphs(line).find((g) => g.index === index).advance[0];
+    const natural = await draw(await request(text.replace(/[\u00a0\u202f]/g, ' ')));
+    const ragged = await draw(req);
+    for (const index of [2, 5, 8]) close(gap(ragged, index), gap(natural, 2) * 2);
+    req.placements[0].width = ragged.visibleWidth + 20;
+    req.paragraphs[0].align = 'justify-all';
+    const justified = await draw(req);
+    close(gap(justified, 2), gap(ragged, 2) + 10);
+    close(gap(justified, 8), gap(justified, 2));
+    close(gap(justified, 5), gap(ragged, 5));
+    assert.equal(justified.wordSpacing.eligibleGaps, 2);
+    assert.equal(req.text, text);
+    const trailing = await request('AA BB\u00a0\u2029', { align: 'justify-all', policy });
+    const hung = await draw(trailing);
+    close(gap(hung, 5), gap(hung, 2));
+    assert.equal(hung.wordSpacing.collapsedTrailingStart, undefined);
+    const pair = await request('AA\u202fBB\u2029', { align: 'justify-all', policy });
+    const compact = await draw({ ...pair, paragraphs: [{ ...pair.paragraphs[0], align: 'left' }] });
+    pair.placements[0].width = compact.visibleWidth + 20;
+    const spread = await draw(pair);
+    for (const glyph of glyphs(compact)) {
+      close(gap(spread, glyph.index), glyph.advance[0] + (glyph.index === 4 ? 0 : 5));
+    }
+  },
+);
+
 // Compare real drawn/native glyph advances, rather than reconstructing the
 // implementation's font-space slope or accepting capacities on their own.
 test(
@@ -502,8 +537,6 @@ test(
     }
     for (const text of [
       'AA\tBB\u2029',
-      'AA\u00a0BB\u2029',
-      'AA\u202fBB\u2029',
       'AA\u2009BB\u2029',
       'AA\u202eBB\u2029',
       'AA\u061cBB\u2029',

@@ -45,8 +45,8 @@ export function wordSpacingValue(settings) {
  * Unicode and fixed-space behavior outside this scope retains the earlier composer.
  */
 export function wordSpacingSourceError(text) {
-  if (/[\t\u00a0\u202f]/u.test(text)) return 'word spacing with tabs or nonbreaking spaces';
-  if (/[^\S \r\n\u2028\u2029]|\u0085/u.test(text))
+  if (text.includes('\t')) return 'word spacing with tabs';
+  if (/[^\S \u00a0\u202f\r\n\u2028\u2029]|\u0085/u.test(text))
     return 'word spacing with fixed or special spaces';
   if (/[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/u.test(text))
     return 'word spacing with bidirectional controls';

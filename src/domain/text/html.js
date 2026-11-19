@@ -5,7 +5,7 @@ export function decodeEntities(value) {
     gt: '>',
     quot: '"',
     apos: "'",
-    nbsp: ' ',
+    nbsp: '\u00a0',
     colon: ':',
     tab: '\t',
     newline: '\n',

@@ -43,11 +43,18 @@ function sourceShape(text, start, end) {
   while (contentEnd > start && [10, 13, 0x2028, 0x2029].includes(text.charCodeAt(contentEnd - 1)))
     contentEnd--;
   let trailingStart = contentEnd;
-  while (trailingStart > start && text.charCodeAt(trailingStart - 1) === 32) trailingStart--;
+  while (trailingStart > start && [32, 0x202f].includes(text.charCodeAt(trailingStart - 1)))
+    trailingStart--;
+  const flexible = (index) => text.charCodeAt(index) === 32 || text.charCodeAt(index) === 0xa0;
+  let hangingStart = trailingStart;
+  while (
+    hangingStart > start &&
+    (flexible(hangingStart - 1) || text.charCodeAt(hangingStart - 1) === 0x202f)
+  )
+    hangingStart--;
   let eligibleGaps = 0;
-  for (let index = start; index < trailingStart; index++)
-    if (text.charCodeAt(index) === 32) eligibleGaps++;
-  return { contentEnd, trailingStart, eligibleGaps };
+  for (let index = start; index < hangingStart; index++) if (flexible(index)) eligibleGaps++;
+  return { contentEnd, trailingStart, hangingStart, eligibleGaps };
 }
 function validMetadata(value) {
   return (
@@ -147,7 +154,13 @@ function validatePlan(request, plan) {
     previousFrame = placement.frame;
     start = placement.end;
   }
-  if (start !== request.text.length) fail('has an incomplete owned source plan');
+  const boundary = own(request, 'oversetStart') ? request.oversetStart : request.text.length;
+  if (
+    !integer(boundary) ||
+    (own(request, 'oversetStart') && boundary >= request.text.length) ||
+    start !== boundary
+  )
+    fail('has an incomplete owned source plan');
   return entries;
 }
 
@@ -240,7 +253,7 @@ export function validateWordSpacingResult(result, request, plan) {
       fail('does not have qualified left-to-right geometry');
     const carets = new Map(),
       adjustedCaret =
-        (shape.eligibleGaps > 0 || shape.trailingStart < shape.contentEnd) &&
+        (shape.eligibleGaps > 0 || shape.hangingStart < shape.contentEnd) &&
         actual.fallback !== 'single-word',
       ordinaryMeasurement = adjustedCaret
         ? 'native-word-space'

@@ -300,11 +300,12 @@ test('Markdown export preserves reading order, metadata, emphasis, media and can
     createBlock('text', {
       id: 'text',
       y: 0,
-      html: '<p><strong>First</strong> and <a data-doc-id="target">the note</a>. [[Original#Overview|Read more]]</p>',
+      html: '<p><strong>First</strong> and <a data-doc-id="target">the note</a>. [[Original#Overview|Read more]] 12&nbsp;pt / 42&#8239;mm</p>',
     }),
     createBlock('quote', { id: 'quote', y: 5, html: '<p>A thought.</p>' }),
   ];
   const markdown = exportMarkdown(doc, [target]);
+  assert(markdown.includes('12\u00a0pt / 42\u202fmm'));
   assert.match(markdown, /tags: \["design"\]/);
   assert.match(markdown, /\*\*First\*\* and \[the note\]\(A%20renamed%20note\.md\)/);
   assert.match(markdown, /\[Read more\]\(A%20renamed%20note\.md#Overview\)/);

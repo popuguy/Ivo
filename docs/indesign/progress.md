@@ -2,9 +2,11 @@
 
 Current overall engineering estimate, 19 November 2026:
 
-`[████████░░░░░░░░░░░░] ~42%`
+`[████████░░░░░░░░░░░░] ~43%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
+
+The two nonbreaking spaces now bind words across linked columns and take their distinct widths in justified text. Fifty reference layouts matched their row endings, columns and baselines. Two equivalent fixtures differed at the final invisible caret. PDF selection and in-frame authoring bring the estimate to **~43%**.
 
 An authored discretionary line break now offers a wrap position inside a word or reference. The original character survives editing and reopening. Nine reference layouts matched InDesign, and an independent PDF reader verified the visible lines. The estimate moves to **~42%**.
 

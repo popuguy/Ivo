@@ -1,5 +1,11 @@
 # Verification
 
+## Nonbreaking spaces — 19 November 2026
+
+Fifty original InDesign layouts compared ordinary, flexible and fixed spaces, named insertion versus Unicode, leading and trailing positions, doubled desired spacing, full justification and unequal linked frames. All 52 rows matched the source ending, column and baseline. In 48 cases every measured space advance agreed within 0.01 pt. Two ways to enter the same fixed-plus-ordinary trailing pair reproduced a 5.046 pt difference on the final invisible character. [Adobe’s word-break controls](https://helpx.adobe.com/uk/indesign/desktop/format-and-style-text/composition-and-text-wrapping/control-hyphenation-and-word-breaks.html)
+
+The editor regression inserts both characters, replaces a selection, checks undo and applies paragraph spacing. Native font tests independently compare their advances, a hanging nonbreaking space and letter distribution on an otherwise unspaced line. PDFKit verifies word selection and x positions in a mixed-space publication. Another editor regression reopens overset protected text with explicit word spacing. Archive versions remain unchanged.
+
 ## Discretionary line breaks — 19 November 2026
 
 Nine original layouts exercised short and long frames, linked columns, both native composers, protected breaks and overset text. All 14 reference lines matched the installed InDesign in source ending, frame and baseline. A hidden editor test inserts both break types, replaces a selection, undoes, redoes, and reopens the file. PDFKit independently checks the visible words and row positions around a discretionary break. The marker remains part of the saved text. [Adobe paragraph break options](https://helpx.adobe.com/indesign/desktop/format-and-style-text/composition-and-text-wrapping/paragraph-break-options-in-indesign.html)

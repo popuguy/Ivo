@@ -18,13 +18,17 @@ test('word spacing is atomic and defaults retain the previous composer identity'
   assert(Object.isFrozen(DEFAULT_WORD_SPACING));
 });
 
-test('word spacing initially admits simple LTR scripts and ordinary source spaces only', () => {
-  for (const text of ['Latin e\u0301 Ελληνικά Русский 123', '  A B \r\n\u2028\u2029', 'A–B…C'])
+test('word spacing initially admits simple LTR scripts with ordinary and flexible nonbreaking spaces', () => {
+  for (const text of [
+    'Latin e\u0301 Ελληνικά Русский 123',
+    '  A B \r\n\u2028\u2029',
+    'A–B…C',
+    'A\u00a0B',
+    'A\u202fB',
+  ])
     assert.equal(wordSpacingSourceError(text), null);
   for (const text of [
     'A\tB',
-    'A\u00a0B',
-    'A\u202fB',
     'A\u2003B',
     'A\u2009B',
     'A\u202eB',
