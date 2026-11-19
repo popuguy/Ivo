@@ -734,6 +734,53 @@ export async function verifyNativeParagraphKeeps({
       !commits && paragraphMark(2, 'keepedges') === 'true',
       'Opening the split paragraph rewrote its source',
     );
+    const phrase = 'fine wool blends and silk lining with a long matching fabric reference';
+    ownFixture('Character No Break', '<p>Start ' + phrase + ' after.</p>', {
+      automaticPages: true,
+    });
+    mount();
+    await settle();
+    const sourceBeforeNoBreak = source();
+    await selectWord(phrase, { collapsed: false });
+    await property('noBreak', true);
+    const marked = painted();
+    assert(
+      marked.request.oversetStart === 6 &&
+        marked.result.layout.coveredLength === 6 &&
+        marked.request.text === 'Start ' + phrase + ' after.\u2029',
+      'An overset protected phrase lost its visible prefix or source: ' +
+        marked.request.oversetStart,
+    );
+    assert(
+      source().includes('data-ivo-nobreak="true"') &&
+        !source().includes('\u00a0') &&
+        archiveVersion([doc]) === 14,
+      'No Break did not remain an ordinary character attribute',
+    );
+    assert(
+      doc.pages.length === 3,
+      'Automatic continuation added a page for a phrase too wide to fit',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(
+      source() === sourceBeforeNoBreak &&
+        painted().result.layout.coveredLength === marked.request.text.length,
+      'Undoing No Break failed to restore printable text',
+    );
+    await editor.command('redo');
+    await settle();
+    await save({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+    editor.destroy();
+    editor = null;
+    doc = validateImport(await load()).documents[0];
+    resetOwner();
+    mount();
+    await settle();
+    assert(
+      painted().request.oversetStart === 6 && doc.pages.length === 3 && !commits,
+      'Reopening overset No Break changed content or grew pages',
+    );
     ownFixture('Native keep final row with next', nextHTML);
     mount();
     await settle();
@@ -856,6 +903,7 @@ export async function verifyNativeParagraphKeeps({
       nativeKeepNamedStyleReflow: true,
       nativeParagraphStarts: true,
       nativeSplitParagraphCounts: true,
+      nativeNoBreakSelectionUndoAndOverset: true,
       ...(diagnosticsChecked ? { nativeKeepDerivedViolations: true } : {}),
     };
   } finally {

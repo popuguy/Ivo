@@ -13,6 +13,7 @@ const fields = {
     'runs',
     'paragraphs',
     'placements',
+    'oversetStart',
     'retainedLines',
     'resources',
     'frames',
@@ -74,6 +75,12 @@ export function validateCompositionRequest(request) {
     (request.protocol === 1 && request.paragraphs !== undefined) ||
     (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
     (request.protocol < 3 && request.placements !== undefined) ||
+    (request.oversetStart !== undefined &&
+      (request.mode !== 'planned-lines-proof' ||
+        !Number.isSafeInteger(request.oversetStart) ||
+        request.oversetStart < 0 ||
+        request.oversetStart >= (request.text?.length ?? 0) ||
+        (request.placements?.at(-1)?.end ?? 0) !== request.oversetStart)) ||
     (request.mode === 'planned-lines-proof' &&
       (request.protocol < 3 || !Array.isArray(request.placements))) ||
     (request.protocol === 4 &&

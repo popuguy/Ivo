@@ -768,3 +768,62 @@ test('split-line minima activate independently of stored counts and whole-paragr
     ['keepTogether'],
   );
 });
+
+test('No Break belongs to the selected whitespace and keeps manual breaks and source indices intact', () => {
+  const text = 'aa bb\u2028cc dd\u2029ee ff';
+  const points = (ranges) =>
+    validateParagraphSource(text, ranges).map((p) => p.opportunities.map((o) => o.index));
+  assert.deepEqual(points([]), [
+    [0, 3, 6, 9, 12],
+    [0, 3, 5],
+  ]);
+  assert.deepEqual(points([{ start: 2, end: 3 }]), [
+    [0, 6, 9, 12],
+    [0, 3, 5],
+  ]);
+  assert.deepEqual(points([{ start: 3, end: 5 }]), points([]));
+  assert.deepEqual(points([{ start: 0, end: text.length }]), [
+    [0, 6, 12],
+    [0, 5],
+  ]);
+  assert.throws(
+    () =>
+      points([
+        { start: 5, end: 7 },
+        { start: 2, end: 4 },
+      ]),
+    /No Break/,
+  );
+});
+test('No Break preserves an overset suffix, skips narrow frames, respects both composers and invalidates cached decisions', async () => {
+  const composer = createParagraphComposer(backend().measure),
+    req = request('Up aa bb cc'),
+    noBreakRanges = [{ start: 3, end: 11 }];
+  for (const mode of ['single-line', 'paragraph']) {
+    const narrow = [column(20), column(25)],
+      opts = { mode, noBreakRanges };
+    const actual = await composer.compose(req, narrow, opts);
+    assert.equal(actual.oversetStart, 3);
+    assert.deepEqual(
+      actual.placements.map((l) => l.end),
+      [3],
+    );
+    const wider = await composer.compose(req, [...narrow, column(45)], opts);
+    assert.deepEqual(
+      wider.placements.map((l) => [l.end, l.frame]),
+      [
+        [3, 0],
+        [11, 2],
+      ],
+    );
+    const restored = await composer.compose(req, narrow, { mode });
+    assert.equal(restored.oversetStart, undefined);
+    assert.equal(restored.breaks.at(-1), 11);
+    const empty = await composer.compose(req, narrow, {
+      mode,
+      noBreakRanges: [{ start: 0, end: 11 }],
+    });
+    assert.equal(empty.oversetStart, 0);
+    assert.deepEqual(empty.placements, []);
+  }
+});

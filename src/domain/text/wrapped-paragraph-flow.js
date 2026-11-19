@@ -230,6 +230,7 @@ export function* wrappedParagraphFlowSteps({
   cursor = { frame: 0, baseline: null },
   previousAfter = 0,
   mode = 'paragraph',
+  retainOversetPrefix = false,
   maxStates = 100000,
   maxCandidates = 1000000,
 }) {
@@ -442,7 +443,13 @@ export function* wrappedParagraphFlowSteps({
     if (++states > maxStates) return failed('state-budget');
     seed = child(seed, choice);
   }
-  if (mode === 'single-line') return seed.end === end ? result(seed) : failed('no-feasible-line');
+  let furthest = seed;
+  const incomplete = (reason) =>
+    retainOversetPrefix
+      ? { ...result(furthest), status: 'overset', end: furthest.end }
+      : failed(reason);
+  if (mode === 'single-line')
+    return seed.end === end ? result(seed) : incomplete('no-feasible-line');
   let best = seed.end === end ? seed : null;
   const buckets = new Map(points.map((point) => [point.index, new Map()]));
   buckets.get(start).set('initial', initial);
@@ -451,6 +458,11 @@ export function* wrappedParagraphFlowSteps({
       if (best && state.cost + 1 > best.cost) continue;
       for (const choice of yield* fitsAt(state)) {
         const next = child(state, choice);
+        if (
+          retainOversetPrefix &&
+          (next.end > furthest.end || (next.end === furthest.end && better(next, furthest)))
+        )
+          furthest = next;
         if (best && next.cost + (next.end === end ? 0 : 1) > best.cost) continue;
         if (next.end === end) {
           if (better(next, best)) best = next;
@@ -472,7 +484,7 @@ export function* wrappedParagraphFlowSteps({
       }
       if (budget) return failed(budget);
     }
-  return best ? result(best) : failed('no-feasible-path');
+  return best ? result(best) : incomplete('no-feasible-path');
 }
 
 export function chooseWrappedParagraphFlow(input) {

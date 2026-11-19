@@ -1,5 +1,11 @@
 # Verification
 
+## No Break — 19 November 2026
+
+Thirteen temporary InDesign layouts and Ivo’s native composers agreed on all 37 visible line endings, columns and local baselines, including two overset cases. The same Minion Pro Regular face was used in both apps. Selecting just the breaking space protected the phrase. Selecting the start of the next word left the preceding space free. Manual line and paragraph breaks still took effect.
+
+The editor test selects a phrase, applies No Break, checks the visible prefix, undoes and redoes, and reopens the saved archive. An automatically growing thread retains an oversized phrase without adding unusable pages. Native worker tests cover zero visible lines and reject inconsistent prefix lengths. PDFKit independently selects the protected phrase on the first wide-enough page in a three-page publication.
+
 ## Split paragraphs — 19 November 2026
 
 Twenty disposable InDesign layouts and the Ivo native paragraph composer used the same Minion Pro Regular font, 12 pt size and 14.4 pt leading. All 143 visible source endings, column assignments and local baselines agreed. Cases include a one-line opening or ending, short intervening columns, impossible minima, linked headings and unequal widths.

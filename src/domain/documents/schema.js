@@ -12,6 +12,7 @@ import {
   hasExtendedKeeps,
   hasParagraphStarts,
   hasSplitLineKeeps,
+  hasNoBreak,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -211,7 +212,10 @@ function typography(input, out, label) {
     if (valid === null) fail(`${label}.${key} has an invalid typography value`);
     if (key === 'keepNextLines' && !Number.isInteger(input[key]))
       fail(`${label}.${key} must be an integer`);
-    if (['keepWithPrevious', 'keepBoundaryLines'].includes(key) && typeof input[key] !== 'boolean')
+    if (
+      ['keepWithPrevious', 'keepBoundaryLines', 'noBreak'].includes(key) &&
+      typeof input[key] !== 'boolean'
+    )
       fail(`${label}.${key} must be boolean`);
     out[key] =
       typeof input[key] === 'number'
@@ -309,6 +313,8 @@ function validateArchive(payload, parentTemplate) {
       fail(`${label} requires frame-composition archive schema 7`);
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
+    if (hasNoBreak(doc) && (!supportedCanvas(doc.canvasVersion, 13) || payload.schemaVersion < 14))
+      fail(`${label} requires No Break archive 14 / canvas 13`);
     if (
       hasSplitLineKeeps(doc) &&
       (!supportedCanvas(doc.canvasVersion, 12) || payload.schemaVersion < 13)

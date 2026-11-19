@@ -80,6 +80,7 @@ export async function fitFrameParagraphs(
         cursor,
         previousAfter,
         mode,
+        retainOversetPrefix: paragraph.hasNoBreak && onlyFrame === undefined,
         maxStates: maxStates - states,
         maxCandidates: maxCandidates - candidates,
         ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),
@@ -99,7 +100,7 @@ export async function fitFrameParagraphs(
     candidates += chosen.candidates;
     if (states > maxStates || candidates > maxCandidates) failed('flow decision budget');
     if (
-      chosen.status !== 'fit' &&
+      chosen.status === 'unfit' &&
       !['no-feasible-path', 'no-feasible-line'].includes(chosen.reason)
     )
       failed(chosen.reason);
@@ -130,6 +131,7 @@ export async function fitFrameParagraphs(
     if (offset) for (const line of own) line.baseline += offset;
   }
   return {
+    ...(scheduled.oversetStart === undefined ? {} : { oversetStart: scheduled.oversetStart }),
     breaks: lines.map((line) => line.end),
     placements: lines.map(({ end, frame, baseline, left, width }) => ({
       end,

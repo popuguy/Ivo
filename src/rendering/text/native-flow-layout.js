@@ -336,7 +336,7 @@ export function nativeSourceBoundary(source, index) {
   if (!Number.isFinite(found)) throw Error('Native layout lost a canonical source boundary.');
   return found;
 }
-async function decideParagraph(request, columns, compose, mode, paragraphKeeps) {
+async function decideParagraph(request, columns, compose, mode, paragraphKeeps, noBreakRanges) {
   let composer = paragraphSessions.get(compose);
   if (!composer) {
     // Measurements have their own validated paragraph cache. Keeping raw batch
@@ -345,7 +345,7 @@ async function decideParagraph(request, columns, compose, mode, paragraphKeeps) 
     composer = createParagraphComposer(compose);
     paragraphSessions.set(compose, composer);
   }
-  return composer.compose(request, columns, { mode, paragraphKeeps });
+  return composer.compose(request, columns, { mode, paragraphKeeps, noBreakRanges });
 }
 
 const flowKeeps = (source) =>
@@ -524,6 +524,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
       flow.composition?.composer === 'paragraph' ||
       wrapped ||
       hasKeeps(source) ||
+      source.noBreakRanges?.length ||
       source.protocol === 5,
     limit = planned ? 10000 : 100000;
   if (
@@ -534,7 +535,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
-  if (planned) validateParagraphSource(source.text);
+  if (planned) validateParagraphSource(source.text, source.noBreakRanges);
   normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
@@ -633,6 +634,7 @@ export async function composeNativeTextFlows(
         flow.composition.composer === 'paragraph' ||
         wrapped ||
         hasKeeps(source) ||
+        source.noBreakRanges?.length ||
         source.protocol === 5;
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });
@@ -691,6 +693,7 @@ export async function composeNativeTextFlows(
             compose,
             flow.composition.composer,
             flowKeeps(source),
+            source.noBreakRanges,
           )
         : null;
     let result, columns;
@@ -705,7 +708,12 @@ export async function composeNativeTextFlows(
             ? 'explicit-lines-proof'
             : 'greedy-geometry-proof',
         ...(decision?.placements
-          ? { placements: decision.placements }
+          ? {
+              placements: decision.placements,
+              ...(decision.oversetStart === undefined
+                ? {}
+                : { oversetStart: decision.oversetStart }),
+            }
           : decision
             ? { breaks: decision.breaks }
             : {}),
@@ -713,6 +721,11 @@ export async function composeNativeTextFlows(
       result = await composeRequest(compose, input, decision?.wordSpacingPlan);
       validateResult(result, input);
       if (result.layout.coveredLength === source.text.length || !allowPages || !flow.automaticPages)
+        break;
+      if (
+        decision?.oversetStart !== undefined &&
+        !decision.placements.some((line) => line.frame >= columns.length)
+      )
         break;
       if (
         attempt === 128 ||

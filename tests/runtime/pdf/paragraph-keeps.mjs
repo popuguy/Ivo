@@ -113,6 +113,16 @@ const cases = [
     frames: [[0, 1], [2, 3, 4, 5], [6]],
   },
   {
+    name: 'protected-phrase',
+    html: '<p>PRE1 preface </p><p><span data-ivo-nobreak="true">A1 original swatch of fine black wool</span></p><p>T1 reference</p>',
+    rows: [
+      'PRE1 preface \u2029',
+      'A1 original swatch of fine black wool\u2029',
+      'T1 reference\u2029',
+    ],
+    frames: [[0], [], [1, 2]],
+  },
+  {
     name: 'section-starts',
     html: '<p>PRE1 opening notes</p><p data-ivo-pstart="even">A1 section heading</p><p data-ivo-pstart="page">T1 next section</p>',
     rows: ['PRE1 opening notes\u2029', 'A1 section heading\u2029', 'T1 next section\u2029'],
@@ -210,6 +220,7 @@ export async function verifyParagraphKeepsPDF({
     assert.equal(result.layout.lines.length, definition.rows.length);
     assert.equal(request.placements.length, definition.rows.length);
     assert.equal('paragraphKeeps' in request, false);
+    assert.equal('noBreakRanges' in request, false);
     assert.equal('limits' in request, false);
     assert(
       request.paragraphs.every(

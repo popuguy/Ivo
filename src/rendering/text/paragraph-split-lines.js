@@ -31,6 +31,7 @@ export async function fitSplitParagraph(paragraph, { fit, cursor, previousAfter,
       role: 'split-lines',
     });
   let plan = await fitFrom(prefix, cursor);
+  if (plan.status === 'overset') return { ...plan, lines: [...prefix, ...plan.lines] };
   if (plan.status !== 'fit') return plan;
   let lines = [...prefix, ...plan.lines],
     firstUnprocessed = prefix.length;

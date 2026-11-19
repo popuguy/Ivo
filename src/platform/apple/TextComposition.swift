@@ -169,6 +169,7 @@ public final class TextCompositionEngine {
     let includeVectors: Bool?
     let paragraphs: [Paragraph]?
     let placements: [Placement]?
+    let oversetStart: Int?
     let retainedLines: [RetainedLine]?
   }
   struct FrozenLine {
@@ -221,6 +222,9 @@ public final class TextCompositionEngine {
       request.protocol != 5
         || ["measure-lines-proof", "planned-lines-proof"].contains(request.mode),
       "Composition protocol 5 requires measured or planned lines")
+    try require(
+      request.oversetStart == nil || (request.mode == "planned-lines-proof" && (0..<length).contains(request.oversetStart!)),
+      "Invalid overset boundary")
     try require(
       request.placements == nil || (request.protocol >= 3 && request.mode == "planned-lines-proof"),
       "Placements require the planned-lines policy")
@@ -524,7 +528,7 @@ public final class TextCompositionEngine {
       } else {
         guard let placements = request.placements else { throw fail("Missing planned lines") }
         try require(
-          !placements.isEmpty && placements.count <= 2048 && placements.last?.end == length,
+          placements.count <= 2048 && (placements.last?.end ?? 0) == (request.oversetStart ?? length),
           "Planned lines do not cover source")
         var previousEnd = 0
         var previous: Placement? = nil
@@ -988,7 +992,7 @@ public final class TextCompositionEngine {
     for (page, frame) in request.frames.enumerated() {
       var previousBaseline: Double? = nil
       let frameStart = frozen.count
-      while position < textLength {
+      while position < (request.oversetStart ?? textLength) {
         try require(output.count < 4096, "Composed line budget exceeded")
         let placement =
           request.mode == "planned-lines-proof" ? request.placements![output.count] : nil

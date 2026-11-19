@@ -2,9 +2,11 @@
 
 Current overall engineering estimate, 19 November 2026:
 
-`[████████░░░░░░░░░░░░] ~40%`
+`[████████░░░░░░░░░░░░] ~41%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
+
+**No Break** protects selected phrases in native text, follows them into a wider linked frame and preserves overset source when no frame can fit them. Thirteen reference cases matched InDesign. This brings the engineering estimate to **~41%**.
 
 Split paragraphs can protect opening and closing lines independently in both native composers. Twenty InDesign layouts matched all 143 line endings, occupied columns and baselines. Editor, archive and PDF checks bring the engineering estimate to **~40%**.
 

@@ -298,3 +298,24 @@ test('quitting during lazy native startup closes the eventual backend and reject
   await assert.rejects(requestPromise, /closed/);
   assert.equal(closes, 1);
 });
+
+test('explicit overset belongs to the planned source prefix, including a completely empty frame', () => {
+  const valid = {
+    ...request(),
+    protocol: 3,
+    mode: 'planned-lines-proof',
+    paragraphs: [],
+    placements: [],
+    oversetStart: 0,
+  };
+  assert.equal(validateCompositionRequest(valid), valid);
+  for (const change of [
+    { oversetStart: 2 },
+    { oversetStart: -1 },
+    { oversetStart: '0' },
+    { mode: 'measure-lines-proof' },
+    { placements: [{ end: 4 }] },
+    { oversetStart: 4, placements: [{ end: 4 }] },
+  ])
+    assert.throws(() => validateCompositionRequest({ ...valid, ...change }));
+});

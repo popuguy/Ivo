@@ -1,7 +1,7 @@
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 13;
-export const CURRENT_CANVAS_VERSION = 12;
+export const CURRENT_ARCHIVE_VERSION = 14;
+export const CURRENT_CANVAS_VERSION = 13;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -116,7 +116,7 @@ export function hasWordSpacing(doc) {
   const owns = (settings) =>
       settings?.wordSpacing !== undefined || settings?.textOverrides?.wordSpacing !== undefined,
     markup = (html) => /\bdata-ivo-wordspace\s*=/i.test(html || '');
-  return doc.canvasVersion === 9 || hasAuthoredParagraphSetting(doc, owns, markup);
+  return doc.canvasVersion === 9 || hasAuthoredTextSetting(doc, owns, markup);
 }
 
 export function hasExtendedKeeps(doc) {
@@ -128,7 +128,7 @@ export function hasExtendedKeeps(doc) {
     );
   return (
     doc.canvasVersion === 10 ||
-    hasAuthoredParagraphSetting(doc, owns, (html) =>
+    hasAuthoredTextSetting(doc, owns, (html) =>
       /\bdata-ivo-(?:nextlines|previous)\s*=/i.test(html || ''),
     )
   );
@@ -137,7 +137,7 @@ export function hasExtendedKeeps(doc) {
 export function hasParagraphStarts(doc) {
   return (
     doc.canvasVersion === 11 ||
-    hasAuthoredParagraphSetting(
+    hasAuthoredTextSetting(
       doc,
       (settings) =>
         settings?.paragraphStart !== undefined ||
@@ -150,7 +150,7 @@ export function hasParagraphStarts(doc) {
 export function hasSplitLineKeeps(doc) {
   return (
     doc.canvasVersion === 12 ||
-    hasAuthoredParagraphSetting(
+    hasAuthoredTextSetting(
       doc,
       (settings) =>
         settings?.keepBoundaryLines !== undefined ||
@@ -160,17 +160,30 @@ export function hasSplitLineKeeps(doc) {
   );
 }
 
-export function hasNativeParagraphSettings(doc) {
+export function hasNoBreak(doc) {
+  return (
+    doc.canvasVersion === 13 ||
+    hasAuthoredTextSetting(
+      doc,
+      (settings) =>
+        settings?.noBreak !== undefined || settings?.textOverrides?.noBreak !== undefined,
+      (html) => /\bdata-ivo-nobreak\s*=/i.test(html || ''),
+    )
+  );
+}
+
+export function hasNativeTextSettings(doc) {
   return (
     doc.canvasVersion >= 9 ||
     hasWordSpacing(doc) ||
     hasExtendedKeeps(doc) ||
     hasParagraphStarts(doc) ||
-    hasSplitLineKeeps(doc)
+    hasSplitLineKeeps(doc) ||
+    hasNoBreak(doc)
   );
 }
 
-function hasAuthoredParagraphSetting(doc, owns, markup) {
+function hasAuthoredTextSetting(doc, owns, markup) {
   return (
     [
       ...(doc.blocks || []),
@@ -184,6 +197,7 @@ function hasAuthoredParagraphSetting(doc, owns, markup) {
 }
 
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasNoBreak)) return 14;
   if (documents.some(hasSplitLineKeeps)) return 13;
   if (documents.some(hasParagraphStarts)) return 12;
   if (documents.some(hasExtendedKeeps)) return 11;
@@ -203,6 +217,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasNoBreak(document)) {
+    document.canvasVersion = 13;
+    return document;
+  }
   if (hasSplitLineKeeps(document)) {
     document.canvasVersion = 12;
     return document;

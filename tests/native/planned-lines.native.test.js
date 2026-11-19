@@ -531,3 +531,30 @@ test(
     assert.equal(messages.at(-1).retainedLines, undefined);
   },
 );
+
+test(
+  'planned overset retains full source with a visible or empty prefix and rejects malformed boundaries',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t),
+      req = await request('AB CD\u2029');
+    for (const end of [0, 3]) {
+      const partial = {
+        ...req,
+        oversetStart: end,
+        placements: end ? [{ ...req.placements[0], end }] : [],
+      };
+      const result = await service.compose(partial);
+      assert.equal(result.layout.textLength, req.text.length);
+      assert.equal(result.layout.coveredLength, end);
+      assert.equal(result.layout.lines.length, end ? 1 : 0);
+    }
+    for (const bad of [
+      { ...req, oversetStart: 0 },
+      { ...req, placements: [] },
+      { ...req, placements: [], oversetStart: -1 },
+      { ...req, placements: [], oversetStart: req.text.length },
+    ])
+      await assert.rejects(() => service.compose(bad));
+  },
+);

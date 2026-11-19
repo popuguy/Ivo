@@ -269,7 +269,10 @@ export function installPublishingControls(
               settings[key] !== undefined &&
               !(key === 'paragraphStart' && settings[key] === 'anywhere') &&
               !(key === 'keepNextLines' && settings[key] === 1) &&
-              !(['keepWithPrevious', 'keepBoundaryLines'].includes(key) && settings[key] === false),
+              !(
+                ['keepWithPrevious', 'keepBoundaryLines', 'noBreak'].includes(key) &&
+                settings[key] === false
+              ),
           )
           .map((key) => [key, settings[key]]),
       );
@@ -295,7 +298,10 @@ export function installPublishingControls(
             ['paragraphStart', 'Start Paragraph', Object.keys(PARAGRAPH_STARTS)],
           ]
         : [];
-    const keepControls = keepFields
+    const styleOptions = nativeTextFlow()
+      ? [...keepFields, ['noBreak', 'No Break', [false, true]]]
+      : [];
+    const keepControls = styleOptions
       .map(
         ([key, label, values]) =>
           `<label>${label}<select name="${key}"><option value="">Inherited</option>${values.map((value) => `<option value="${value}" ${attributes[key] === value ? 'selected' : ''}>${value === true ? 'On' : value === false ? 'Off' : (PARAGRAPH_STARTS[value] ?? value)}</option>`).join('')}</select></label>`,
@@ -341,16 +347,16 @@ export function installPublishingControls(
         for (const key of ['fontSize', 'leading', 'tracking'])
           if (data.get(key) === '') delete next[key];
           else next[key] = Number(data.get(key));
-        if (kind === 'paragraph') {
-          for (const [key, , values] of keepFields) {
-            const selected = data.get(key);
-            if (!selected) delete next[key];
-            else {
-              const value = values.find((value) => String(value) === selected);
-              if (value === undefined) throw Error('Invalid paragraph keep option.');
-              next[key] = value;
-            }
+        for (const [key, , values] of styleOptions) {
+          const selected = data.get(key);
+          if (!selected) delete next[key];
+          else {
+            const value = values.find((value) => String(value) === selected);
+            if (value === undefined) throw Error('Invalid text style option.');
+            next[key] = value;
           }
+        }
+        if (kind === 'paragraph') {
           const mode = data.get('wordSpacingMode');
           if (mode === 'inherit') delete next.wordSpacing;
           else

@@ -155,3 +155,25 @@ test('split-line activation is versioned even for explicit off values and named 
     assert.throws(() => validateImport(payload), /must be boolean/);
   }
 });
+
+test('No Break persists in character styles, range markup and explicit resets without upgrading other text', () => {
+  for (const write of [
+    (doc) => {
+      doc.textFlows[0].html = '<p>A <span data-ivo-nobreak="true">label and size</span></p>';
+    },
+    (doc) => {
+      doc.textFlows[0].style.textOverrides = { noBreak: false };
+    },
+    (doc) =>
+      saveTextStyle(doc, 'character', { name: 'Fabric name', attributes: { noBreak: true } }),
+  ]) {
+    const payload = structuredClone(frozen),
+      doc = payload.documents[0];
+    write(doc);
+    assert.throws(() => validateImport(payload), /archive 14/);
+    markTypographyVersion(doc);
+    payload.schemaVersion = archiveVersion([doc]);
+    assert.equal(payload.schemaVersion, 14);
+    assert.deepEqual(validateImport(payload).documents[0], doc);
+  }
+});

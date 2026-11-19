@@ -35,6 +35,7 @@ export async function scheduleParagraphKeeps(
   { fit, actualFrameCount, frameCount, startLocations },
 ) {
   const plans = [];
+  let oversetStart;
   let cursor = { frame: 0, baseline: null },
     prefix = [];
   const violation = (paragraphIndex, kind, frame, start, end, reason) => ({
@@ -62,6 +63,7 @@ export async function scheduleParagraphKeeps(
       previousAfter: 0,
       role: 'all-distributed',
     });
+    if (ordinary.status === 'overset') return { plan: ordinary, violations: [] };
     if (!fits(ordinary)) capacity();
     const frame = ordinary.lines[0].frame;
     // The initial empty column may have been unusable (width/metrics). Inspect
@@ -122,9 +124,13 @@ export async function scheduleParagraphKeeps(
             }),
             violations: [],
           };
-    if (!fits(current.plan)) capacity();
+    if (current.plan.status === 'unfit') capacity();
     const rows = prefix.length && !split ? [...prefix, ...current.plan.lines] : current.plan.lines;
     prefix = [];
+    if (!rows.length) {
+      oversetStart = paragraph.start;
+      break;
+    }
     const required = joinedRowCount(paragraphs[index - 1]?.keep, paragraph.keep);
     // A forced start wins over an incoming join. Do not repeatedly move its predecessor.
     if (previous && required && paragraph.keep.paragraphStart) previous.brokenJoin = true;
@@ -171,6 +177,10 @@ export async function scheduleParagraphKeeps(
     }
     plans.push({ lines: rows, violations: current.violations, brokenJoin: false });
     cursor = current.plan.cursor;
+    if (current.plan.status === 'overset') {
+      oversetStart = paragraph.start + rows.at(-1).end;
+      break;
+    }
     index++;
   }
   // Replaying a later suffix may retain the earlier rows of its paragraph.
@@ -218,6 +228,7 @@ export async function scheduleParagraphKeeps(
       })),
     ),
     cursor,
+    ...(oversetStart === undefined ? {} : { oversetStart }),
     keepViolations: plans.flatMap((plan, i) => [
       ...plan.violations,
       ...splitLineViolations(plan.lines, paragraphs[i].keep).map((v) =>

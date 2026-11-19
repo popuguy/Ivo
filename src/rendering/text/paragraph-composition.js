@@ -20,29 +20,48 @@ const MAX_POINTS = 1024,
   CACHE_ENTRIES = 64,
   CACHE_BYTES = 8000000;
 
-function opportunities(text) {
+function opportunities(text, base, ranges, scan) {
   const points = [{ index: 0 }];
-  for (const match of text.matchAll(/[ \t]+|\r\n|[\n\r\u2028\u2029]/g))
-    points.push({
-      index: match.index + match[0].length,
-      mandatory: /[\n\r\u2028\u2029]/.test(match[0]),
-    });
+  for (const match of text.matchAll(/[ \t]+|\r\n|[\n\r\u2028\u2029]/g)) {
+    const index = match.index + match[0].length,
+      space = base + index - 1;
+    while (scan.index < ranges.length && ranges[scan.index].end <= space) scan.index++;
+    const mandatory = /[\n\r\u2028\u2029]/.test(match[0]);
+    // The space owns its break. Protecting a trailing space binds the next word.
+    if (!mandatory && ranges[scan.index]?.start <= space && index < text.length) continue;
+    points.push({ index, mandatory });
+  }
   if (points.at(-1).index !== text.length) points.push({ index: text.length });
   points.at(-1).mandatory = true;
   return points;
 }
 
 /** Admission limits apply to the entire flow, including cached paragraphs. */
-export function validateParagraphSource(text) {
+export function validateParagraphSource(text, noBreakRanges = []) {
   if (typeof text !== 'string' || !text.length || text.length > MAX_SOURCE)
     throw new UnsupportedComposition('paragraph composition beyond its bounded source budget');
-  const paragraphs = [];
+  if (
+    !Array.isArray(noBreakRanges) ||
+    noBreakRanges.length > MAX_SOURCE ||
+    noBreakRanges.some(
+      (range, i) =>
+        !range ||
+        !Number.isSafeInteger(range.start) ||
+        !Number.isSafeInteger(range.end) ||
+        range.start < (noBreakRanges[i - 1]?.end ?? 0) ||
+        range.end <= range.start ||
+        range.end > text.length,
+    )
+  )
+    throw Error('Invalid No Break source ranges.');
+  const paragraphs = [],
+    scan = { index: 0 };
   let start = 0,
     pointCount = 1,
     alternativeCount = 0;
   for (const match of text.matchAll(/[^\u2029]*\u2029|[^\u2029]+$/g)) {
     const content = match[0],
-      points = opportunities(content);
+      points = opportunities(content, start, noBreakRanges, scan);
     pointCount += points.length - 1;
     if (pointCount > MAX_POINTS)
       throw new UnsupportedComposition('paragraph composition beyond its bounded source budget');
@@ -88,6 +107,7 @@ function paragraphIdentity(request, paragraph) {
     frameMetrics: request.protocol >= 3,
     allowFallback: request.allowFallback,
     text: paragraph.text,
+    ...(paragraph.hasNoBreak ? { breaks: paragraph.opportunities.map((p) => p.index) } : {}),
     ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),
     ...(paragraph.text.includes('\t')
       ? { tabOrigins: [paragraph.layout.leftIndent, paragraph.layout.firstLineIndent] }
@@ -161,10 +181,12 @@ export function createParagraphComposer(measure) {
         typeof options !== 'object' ||
         Array.isArray(options) ||
         ![Object.prototype, null].includes(Object.getPrototypeOf(options)) ||
-        Object.keys(options).some((key) => !['mode', 'paragraphKeeps', 'limits'].includes(key))
+        Object.keys(options).some(
+          (key) => !['mode', 'paragraphKeeps', 'noBreakRanges', 'limits'].includes(key),
+        )
       )
         throw Error('Invalid paragraph composition options.');
-      const { mode = 'paragraph', paragraphKeeps, limits = {} } = options;
+      const { mode = 'paragraph', paragraphKeeps, noBreakRanges = [], limits = {} } = options;
       if (!['paragraph', 'single-line'].includes(mode)) throw Error('Invalid native fitting mode.');
       if (!limits || typeof limits !== 'object' || Array.isArray(limits))
         throw Error('Invalid paragraph work limits.');
@@ -197,7 +219,7 @@ export function createParagraphComposer(measure) {
         )
       )
         throw new UnsupportedComposition('paragraph composition across unequal column widths');
-      const paragraphs = validateParagraphSource(request.text),
+      const paragraphs = validateParagraphSource(request.text, noBreakRanges),
         keeps = normalizeParagraphKeeps(paragraphKeeps, paragraphs.length),
         missing = new Map(),
         work = {
@@ -223,7 +245,11 @@ export function createParagraphComposer(measure) {
         throw new UnsupportedComposition('paragraph keeps without planned physical frames');
       if (request.protocol >= 2 && request.paragraphs?.length !== paragraphs.length)
         throw Error('Native paragraph metadata does not cover its source.');
+      let rangeIndex = 0;
       for (const [index, paragraph] of paragraphs.entries()) {
+        while (noBreakRanges[rangeIndex]?.end <= paragraph.start) rangeIndex++;
+        paragraph.hasNoBreak =
+          noBreakRanges[rangeIndex]?.start < paragraph.start + paragraph.text.length;
         paragraph.keep = keeps[index];
         const authored = request.paragraphs?.[index];
         if (Object.hasOwn(authored ?? {}, 'wordSpacing') && request.protocol !== 5)

@@ -60,6 +60,22 @@ export function verifyParagraphKeepProjection() {
     named.paragraphs[0].keepTogether && !named.paragraphs[1].keepTogether,
     'Named paragraph keep leaked',
   );
+  const ranges = project(
+    '<p>A <span data-ivo-nobreak="true">fine <i>silk</i><span data-ivo-nobreak="false"> or </span>wool</span> blend</p>',
+  );
+  assert(
+    JSON.stringify(ranges.noBreakRanges) ===
+      JSON.stringify([
+        { start: 2, end: 11 },
+        { start: 15, end: 19 },
+      ]),
+    'Character range or explicit No Break reset was lost',
+  );
+  assert(
+    ranges.text === 'A fine silk or wool blend\u2029' &&
+      ranges.runs.every((r) => !('noBreak' in r)),
+    'A No Break mark changed plain source or leaked into glyph shaping',
+  );
   const literal = project('<p data-ivo-keep="true">A\u2029B</p>');
   assert(
     literal.paragraphs.length === 2 && literal.paragraphs.every((p) => p.keepTogether),

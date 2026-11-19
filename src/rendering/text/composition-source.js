@@ -29,6 +29,7 @@ const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
     'underline',
     'strikethrough',
     'highlight',
+    'noBreak',
     'characterStyle',
     'paragraphStyle',
     ...paragraphFields,
@@ -215,7 +216,8 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
   const spans = [],
     runs = [],
     paragraphs = [],
-    links = [];
+    links = [],
+    noBreakRanges = [];
   for (const token of tokens) {
     if (token.logicalStart !== logical) throw Error('Text composition lost a source boundary.');
     const start = text.length;
@@ -232,6 +234,11 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
         character = nativeCharacterStyle(style),
         font = fontFor?.(style);
       if (!font) throw new UnsupportedComposition('the selected font face');
+      if (style.noBreak) {
+        const previous = noBreakRanges.at(-1);
+        if (previous?.end === start) previous.end = text.length;
+        else noBreakRanges.push({ start, end: text.length });
+      }
       const run = {
         start,
         end: text.length,
@@ -291,5 +298,6 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
     runs,
     paragraphs,
     links,
+    ...(noBreakRanges.length ? { noBreakRanges } : {}),
   };
 }

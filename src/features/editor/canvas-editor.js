@@ -45,7 +45,7 @@ import { openParentEditor } from './ui/parent-editor.js';
 import {
   CURRENT_ARCHIVE_VERSION,
   markTypographyVersion,
-  hasNativeParagraphSettings,
+  hasNativeTextSettings,
 } from '../../domain/documents/capabilities.js';
 import {
   enablePublishing,
@@ -525,7 +525,7 @@ export function mountCanvasEditor(host, options) {
     requestFrame();
   }
   function validateNativeSources() {
-    if (hasNativeParagraphSettings(doc())) {
+    if (hasNativeTextSettings(doc())) {
       const legacy = [
         ...(doc().textFlows || [])
           .filter((flow) => !flow.composition)
@@ -537,7 +537,7 @@ export function mountCanvasEditor(host, options) {
           .filter((block) => ['text', 'quote'].includes(block.type) && !block.textFlowId)
           .map((block) => ({ html: block.html, settings: block })),
       ];
-      for (const owner of legacy) validateLegacyParagraphSettings(owner.html, owner.settings);
+      for (const owner of legacy) validateLegacyTextSettings(owner.html, owner.settings);
     }
     for (const flow of doc().textFlows || [])
       if (flow.composition) {
@@ -545,10 +545,12 @@ export function mountCanvasEditor(host, options) {
         nativeFlowColumns(doc(), flow);
       }
   }
-  function validateLegacyParagraphSettings(html, settings) {
+  function validateLegacyTextSettings(html, settings) {
     const root = document.createElement('div');
     root.innerHTML = html || '';
     const summary = summarizeTextStyle(root, doc(), effectiveTextStyle(doc(), settings));
+    if (summary.values.noBreak || summary.mixed.includes('noBreak'))
+      throw Error('No Break requires native composition in this text flow.');
     if (
       (summary.values.paragraphStart && summary.values.paragraphStart !== 'anywhere') ||
       summary.values.keepBoundaryLines ||
@@ -915,9 +917,9 @@ export function mountCanvasEditor(host, options) {
     const flow = textFlowForFrame(doc(), object());
     if (!flow || !ownsInput() || !options.editing) return;
     if (composer === 'browser') {
-      if (hasNativeParagraphSettings(doc())) {
+      if (hasNativeTextSettings(doc())) {
         try {
-          validateLegacyParagraphSettings(flow.html, flow.style);
+          validateLegacyTextSettings(flow.html, flow.style);
         } catch (error) {
           options.onNotify?.(error.message);
           renderPanel();
@@ -1306,15 +1308,15 @@ export function mountCanvasEditor(host, options) {
         options.assets?.() || options.fonts?.() || [],
       );
     } else if (
-      hasNativeParagraphSettings(doc()) ||
-      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart|keepedges)\s*=/i.test(canonical)
+      hasNativeTextSettings(doc()) ||
+      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart|keepedges|nobreak)\s*=/i.test(canonical)
     )
-      validateLegacyParagraphSettings(canonical, textFlow?.style || item);
+      validateLegacyTextSettings(canonical, textFlow?.style || item);
     if (element?.classList.contains('canvas-flow-input') && !textFlow?.composition)
       delete element.dataset.projectedStart;
     if (textFlow) textFlow.html = canonical;
     else if (item) item.html = canonical;
-    if (hasNativeParagraphSettings(doc())) markTypographyVersion(doc());
+    if (hasNativeTextSettings(doc())) markTypographyVersion(doc());
   }
   function activeText() {
     return activeTextId
@@ -1609,10 +1611,9 @@ export function mountCanvasEditor(host, options) {
   function applyTextProperty(field, value, { commit = true, adjust } = {}) {
     const flow = textFlowForFrame(doc(), object());
     if (!flow?.composition) {
-      const settings =
-        field === 'paragraphStyle'
-          ? effectiveTextStyle(doc(), { paragraphStyle: value })
-          : { [field]: value };
+      const settings = ['paragraphStyle', 'characterStyle'].includes(field)
+        ? effectiveTextStyle(doc(), { [field]: value })
+        : { [field]: value };
       let message;
       if (
         settings.keepBoundaryLines ||
@@ -1622,6 +1623,8 @@ export function mountCanvasEditor(host, options) {
       )
         message =
           'Choose native composition for this text flow before applying extended paragraph keeps.';
+      if (settings.noBreak)
+        message = 'Choose native composition for this text flow before applying No Break.';
       if (wordSpacingSettings(settings.wordSpacing ?? 'normal'))
         message = 'Choose native text composition for this text flow before applying word spacing.';
       if (message) {
