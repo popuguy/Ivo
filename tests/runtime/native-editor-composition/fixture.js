@@ -1,3 +1,4 @@
+import { verifyThreadedDeletion } from '../flow-selection/threaded-deletion.js';
 import { createInteractiveTextPort } from '../../../src/rendering/text/retained-geometry.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import {
@@ -329,6 +330,8 @@ try {
     );
     editor.destroy();
   } else {
+    for (const composer of ['single-line', 'paragraph'])
+      await verifyThreadedDeletion(host, window.nativeEditorTest, composer, interactive);
     doc = createSceneDocument('Native actual editor', { width: 600, height: 350 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
         x: 40,

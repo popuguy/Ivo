@@ -28,6 +28,12 @@ The existing disposable tab projection now also paints significant leading/trail
 
 The regression first reproduces actual character loss in sanitization, then separately reproduces rich-paste loss and invisible saved spacing. Ordinary and linked editor cases check exact boundary characters, rich emphasis, whitespace-only paste, tabs/line endings, mid-paragraph insertion, fresh source paint, archive round trips and atomic undo/redo. A real native-bridge case checks the literal leading source space, nonzero native caret advance, exact italic glyph face and source/history round trips. Synthetic transfer events exercise the production insertion path without altering the system clipboard; physical Mac/mobile clipboard qualification remains separate.
 
+## Deletion at a linked frame boundary
+
+Backspace at the first visible character of a continuation edits the preceding character or break in the shared text flow. The caret follows the edited text across frames and pages. Explicitly threaded frames remain in the document when emptied. An unused, automatically generated continuation can disappear as the flow shrinks.
+
+The browser edits a column by temporarily hiding the earlier portion of the text. At its first visible caret the browser can propose an empty deletion, even when a preceding paragraph exists. Ivo reveals the source before the platform applies that edit and projects the result back into the frames. Deletions contained within a visible text node keep the existing projection. Both native composers already edit the complete source.
+
 ## Verification and limits
 
 `test:flow-selection` uses trusted Electron pointer and keyboard input on synthetic linked frames. It checks forward/backward cross-page selection, exact painted-range text, copy/delete/undo, measured keyboard movement, paragraph/blank-line boundaries, cancellation, insertion inheritance and saved-document reopening. The text runtime also covers native formatting normalization, derived decoration paint and camera-independent caret geometry. Domain tests cover Unicode boundaries and cached navigation equivalence. Native Type-menu and document-clipboard fixtures exercise production IPC with isolated vaults and restore clipboard contents.

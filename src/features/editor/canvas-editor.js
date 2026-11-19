@@ -24,7 +24,12 @@ import {
 } from '../../domain/documents/clipboard.js';
 import { validateImport } from '../../domain/documents/schema.js';
 import { fontChoices, SYSTEM_FONT_PREFIX } from '../../domain/text/font-catalog.js';
-import { flowInputHTML, projectFlowInput, inputColumn } from '../../rendering/text/flow-input.js';
+import {
+  flowInputHTML,
+  projectFlowInput,
+  revealFlowEditRange,
+  inputColumn,
+} from '../../rendering/text/flow-input.js';
 import { createContextualBar } from './ui/contextual-bar.js';
 import { summarizeTextStyle, reflectTextStyle } from '../../rendering/text/selection-style.js';
 import { clearRangeOverrides } from '../../rendering/text/overrides.js';
@@ -3257,15 +3262,23 @@ export function mountCanvasEditor(host, options) {
     }
     rebasePendingMarks();
     beginTextInput(event.inputType);
-    // Native replacement skips display:none content. Reveal the canonical range
-    // for the synchronous edit, then project the result during the input event.
-    if (
-      sourceTextFlow(element) &&
-      (!window.getSelection().isCollapsed ||
-        (event.inputType.startsWith('delete') &&
-          sourceCaretIndex() <= Number(element.dataset.projectedStart)))
-    )
-      projectFlowInput(element, 0);
+    const flow = sourceTextFlow(element);
+    if (flow && revealFlowEditRange(element, event)) {
+      const previousHTML = flow.html;
+      // The input event normally projects the edited source immediately. A no-op
+      // or canceled edit has no input event, so restore its view before paint.
+      requestAnimationFrame(() => {
+        if (
+          alive &&
+          !composing &&
+          activeText() === element &&
+          sourceTextFlow(element) === flow &&
+          flow.html === previousHTML &&
+          element.dataset.projectedStart === '0'
+        )
+          followTextFlowCaret();
+      });
+    }
     if (event.inputType.startsWith('insert'))
       inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
     if (

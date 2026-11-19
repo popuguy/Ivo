@@ -1,5 +1,11 @@
 # Verification
 
+## Backspace across threaded frames — 19 November 2026
+
+The reported continuation-frame failure reproduced in the desktop editor. At the first glyph on page two the browser proposed an empty Backspace range. The logical caret lay one structural offset beyond the fragment start, so the earlier numeric check missed the hidden paragraph return. The source, caret and displayed text all stayed put.
+
+The new regression clicks the first glyph on the second page and sends real Backspace events through the editor. It checks a paragraph boundary, a soft return, multiple empty paragraphs, a naturally wrapped line and an automatically generated continuation in browser layout and both native composers. The checks cover consecutive deletions, the caret and ink moving together, exact source undo/redo, preservation of emphasis and manually threaded pages, and removal of an emptied automatic page. These tests run in disposable macOS windows. Physical iPhone/iPad keyboard behavior has separate qualification.
+
 ## Desktop editing responsiveness — 19 November 2026
 
 Layers changes update the affected controls and object editability. Holding the button previews the lock state immediately, releasing over the button commits one change, and dragging away cancels. A workspace-wide relational CSS selector had made the browser reconsider roughly 23,000 elements when native text or the caret changed in the three-page fixture. The shell now tracks its mounted state explicitly. The editor updates changed vector lines in place and retains unaffected glyphs, outlines and carets. Native composition still establishes the current line breaks, line metrics and frozen PDF on each new composition.

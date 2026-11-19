@@ -57,10 +57,33 @@ export function projectFlowInput(root, start) {
       node.dataset.flowInputContinuation = '';
     for (const child of [...node.childNodes]) hide(child);
   }
-  for (const node of [...root.childNodes]) hide(node);
+  if (start > 0) for (const node of [...root.childNodes]) hide(node);
   root.dataset.projectedStart = String(start);
   if (bookmark) restoreTextSelection(root, bookmark, { focus: document.activeElement === root });
   return true;
+}
+
+/** Let the platform edit the full source when its proposed deletion reaches the
+ * visible fragment's edge. Block starts and insertion points have different
+ * logical offsets, and at the first visible caret the target can be empty.
+ */
+export function revealFlowEditRange(root, event) {
+  if (root.dataset.projectedStart === '0') return false;
+  if (root.ownerDocument.getSelection().isCollapsed) {
+    if (!event.inputType.startsWith('delete') || !event.inputType.endsWith('Backward'))
+      return false;
+    const [target] = event.getTargetRanges?.() || [];
+    // A deletion wholly inside one visible text node cannot hit the hidden prefix.
+    if (
+      target &&
+      !target.collapsed &&
+      target.startContainer.nodeType === Node.TEXT_NODE &&
+      target.startContainer === target.endContainer &&
+      target.startOffset > 0
+    )
+      return false;
+  }
+  return projectFlowInput(root, 0);
 }
 
 /** Physical columns expose their source intervals as well as their frame geometry. */

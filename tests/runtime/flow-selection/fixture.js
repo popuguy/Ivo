@@ -1,3 +1,4 @@
+import { verifyThreadedDeletion } from './threaded-deletion.js';
 import { verifyFlowSelectionBoundaries } from './boundaries.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import { startTextFlow, threadFrame } from '../../../src/domain/documents/text-flows.js';
@@ -391,6 +392,7 @@ try {
     });
     editor.destroy();
     await verifyFlowSelectionBoundaries(host, window.textCoreTest);
+    await verifyThreadedDeletion(host, window.textCoreTest);
     console.log('IVO_TEXT_CORE_RESULT:' + JSON.stringify({ phase: 'edit' }));
   }
 } catch (error) {
