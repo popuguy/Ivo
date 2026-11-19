@@ -288,7 +288,8 @@ export function validateWordSpacingResult(result, request, plan) {
         fail('does not retain its qualified word-space caret measurement');
     }
     if (!carets.has(start) || !carets.has(end)) fail('lost its endpoint carets');
-    const positions = new Map();
+    const positions = new Map(),
+      hanging = new Map();
     let edge = null;
     for (const run of line.runs)
       for (const glyph of run.glyphs) {
@@ -309,6 +310,17 @@ export function validateWordSpacingResult(result, request, plan) {
         )
           fail('has invalid native glyph geometry');
         if (!collapse) continue;
+        if (glyph.index >= shape.hangingStart && glyph.index < shape.trailingStart) {
+          if (
+            glyph.end !== glyph.index + 1 ||
+            hanging.has(glyph.index) ||
+            glyph.advance[0] < 0 ||
+            Math.abs(glyph.advance[1]) > 0.000001 ||
+            (request.text.charCodeAt(glyph.index) !== 0xa0 && Math.abs(glyph.advance[0]) > 0.000001)
+          )
+            fail('has an invalid hanging source-space advance');
+          hanging.set(glyph.index, glyph.advance[0]);
+        }
         if (glyph.index < shape.trailingStart || glyph.index >= shape.contentEnd) continue;
         if (
           !integer(glyph.index) ||
@@ -327,11 +339,14 @@ export function validateWordSpacingResult(result, request, plan) {
         positions.set(glyph.index, true);
       }
     if (!collapse) continue;
+    let expectedWidth = line.visibleWidth;
+    for (const advance of hanging.values()) expectedWidth += advance;
     if (
       edge === null ||
+      hanging.size !== shape.trailingStart - shape.hangingStart ||
       positions.size !== shape.contentEnd - shape.trailingStart ||
-      Math.abs(edge - line.originX - line.visibleWidth) > tolerance ||
-      Math.abs(line.width - line.visibleWidth) > tolerance
+      Math.abs(edge - line.originX - expectedWidth) > tolerance ||
+      Math.abs(line.width - expectedWidth) > tolerance
     )
       fail('lost the actual collapsed trailing-space edge');
     for (let source = shape.trailingStart; source <= shape.contentEnd; source++)

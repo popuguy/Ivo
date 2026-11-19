@@ -296,9 +296,9 @@ public final class TextCompositionEngine {
           try require(
             value.unicodeScalars.allSatisfy {
               !CharacterSet.whitespacesAndNewlines.contains($0)
-                || [0x20, 0xA0, 0x202F, 10, 13, 0x2028, 0x2029].contains($0.value)
+                || [0x20, 0xA0, 0x202F, 0x200B, 10, 13, 0x2028, 0x2029].contains($0.value)
             },
-            "Explicit word spacing requires qualified qualified word spaces")
+            "Explicit word spacing requires supported spaces and break characters")
           try require(
             !value.unicodeScalars.contains {
               (0x202A...0x202E).contains($0.value) || (0x2066...0x2069).contains($0.value)

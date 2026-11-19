@@ -1,5 +1,9 @@
 # Verification
 
+## Combined text controls — 19 November 2026
+
+A separate matrix combined linked frames of unequal widths, opening/closing line counts, protected phrases, a discretionary break, both nonbreaking spaces and custom justification. Both composers passed all 96 layouts and 608 visible rows. This exposed two integration faults: the Apple worker rejected the optional break under explicit word spacing, and the renderer rejected a valid trailing caret after a hanging flexible space. The native, source-validation, editor and PDF regressions now exercise those combinations.
+
 ## Nonbreaking spaces — 19 November 2026
 
 Fifty original InDesign layouts compared ordinary, flexible and fixed spaces, named insertion versus Unicode, leading and trailing positions, doubled desired spacing, full justification and unequal linked frames. All 52 rows matched the source ending, column and baseline. In 48 cases every measured space advance agreed within 0.01 pt. Two ways to enter the same fixed-plus-ordinary trailing pair reproduced a 5.046 pt difference on the final invisible character. [Adobe’s word-break controls](https://helpx.adobe.com/uk/indesign/desktop/format-and-style-text/composition-and-text-wrapping/control-hyphenation-and-word-breaks.html)

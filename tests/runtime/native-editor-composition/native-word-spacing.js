@@ -788,6 +788,13 @@ export async function verifyNativeWordSpacing({
       painted().request.text.includes('Selected\u00a0neighbor'),
       'Flexible-space menu changed its character.',
     );
+    await selectWord('ighbor', { collapsed: true });
+    await editor.command('discretionary-line-break');
+    await settle();
+    assert(
+      verifyProtocol(5).request.text.includes('ne\u200bighbor'),
+      'Optional break interrupted composition in a paragraph with custom word spacing.',
+    );
     await rejectedFixture('Unsupported thin space word spacing', '<p>Rejected\u2009neighbor</p>');
     await rejectedFixture('Unsupported tab word spacing', '<p>Rejected\tneighbor</p>');
     await rejectedFixture(

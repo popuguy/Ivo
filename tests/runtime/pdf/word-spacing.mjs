@@ -63,7 +63,7 @@ const near = (actual, expected, label, tolerance = 0.001) =>
       width: 240,
       policy: '60:150:200',
       align: 'justify-all',
-      text: 'Pair\u00a0One with\u202fTwo  ',
+      text: 'Pair\u00a0One with\u202fTwo\u00a0  ',
       targets: ['Pair', 'One', 'with', 'Two'],
     },
     {

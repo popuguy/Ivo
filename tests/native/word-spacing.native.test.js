@@ -129,6 +129,32 @@ test(
   },
 );
 
+test(
+  'a discretionary break remains zero-width when a paragraph has explicit word spacing',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    const req = await request('Size 12\u00a0pt Ref\u200b234\u2029', {
+      policy: { minimum: 70, desired: 150, maximum: 180 },
+    });
+    const end = req.text.indexOf('\u200b') + 1;
+    const [first] = await measure(service, req, [{ start: 0, end, offset: 10 }]);
+    req.placements = [
+      { ...req.placements[0], end },
+      { ...req.placements[0], baseline: 64 },
+    ];
+    const data = await service.compose(req);
+    assert.equal(data.layout.coveredLength, req.text.length);
+    assert.deepEqual(
+      data.layout.lines.map((line) => line.end),
+      [end, req.text.length],
+    );
+    assert.equal(data.layout.lines[0].wordSpacing.eligibleGaps, first.wordSpacing.eligibleGaps);
+    const marker = glyphs(data.layout.lines[0]).find((g) => g.index === end - 1);
+    assert.equal(marker?.advance[0] ?? 0, 0);
+  },
+);
+
 // Compare real drawn/native glyph advances, rather than reconstructing the
 // implementation's font-space slope or accepting capacities on their own.
 test(

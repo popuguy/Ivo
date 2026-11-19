@@ -189,6 +189,33 @@ test('no-gap native fallback and blank/all-space rows preserve desired percentag
   );
 });
 
+test('a trailing nonbreaking space hangs beyond the visible text before a collapsed ordinary space', () => {
+  const sample = fixture([{ text: 'A B  \u2029', align: 'justify-all', policy: defaultPolicy }]);
+  sample.request.text = 'A B\u00a0 \u2029';
+  const line = sample.result.layout.lines[0],
+    glyphs = line.runs[0].glyphs;
+  const advance = glyphs[1].advance[0];
+  line.wordSpacing.collapsedTrailingStart = 4;
+  line.width += advance;
+  glyphs[3].advance[0] = advance;
+  glyphs[4].position[0] += advance;
+  line.carets[3].measurement = 'native-word-space';
+  for (const caret of line.carets.slice(4)) {
+    caret.primary += advance;
+    caret.secondary += advance;
+  }
+  validate(sample);
+  rejectChange(sample, ({ result }) => {
+    result.layout.lines[0].runs[0].glyphs.pop();
+  });
+  rejectChange(sample, ({ result }) => {
+    result.layout.lines[0].runs[0].glyphs[3].advance[0] = 0;
+  });
+  rejectChange(sample, ({ result }) => {
+    result.layout.lines[0].width -= advance;
+  });
+});
+
 test('a soft return remains nonfinal within one authored paragraph', () => {
   const sample = fixture([
     { text: 'AA BB  \u2028', align: 'justify-all', policy: defaultPolicy },
