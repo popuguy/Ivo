@@ -73,7 +73,7 @@ export function textProperties(item, fonts, installed = []) {
           ['none', '0'],
         ],
         'Kerning',
-      )}${num('tracking', item.tracking || 0, 'Tracking · 1/1000 em')}</div><details class="publishing-more"><summary data-tooltip="More character options">More options</summary><div class="canvas-geometry">${num('autoLeading', item.autoLeading || 120, 'Auto leading · %')}${num('baselineShift', item.baselineShift || 0, 'Baseline shift · pt')}</div>${choose(
+      )}${num('tracking', item.tracking || 0, 'Tracking · 1/1000 em')}</div><details class="publishing-more"><summary data-tooltip="More character options">More options</summary><div class="canvas-geometry">${num('autoLeading', item.autoLeading || 120, 'Auto leading · %')}${num('baselineShift', item.baselineShift || 0, 'Baseline shift · pt')}${num('horizontalScale', item.horizontalScale ?? 100, 'Horizontal scale · %')}${num('verticalScale', item.verticalScale ?? 100, 'Vertical scale · %')}</div>${choose(
         'language',
         item.language || 'en-US',
         [

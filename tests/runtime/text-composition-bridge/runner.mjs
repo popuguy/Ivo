@@ -174,6 +174,46 @@ app.whenReady().then(async () => {
       );
       assert.match(downgrade, /protocol/);
     }
+    const character = {
+      ...planned,
+      protocol: 4,
+      runs: request.runs.map((run) => ({
+        ...run,
+        baselineShift: 3,
+        horizontalScale: 125,
+        verticalScale: 150,
+        features: { smcp: true },
+      })),
+    };
+    for (const window of windows) {
+      const result = await window.webContents.executeJavaScript(
+        'ivoTextComposition.compose(' + JSON.stringify(character) + ')',
+      );
+      assert.equal(result.protocol, 4);
+      const line = result.layout.lines[0];
+      assert.equal(line.baseline, 20);
+      assert(line.inkAscent > line.ascent);
+      assert(
+        line.runs.every(
+          (run) =>
+            run.baselineShift === 3 && run.horizontalScale === 125 && run.verticalScale === 150,
+        ),
+      );
+      assert(
+        line.runs
+          .flatMap((run) => run.glyphs)
+          .every((glyph) => Math.abs(glyph.position[1] - 3) < 1e-6),
+      );
+      const invalid = await window.webContents.executeJavaScript(
+        'ivoTextComposition.compose(' +
+          JSON.stringify({
+            ...character,
+            runs: [{ ...character.runs[0], features: { smcp: 'true' } }],
+          }) +
+          ').then(()=>"allowed",error=>error.message)',
+      );
+      assert.match(invalid, /Invalid/);
+    }
     console.log(
       JSON.stringify({
         ok: true,
@@ -183,6 +223,7 @@ app.whenReady().then(async () => {
         noPaths: true,
         exactNativePDF: true,
         exactPlannedTransport: true,
+        exactCharacterTransport: true,
       }),
     );
   } catch (error) {

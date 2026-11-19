@@ -1,4 +1,6 @@
 /** Native composition coordinates and source maps are disposable view data. */
+import { characterInkBox } from '../../../domain/text/character-geometry.js';
+import { runCaret } from '../../../domain/text/run-geometry.js';
 const finite = (n) => Number.isFinite(n);
 const sourceIndexes = new WeakMap(),
   caretIndexes = new WeakMap(),
@@ -127,12 +129,22 @@ function canonicalCaret(native, line, caret, affinity) {
   const range = candidates(caret);
   return range ? range[affinity === 'backward' ? 0 : 1] : null;
 }
-function lineRect(line, x, width = 0) {
+function inkRun(line, index, affinity = 'forward') {
+  const point = Math.min(index, line.contentEnd ?? line.end),
+    runs = line.runs || [];
+  return (
+    (affinity === 'backward'
+      ? runs.findLast((run) => run.start < point && run.end >= point)
+      : runs.find((run) => run.start <= point && run.end > point)) ||
+    (point >= (line.contentEnd ?? line.end) ? runs.at(-1) : runs[0]) ||
+    line
+  );
+}
+function lineRect(line, x, width = 0, run = line) {
   return {
     x,
-    y: line.baseline - line.ascent,
+    ...characterInkBox(line, run),
     width,
-    height: Math.max(1, line.ascent + line.descent),
   };
 }
 function side(caret, preferred = 'primary') {
@@ -166,7 +178,12 @@ export function nativeCaretRect(column, point, { hint } = {}) {
   if (!own) return null;
   const selectedSide = hint?.lineIndex === own.lineIndex ? hint.side : 'primary';
   return {
-    ...lineRect(own.line, side(own.caret, selectedSide)),
+    ...lineRect(
+      own.line,
+      side(own.caret, selectedSide),
+      0,
+      inkRun(own.line, own.caret.index, point.affinity),
+    ),
     index: point.index,
     affinity: point.affinity || 'forward',
     nativeIndex: own.caret.index,
@@ -282,7 +299,7 @@ export function nativeCaretLines(columns) {
                 stops.push({
                   frameId: column.frameId,
                   ...point,
-                  ...lineRect(line, offset.x),
+                  ...lineRect(line, offset.x, 0, inkRun(line, caret.index, point.affinity)),
                   nativeIndex: caret.index,
                   nativeCaretHint: { lineIndex, side: offset.side },
                   measurement: caret.measurement,
@@ -348,38 +365,6 @@ function sourceIntervals(native, selection) {
   }
   return { intervals: merged, virtual, limitations };
 }
-function runExtent(run) {
-  const values = (run.glyphs || [])
-    .flatMap((glyph) => [glyph.position[0], glyph.position[0] + glyph.advance[0]])
-    .filter(finite);
-  return values.length ? { min: Math.min(...values), max: Math.max(...values) } : null;
-}
-function runCaret(line, run, index) {
-  const caret = line.carets?.find((c) => c.index === index),
-    extent = runExtent(run);
-  if (!extent) return null;
-  const edge =
-    index === run.start || index === run.end
-      ? (index === run.start ? run.rtl : !run.rtl)
-        ? extent.max
-        : extent.min
-      : null;
-  if (!caret) return edge === null ? null : { x: edge, measurement: 'native-run-extent' };
-  const options = [...new Set([caret.primary, caret.secondary])].filter(
-    (n) => finite(n) && n >= extent.min - 0.01 && n <= extent.max + 0.01,
-  );
-  if (!options.length) return null;
-  return {
-    x:
-      edge !== null
-        ? options.sort((a, b) => Math.abs(a - edge) - Math.abs(b - edge))[0]
-        : options.includes(caret.primary)
-          ? caret.primary
-          : options[0],
-    measurement: 'native-run-carets',
-  };
-}
-
 /** Split selection paint by measured visual runs, including partial ligatures and RTL runs. */
 export function nativeSelectionRects(column, selection) {
   const native = data(column);
@@ -403,7 +388,7 @@ export function nativeSelectionRects(column, selection) {
           continue;
         }
         rects.push({
-          ...lineRect(line, Math.min(x1.x, x2.x), Math.abs(x2.x - x1.x)),
+          ...lineRect(line, Math.min(x1.x, x2.x), Math.abs(x2.x - x1.x), run),
           lineIndex,
           nativeStart: a,
           nativeEnd: b,

@@ -32,6 +32,10 @@ const fields = {
     'textColor',
     'leading',
     'autoLeading',
+    'baselineShift',
+    'horizontalScale',
+    'verticalScale',
+    'features',
   ],
   resource: ['id', 'digest', 'postscript', 'data'],
   frame: ['id', 'width', 'height', 'firstBaseline', 'minimumFirstBaseline', 'verticalAlign'],
@@ -47,6 +51,7 @@ const fields = {
     'firstLineIndent',
   ],
   placement: ['end', 'frame', 'baseline', 'left', 'width'],
+  features: ['dlig', 'smcp', 'onum', 'tnum', 'zero', 'frac', 'ordn', 'salt'],
 };
 const plain = (value) =>
   value &&
@@ -61,12 +66,16 @@ function record(value, allowed) {
 export function validateCompositionRequest(request) {
   record(request, fields.request);
   if (
-    ![1, 2, 3].includes(request.protocol) ||
+    ![1, 2, 3, 4].includes(request.protocol) ||
     (request.protocol === 1 && request.paragraphs !== undefined) ||
     (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
     (request.protocol < 3 && request.placements !== undefined) ||
     (request.mode === 'planned-lines-proof' &&
-      (request.protocol !== 3 || !Array.isArray(request.placements)))
+      (request.protocol < 3 || !Array.isArray(request.placements))) ||
+    (request.protocol === 4 &&
+      !['greedy-geometry-proof', 'measure-lines-proof', 'planned-lines-proof'].includes(
+        request.mode,
+      ))
   )
     throw Error('Invalid text composition paragraph protocol.');
   const arrays = [
@@ -99,7 +108,33 @@ export function validateCompositionRequest(request) {
       if (!shape) atom(row);
       else {
         record(row, fields[shape]);
-        for (const cell of Object.values(row)) atom(cell);
+        if (shape === 'run') {
+          for (const [key, minimum, maximum] of [
+            ['baselineShift', -2000, 2000],
+            ['horizontalScale', 10, 1000],
+            ['verticalScale', 10, 1000],
+          ])
+            if (
+              Object.hasOwn(row, key) &&
+              (request.protocol !== 4 ||
+                !Number.isFinite(row[key]) ||
+                row[key] < minimum ||
+                row[key] > maximum)
+            )
+              throw Error('Invalid native character protocol or value.');
+          if (Object.hasOwn(row, 'features')) {
+            if (request.protocol !== 4)
+              throw Error('Native character features require protocol 4.');
+            record(row.features, fields.features);
+            for (const value of Object.values(row.features))
+              if (typeof value !== 'boolean') throw Error('Invalid native character feature.');
+          }
+        }
+        for (const [key, cell] of Object.entries(row)) {
+          if (shape === 'run' && key === 'features')
+            for (const flag of Object.values(cell)) atom(flag);
+          else atom(cell);
+        }
       }
     }
   }

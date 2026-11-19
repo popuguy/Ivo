@@ -1,4 +1,6 @@
 import { escapeHTML as esc } from '../../shared/html/sanitize.js';
+import { characterInkBox, characterDecorationY } from '../../domain/text/character-geometry.js';
+import { runExtent, runCaret } from '../../domain/text/run-geometry.js';
 const checked = new WeakMap(),
   identifier = /^[A-Za-z][A-Za-z0-9_-]{0,159}$/,
   pathCharacters = /^[MmLlQqCcZzHhVvSsTtAa0-9eE+.,\s-]*$/,
@@ -31,6 +33,49 @@ function vectorsFor(result) {
   return vectors;
 }
 
+function sourceInterval(line, run, start, end, geometry) {
+  const a = runCaret(line, run, start, geometry),
+    b = runCaret(line, run, end, geometry);
+  if (!a || !b) throw Error('Composed source boundary is not a native run caret.');
+  return { left: Math.min(a.x, b.x), width: Math.abs(b.x - a.x) };
+}
+
+function linkAttributes(link) {
+  return link.documentId && /^[\w-]{1,120}$/.test(link.documentId)
+    ? `data-doc-id="${esc(link.documentId)}" href="#doc=${esc(link.documentId)}"`
+    : /^https?:\/\//.test(link.url || '')
+      ? `href="${esc(link.url)}"`
+      : '';
+}
+
+function firstIntersecting(ranges, start) {
+  let low = 0,
+    high = ranges.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (ranges[middle].end <= start) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function styleRanges(styles, length) {
+  const ordered = [...styles].sort((a, b) => a.start - b.start);
+  let end = 0;
+  for (const style of ordered) {
+    if (
+      !Number.isSafeInteger(style.start) ||
+      !Number.isSafeInteger(style.end) ||
+      style.start < end ||
+      style.end <= style.start ||
+      style.end > length
+    )
+      throw Error('Invalid composed style source ranges.');
+    end = style.end;
+  }
+  return ordered;
+}
+
 /** Paint the compositor's glyphs without asking the browser to shape or wrap strings. */
 export function composedSVG(
   result,
@@ -42,7 +87,8 @@ export function composedSVG(
     ink = [],
     decorations = [],
     linkRegions = [],
-    lines = result.layout.lines.filter((line) => line.frame === frame.id);
+    lines = result.layout.lines.filter((line) => line.frame === frame.id),
+    sourceStyles = styleRanges(styles, text.length);
   if (
     ![frame.width, frame.height].every(finite) ||
     frame.width <= 0 ||
@@ -53,13 +99,16 @@ export function composedSVG(
   for (const line of lines) {
     if (![line.baseline, line.ascent, line.descent].every(finite))
       throw Error('Invalid composed line geometry.');
+    const carets = new Map(),
+      geometry = new Map();
+    for (const caret of line.carets || [])
+      if (!carets.has(caret.index)) carets.set(caret.index, caret);
     for (const run of line.runs) {
-      const style = styles.find((s) => s.start <= run.start && s.end > run.start) || {},
+      const first = firstIntersecting(sourceStyles, run.start),
+        style = sourceStyles[first]?.start <= run.start ? sourceStyles[first] : {},
         fill = color(run.textColor || style.textColor),
         glyphs = run.glyphs;
       if (glyphs.length > 100000) throw Error('Too many composed glyphs.');
-      let left = Infinity,
-        right = -Infinity;
       for (const glyph of glyphs) {
         if (
           !Number.isSafeInteger(glyph.index) ||
@@ -78,14 +127,34 @@ export function composedSVG(
         const a = glyph.position[0],
           b = a + glyph.advance[0];
         if (!finite(a) || !finite(b)) throw Error('Invalid composed glyph position.');
-        left = Math.min(left, a, b);
-        right = Math.max(right, a, b);
       }
-      const width = glyphs.length ? right - left : 0;
-      if (style.highlight && style.highlight !== 'none' && width > 0)
-        decorations.push(
-          `<rect x="${left}" y="${line.baseline - line.ascent}" width="${width}" height="${line.ascent + line.descent}" fill="${color(style.highlight)}"/>`,
-        );
+      const measured = { extent: runExtent(run), carets };
+      geometry.set(run, measured);
+      const spans = [];
+      for (
+        let index = first;
+        index < sourceStyles.length && sourceStyles[index].start < run.end;
+        index++
+      ) {
+        const part = sourceStyles[index];
+        const start = Math.max(part.start, run.start),
+          end = Math.min(part.end, run.end),
+          highlight = part.highlight && part.highlight !== 'none';
+        if (
+          end <= start ||
+          !measured.extent ||
+          !(highlight || part.underline || part.strikethrough)
+        )
+          continue;
+        const span = { ...sourceInterval(line, run, start, end, measured), style: part };
+        spans.push(span);
+        if (highlight && span.width > 0) {
+          const box = characterInkBox(line, run);
+          decorations.push(
+            `<rect x="${span.left}" y="${box.y}" width="${span.width}" height="${box.height}" fill="${color(part.highlight)}"/>`,
+          );
+        }
+      }
       for (const glyph of glyphs) {
         if (!glyph.vector) {
           if (text.slice(glyph.index, glyph.end).trim())
@@ -99,42 +168,44 @@ export function composedSVG(
           `<use data-composed-index="${glyph.index}" data-composed-end="${glyph.end}" href="#${idPrefix}-${glyph.vector}" transform="translate(${glyph.position[0]} ${line.baseline - glyph.position[1]}) scale(1 -1)" fill="${fill}"/>`,
         );
       }
-      for (const [enabled, position] of [
-        [style.underline, run.underlinePosition],
-        [style.strikethrough, (run.xHeight || 0) / 2],
-      ])
-        if (enabled && width > 0) {
-          if (!finite(position) || !finite(run.underlineThickness))
-            throw Error('Composed text decoration has no font metrics.');
-          ink.push(
-            `<rect x="${left}" y="${line.baseline - position}" width="${width}" height="${run.underlineThickness}" fill="${fill}"/>`,
-          );
-        }
+      for (const span of spans)
+        for (const [enabled, strike] of [
+          [span.style.underline, false],
+          [span.style.strikethrough, true],
+        ])
+          if (enabled && span.width > 0) {
+            if (!finite(run.underlineThickness))
+              throw Error('Composed text decoration has no font metrics.');
+            ink.push(
+              `<rect x="${span.left}" y="${characterDecorationY(line, run, strike)}" width="${span.width}" height="${run.underlineThickness}" fill="${fill}"/>`,
+            );
+          }
     }
+    const sourceRuns = [...line.runs].sort((a, b) => a.start - b.start);
     for (const link of links) {
-      const glyphs = line.runs
-        .flatMap((run) => run.glyphs)
-        .filter((glyph) => glyph.index < link.end && glyph.end > link.start);
-      if (!glyphs.length) continue;
-      const left = Math.min(
-          ...glyphs.map((glyph) =>
-            Math.min(glyph.position[0], glyph.position[0] + glyph.advance[0]),
-          ),
-        ),
-        right = Math.max(
-          ...glyphs.map((glyph) =>
-            Math.max(glyph.position[0], glyph.position[0] + glyph.advance[0]),
-          ),
-        ),
-        attributes =
-          link.documentId && /^[\w-]{1,120}$/.test(link.documentId)
-            ? `data-doc-id="${esc(link.documentId)}" href="#doc=${esc(link.documentId)}"`
-            : /^https?:\/\//.test(link.url || '')
-              ? `href="${esc(link.url)}"`
-              : '';
-      if (attributes)
+      const attributes = linkAttributes(link),
+        regions = [];
+      if (!attributes) continue;
+      for (
+        let index = firstIntersecting(sourceRuns, link.start);
+        index < sourceRuns.length && sourceRuns[index].start < link.end;
+        index++
+      ) {
+        const run = sourceRuns[index];
+        const start = Math.max(link.start, run.start),
+          end = Math.min(link.end, run.end),
+          measured = geometry.get(run);
+        if (end <= start || !measured.extent) continue;
+        const span = sourceInterval(line, run, start, end, measured),
+          box = characterInkBox(line, run);
+        if (span.width > 0)
+          regions.push(
+            `<rect x="${span.left}" y="${box.y}" width="${span.width}" height="${box.height}" fill="transparent" pointer-events="all"/>`,
+          );
+      }
+      if (regions.length)
         linkRegions.push(
-          `<a ${attributes}><title>${esc(text.slice(link.start, link.end))}</title><rect x="${left}" y="${line.baseline - line.ascent}" width="${Math.max(0, right - left)}" height="${line.ascent + line.descent}" fill="transparent" pointer-events="all"/></a>`,
+          `<a ${attributes}><title>${esc(text.slice(link.start, link.end))}</title>${regions.join('')}</a>`,
         );
     }
   }

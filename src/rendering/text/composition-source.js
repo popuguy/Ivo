@@ -3,6 +3,11 @@ import { nodeTextStyle } from './selection-style.js';
 import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
 import { safeURL } from '../../shared/html/sanitize.js';
 import { PARAGRAPH_LAYOUT_FIELDS } from '../../domain/text/paragraph-layout.js';
+import {
+  NATIVE_CHARACTER_STYLE_FIELDS,
+  nativeCharacterStyle,
+  hasNondefaultNativeCharacter,
+} from '../../domain/text/native-character-style.js';
 
 const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE']),
   supportedTags = new Set(['P', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'A', 'BR']),
@@ -24,6 +29,7 @@ const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
     'characterStyle',
     'paragraphStyle',
     ...paragraphFields,
+    ...NATIVE_CHARACTER_STYLE_FIELDS,
   ]),
   labels = {
     align: 'paragraph alignment',
@@ -50,6 +56,21 @@ export class UnsupportedComposition extends Error {
     this.name = 'UnsupportedComposition';
     this.feature = feature;
   }
+}
+
+function sameRunStyle(previous, current) {
+  const fields = new Set([...Object.keys(previous), ...Object.keys(current)]);
+  fields.delete('start');
+  fields.delete('end');
+  for (const field of fields) {
+    if (field === 'features') {
+      const before = previous.features || {},
+        after = current.features || {},
+        tags = new Set([...Object.keys(before), ...Object.keys(after)]);
+      if ([...tags].some((tag) => before[tag] !== after[tag])) return false;
+    } else if (previous[field] !== current[field]) return false;
+  }
+  return true;
 }
 
 /**
@@ -203,6 +224,7 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
     });
     if (token.text.length) {
       const style = token.style,
+        character = nativeCharacterStyle(style),
         font = fontFor?.(style);
       if (!font) throw new UnsupportedComposition('the selected font face');
       const run = {
@@ -220,11 +242,10 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
         strikethrough: style.strikethrough,
         highlight: style.highlight,
         language: style.language,
+        ...character,
       };
-      const previous = runs.at(-1),
-        fields = Object.keys(run).filter((k) => !['start', 'end'].includes(k));
-      if (previous && previous.end === start && fields.every((key) => previous[key] === run[key]))
-        previous.end = run.end;
+      const previous = runs.at(-1);
+      if (previous && previous.end === start && sameRunStyle(previous, run)) previous.end = run.end;
       else runs.push(run);
       if (token.link) links.push({ start, end: text.length, ...token.link });
     }
@@ -247,7 +268,7 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
   if (logical !== logicalLength || root.innerHTML !== sourceHTML)
     throw Error('Text composition changed its source.');
   return {
-    protocol: 2,
+    protocol: runs.some(hasNondefaultNativeCharacter) ? 4 : 2,
     id,
     mode: 'greedy-geometry-proof',
     sourceHTML,

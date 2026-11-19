@@ -155,6 +155,7 @@ function port() {
         visibleWidth: request.text.slice(start, contentEnd).trim().length * 5,
         carets: [],
         runs: [],
+        ...(request.protocol === 4 ? { inkAscent: 15, inkDescent: 4 } : {}),
       });
       start = end;
     }
@@ -240,6 +241,78 @@ test('synchronous native source guard checks effective styles and exact faces wi
   } finally {
     globalThis.fetch = savedFetch;
   }
+});
+test('advanced characters select protocol4 without losing sparse run fields or source ownership', async () => {
+  for (const composer of ['paragraph', 'single-line']) {
+    const doc = fixture({ composer, text: 'Advanced typography', width: 200, height: 100 }),
+      style = doc.textFlows[0].style,
+      native = port();
+    Object.assign(style, {
+      baselineShift: 6,
+      horizontalScale: 150,
+      verticalScale: 125,
+      smallCaps: true,
+    });
+    const before = structuredClone(doc),
+      source = validateNativeFlowSource(doc, doc.textFlows[0]);
+    assert.equal(source.protocol, 4);
+    const plan = await composeNativeTextFlows(doc, native),
+      query = native.calls.at(-1);
+    assert.equal(query.protocol, 4);
+    assert.equal(query.runs[0].baselineShift, 6);
+    assert.equal(query.runs[0].horizontalScale, 150);
+    assert.equal(query.runs[0].verticalScale, 125);
+    assert.deepEqual(query.runs[0].features, { smcp: true });
+    assert.equal(plan.status.get('flow-a').overset, false);
+    assert.deepEqual(doc, before);
+    style.smallCaps = false;
+    style.baselineShift = 0;
+    style.horizontalScale = 100;
+    style.verticalScale = 100;
+    await composeNativeTextFlows(doc, native);
+    assert.equal(native.calls.at(-1).protocol, composer === 'paragraph' ? 3 : 2);
+  }
+});
+test('exact-face feature admission rejects absent or unavailable tags before native requests', async () => {
+  const doc = fixture({ width: 200, height: 100 }),
+    native = port(),
+    style = doc.textFlows[0].style;
+  style.discretionaryLigatures = true;
+  const before = structuredClone(doc);
+  assert.throws(
+    () => validateNativeFlowSource(doc, doc.textFlows[0]),
+    /does not include discretionary ligatures/,
+  );
+  await assert.rejects(
+    composeNativeTextFlows(doc, native),
+    /does not include discretionary ligatures/,
+  );
+  assert.deepEqual(doc, before);
+  assert.equal(native.calls.length, 0);
+  style.discretionaryLigatures = false;
+  style.smallCaps = true;
+  style.italic = true;
+  assert.throws(
+    () => validateNativeFlowSource(doc, doc.textFlows[0]),
+    /does not include small capitals/,
+  );
+});
+test('malformed signed character geometry cannot be cached or publish derived pages', async () => {
+  const doc = fixture({ composer: 'paragraph', automaticPages: true, width: 60, height: 40 }),
+    native = port(),
+    original = native.compose;
+  doc.textFlows[0].style.baselineShift = -6;
+  const before = structuredClone(doc);
+  let invalid = true;
+  native.compose = async (query) => {
+    const result = await original(query);
+    if (invalid && query.mode !== 'measure-lines-proof') result.layout.lines[0].inkAscent = NaN;
+    return result;
+  };
+  await assert.rejects(composeNativeTextFlows(doc, native), /character ink geometry/);
+  assert.deepEqual(doc, before);
+  invalid = false;
+  assert.equal((await composeNativeTextFlows(doc, native)).status.get('flow-a').overset, false);
 });
 test('native source budgets reject an unsupported edit synchronously before source persistence', () => {
   const doc = fixture({ text: 'word '.repeat(2100), composer: 'paragraph' });
@@ -578,9 +651,9 @@ test('explicit unsupported versions/styles and stale native results reject witho
   const before = structuredClone(doc);
   await assert.rejects(composeNativeTextFlows(doc, native), /fixture native failure/);
   assert.deepEqual(doc, before);
-  doc.textFlows[0].style.baselineShift = 3;
-  await assert.rejects(composeNativeTextFlows(doc, port()), /baseline shift/);
-  delete doc.textFlows[0].style.baselineShift;
+  doc.textFlows[0].style.allCaps = true;
+  await assert.rejects(composeNativeTextFlows(doc, port()), /all capitals/);
+  delete doc.textFlows[0].style.allCaps;
   doc.textFlows[0].composition.version = 2;
   await assert.rejects(composeNativeTextFlows(doc, port()), /composition version/);
   doc.textFlows[0].composition.version = 1;

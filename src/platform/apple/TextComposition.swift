@@ -10,6 +10,7 @@ public final class TextCompositionEngine {
     let postscript: String
     let bytes: Int
     let flags: Int
+    let features: Set<String>
   }
   private struct Snapshot {
     let frames: [Frame]
@@ -50,6 +51,37 @@ public final class TextCompositionEngine {
     let textColor: String?
     let leading: Double?
     let autoLeading: Double?
+    let baselineShift: Double?
+    let horizontalScale: Double?
+    let verticalScale: Double?
+    let features: [String: Bool]?
+    enum CodingKeys: String, CodingKey {
+      case start, end, font, size, ligatures, tracking, kerning, textColor, leading, autoLeading
+      case baselineShift, horizontalScale, verticalScale, features
+    }
+    init(from decoder: Decoder) throws {
+      let values = try decoder.container(keyedBy: CodingKeys.self)
+      start = try values.decode(Int.self, forKey: .start)
+      end = try values.decode(Int.self, forKey: .end)
+      font = try values.decode(String.self, forKey: .font)
+      size = try values.decode(Double.self, forKey: .size)
+      ligatures = try values.decode(Bool.self, forKey: .ligatures)
+      tracking = try values.decode(Double.self, forKey: .tracking)
+      kerning = try values.decodeIfPresent(String.self, forKey: .kerning)
+      textColor = try values.decodeIfPresent(String.self, forKey: .textColor)
+      leading = try values.decodeIfPresent(Double.self, forKey: .leading)
+      autoLeading = try values.decodeIfPresent(Double.self, forKey: .autoLeading)
+      // Absent defaults are allowed; explicitly malformed/null character values
+      // must not disappear into an optional and silently change saved intent.
+      baselineShift = values.contains(.baselineShift)
+        ? try values.decode(Double.self, forKey: .baselineShift) : nil
+      horizontalScale = values.contains(.horizontalScale)
+        ? try values.decode(Double.self, forKey: .horizontalScale) : nil
+      verticalScale = values.contains(.verticalScale)
+        ? try values.decode(Double.self, forKey: .verticalScale) : nil
+      features = values.contains(.features)
+        ? try values.decode([String: Bool].self, forKey: .features) : nil
+    }
   }
   struct Frame: Decodable {
     let id: String
@@ -124,7 +156,7 @@ public final class TextCompositionEngine {
   func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
     try require(
-      [1, 2, 3].contains(request.protocol)
+      [1, 2, 3, 4].contains(request.protocol)
         && ["greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof", "planned-lines-proof"].contains(
           request.mode),
       "Unsupported composition protocol or policy")
@@ -132,13 +164,17 @@ public final class TextCompositionEngine {
       request.protocol >= 2 || request.paragraphs == nil,
       "Paragraph layout requires composition protocol 2")
     try require(
-      request.mode != "planned-lines-proof" || request.protocol == 3,
-      "Planned lines require composition protocol 3")
+      request.mode != "planned-lines-proof" || request.protocol >= 3,
+      "Planned lines require composition protocol 3 or 4")
     try require(
       request.protocol != 3 || ["measure-lines-proof", "planned-lines-proof"].contains(request.mode),
       "Composition protocol 3 requires measured or planned lines")
     try require(
-      request.placements == nil || (request.protocol == 3 && request.mode == "planned-lines-proof"),
+      request.protocol != 4
+        || ["greedy-geometry-proof", "measure-lines-proof", "planned-lines-proof"].contains(request.mode),
+      "Composition protocol 4 requires greedy, measured or planned lines")
+    try require(
+      request.placements == nil || (request.protocol >= 3 && request.mode == "planned-lines-proof"),
       "Placements require the planned-lines policy")
     try require(!request.id.isEmpty && request.id.utf8.count <= 120, "Invalid source identity")
     try require(
@@ -199,7 +235,10 @@ public final class TextCompositionEngine {
           paragraph.leftIndent >= 0 && paragraph.rightIndent >= 0
             && paragraph.leftIndent + paragraph.firstLineIndent >= 0,
           "Paragraph indents leave no valid line area")
-        for frame in request.frames where request.protocol == 2 {
+        for frame in request.frames
+          where request.protocol == 2
+            || (request.protocol == 4 && request.mode == "greedy-geometry-proof")
+        {
           let width = frame.width - paragraph.leftIndent - paragraph.rightIndent
           try require(
             paragraph.leftIndent >= 0 && paragraph.rightIndent >= 0
@@ -244,6 +283,7 @@ public final class TextCompositionEngine {
     try require(
       !request.resources.isEmpty && request.resources.count <= 16, "Missing font resources")
     var fonts: [String: CGFont] = [:]
+    var fontFeatures: [String: Set<String>] = [:]
     var totalBytes = 0
     for resource in request.resources {
       try require(
@@ -273,7 +313,8 @@ public final class TextCompositionEngine {
             flags = Int(table[8]) * 256 + Int(table[9])
           }
           cached = CachedFont(
-            font: font, postscript: resource.postscript, bytes: bytes.count, flags: flags)
+            font: font, postscript: resource.postscript, bytes: bytes.count, flags: flags,
+            features: declaredFeatures(ct))
           while fontOrder.count >= 64 || fontBytes + bytes.count > 64_000_000 {
             guard let oldest = fontOrder.first else { break }
             fontOrder.removeFirst()
@@ -298,10 +339,30 @@ public final class TextCompositionEngine {
         fontBindings[resource.id] = identity
       }
       fonts[resource.id] = face.font
+      fontFeatures[resource.id] = face.features
     }
     try require(!request.runs.isEmpty && request.runs.count <= 10_000, "Invalid runs")
     var position = 0
     for run in request.runs {
+      try require(
+        request.protocol == 4
+          || (run.baselineShift == nil && run.horizontalScale == nil && run.verticalScale == nil
+            && run.features == nil),
+        "Character transforms and OpenType settings require composition protocol 4")
+      try require(
+        (run.baselineShift == nil || finite(run.baselineShift!, -2000, 2000))
+          && (run.horizontalScale == nil || finite(run.horizontalScale!, 10, 1000))
+          && (run.verticalScale == nil || finite(run.verticalScale!, 10, 1000)),
+        "Invalid character transform")
+      if let features = run.features {
+        let supported: Set<String> = ["dlig", "smcp", "onum", "tnum", "zero", "frac", "ordn", "salt"]
+        try require(features.count <= 8 && Set(features.keys).isSubset(of: supported),
+          "Unsupported OpenType feature setting")
+        for tag in features.keys.sorted() where features[tag] == true {
+          try require(fontFeatures[run.font]?.contains(tag) == true,
+            "Font does not support OpenType feature: " + tag)
+        }
+      }
       try require(
         run.start == position && run.end > run.start && run.end <= length,
         "Runs do not cover the native source")
@@ -340,7 +401,7 @@ public final class TextCompositionEngine {
           try require(
             candidate.offset == nil
               || (request.protocol == 2 && finite(candidate.offset!, -4000, 4000))
-              || (request.protocol == 3 && finite(candidate.offset!, 0, 14400)),
+              || (request.protocol >= 3 && finite(candidate.offset!, 0, 14400)),
             "Invalid line-alternative origin")
           try require(
             candidate.start >= 0 && candidate.end > candidate.start && candidate.end <= length
@@ -452,6 +513,88 @@ public final class TextCompositionEngine {
     }
   }
 
+  func declaredFeatures(_ font: CTFont) -> Set<String> {
+    var tags = Set<String>()
+    for feature in CTFontCopyFeatures(font) as? [[String: Any]] ?? [] {
+      for selector in feature[kCTFontFeatureTypeSelectorsKey as String] as? [[String: Any]] ?? [] {
+        if let tag = selector[kCTFontOpenTypeFeatureTag as String] as? String { tags.insert(tag) }
+      }
+    }
+    return tags
+  }
+  func characterFont(_ run: TextRun, fonts: [String: CGFont]) -> CTFont {
+    var transform = CGAffineTransform(
+      scaleX: (run.horizontalScale ?? 100) / 100,
+      y: (run.verticalScale ?? 100) / 100)
+    var font = transform.isIdentity
+      ? CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, nil, nil)
+      : CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, &transform, nil)
+    if var features = run.features, !features.isEmpty {
+      // InDesign's proportional oldstyle choice combines figure style and width.
+      // Some faces have oldstyle glyphs but no proportional alternate.
+      if features["onum"] == true && features["tnum"] != true
+        && declaredFeatures(font).contains("pnum")
+      { features["pnum"] = true }
+      let settings = features.keys.sorted().map { tag in
+        [kCTFontOpenTypeFeatureTag as String: tag,
+          kCTFontOpenTypeFeatureValue as String: features[tag]! ? 1 : 0] as [String: Any]
+      }
+      let descriptor = CTFontDescriptorCreateWithAttributes(
+        [kCTFontFeatureSettingsAttribute: settings] as CFDictionary)
+      font = CTFontCreateCopyWithAttributes(font, run.size, nil, descriptor)
+    }
+    return font
+  }
+  func untransformedFont(_ font: CTFont) -> CTFont {
+    var identity = CGAffineTransform.identity
+    return CTFontCreateCopyWithAttributes(font, 0, &identity, nil)
+  }
+  struct CharacterMetrics {
+    let ascent: CGFloat
+    let descent: CGFloat
+    let leading: CGFloat
+    let capHeight: CGFloat
+    let xHeight: CGFloat
+    let inkAscent: CGFloat
+    let inkDescent: CGFloat
+  }
+  func characterMetrics(_ line: CTLine, sourceRuns: [TextRun], fonts: [String: CGFont])
+    -> CharacterMetrics
+  {
+    let nativeRuns = CTLineGetGlyphRuns(line) as! [CTRun]
+    let nativeFonts = nativeRuns.map {
+      (CTRunGetAttributes($0) as NSDictionary)[kCTFontAttributeName] as! CTFont
+    }
+    let actualFonts = nativeFonts.isEmpty
+      ? sourceRuns.map { characterFont($0, fonts: fonts) } : nativeFonts
+    let struts = actualFonts.map { untransformedFont($0) }
+    var inkAscent = CGFloat.zero
+    var inkDescent = CGFloat.zero
+    if nativeFonts.isEmpty {
+      inkAscent = zip(sourceRuns, actualFonts).map { pair in
+        CTFontGetAscent(pair.1) + (pair.0.baselineShift ?? 0)
+      }.max() ?? 0
+      inkDescent = zip(sourceRuns, actualFonts).map { pair in
+        CTFontGetDescent(pair.1) - (pair.0.baselineShift ?? 0)
+      }.max() ?? 0
+    } else {
+      let boxes = nativeRuns.map { run -> (CGFloat, CGFloat) in
+        let attrs = CTRunGetAttributes(run) as NSDictionary
+        let font = attrs[kCTFontAttributeName] as! CTFont
+        let shift = (attrs[kCTBaselineOffsetAttributeName] as? NSNumber)?.doubleValue ?? 0
+        return (CTFontGetAscent(font) + shift, CTFontGetDescent(font) - shift)
+      }
+      inkAscent = boxes.map { $0.0 }.max() ?? 0
+      inkDescent = boxes.map { $0.1 }.max() ?? 0
+    }
+    return CharacterMetrics(
+      ascent: struts.map { CTFontGetAscent($0) }.max() ?? 0,
+      descent: struts.map { CTFontGetDescent($0) }.max() ?? 0,
+      leading: struts.map { CTFontGetLeading($0) }.max() ?? 0,
+      capHeight: struts.map { CTFontGetCapHeight($0) }.max() ?? 0,
+      xHeight: struts.map { CTFontGetXHeight($0) }.max() ?? 0,
+      inkAscent: inkAscent, inkDescent: inkDescent)
+  }
   func attributedSource(_ request: Request, fonts: [String: CGFont]) -> NSMutableAttributedString {
     // Equal-length engine normalization: paragraph identity remains in the source map.
     let attributed = NSMutableAttributedString(
@@ -474,16 +617,21 @@ public final class TextCompositionEngine {
     attributed.addAttribute(NSAttributedString.Key(kCTParagraphStyleAttributeName as String),
       value: paragraph, range: NSRange(location: 0, length: attributed.length))
     for run in request.runs {
-      let font = CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, nil, nil)
+      let font = characterFont(run, fonts: fonts)
       attributed.addAttributes(
         [
           NSAttributedString.Key(kCTFontAttributeName as String): font,
           NSAttributedString.Key(kCTLigatureAttributeName as String): run.ligatures ? 1 : 0,
           NSAttributedString.Key(kCTTrackingAttributeName as String): run.tracking * run.size
-            / 1000,
+            / 1000 * ((run.horizontalScale ?? 100) / 100),
           NSAttributedString.Key(kCTForegroundColorAttributeName as String): color(
             run.textColor ?? "#252525"),
         ], range: NSRange(location: run.start, length: run.end - run.start))
+      if let shift = run.baselineShift, shift != 0 {
+        attributed.addAttribute(
+          NSAttributedString.Key(kCTBaselineOffsetAttributeName as String), value: shift,
+          range: NSRange(location: run.start, length: run.end - run.start))
+      }
       if run.kerning == "none" {
         attributed.addAttribute(
           NSAttributedString.Key(kCTKernAttributeName as String), value: 0,
@@ -527,17 +675,31 @@ public final class TextCompositionEngine {
         descent = actualFonts.map { CTFontGetDescent($0) }.max() ?? 0
         leading = actualFonts.map { CTFontGetLeading($0) }.max() ?? 0
       }
+      let character = request.protocol == 4
+        ? characterMetrics(line, sourceRuns: sourceRuns, fonts: fonts) : nil
+      if let character = character {
+        ascent = character.ascent
+        descent = character.descent
+        leading = character.leading
+      }
       let advance =
         sourceRuns.map {
           ($0.leading ?? 0) > 0 ? $0.leading! : $0.size * ($0.autoLeading ?? 120) / 100
         }.max() ?? 14.4
-      return [
+      var row: [String: Any] = [
         "start": candidate.start, "end": candidate.end, "width": width,
         "ascent": Double(ascent), "descent": Double(descent), "leading": Double(leading),
         "advance": advance,
-        "capHeight": actualFonts.map { Double(CTFontGetCapHeight($0)) }.max() ?? 0,
-        "xHeight": actualFonts.map { Double(CTFontGetXHeight($0)) }.max() ?? 0,
+        "capHeight": character.map { Double($0.capHeight) }
+          ?? (actualFonts.map { Double(CTFontGetCapHeight($0)) }.max() ?? 0),
+        "xHeight": character.map { Double($0.xHeight) }
+          ?? (actualFonts.map { Double(CTFontGetXHeight($0)) }.max() ?? 0),
       ]
+      if let character = character {
+        row["inkAscent"] = Double(character.inkAscent)
+        row["inkDescent"] = Double(character.inkDescent)
+      }
+      return row
     }
   }
   func compose(_ request: Request, fonts: [String: CGFont]) throws -> (
@@ -628,6 +790,14 @@ public final class TextCompositionEngine {
           leading = CTFontGetLeading(font)
         }
         let sourceRuns = request.runs.filter { $0.start < end && $0.end > position }
+        let character = request.protocol == 4
+          ? characterMetrics(line, sourceRuns: sourceRuns, fonts: fonts) : nil
+        if let character = character {
+          // Manual character transforms affect ink, not InDesign's baseline strut.
+          ascent = character.ascent
+          descent = character.descent
+          leading = character.leading
+        }
         let advance =
           sourceRuns.map {
             ($0.leading ?? 0) > 0 ? $0.leading! : $0.size * ($0.autoLeading ?? 120) / 100
@@ -658,9 +828,10 @@ public final class TextCompositionEngine {
               : nativeFonts
             metric =
               actualFonts.map {
-                Double(
+                let font = request.protocol == 4 ? untransformedFont($0) : $0
+                return Double(
                   frame.firstBaseline == "cap-height"
-                    ? CTFontGetCapHeight($0) : CTFontGetXHeight($0))
+                    ? CTFontGetCapHeight(font) : CTFontGetXHeight(font))
               }.max() ?? Double(ascent)
           default: metric = Double(ascent)
           }
@@ -698,6 +869,12 @@ public final class TextCompositionEngine {
           CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
           CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
           CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+          if request.protocol == 4 {
+            // Positions are in run-matrix coordinates. Advances and line caret
+            // offsets already include that matrix and must not be scaled twice.
+            let matrix = CTRunGetTextMatrix(run)
+            positions = positions.map { $0.applying(matrix) }
+          }
           let edges = Array(Set(indices + [source.location + source.length])).sorted()
           let rows: [[String: Any]] = try (0..<n).map { i in
             let a = indices[i]
@@ -742,6 +919,19 @@ public final class TextCompositionEngine {
             row["textColor"] = input.textColor ?? "#252525"
             row["leading"] = input.leading ?? 0
             row["autoLeading"] = input.autoLeading ?? 120
+            if request.protocol == 4 {
+              let strut = untransformedFont(font)
+              let shift = (attrs[kCTBaselineOffsetAttributeName] as? NSNumber)?.doubleValue ?? 0
+              row["ascent"] = Double(CTFontGetAscent(strut))
+              row["descent"] = Double(CTFontGetDescent(strut))
+              row["xHeight"] = Double(CTFontGetXHeight(strut))
+              row["capHeight"] = Double(CTFontGetCapHeight(strut))
+              row["inkAscent"] = Double(CTFontGetAscent(font)) + shift
+              row["inkDescent"] = Double(CTFontGetDescent(font)) - shift
+              row["baselineShift"] = shift
+              row["horizontalScale"] = input.horizontalScale ?? 100
+              row["verticalScale"] = input.verticalScale ?? 100
+            }
           }
           runRows.append(row)
         }
@@ -781,6 +971,10 @@ public final class TextCompositionEngine {
           row["paragraphEnd"] = paragraph!.end
         }
         if placement != nil { row["placementIndex"] = output.count }
+        if let character = character {
+          row["inkAscent"] = Double(character.inkAscent)
+          row["inkDescent"] = Double(character.inkDescent)
+        }
         output.append(row)
         position = end
         previousBaseline = baseline
@@ -855,11 +1049,15 @@ public final class TextCompositionEngine {
       }
       identity = "system-" + digest(bytes)
     }
+    let matrix = CTFontGetMatrix(font)
+    let transform = request.protocol == 4 && !matrix.isIdentity
+      ? ":matrix:" + [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty]
+        .map { String(Double($0).bitPattern) }.joined(separator: ":") : ""
     return "g-"
       + digest(
         Data(
           (identity + ":" + name + ":" + String(Double(CTFontGetSize(font)).bitPattern) + ":"
-            + String(glyph)).utf8))
+            + String(glyph) + transform).utf8))
   }
   func vectorPath(font: CTFont, glyph: CGGlyph, id: String) throws -> String? {
     if let value = vectorCache[id] { return value }

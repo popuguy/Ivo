@@ -33,7 +33,7 @@ export async function buildPortable() {
           }));
           builder.onLoad(
             { filter: /[/\\]rendering[/\\]text[/\\]font-resources\.js$/ },
-            async () => {
+            async (args) => {
               const fonts = Object.fromEntries(
                 await Promise.all(
                   Object.entries(SHIPPED_TEXT_FONT_FILES).map(async ([id, file]) => [
@@ -45,7 +45,8 @@ export async function buildPortable() {
               );
               return {
                 loader: 'js',
-                contents: `const fonts=${JSON.stringify(fonts)};export function shippedTextFontURL(id){if(!fonts[id])throw Error('Unknown bundled text font.');return fonts[id];}`,
+                resolveDir: path.dirname(args.path),
+                contents: `export * from './font-resource-data.js';const fonts=${JSON.stringify(fonts)};export function shippedTextFontURL(id){if(!fonts[id])throw Error('Unknown bundled text font.');return fonts[id];}`,
               };
             },
           );

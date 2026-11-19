@@ -26,6 +26,7 @@ import { renderPDF as renderNativePDF, pdfRendererOwner } from '../../../desktop
 import { installTextCompositionBridge } from '../../../desktop/text-composition-bridge.mjs';
 import { createTextComposition } from '../../../desktop/text-composition.mjs';
 import { nativeTextTestExecutable } from '../helpers/native-text.mjs';
+import { verifyCharacterPDF } from './character-export.mjs';
 let compositionBridge;
 const nativeCompositions = [];
 const renderPDF = (snapshot, options) =>
@@ -765,6 +766,13 @@ print(String(data: summaryData, encoding: .utf8)!)
       path.join(output, 'native-wrap.pdf'),
     ]);
     const nativeWrapPDFInspection = JSON.parse(inspectedNativeWrap.stdout);
+    const characterPDFInspection = await verifyCharacterPDF({
+      renderPDF,
+      root,
+      output,
+      profile,
+      nativeCompositions,
+    });
     console.log(
       JSON.stringify(
         {
@@ -789,6 +797,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           wrapPDFInspection,
           nativeWrappedTextSourceAndExclusion: true,
           nativeWrapPDFInspection,
+          ...characterPDFInspection,
           warnings: manifest.warnings,
         },
         null,

@@ -68,9 +68,11 @@ app
         const directory = process.env.IVO_TEST_CAPTURE_DIRECTORY;
         if (!directory) return false;
         if (!path.isAbsolute(directory)) throw Error('Use an absolute test capture directory');
+        const name = value ?? 'paragraph-layout';
+        if (!/^[a-z-]{1,60}$/.test(name)) throw Error('Use a simple test capture name');
         await mkdir(directory, { recursive: true });
         await writeFile(
-          path.join(directory, 'paragraph-layout.png'),
+          path.join(directory, name + '.png'),
           (await window.webContents.capturePage()).toPNG(),
         );
         return true;

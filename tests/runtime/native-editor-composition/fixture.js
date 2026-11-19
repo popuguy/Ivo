@@ -24,6 +24,8 @@ import { verifyParagraphProjection } from './paragraph-projection.js';
 import { verifyNativeParagraphEditing } from './paragraph-editing.js';
 import { verifyUnequalParagraphFlow } from './unequal-paragraph-flow.js';
 import { verifyNativeWrappedFlow } from './native-wrapped-flow.js';
+import { verifyNativeCharacterProjection } from './character-projection.js';
+import { verifyNativeCharacterEditing } from './native-character-editing.js';
 const assert = (value, message) => {
     if (!value) throw Error(message);
   },
@@ -36,6 +38,7 @@ window.addEventListener('unhandledrejection', (event) =>
 try {
   await document.fonts.ready;
   const paragraphProjection = verifyParagraphProjection();
+  const characterProjection = verifyNativeCharacterProjection();
   const host = document.querySelector('#host'),
     notices = [],
     mouseTrace = [],
@@ -67,6 +70,7 @@ try {
     paragraphEditing = {},
     unequalParagraphFlow = {},
     nativeWrappedFlow = {},
+    nativeCharacterEditing = {},
     held = null,
     history = createDocumentHistory();
   const native = {
@@ -541,10 +545,10 @@ try {
     await tick();
     const beforeUnsupported = JSON.stringify(doc),
       beforeUnsupportedHistory = history.size,
-      baselineShift = host.querySelector('[data-object-prop="baselineShift"]');
-    assert(baselineShift, 'The baseline shift control is absent from native text properties');
-    baselineShift.value = '3';
-    baselineShift.dispatchEvent(new Event('change', { bubbles: true }));
+      language = host.querySelector('[data-object-prop="language"]');
+    assert(language, 'The language control is absent from native text properties');
+    language.value = 'fr';
+    language.dispatchEvent(new Event('change', { bubbles: true }));
     await settle();
     const unsupportedDifferences = [];
     function diff(a, b, path = '') {
@@ -566,7 +570,7 @@ try {
         }),
     );
     assert(
-      notices.some((message) => message.includes('baseline shift')),
+      notices.some((message) => message.includes('language-specific shaping')),
       'Unsupported native formatting was not explained',
     );
     notices.length = 0;
@@ -601,6 +605,15 @@ try {
       key: window.nativeEditorTest.key,
       save: window.nativeEditorTest.save,
       load: window.nativeEditorTest.load,
+    });
+    nativeCharacterEditing = await verifyNativeCharacterEditing({
+      host,
+      compose: native.compose,
+      insert: window.nativeEditorTest.insert,
+      key: window.nativeEditorTest.key,
+      save: window.nativeEditorTest.save,
+      load: window.nativeEditorTest.load,
+      capture: () => window.nativeEditorTest.capture('native-character-layout'),
     });
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
@@ -886,9 +899,11 @@ try {
       ok: true,
       sourceProjection: true,
       ...paragraphProjection,
+      ...characterProjection,
       ...paragraphEditing,
       ...unequalParagraphFlow,
       ...nativeWrappedFlow,
+      ...nativeCharacterEditing,
       realNativeBridge: true,
       composerPreflight: true,
       vectorInk: true,

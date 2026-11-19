@@ -1,5 +1,6 @@
 import { textWrapObstacles } from '../../domain/geometry/text-wrap.js';
 import { UnsupportedComposition } from './composition-source.js';
+import { hasNondefaultNativeCharacter } from '../../domain/text/native-character-style.js';
 
 /** Disposable exclusion geometry uses the same unscaled coordinate system as native columns. */
 export function nativeWrapColumns(document, columns) {
@@ -20,6 +21,8 @@ export function nativeWrapColumns(document, columns) {
 /** Until row metrics can settle across fragments, reject unsupported edits synchronously. */
 export function validateNativeWrapping(source, columns) {
   if (!columns.some((column) => column.obstacles?.length)) return;
+  if (source.runs.some(hasNondefaultNativeCharacter))
+    throw new UnsupportedComposition('advanced character shaping in native wrapped paragraphs');
   if (columns.some((column) => column.obstacles?.length && column.verticalAlign !== 'top'))
     throw new UnsupportedComposition('native wrapping with vertically aligned exclusion columns');
   for (const paragraph of source.paragraphs) {

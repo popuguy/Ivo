@@ -2,7 +2,11 @@ import { compositionSource, UnsupportedComposition } from './composition-source.
 import { composedSVG } from './composed-svg.js';
 import { createParagraphComposer, validateParagraphSource } from './paragraph-composition.js';
 import { fontVariantAsset, regularFace } from '../../domain/text/font-catalog.js';
-import { shippedTextFontURL } from './font-resources.js';
+import { shippedTextFontURL, SHIPPED_TEXT_FONT_METADATA } from './font-resources.js';
+import {
+  nativeCharacterStyle,
+  nativeCharacterFeatureAdmission,
+} from '../../domain/text/native-character-style.js';
 import { inspectFont } from '../../domain/text/fonts.js';
 import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
 import { effectiveTextStyle } from '../../domain/documents/publishing.js';
@@ -17,6 +21,7 @@ const sessions = new WeakMap(),
   paragraphSessions = new WeakMap(),
   shipped = new Map(),
   assetResources = new WeakMap(),
+  resourceMetadata = new WeakMap(),
   MAX_COLUMNS = 128;
 const sha = async (bytes) =>
   [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
@@ -84,7 +89,13 @@ async function resource(bytes, id, expectedDigest, expectedPostscript) {
     (expectedPostscript && metadata.postscript !== expectedPostscript)
   )
     throw Error('The vault font bytes do not match their immutable identity.');
-  return { id, digest, postscript: metadata.postscript, data: base64(bytes) };
+  const value = { id, digest, postscript: metadata.postscript, data: base64(bytes) };
+  resourceMetadata.set(value, {
+    digest,
+    postscript: metadata.postscript,
+    features: metadata.features,
+  });
+  return value;
 }
 function shippedResource(variant) {
   if (!shipped.has(variant)) {
@@ -116,6 +127,13 @@ function assetResource(asset) {
     return resource(bytes, asset.id, asset.id.slice(5), asset.font.postscript);
   })();
   assetResources.set(asset, { data: asset.data, promise });
+  promise.then(
+    (value) => {
+      const entry = assetResources.get(asset);
+      if (entry?.promise === promise) entry.metadata = resourceMetadata.get(value);
+    },
+    () => {},
+  );
   promise.catch(() => {
     if (assetResources.get(asset)?.promise === promise) assetResources.delete(asset);
   });
@@ -161,7 +179,52 @@ function fontResolver(assets) {
     selected.set(asset.id, () => assetResource(asset));
     return asset.id;
   };
-  return { fontFor, resources: () => Promise.all([...selected.values()].map((load) => load())) };
+  const featureLabels = {
+    dlig: 'discretionary ligatures',
+    smcp: 'small capitals',
+    onum: 'oldstyle figures',
+    tnum: 'tabular figures',
+    zero: 'slashed zero',
+    frac: 'fractions',
+    ordn: 'ordinals',
+    salt: 'stylistic alternates',
+  };
+  return {
+    fontFor,
+    resources: () => Promise.all([...selected.values()].map((load) => load())),
+    validateFeatures(source, { resources = [], deferUnavailable = false } = {}) {
+      const verified = new Map(resources.map((value) => [value.id, resourceMetadata.get(value)]));
+      for (const run of source.runs) {
+        const asset = fonts.find((value) => value.id === run.font),
+          expected =
+            SHIPPED_TEXT_FONT_METADATA[run.font] ||
+            (asset && { digest: asset.id.slice(5), postscript: asset.font.postscript }),
+          metadata =
+            verified.get(run.font) ||
+            SHIPPED_TEXT_FONT_METADATA[run.font] ||
+            (assetResources.get(asset)?.data === asset?.data
+              ? assetResources.get(asset)?.metadata
+              : null) ||
+            (asset && { ...asset.font, digest: asset.id.slice(5) }),
+          admission = nativeCharacterFeatureAdmission(run, metadata, expected);
+        if (
+          admission.status === 'available' ||
+          (deferUnavailable && admission.status === 'unavailable')
+        )
+          continue;
+        if (admission.status === 'missing')
+          throw Error(
+            (asset?.font.family || 'This CMU Serif face') +
+              ' does not include ' +
+              admission.missing.map((tag) => featureLabels[tag] || tag).join(', ') +
+              '.',
+          );
+        throw Error(
+          'Font feature information is unavailable. Reimport this font to use these options.',
+        );
+      }
+    },
+  };
 }
 
 /** Unscaled, inset column slots; physical frame geometry and authored source remain unchanged. */
@@ -282,6 +345,26 @@ function validateResult(result, request) {
       line.end > request.text.length
     )
       throw Error('Native text lines lost their ordered source or frame identity.');
+    if (request.protocol === 4) {
+      const validInk = (value) =>
+        [value.inkAscent, value.inkDescent].every(
+          (n) => Number.isFinite(n) && Math.abs(n) <= 1000000,
+        ) && value.inkAscent + value.inkDescent >= 0;
+      if (
+        !validInk(line) ||
+        !Array.isArray(line.runs) ||
+        line.runs.some(
+          (run) =>
+            !validInk(run) ||
+            !Number.isFinite(run.baselineShift) ||
+            Math.abs(run.baselineShift) > 2000 ||
+            ![run.horizontalScale, run.verticalScale].every(
+              (n) => Number.isFinite(n) && n >= 10 && n <= 1000,
+            ),
+        )
+      )
+        throw Error('Native character ink geometry is incomplete or invalid.');
+    }
     if (request.protocol >= 2) {
       const paragraph = request.paragraphs.find((p) => p.start <= line.start && p.end > line.start),
         placement = request.placements?.[line.placementIndex],
@@ -303,7 +386,7 @@ function validateResult(result, request) {
       )
         throw Error('Native paragraph geometry disagrees with its authored layout.');
       if (
-        request.protocol === 3 &&
+        request.placements &&
         (line.placementIndex !== lineIndex ||
           !placement ||
           placement.end !== line.end ||
@@ -316,7 +399,7 @@ function validateResult(result, request) {
   }
   if (end !== result.layout.coveredLength)
     throw Error('Native text coverage disagrees with its lines.');
-  if (request.protocol === 3) {
+  if (request.placements) {
     const visible = request.placements.filter((line) => line.frame < request.frames.length);
     if (visible.length !== result.layout.lines.length || end !== (visible.at(-1)?.end ?? 0))
       throw Error('Native text did not retain the complete visible frame placement plan.');
@@ -384,7 +467,7 @@ const assetSignature = (assets) =>
   assets.filter((a) => a.font).flatMap((a) => [a.id, a.data, JSON.stringify(a.font)]);
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
-function projectNativeFlow(doc, flow, fonts) {
+function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) {
   const root = document.createElement('div');
   root.innerHTML = flow.html;
   const effective = effectiveTextStyle(doc, flow.style),
@@ -433,6 +516,7 @@ function projectNativeFlow(doc, flow, fonts) {
       throw new UnsupportedComposition('tabs combined with non-left paragraph alignment');
   }
   validateNativeWrapping(source, columns);
+  fonts.validateFeatures(source, { deferUnavailable });
   return source;
 }
 
@@ -483,12 +567,19 @@ export async function composeNativeTextFlows(
     )
       throw new UnsupportedComposition('the selected composition version or composer');
     const fonts = fontResolver(assets),
-      source = projectNativeFlow(projection, flow, fonts),
+      source = projectNativeFlow(projection, flow, fonts, { deferUnavailable: true }),
       initial = compositionColumns(projection, flow),
       wrapped = initial.some((column) => column.obstacles?.length);
+    const resources = await fonts.resources();
+    fonts.validateFeatures(source, { resources });
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
     const request = {
-        protocol: flow.composition.composer === 'paragraph' || wrapped ? 3 : source.protocol,
+        protocol:
+          source.protocol === 4
+            ? 4
+            : flow.composition.composer === 'paragraph' || wrapped
+              ? 3
+              : source.protocol,
         id: source.id,
         sourceHTML: source.sourceHTML,
         sourceDigest: await sha(new TextEncoder().encode(source.sourceHTML)),
@@ -507,6 +598,7 @@ export async function composeNativeTextFlows(
             kerning,
             ligatures,
             textColor,
+            ...character
           }) => ({
             start,
             end,
@@ -518,6 +610,7 @@ export async function composeNativeTextFlows(
             kerning,
             ligatures,
             textColor,
+            ...nativeCharacterStyle(character),
           }),
         ),
         paragraphs: source.paragraphs.map(({ start, end, ...metadata }) => ({
@@ -525,7 +618,7 @@ export async function composeNativeTextFlows(
           end,
           ...Object.fromEntries(PARAGRAPH_LAYOUT_FIELDS.map((key) => [key, metadata[key]])),
         })),
-        resources: await fonts.resources(),
+        resources,
         allowFallback: false,
         includeVectors: true,
       },

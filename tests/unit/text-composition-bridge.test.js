@@ -45,6 +45,84 @@ test('paragraph transport is versioned and accepts only bounded byte-only paragr
   ])
     assert.throws(() => validateCompositionRequest(value), /Invalid/);
 });
+test('character transport requires protocol4 and strict bounded scalar/feature values', () => {
+  const paragraph = {
+      start: 0,
+      end: 4,
+      align: 'left',
+      paragraphBefore: 0,
+      paragraphAfter: 0,
+      leftIndent: 0,
+      rightIndent: 0,
+      firstLineIndent: 0,
+    },
+    input = {
+      ...request(),
+      protocol: 4,
+      paragraphs: [paragraph],
+      runs: [
+        {
+          start: 0,
+          end: 4,
+          font: 'cmu',
+          size: 16,
+          ligatures: true,
+          tracking: 0,
+          baselineShift: -6,
+          horizontalScale: 150,
+          verticalScale: 125,
+          features: { smcp: true, onum: true },
+        },
+      ],
+    };
+  assert.equal(validateCompositionRequest(input), input);
+  for (const mutate of [
+    (r) => {
+      r.protocol = 3;
+      r.mode = 'measure-lines-proof';
+    },
+    (r) => {
+      r.runs[0].baselineShift = null;
+    },
+    (r) => {
+      r.runs[0].baselineShift = 2001;
+    },
+    (r) => {
+      r.runs[0].horizontalScale = 9;
+    },
+    (r) => {
+      r.runs[0].verticalScale = Infinity;
+    },
+    (r) => {
+      r.runs[0].features = null;
+    },
+    (r) => {
+      r.runs[0].features = { smcp: 1 };
+    },
+    (r) => {
+      r.runs[0].features = { path: '/font.otf' };
+    },
+    (r) => {
+      r.runs[0].features = [];
+    },
+    (r) => {
+      r.runs[0].features = { pnum: true };
+    },
+    (r) => {
+      r.mode = 'explicit-lines-proof';
+    },
+  ]) {
+    const invalid = structuredClone(input);
+    mutate(invalid);
+    assert.throws(() => validateCompositionRequest(invalid), /Invalid|require/);
+  }
+  const planned = {
+    ...input,
+    mode: 'planned-lines-proof',
+    placements: [{ end: 4, frame: 0, baseline: 20, left: 0, width: 300 }],
+  };
+  assert.equal(validateCompositionRequest(planned), planned);
+});
 function fixture({ compose } = {}) {
   let handler,
     closes = 0,

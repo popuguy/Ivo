@@ -9,5 +9,5 @@ contextBridge.exposeInMainWorld('nativeEditorTest', {
   select: (gesture) => ipcRenderer.invoke('ivo-native-editor-test', 'select', gesture),
   save: (archive) => ipcRenderer.invoke('ivo-native-editor-test', 'save', archive),
   load: () => ipcRenderer.invoke('ivo-native-editor-test', 'load'),
-  capture: () => ipcRenderer.invoke('ivo-native-editor-test', 'capture'),
+  capture: (name) => ipcRenderer.invoke('ivo-native-editor-test', 'capture', name),
 });
