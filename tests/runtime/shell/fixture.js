@@ -228,11 +228,46 @@ async function activateAlpha() {
   await wait(() => source()?.isContentEditable);
   await tick();
 }
+async function verifyTabSeam() {
+  await tick();
+  const tab = active().querySelector('.document-tab.active').getBoundingClientRect(),
+    other = active().querySelector('.document-tab:not(.active)').getBoundingClientRect();
+  const samples = [0.1, 0.5, 0.9].map((fraction) => Math.floor(tab.left + tab.width * fraction)),
+    inactive = Math.floor(other.left + other.width / 2);
+  window.ivoTabSeamChecked = false;
+  console.log(
+    'IVO_TAB_SEAM:' +
+      JSON.stringify({
+        x: Math.min(...samples, inactive),
+        y: Math.round(active().querySelector('.document-tabs').getBoundingClientRect().bottom),
+        samples,
+        inactive,
+      }),
+  );
+  await wait(() => window.ivoTabSeamChecked, 'Tab seam was not sampled');
+}
 try {
   await import('../../../src/app/main.js');
   await wait(() => document.querySelector('.canvas-world'));
-  await wait(() => document.hasFocus());
-  if (reload) {
+  const seamOnly = new URLSearchParams(location.search).has('tab-seam');
+  if (!seamOnly) await wait(() => document.hasFocus());
+  if (!reload) await verifyTabSeam();
+  if (seamOnly) {
+    tabs()[1].click();
+    await wait(() => title() === 'Beta');
+    await verifyTabSeam();
+    document.querySelector('.workspace-sidebar-toggle').click();
+    await wait(
+      () =>
+        document.body.classList.contains('sidebar-collapsed') &&
+        !document.querySelector('#app.sidebar-transition'),
+    );
+    await verifyTabSeam();
+    console.log(
+      'IVO_SHELL_RESULT:' +
+        JSON.stringify({ activeTabSeam: true, switchedTabSeam: true, collapsedSidebarSeam: true }),
+    );
+  } else if (reload) {
     assert(!document.querySelector('.topbar,.workspace-chrome'), 'Old global header reappeared');
     assert(
       title() === 'Alpha' &&
@@ -374,6 +409,7 @@ try {
     const beforeTabs = tabs().length;
     await documentAction(beta.id, 'open-tab');
     await wait(() => title() === 'Beta' && tabs().length === beforeTabs + 1);
+    await verifyTabSeam();
     await activateAlpha();
     await documentAction(gamma.id, 'open-right');
     await wait(() => panes().length === 2 && title() === 'Gamma');

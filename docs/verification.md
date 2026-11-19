@@ -1,5 +1,9 @@
 # Verification
 
+## Active document tab — 19 November 2026
+
+A hidden desktop workspace reproduced the one-pixel grey line between the selected tab and the white view header. The scrollable strip clipped the selected tab at its bottom border. The strip now paints its divider inside its background, where the selected tab covers it. A rendered-pixel check samples the join at three points and verifies that the divider continues beneath an inactive tab. Run it with `IVO_TEST_BACKGROUND=1 npm run test:shell -- --tab-seam`. The Mac review build is under `release/2026-11-19-active-tab-seam/`.
+
 ## Document text operations — 19 November 2026
 
 Window-independent tests exercise edits over styled runs, both selection directions, cross-paragraph joins, soft breaks, blank paragraphs and grapheme clusters split across formatting. The desktop fixtures verify that the real editor cancels the browser's default edit on the supported path. They cover repeated Backspace at a second-page boundary in all three composers, reverse replacement and selection undo, paragraph and soft returns, insertion style after Return, forward Delete and an explicit autocorrection range. Chromium's input-method events exercise a Japanese candidate update, cancellation over selected text, commit and undo. Physical input-method and mobile tests remain separate.

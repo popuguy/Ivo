@@ -373,8 +373,7 @@ try {
           bars.every(
             (bar) =>
               Math.abs(bar.getBoundingClientRect().bottom - edge) < 0.02 &&
-              getComputedStyle(bar).borderBottomColor ===
-                getComputedStyle(header).borderBottomColor,
+              getComputedStyle(bar).boxShadow.includes(getComputedStyle(header).borderBottomColor),
           ),
         'Titlebar baseline or outline diverges at UI zoom ' +
           zoom +
@@ -385,7 +384,7 @@ try {
             bars: bars.map((bar) => ({
               top: bar.getBoundingClientRect().top,
               bottom: bar.getBoundingClientRect().bottom,
-              color: getComputedStyle(bar).borderBottomColor,
+              divider: getComputedStyle(bar).boxShadow,
             })),
           }),
       );

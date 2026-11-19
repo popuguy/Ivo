@@ -399,7 +399,7 @@ body.sidebar-collapsed .workspace-sidebar-toggle .sidebar-toggle-icon-inner {
 #app.workspace-mounted .workspace-layout {
   height: 100%;
 }
-/* The active fill crosses the baseline. Its lower reverse curves share that outline. */
+/* Paint the divider inside the scrollport so the active tab and its lower curves cover it. */
 .workspace-pane > .document-tabs {
   display: flex;
   align-items: stretch;
@@ -411,7 +411,7 @@ body.sidebar-collapsed .workspace-sidebar-toggle .sidebar-toggle-icon-inner {
   gap: 0;
   padding: 6px 8px 0;
   border: 0;
-  border-bottom: 1px solid var(--workspace-border);
+  box-shadow: inset 0 -1px var(--workspace-border);
   background: var(--workspace-chrome-background);
   scrollbar-width: none;
   user-select: none;
@@ -424,16 +424,12 @@ body.sidebar-collapsed .workspace-sidebar-toggle .sidebar-toggle-icon-inner {
 .workspace-pane:not(.active) > nav.document-tabs {
   background-color: var(--workspace-chrome-background);
 }
-.workspace-pane.active > .document-tabs {
-  border-bottom-color: var(--workspace-border);
-}
 .document-tab {
   position: relative;
   display: flex;
   align-items: center;
   flex: 0 1 200px;
   min-width: 48px;
-  margin-bottom: -1px;
   max-width: 320px;
   padding: 1px 4px 4px;
   border: 0;
