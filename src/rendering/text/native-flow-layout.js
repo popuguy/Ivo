@@ -8,7 +8,8 @@ import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
 import { effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
 import { escapeHTML } from '../../shared/html/sanitize.js';
-import { documentHasObjectWrap, flowHasObjectWrap } from './object-wrap-layout.js';
+import { documentHasObjectWrap } from './object-wrap-layout.js';
+import { nativeWrapColumns, validateNativeWrapping } from './native-wrap-columns.js';
 import { PARAGRAPH_LAYOUT_FIELDS, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
 
 const sessions = new WeakMap(),
@@ -223,6 +224,10 @@ const transportFrames = (columns) =>
     minimumFirstBaseline,
     verticalAlign,
   }));
+function compositionColumns(doc, flow) {
+  const columns = nativeFlowColumns(doc, flow);
+  return documentHasObjectWrap(doc) ? nativeWrapColumns(doc, columns) : columns;
+}
 
 /** Canonical boundary before a native character, including virtual marks only once. */
 export function nativeSourceBoundary(source, index) {
@@ -244,7 +249,7 @@ export function nativeSourceBoundary(source, index) {
   if (!Number.isFinite(found)) throw Error('Native layout lost a canonical source boundary.');
   return found;
 }
-async function decideParagraph(request, columns, compose) {
+async function decideParagraph(request, columns, compose, mode) {
   let composer = paragraphSessions.get(compose);
   if (!composer) {
     // Measurements have their own validated paragraph cache. Keeping raw batch
@@ -253,7 +258,7 @@ async function decideParagraph(request, columns, compose) {
     composer = createParagraphComposer(compose);
     paragraphSessions.set(compose, composer);
   }
-  return composer.compose(request, columns);
+  return composer.compose(request, columns, { mode });
 }
 function validateResult(result, request) {
   if (
@@ -370,6 +375,9 @@ function semanticKey(doc, allowPages) {
     doc.pages,
     doc.publishing?.paragraphStyles,
     doc.publishing?.characterStyles,
+    documentHasObjectWrap(doc)
+      ? [doc.blocks, doc.publishing?.parents, doc.publishing?.layers, doc.textWrapPreferences]
+      : null,
   ]);
 }
 const assetSignature = (assets) =>
@@ -377,10 +385,6 @@ const assetSignature = (assets) =>
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
 function projectNativeFlow(doc, flow, fonts) {
-  if (documentHasObjectWrap(doc) && flowHasObjectWrap(doc, flow))
-    throw new UnsupportedComposition(
-      'object text wrapping in the native preview; choose Existing layout for this flow',
-    );
   const root = document.createElement('div');
   root.innerHTML = flow.html;
   const effective = effectiveTextStyle(doc, flow.style),
@@ -390,7 +394,10 @@ function projectNativeFlow(doc, flow, fonts) {
         .map((key) => [key, effective[key]]),
     );
   const source = compositionSource(root, { id: flow.id, doc, settings, fontFor: fonts.fontFor });
-  const limit = flow.composition?.composer === 'paragraph' ? 10000 : 100000;
+  const columns = compositionColumns(doc, flow),
+    wrapped = columns.some((column) => column.obstacles?.length),
+    planned = flow.composition?.composer === 'paragraph' || wrapped,
+    limit = planned ? 10000 : 100000;
   if (
     source.text.length > limit ||
     source.spans.length > 30000 ||
@@ -399,10 +406,9 @@ function projectNativeFlow(doc, flow, fonts) {
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
-  if (flow.composition?.composer === 'paragraph') validateParagraphSource(source.text);
+  if (planned) validateParagraphSource(source.text);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
-  const columns = nativeFlowColumns(doc, flow);
   for (const paragraph of source.paragraphs) {
     const fits = (column) => {
       try {
@@ -413,7 +419,7 @@ function projectNativeFlow(doc, flow, fonts) {
         return false;
       }
     };
-    if (flow.composition?.composer === 'paragraph') {
+    if (planned) {
       if (!columns.some(fits)) throw Error('Paragraph indents leave no valid frame width.');
     } else
       for (const column of columns) {
@@ -426,6 +432,7 @@ function projectNativeFlow(doc, flow, fonts) {
     )
       throw new UnsupportedComposition('tabs combined with non-left paragraph alignment');
   }
+  validateNativeWrapping(source, columns);
   return source;
 }
 
@@ -476,10 +483,12 @@ export async function composeNativeTextFlows(
     )
       throw new UnsupportedComposition('the selected composition version or composer');
     const fonts = fontResolver(assets),
-      source = projectNativeFlow(projection, flow, fonts);
+      source = projectNativeFlow(projection, flow, fonts),
+      initial = compositionColumns(projection, flow),
+      wrapped = initial.some((column) => column.obstacles?.length);
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
     const request = {
-        protocol: flow.composition.composer === 'paragraph' ? 3 : source.protocol,
+        protocol: flow.composition.composer === 'paragraph' || wrapped ? 3 : source.protocol,
         id: source.id,
         sourceHTML: source.sourceHTML,
         sourceDigest: await sha(new TextEncoder().encode(source.sourceHTML)),
@@ -520,18 +529,18 @@ export async function composeNativeTextFlows(
         allowFallback: false,
         includeVectors: true,
       },
-      initial = nativeFlowColumns(projection, flow),
       decision =
-        flow.composition.composer === 'paragraph'
+        flow.composition.composer === 'paragraph' || wrapped
           ? await decideParagraph(
               { ...request, frames: transportFrames(initial) },
               initial,
               compose,
+              flow.composition.composer,
             )
           : null;
     let result, columns;
     for (let attempt = 0; attempt <= 128; attempt++) {
-      columns = nativeFlowColumns(projection, flow);
+      columns = compositionColumns(projection, flow);
       const input = {
         ...request,
         frames: transportFrames(columns),
@@ -559,7 +568,11 @@ export async function composeNativeTextFlows(
       )
         break;
       // A frame that cannot place even one source line cannot be repaired by cloning itself.
-      if (!result.layout.lines.some((line) => line.frame === columns.at(-1).id)) break;
+      if (!(
+        decision?.placements.some((line) => line.frame >= columns.length) ||
+        result.layout.lines.some((line) => line.frame === columns.at(-1).id)
+      ))
+        break;
       if (!appendTextFlowPage(projection, flow)) break;
       changed = true;
     }
@@ -592,6 +605,7 @@ export async function composeNativeTextFlows(
       additionalFrames: overset ? 1 : 0,
       composer: flow.composition.composer,
       policy: decision?.policy || 'native-single-line',
+      ...(wrapped ? { wrapped: true } : {}),
       ...(decision ? { paragraphWork: decision.work } : {}),
       token: result.token,
       diagnostics: result.diagnostics || [],

@@ -3019,6 +3019,12 @@ dialog li {
   overflow: clip;
   pointer-events: auto;
 }
+.canvas-flow-clip:has(> .native-composition-input),
+.canvas-flow-input.native-composition-input {
+  /* Native ink/carets own pointer geometry. The translated, invisible input
+     remains the keyboard/IME owner without covering a painted wrap fragment. */
+  pointer-events: none;
+}
 .canvas-flow-input {
   position: absolute;
   left: 0;

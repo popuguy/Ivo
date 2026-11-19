@@ -347,14 +347,20 @@ try {
       nativeError = error.message;
     }
     assert(
-      /object text wrapping.*native preview/i.test(nativeError),
-      'Native preview did not explicitly reject intersecting wrap before worker execution: ' +
+      /native wrapping with mixed font metrics/i.test(nativeError),
+      'Native preview did not explicitly reject unsupported mixed-metric wrapping before worker execution: ' +
         nativeError,
     );
     assert(
       JSON.stringify(nativeDocument) === nativeBefore,
       'Native wrap rejection mutated authored source',
     );
+    nativeFlow.html = '<p>' + words + '</p>';
+    assert(
+      validateNativeFlowSource(nativeDocument, nativeFlow).sourceHTML === nativeFlow.html,
+      'Uniform native wrapped source was incorrectly rejected',
+    );
+    nativeFlow.html = source;
     nativeDocument.blocks.find((block) => block.id === frame.id).ignoreTextWrap = true;
     assert(
       validateNativeFlowSource(nativeDocument, nativeFlow).sourceHTML === source,

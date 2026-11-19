@@ -25,7 +25,7 @@ import { PDFDocument, PDFName } from 'pdf-lib';
 import { renderPDF as renderNativePDF, pdfRendererOwner } from '../../../desktop/pdf-export.mjs';
 import { installTextCompositionBridge } from '../../../desktop/text-composition-bridge.mjs';
 import { createTextComposition } from '../../../desktop/text-composition.mjs';
-import { buildNativeText } from '../../../scripts/build-native-text.mjs';
+import { nativeTextTestExecutable } from '../helpers/native-text.mjs';
 let compositionBridge;
 const nativeCompositions = [];
 const renderPDF = (snapshot, options) =>
@@ -59,7 +59,7 @@ app
       ipcMain,
       authorize: pdfRendererOwner,
       createService: async () => {
-        const service = createTextComposition(await buildNativeText());
+        const service = createTextComposition(await nativeTextTestExecutable());
         return {
           compose: async (request) => {
             const result = await service.compose(request);
@@ -709,6 +709,62 @@ print(String(data: summaryData, encoding: .utf8)!)
       path.join(output, 'wrap.pdf'),
     ]);
     const wrapPDFInspection = JSON.parse(inspectedWrap.stdout);
+    const nativeWrapDocument = structuredClone(wrapDoc);
+    enableNativeComposition(nativeWrapDocument, nativeWrapDocument.textFlows[0], 'paragraph');
+    const nativeWrapSnapshot = createPDFSnapshot(
+        [nativeWrapDocument],
+        [asset],
+        nativeWrapDocument.id,
+      ),
+      nativeWrapBefore = JSON.stringify(nativeWrapSnapshot);
+    let nativeWrapInk;
+    const nativeWrappedPDF = await renderPDF(nativeWrapSnapshot, {
+      project: root,
+      onRendered: async (window) => {
+        nativeWrapInk = await window.webContents.executeJavaScript(`(()=>{
+          const page=document.querySelector('.pdf-layout'), bounds=page.getBoundingClientRect(), scale=bounds.width/500;
+          return [...document.querySelectorAll('svg[data-composed-text] use')].map(glyph=>{
+            const r=glyph.getBoundingClientRect(); return {left:(r.left-bounds.left)/scale,
+              right:(r.right-bounds.left)/scale,top:(r.top-bounds.top)/scale,bottom:(r.bottom-bounds.top)/scale};
+          });
+        })()`);
+      },
+    });
+    assert.equal(JSON.stringify(nativeWrapSnapshot), nativeWrapBefore);
+    assert.equal((await PDFDocument.load(nativeWrappedPDF.bytes)).getPageCount(), 1);
+    assert.deepEqual(nativeWrappedPDF.manifest.warnings, []);
+    assert.equal(nativeWrapInk.length, 700, 'Native wrapped PDF lost source glyph ink');
+    assert(
+      nativeWrapInk.every(
+        (c) => c.bottom <= 92.05 || c.top >= 247.95 || c.right <= 172.05 || c.left >= 327.95,
+      ),
+      'Native PDF glyph paths intersect the independent padded exclusion',
+    );
+    const nativeWrapPlan = nativeCompositions.findLast(
+      (call) =>
+        call.request.mode === 'planned-lines-proof' &&
+        call.request.id === nativeWrapDocument.textFlows[0].id,
+    );
+    assert.equal(nativeWrapPlan.request.protocol, 3);
+    assert(
+      nativeWrapPlan.result.layout.lines.some(
+        (line, index, lines) => index && line.baseline === lines[index - 1].baseline,
+      ),
+      'Native wrapped PDF did not use same-baseline fragments',
+    );
+    await writeFile(path.join(output, 'native-wrap.pdf'), nativeWrappedPDF.bytes);
+    await writeFile(
+      path.join(output, 'native-wrap-ink.json'),
+      JSON.stringify(nativeWrapInk, null, 2),
+    );
+    const inspectedNativeWrap = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      path.join(root, 'tests/runtime/pdf/inspect-wrap.swift'),
+      path.join(output, 'native-wrap.pdf'),
+    ]);
+    const nativeWrapPDFInspection = JSON.parse(inspectedNativeWrap.stdout);
     console.log(
       JSON.stringify(
         {
@@ -731,6 +787,8 @@ print(String(data: summaryData, encoding: .utf8)!)
           wrappedTextSourceAndExclusion: true,
           clippedGraphicWrapping: true,
           wrapPDFInspection,
+          nativeWrappedTextSourceAndExclusion: true,
+          nativeWrapPDFInspection,
           warnings: manifest.warnings,
         },
         null,

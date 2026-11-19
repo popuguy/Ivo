@@ -9,6 +9,7 @@ import {
   validateNativeFlowSource,
 } from '../../src/rendering/text/native-flow-layout.js';
 import { inspectFont } from '../../src/domain/text/fonts.js';
+import { normalizeTextWrap } from '../../src/domain/documents/text-wrap.js';
 
 // A deliberately narrow non-layout DOM: source fixtures are plain text. Tests
 // exercise the real canonical projection, resource resolver and production driver,
@@ -469,6 +470,83 @@ test('malformed planned output is evicted and cannot partially publish automatic
     assert(doc.pages.length > 1);
     assert.equal(doc.textFlows[0].html, before.textFlows[0].html);
   }
+});
+function blocker(doc, mode = 'bounds') {
+  const frame = doc.blocks[0],
+    object = {
+      id: 'wrap-blocker',
+      type: 'polygon',
+      pageId: frame.pageId,
+      x: frame.x + 50,
+      y: frame.y,
+      w: 40,
+      h: 80,
+      strokeWidth: 0,
+      points: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 1, y: 1 },
+        { x: 0, y: 1 },
+      ],
+      textWrap: normalizeTextWrap({ mode }),
+    };
+  doc.blocks.push(object);
+  return object;
+}
+test('native wrapping keeps same-row source fragments and invalidates moved obstacles without remeasuring fonts', async () => {
+  for (const composer of ['paragraph', 'single-line']) {
+    const doc = fixture({
+        composer,
+        width: 140,
+        height: 120,
+        text: 'aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk',
+      }),
+      obstacle = blocker(doc),
+      native = port(),
+      before = structuredClone(doc),
+      plan = await composeNativeTextFlows(doc, native),
+      rows = plan.compositions[0].result.layout.lines;
+    assert.deepEqual(doc, before);
+    assert.equal(plan.status.get('flow-a').wrapped, true);
+    assert.equal(plan.status.get('flow-a').overset, false);
+    assert(rows.some((line, index) => index && line.baseline === rows[index - 1].baseline));
+    assert(rows.every((line) => line.originX + line.availableWidth <= 50 || line.originX >= 90));
+    assert.equal(native.calls.at(-1).mode, 'planned-lines-proof');
+    obstacle.x += 10;
+    const moved = await composeNativeTextFlows(doc, native);
+    assert.notDeepEqual(moved.compositions[0].result.layout.lines, rows);
+    assert.equal(native.calls.filter((r) => r.mode === 'measure-lines-proof').length, 1);
+    assert.equal(doc.textFlows[0].html, before.textFlows[0].html);
+    doc.blocks[0].ignoreTextWrap = true;
+    const ignored = await composeNativeTextFlows(doc, native);
+    assert.equal(ignored.status.get('flow-a').wrapped, undefined);
+  }
+});
+test('native next-column exclusion can continue from an entirely blocked authored frame into an empty owned page', async () => {
+  const doc = fixture({
+      composer: 'paragraph',
+      automaticPages: true,
+      width: 100,
+      height: 40,
+      text: 'one two three',
+    }),
+    obstacle = blocker(doc, 'next-column');
+  Object.assign(obstacle, { x: 20, y: 30, w: 100, h: 40 });
+  const before = structuredClone(doc),
+    native = port(),
+    passive = await composeNativeTextFlows(doc, { ...native, allowPages: false });
+  assert.equal(passive.status.get('flow-a').overset, true);
+  assert.equal(passive.compositions[0].result.layout.coveredLength, 0);
+  assert.deepEqual(doc, before);
+  const active = await composeNativeTextFlows(doc, native);
+  assert.equal(doc.pages.length, 2);
+  assert.equal(active.status.get('flow-a').overset, false);
+  assert.equal(
+    active.compositions[0].result.layout.lines[0].frame,
+    doc.textFlows[0].frameIds[1] + '-column-0',
+  );
+  assert.equal(doc.textFlows[0].html, before.textFlows[0].html);
+  assert.deepEqual(doc.blocks[0], before.blocks[0]);
 });
 test('source boundary mapping partitions virtual marks without duplicating the next paragraph', () => {
   const source = {

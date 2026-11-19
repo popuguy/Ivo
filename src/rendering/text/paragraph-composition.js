@@ -2,6 +2,7 @@ import { chooseParagraphBreaks } from '../../domain/text/paragraph-breaks.js';
 import { UnsupportedComposition } from './composition-source.js';
 import { paragraphLayout, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
 import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
+import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-flow.js';
 
 const MAX_POINTS = 1024,
   MAX_ALTERNATIVES = 100000,
@@ -98,11 +99,13 @@ const frameShape = (column) => ({
   firstBaseline: column.firstBaseline || 'ascent',
   minimumFirstBaseline: column.minimumFirstBaseline || 0,
   verticalAlign: column.verticalAlign || 'top',
+  ...(column.obstacles ? { obstacles: column.obstacles } : {}),
 });
 
-async function fitFrameParagraphs(paragraphs, actualColumns, work, rememberDecision) {
+async function fitFrameParagraphs(paragraphs, actualColumns, work, rememberDecision, mode) {
   const columns = actualColumns.map(frameShape);
-  while (columns.length < 128) columns.push({ ...columns.at(-1) });
+  const wrapped = columns.some((column) => column.obstacles?.length);
+  while (columns.length < 128) columns.push({ ...columns.at(-1), obstacles: [] });
   const columnKey = JSON.stringify(actualColumns.map(frameShape)),
     lines = [];
   let cursor = { frame: 0, baseline: null },
@@ -111,12 +114,13 @@ async function fitFrameParagraphs(paragraphs, actualColumns, work, rememberDecis
     candidates = 0,
     policy;
   for (const paragraph of paragraphs) {
-    const key = 'flow:' + JSON.stringify([columnKey, paragraph.layout, cursor, previousAfter]),
+    const key =
+        'flow:' + JSON.stringify([mode, columnKey, paragraph.layout, cursor, previousAfter]),
       entry = paragraph.entry;
     let chosen = entry.decisions.get(key);
     if (chosen) work.reusedDecisions++;
     else {
-      const steps = paragraphFlowSteps({
+      const steps = (wrapped ? wrappedParagraphFlowSteps : paragraphFlowSteps)({
         start: 0,
         end: paragraph.text.length,
         opportunities: paragraph.opportunities,
@@ -125,6 +129,7 @@ async function fitFrameParagraphs(paragraphs, actualColumns, work, rememberDecis
         layout: paragraph.layout,
         cursor,
         previousAfter,
+        mode,
         maxStates: MAX_STATES - states,
         maxCandidates: MAX_DECISIONS - candidates,
       });
@@ -156,7 +161,7 @@ async function fitFrameParagraphs(paragraphs, actualColumns, work, rememberDecis
     );
     cursor = chosen.cursor;
     previousAfter = paragraph.layout.paragraphAfter;
-    policy = chosen.policy;
+    policy = mode === 'single-line' ? 'native-fragment-greedy-v1' : chosen.policy;
   }
   // Vertical alignment changes final presentation, never break decisions.
   for (const [index, column] of columns.entries()) {
@@ -239,7 +244,8 @@ export function createParagraphComposer(measure) {
     return entry;
   };
   return {
-    async compose(request, columns) {
+    async compose(request, columns, { mode = 'paragraph' } = {}) {
+      if (!['paragraph', 'single-line'].includes(mode)) throw Error('Invalid native fitting mode.');
       const width = columns[0]?.width,
         frameFlow = request.protocol >= 3;
       if (
@@ -381,7 +387,7 @@ export function createParagraphComposer(measure) {
         for (const paragraph of group.paragraphs) paragraph.entry = entry;
       }
       if (frameFlow) {
-        const result = await fitFrameParagraphs(paragraphs, columns, work, rememberDecision);
+        const result = await fitFrameParagraphs(paragraphs, columns, work, rememberDecision, mode);
         return { ...result, work: { ...result.work, cacheEntries: cache.size, cacheBytes: bytes } };
       }
       const breaks = [];

@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { buildNativeText } from '../../../scripts/build-native-text.mjs';
+import { nativeTextTestExecutable } from '../helpers/native-text.mjs';
 import { createTextComposition } from '../../../desktop/text-composition.mjs';
 import { installTextCompositionBridge } from '../../../desktop/text-composition-bridge.mjs';
 import { selectWithMouse } from '../helpers/text-mouse.mjs';
@@ -35,7 +35,7 @@ app
     let window,
       settled = false,
       nativeCalls = 0;
-    const service = createTextComposition(await buildNativeText()),
+    const service = createTextComposition(await nativeTextTestExecutable()),
       bridge = installTextCompositionBridge({
         ipcMain,
         authorize: (event) => (event.sender === window?.webContents ? window.webContents : null),
@@ -85,9 +85,20 @@ app
         return window.webContents.insertText(value);
       if (
         action === 'key' &&
-        ['I', 'B', 'U', 'Left', 'Right', 'Up', 'Down', 'Backspace', 'Escape', 'A'].includes(
-          value?.key,
-        ) &&
+        [
+          'I',
+          'B',
+          'U',
+          'Left',
+          'Right',
+          'Up',
+          'Down',
+          'Home',
+          'End',
+          'Backspace',
+          'Escape',
+          'A',
+        ].includes(value?.key) &&
         Array.isArray(value.modifiers)
       ) {
         window.webContents.sendInputEvent({

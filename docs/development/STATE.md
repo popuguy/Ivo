@@ -1,6 +1,8 @@
 # Current development state
 
-Updated 18 November 2026.
+Updated 19 November 2026.
+
+[Native object wrapping](../native-object-wrap.md) now connects Box/Shape/Jump/Next and existing transformed exclusions to planned native fragments, one physical selection/navigation row, actual edit/undo/reopen and same-line selectable PDF. Font measurements survive obstacle changes; blocked frames can create empty-page continuation without cloning obstacles. The invisible typing surface no longer covers native pointer geometry. Uniform paragraph metrics, Top exclusion columns, no tabs and no centered wrapping remain explicit admission limits. The shared interval sweep also accelerates existing-layout exclusions and fixes empty contour/inverse interiors. Saved formats/composer choices are unchanged; the broad engineering estimate advances to ~28%.
 
 [Native flow scheduling](../native-flow-scheduling.md) now chooses exact measured line breaks and placements across unequal frame widths/heights, carrying paragraph spacing, line-specific metrics and first-baseline policy through actual native ink, caret geometry and PDF. Protocol 3 freezes that plan; Single-line retains protocol 2. Preparation/search yield bounded work, geometry changes reuse font measurements, and rejected final responses are evicted before retry. Stored formats and existing composer choices are unchanged. Native wrapping remains the next priority. The broad engineering estimate advances to ~26% for this integrated frame-scheduling dependency.
 

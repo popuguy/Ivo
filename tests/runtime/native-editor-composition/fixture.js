@@ -23,6 +23,7 @@ import { validateImport } from '../../../src/domain/documents/schema.js';
 import { verifyParagraphProjection } from './paragraph-projection.js';
 import { verifyNativeParagraphEditing } from './paragraph-editing.js';
 import { verifyUnequalParagraphFlow } from './unequal-paragraph-flow.js';
+import { verifyNativeWrappedFlow } from './native-wrapped-flow.js';
 const assert = (value, message) => {
     if (!value) throw Error(message);
   },
@@ -65,6 +66,7 @@ try {
     writable = true,
     paragraphEditing = {},
     unequalParagraphFlow = {},
+    nativeWrappedFlow = {},
     held = null,
     history = createDocumentHistory();
   const native = {
@@ -591,6 +593,15 @@ try {
       save: window.nativeEditorTest.save,
       load: window.nativeEditorTest.load,
     });
+    nativeWrappedFlow = await verifyNativeWrappedFlow({
+      host,
+      compose: native.compose,
+      insert: window.nativeEditorTest.insert,
+      drag: window.nativeEditorTest.drag,
+      key: window.nativeEditorTest.key,
+      save: window.nativeEditorTest.save,
+      load: window.nativeEditorTest.load,
+    });
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
       x: 30,
@@ -877,6 +888,7 @@ try {
       ...paragraphProjection,
       ...paragraphEditing,
       ...unequalParagraphFlow,
+      ...nativeWrappedFlow,
       realNativeBridge: true,
       composerPreflight: true,
       vectorInk: true,

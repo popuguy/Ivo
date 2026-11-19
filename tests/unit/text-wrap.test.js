@@ -84,6 +84,158 @@ const band = (top = 40, bottom = 50) => ({ left: 0, right: 300, top, bottom });
 const segments = (doc, frame, value = band()) =>
   availableWrapSegments(textWrapObstacles(doc, frame), value);
 
+function rectangleObstacle(left, top, right, bottom, extra = {}) {
+  return {
+    mode: 'bounds',
+    side: 'both',
+    bounds: { left, top, right, bottom },
+    polygons: [
+      [
+        { x: left, y: top },
+        { x: right, y: top },
+        { x: right, y: bottom },
+        { x: left, y: bottom },
+      ],
+    ],
+    ...extra,
+  };
+}
+
+/** Coordinate-cell oracle, independent of interval subtraction/union code. */
+function rectangleCells(obstacles, query) {
+  const active = obstacles
+      .map((obstacle) => obstacle.bounds)
+      .filter(
+        (bounds) =>
+          bounds.top < query.bottom &&
+          bounds.bottom > query.top &&
+          bounds.left < query.right &&
+          bounds.right > query.left,
+      ),
+    endpoints = [
+      ...new Set([
+        query.left,
+        query.right,
+        ...active.flatMap((bounds) => [
+          Math.max(query.left, bounds.left),
+          Math.min(query.right, bounds.right),
+        ]),
+      ]),
+    ].sort((a, b) => a - b),
+    output = [];
+  for (let index = 0; index < endpoints.length - 1; index++) {
+    const left = endpoints[index],
+      right = endpoints[index + 1],
+      midpoint = (left + right) / 2;
+    if (active.some((bounds) => bounds.left < midpoint && bounds.right > midpoint)) continue;
+    const previous = output.at(-1);
+    if (previous && previous.right === left) previous.right = right;
+    else output.push({ left, right });
+  }
+  return output;
+}
+
+test('many simultaneous rectangle exclusions agree with an independent coordinate-cell oracle', () => {
+  for (const count of [1, 16, 128, 650, 1024]) {
+    const query = { left: 0, right: 14400, top: 20, bottom: 35 },
+      obstacles = Array.from({ length: count }, (_, index) =>
+        rectangleObstacle(
+          ((index + 0.5) * query.right) / count,
+          0,
+          ((index + 1) * query.right) / count,
+          100,
+        ),
+      ),
+      before = structuredClone(obstacles),
+      expected = rectangleCells(obstacles, query),
+      actual = textWrapBand(obstacles, query);
+    assert.deepEqual(actual.segments, expected, `${count} rectangles`);
+    assert.deepEqual(textWrapBand([...obstacles].reverse(), query), actual);
+    assert.equal(actual.nextY, 100);
+    assert.deepEqual(obstacles, before);
+  }
+  for (let seed = 1; seed <= 20; seed++) {
+    const query = { left: 10, right: 300, top: 10, bottom: 25 },
+      obstacles = Array.from({ length: 80 }, (_, index) => {
+        const left = ((index * 71 + seed * 11) % 370) - 30;
+        return rectangleObstacle(
+          left,
+          (index % 3) * 20,
+          left + 1 + ((index * 13 + seed) % 35),
+          (index % 3) * 20 + 15 + (index % 4) * 20,
+        );
+      });
+    assert.deepEqual(textWrapBand(obstacles, query).segments, rectangleCells(obstacles, query));
+  }
+});
+
+test('batched ordinary exclusions commute with side and multiple inverse constraints', () => {
+  const left = rectangleObstacle(20, 0, 100, 100),
+    right = rectangleObstacle(150, 0, 250, 100),
+    obstacles = [
+      rectangleObstacle(40, 0, 60, 100),
+      rectangleObstacle(90, 0, 160, 100),
+      rectangleObstacle(170, 0, 190, 100),
+      rectangleObstacle(220, 0, 240, 100, { side: 'left' }),
+      {
+        ...left,
+        invert: true,
+        bounds: { left: 20, top: 0, right: 250, bottom: 100 },
+        polygons: [...left.polygons, ...right.polygons],
+      },
+      rectangleObstacle(30, 0, 230, 100, { invert: true }),
+    ],
+    query = { left: 0, right: 300, top: 40, bottom: 50 },
+    expected = [
+      { left: 30, right: 40 },
+      { left: 60, right: 90 },
+      { left: 160, right: 170 },
+      { left: 190, right: 220 },
+    ],
+    before = structuredClone(obstacles);
+  for (let offset = 0; offset < obstacles.length; offset++) {
+    const ordered = obstacles.slice(offset).concat(obstacles.slice(0, offset));
+    assert.deepEqual(textWrapBand(ordered, query), {
+      segments: expected,
+      nextColumn: false,
+      nextY: 100,
+    });
+    assert.deepEqual(textWrapBand([...ordered].reverse(), query).segments, expected);
+  }
+  assert.deepEqual(obstacles, before);
+});
+
+test('normal-exclusion sweep preserves page-side choices, jump flags and boundary events', () => {
+  const query = { left: 0, right: 300, top: 40, bottom: 50, pageSide: 'left' },
+    normal = rectangleObstacle(180, 0, 200, 100),
+    inside = rectangleObstacle(140, 0, 160, 100, { side: 'inside' }),
+    inverted = rectangleObstacle(20, 0, 280, 100, { invert: true });
+  assert.deepEqual(textWrapBand([normal, inside, inverted], query).segments, [
+    { left: 160, right: 180 },
+    { left: 200, right: 280 },
+  ]);
+  for (const mode of ['jump', 'next-column']) {
+    const obstacle = rectangleObstacle(100, 0, 130, 80, { mode });
+    for (const ordered of [
+      [normal, inside, inverted, obstacle],
+      [obstacle, inverted, inside, normal],
+    ])
+      assert.deepEqual(textWrapBand(ordered, query), {
+        segments: [],
+        nextColumn: mode === 'next-column',
+        nextY: 80,
+      });
+  }
+  const touching = [
+    rectangleObstacle(40, 0, 50, 100),
+    rectangleObstacle(50 + 0.00000005, 0, 60, 100),
+  ];
+  assert.deepEqual(textWrapBand(touching, query).segments, [
+    { left: 0, right: 40 },
+    { left: 60, right: 300 },
+  ]);
+});
+
 test('text-wrap options are typed, mode-specific and reject unimplemented contour sources', () => {
   assert.deepEqual(normalizeTextWrap(), {
     mode: 'none',

@@ -245,15 +245,22 @@ function intersection(a, b) {
     .filter((v) => v.right > v.left + EPS);
 }
 function subtract(available, excluded) {
-  let output = available;
-  for (const gap of excluded)
-    output = output.flatMap((value) => {
-      if (gap.right <= value.left + EPS || gap.left >= value.right - EPS) return [value];
-      return [
-        { left: value.left, right: Math.min(value.right, gap.left) },
-        { left: Math.max(value.left, gap.right), right: value.right },
-      ].filter((part) => part.right > part.left + EPS);
-    });
+  // Both inputs are merged, ordered intervals. Retain an exclusion that spans
+  // an available gap so it can also cut the next available interval.
+  const output = [];
+  let index = 0;
+  for (const value of available) {
+    let left = value.left;
+    while (index < excluded.length && excluded[index].right <= left + EPS) index++;
+    while (index < excluded.length && excluded[index].left < value.right - EPS) {
+      const gap = excluded[index];
+      if (gap.left > left + EPS) output.push({ left, right: gap.left });
+      left = Math.max(left, gap.right);
+      if (left >= value.right - EPS) break;
+      index++;
+    }
+    if (left < value.right - EPS) output.push({ left, right: value.right });
+  }
   return output;
 }
 
@@ -267,7 +274,8 @@ export function textWrapBand(obstacles, band) {
     throw new TypeError('Choose a finite positive text-wrap band.');
   let segments = [{ left: band.left, right: band.right }],
     nextColumn = false;
-  const events = [];
+  const events = [],
+    excluded = [];
   for (const obstacle of obstacles) {
     const polygons = obstacle.polygons,
       bounds = obstacle.bounds;
@@ -335,13 +343,15 @@ export function textWrapBand(obstacles, band) {
         segments = intersection(segments, [{ left: band.left, right: occupied[0].left }]);
       else if (side === 'right')
         segments = intersection(segments, [{ left: occupied.at(-1).right, right: band.right }]);
-      else segments = subtract(segments, occupied);
+      // Ordinary exclusions commute with every side/inverse intersection.
+      // Union them once, then sweep instead of repeatedly splitting all gaps.
+      else excluded.push(...occupied);
     }
     if (bounds.bottom > band.top + EPS) events.push(bounds.bottom);
     if (bounds.top > band.top + EPS) events.push(bounds.top);
   }
   return {
-    segments: merge(segments),
+    segments: merge(subtract(merge(segments), merge(excluded))),
     nextColumn,
     nextY: events.length ? Math.min(...events) : null,
   };

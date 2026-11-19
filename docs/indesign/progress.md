@@ -1,8 +1,8 @@
 # InDesign text parity progress
 
-Current overall engineering estimate, 18 November 2026:
+Current overall engineering estimate, 19 November 2026:
 
-`[█████░░░░░░░░░░░░░░░] ~26%`
+`[██████░░░░░░░░░░░░░░] ~28%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
 
@@ -21,6 +21,8 @@ This is a rough assessment of implementation and integration across the [66 incl
 ## Major work still driving the estimate
 
 The [frame-scheduling milestone](../native-flow-scheduling.md) fits unequal native columns with exact line metrics, one owned break/baseline plan and cooperative preparation/search. It advances the same broad estimate from ~24% to ~26%; the justification objective and reference/device gates remain incomplete.
+
+The [native-wrap milestone](../native-object-wrap.md) integrates planned exclusion fragments with one physical navigation row, pointer geometry, source/history and independent selectable PDF. The shared contour fix and interval sweep improve both composers. This advances the same estimate from ~26% to ~28%; mixed-metric native rows, centered/tabbed wrapping and the wider reference/device gates remain open.
 
 1. Complete paragraph composition: custom/decimal/right-indent tabs and leaders, justification constraints, hyphenation, keeps, grids and native wraps.
 2. Complete shaping/source maps: fallback capture, full OpenType/variable/language support, bidi/complex scripts/CJK and deterministic cross-device behavior.

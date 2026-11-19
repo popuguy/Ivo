@@ -1,5 +1,17 @@
 # Verification
 
+## Native object wrapping — 19 November 2026
+
+The [native wrapping milestone](native-object-wrap.md) passes **365 unit tests for this increment**, standard format/lint/architecture/build checks, and a complete final-source sequential run of **17 background component groups**. Native editor/PDF runs explicitly use the SHA-256-verified worker from the preceding committed protocol-3 milestone while a separate protocol-4 implementation is developed; ordinary test runs compile their current production source. This version introduces no new worker protocol or stored format. Private worker snapshots and evidence remain outside Git.
+
+Pure tests cover fragment/row source ownership, forced breaks, first indents, spacing, side/inverse/contour, Jump/Next, future empty columns, exact budgets and cooperative work. A rectangle oracle and 1,207 differential geometry cases qualify the interval-union/sweep against the prior implementation. Empty inverse apex and tapered-contour regressions now find usable interior/side space rather than jumping to a bounding-box bottom. Geometry-only changes reuse native measurements. A fully blocked authored frame can append an empty-page continuation; passive composition cannot do so.
+
+The actual editor uses trusted Home/End/Up/Down, gap hits, cross-fragment drag/replacement, undo/redo and cold archive reopening. Production Inspector moves and Box/Shape/Jump/Next changes retain source and record only their authored change. Mixed-metric/tab source edits roll back with source, pages, history and selection intact. Endpoint diagnostics found an invisible input clip covering native glyph hits; native input now passes pointer hits through to painted geometry while retaining keyboard ownership. Existing browser wrapping and native interaction regressions still pass.
+
+Production PDF tests check all 700 native vector glyphs against an independently specified padded exclusion, then PDFKit recovers all 100 expected words and 700 selectable characters. Browser wrapped, clipped-graphic and unequal/transformed native PDF checks remain passing. A shared geometry benchmark reduced the 1,024-rectangle longest slice from 13.8 ms to about 1.3 ms; this is synthetic CPU evidence, not physical input latency. Logs, generated PDFs and scoped reference material remain under parent `work/native-flow-scheduling-2026-11-18/`. Personal data, clipboard, global settings and app sessions remain unchanged.
+
+Uniform metrics within each paragraph, Top exclusion columns, no native wrapped tabs/centered paragraphs, advanced contour limits and full device/reference gates remain explicit. The unchanged 66-capability engineering estimate advances to **~28%**. A consolidated package follows the remaining milestones in this pass.
+
 ## Exact native frame scheduling — 19 November 2026
 
 The [frame-scheduling milestone](native-flow-scheduling.md) passes **339 unit tests for this increment**, all **23 native tests**, the standard format/lint/architecture/build checks, both sandboxed desktop bridges and **17 background component groups**. The final native-editor group was rerun after correcting the new disposable fixture; the other sixteen groups passed in the preceding sequential run. All windows remained hidden/offscreen with native activation prohibited.
