@@ -211,7 +211,10 @@ export function createParagraphComposer(measure) {
         };
       if (
         !frameFlow &&
-        keeps.some((keep) => keep.keepTogether || keep.keepWithNext || keep.keepWithPrevious)
+        keeps.some(
+          (keep) =>
+            keep.keepTogether || keep.keepWithNext || keep.keepWithPrevious || keep.paragraphStart,
+        )
       )
         throw new UnsupportedComposition('paragraph keeps without planned physical frames');
       if (request.protocol >= 2 && request.paragraphs?.length !== paragraphs.length)

@@ -1,3 +1,4 @@
+import { PARAGRAPH_STARTS } from '../../../domain/text/paragraph-keep-policy.js';
 import { uniformWrapOffset } from '../../../domain/geometry/wrap-contour.js';
 import { PANEL_KINDS } from '../../../domain/workspace/panels.js';
 import { installPageLayerInteractions } from './page-layer-interactions.js';
@@ -266,6 +267,7 @@ export function installPublishingControls(
           .filter(
             (key) =>
               settings[key] !== undefined &&
+              !(key === 'paragraphStart' && settings[key] === 'anywhere') &&
               !(key === 'keepNextLines' && settings[key] === 1) &&
               !(key === 'keepWithPrevious' && settings[key] === false),
           )
@@ -284,12 +286,13 @@ export function installPublishingControls(
             ['keepWithPrevious', 'Keep with previous', [false, true]],
             ['keepWithNext', 'Keep with next', [false, true]],
             ['keepNextLines', 'Following lines', [1, 2, 3, 4, 5]],
+            ['paragraphStart', 'Start Paragraph', Object.keys(PARAGRAPH_STARTS)],
           ]
         : [];
     const keepControls = keepFields
       .map(
         ([key, label, values]) =>
-          `<label>${label}<select name="${key}"><option value="">Inherited</option>${values.map((value) => `<option value="${value}" ${attributes[key] === value ? 'selected' : ''}>${value === true ? 'On' : value === false ? 'Off' : value}</option>`).join('')}</select></label>`,
+          `<label>${label}<select name="${key}"><option value="">Inherited</option>${values.map((value) => `<option value="${value}" ${attributes[key] === value ? 'selected' : ''}>${value === true ? 'On' : value === false ? 'Off' : (PARAGRAPH_STARTS[value] ?? value)}</option>`).join('')}</select></label>`,
       )
       .join('');
     const dialog = form(

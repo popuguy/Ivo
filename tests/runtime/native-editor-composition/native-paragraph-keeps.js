@@ -1,3 +1,4 @@
+import { composeNativeTextFlows } from '../../../src/rendering/text/native-flow-layout.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import { enablePublishing } from '../../../src/domain/documents/publishing.js';
 import {
@@ -227,6 +228,8 @@ export async function verifyNativeParagraphKeeps({
         JSON.stringify({
           rows: lines.map((line) => request.text.slice(line.start, line.end)),
           byFrame,
+          source: request.sourceHTML,
+          placement: request.placements,
         }),
     );
     const sourceEnds = [];
@@ -342,7 +345,12 @@ export async function verifyNativeParagraphKeeps({
   async function property(name, enabled) {
     const control = host.querySelector(`[data-object-prop="${name}"]`);
     assert(
-      control?.type === (typeof enabled === 'number' ? 'number' : 'checkbox') && !control.disabled,
+      control?.type ===
+        (typeof enabled === 'string'
+          ? 'select-one'
+          : typeof enabled === 'number'
+            ? 'number'
+            : 'checkbox') && !control.disabled,
       'Production Paragraph Properties lacks: ' + name,
     );
     for (let owner = control.parentElement; owner && owner !== host; owner = owner.parentElement)
@@ -351,7 +359,7 @@ export async function verifyNativeParagraphKeeps({
       new PointerEvent('pointerdown', { bubbles: true, pointerId: 87, button: 0 }),
     );
     control.focus();
-    if (typeof enabled === 'number') control.value = String(enabled);
+    if (typeof enabled !== 'boolean') control.value = String(enabled);
     else control.checked = enabled;
     control.dispatchEvent(new Event('change', { bubbles: true }));
     await settle();
@@ -581,6 +589,109 @@ export async function verifyNativeParagraphKeeps({
     await editor.command('undo');
     await settle();
     verifyPlan(countedRows, [[0, 1, 2], [3, 4, 5], []]);
+    // Process the later section first: a second flow then inserts a page before it.
+    const multi = createSceneDocument('Independent threaded sections', { width: 440, height: 320 });
+    enablePublishing(multi);
+    const firstPage = multi.pages[0],
+      laterPage = addPage(multi, firstPage.id);
+    function autoSection(page, html) {
+      const frame = insertObject(multi, 'text', page.id, {
+        x: 20,
+        y: 20,
+        w: 200,
+        h: 60,
+        textStyle: 'cmu-serif',
+        fontSize: 16,
+        leading: 20,
+        html,
+      });
+      const flow = startTextFlow(multi, frame.id, { automaticPages: true });
+      enableNativeComposition(multi, flow, 'paragraph');
+      return flow;
+    }
+    const later = autoSection(laterPage, '<p data-ivo-pstart="even">Even page section</p>'),
+      earlier = autoSection(
+        firstPage,
+        '<p>Preface</p><p data-ivo-pstart="page">Previous section</p>',
+      );
+    const settled = await composeNativeTextFlows(multi, { compose });
+    assert(
+      settled.changed &&
+        multi.pages.length === 4 &&
+        later.autoPages.length === 1 &&
+        earlier.autoPages.length === 1,
+      'Separate threads did not reach stable page parity',
+    );
+    const last = multi.blocks.find((b) => b.id === later.frameIds.at(-1));
+    assert(
+      last.pageId === multi.pages[3].id &&
+        settled.fragments.get(last.id).columns[0].native.lines.length === 1,
+      'Later section ink missed final physical page four',
+    );
+    const repeated = await composeNativeTextFlows(multi, { compose });
+    assert(
+      !repeated.changed && multi.pages.length === 4,
+      'Stable sections triggered another pagination change',
+    );
+    const sectionRows = ['Preface\u2029', 'Section heading\u2029', 'Final paragraph\u2029'];
+    ownFixture(
+      'Native section starts',
+      '<p>Preface</p><p>Section heading</p><p>Final paragraph</p>',
+    );
+    mount();
+    await settle();
+    await selectWord('Section');
+    await property('paragraphStart', 'odd');
+    verifyPlan(sectionRows, [[0], [], [1, 2]]);
+    assert(
+      paragraphMark(1, 'pstart') === 'odd' && archiveVersion([doc]) === 12,
+      'Odd-page start lost its paragraph or file version',
+    );
+    await property('paragraphStart', 'even');
+    verifyPlan(sectionRows, [[0], [1, 2], []]);
+    await selectWord('Final');
+    await property('paragraphStart', 'page');
+    verifyPlan(sectionRows, [[0], [1], [2]]);
+    await editor.command('undo');
+    await settle();
+    verifyPlan(sectionRows, [[0], [1, 2], []]);
+    await editor.command('redo');
+    await settle();
+    await save({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+    editor.destroy();
+    editor = null;
+    doc = validateImport(await load()).documents[0];
+    resetOwner();
+    mount();
+    await settle();
+    verifyPlan(sectionRows, [[0], [1], [2]]);
+    assert(!commits && paragraphMark(2, 'pstart') === 'page', 'Reopening lost a section start');
+    ownFixture('Automatic parity continuation', '<p>Preface</p><p>Section heading</p>', {
+      automaticPages: true,
+    });
+    // Only one user-owned page. On Next Odd Page requires an empty owned page before page 3.
+    doc.textFlows[0].frameIds.splice(1);
+    doc.blocks.splice(1);
+    doc.pages.splice(1);
+    frameIds = doc.textFlows[0].frameIds.slice();
+    resetOwner();
+    mount();
+    await settle();
+    await selectWord('Section');
+    await property('paragraphStart', 'odd');
+    assert(
+      doc.pages.length === 3 && doc.textFlows[0].autoPages.length === 2,
+      'Odd-page start did not create both necessary continuation pages',
+    );
+    assert(
+      painted().result.layout.lines[1].frame === doc.textFlows[0].frameIds[2] + '-column-0',
+      'The section missed its owned odd page',
+    );
+    await property('paragraphStart', 'anywhere');
+    assert(
+      doc.pages.length === 1 && doc.textFlows[0].autoPages.length === 0,
+      'Resetting the start retained obsolete automatic pages',
+    );
     ownFixture('Native keep final row with next', nextHTML);
     mount();
     await settle();
@@ -701,6 +812,7 @@ export async function verifyNativeParagraphKeeps({
       nativeKeepPassiveOversetNoWrites: true,
       nativeKeepCountAndPrevious: true,
       nativeKeepNamedStyleReflow: true,
+      nativeParagraphStarts: true,
       ...(diagnosticsChecked ? { nativeKeepDerivedViolations: true } : {}),
     };
   } finally {

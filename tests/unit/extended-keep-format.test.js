@@ -99,3 +99,23 @@ test('folder vault reopens counted and backward joins without rewriting the prev
   assert.equal(reopened.textFlows[0].html, doc.textFlows[0].html);
   assert.deepEqual(await readFile(originalPath), oldBytes);
 });
+
+test('paragraph starts upgrade only authored documents and validate the location vocabulary', async () => {
+  const old = JSON.parse(
+    await readFile(new URL('../fixtures/legacy/archive-v11.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(validateImport(old), old);
+  assert.equal(archiveVersion(old.documents), 11);
+  for (const rule of ['anywhere', 'column', 'frame', 'page', 'odd', 'even']) {
+    const payload = structuredClone(old),
+      doc = payload.documents[0];
+    doc.textFlows[0].style.paragraphStart = rule;
+    assert.throws(() => validateImport(payload), /archive 12/);
+    markTypographyVersion(doc);
+    payload.schemaVersion = archiveVersion([doc]);
+    assert.equal(payload.schemaVersion, 12);
+    assert.equal(validateImport(payload).documents[0].textFlows[0].style.paragraphStart, rule);
+    doc.textFlows[0].style.paragraphStart = 'unknown';
+    assert.throws(() => validateImport(payload), /paragraphStart/);
+  }
+});

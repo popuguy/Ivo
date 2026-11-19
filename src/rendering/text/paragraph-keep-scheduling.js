@@ -1,3 +1,4 @@
+import { paragraphStartColumn } from './paragraph-start-locations.js';
 import { UnsupportedComposition } from './composition-source.js';
 
 const capacity = () => {
@@ -30,7 +31,10 @@ function prefixLastFragment(lines, count) {
 /** Resolve joins against the following paragraph's actual placement, including
  * its own All rule. Refit just the connected suffix when a join crosses a column.
  * Each new fit consumes the frame scheduler's shared work allowance. */
-export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount, frameCount }) {
+export async function scheduleParagraphKeeps(
+  paragraphs,
+  { fit, actualFrameCount, frameCount, startLocations },
+) {
   const plans = [];
   let cursor = { frame: 0, baseline: null },
     prefix = [];
@@ -89,6 +93,17 @@ export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount
 
   for (let index = 0; index < paragraphs.length;) {
     const paragraph = paragraphs[index];
+    const previous = plans[index - 1];
+    if (paragraph.keep.paragraphStart && !prefix.length) {
+      const target = paragraphStartColumn(
+        paragraph.keep.paragraphStart,
+        startLocations,
+        previous?.lines.at(-1).frame,
+        cursor.frame,
+      );
+      if (target >= frameCount) capacity();
+      if (previous || target !== cursor.frame) cursor = { frame: target, baseline: null };
+    }
     const previousAfter =
       cursor.baseline === null ? 0 : paragraphs[index - 1].layout.paragraphAfter;
     const current = paragraph.keep.keepTogether
@@ -105,8 +120,9 @@ export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount
     if (!fits(current.plan)) capacity();
     const rows = prefix.length ? [...prefix, ...current.plan.lines] : current.plan.lines;
     prefix = [];
-    const previous = plans[index - 1];
     const required = joinedRowCount(paragraphs[index - 1]?.keep, paragraph.keep);
+    // A forced start wins over an incoming join. Do not repeatedly move its predecessor.
+    if (previous && required && paragraph.keep.paragraphStart) previous.brokenJoin = true;
     const joinEnd = required ? prefixLastFragment(rows, required) : 0;
     if (
       previous &&
@@ -165,7 +181,11 @@ export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount
     const last = current.lines[prefixLastFragment(current.lines, count)];
     if (last.frame === frame) continue;
     const start = preceding.start + previous.lines[tailStart(previous.lines)].start;
-    const reason = preceding.keep.keepTogether ? 'all-priority' : 'empty-column-capacity';
+    const reason = paragraph.keep.paragraphStart
+      ? 'paragraph-start'
+      : preceding.keep.keepTogether
+        ? 'all-priority'
+        : 'empty-column-capacity';
     if (preceding.keep.keepWithNext)
       previous.violations.push(
         violation(index - 1, 'keepWithNext', frame, start, paragraph.start + last.end, reason),

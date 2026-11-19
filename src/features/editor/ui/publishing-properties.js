@@ -1,3 +1,4 @@
+import { PARAGRAPH_STARTS } from '../../../domain/text/paragraph-keep-policy.js';
 import { fontChoices, systemFontId } from '../../../domain/text/font-catalog.js';
 import { referencePoint } from '../../../domain/geometry/transform-reference.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
@@ -305,6 +306,12 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
                   `<input data-object-prop="keepNextLines" type="number" min="1" max="5" step="1" aria-label="Following lines" value="${item.keepNextLines ?? 1}">`,
                 ) +
                 check('keepWithPrevious', item.keepWithPrevious, 'Keep with previous') +
+                choose(
+                  'paragraphStart',
+                  item.paragraphStart ?? 'anywhere',
+                  Object.entries(PARAGRAPH_STARTS),
+                  'Start Paragraph',
+                ) +
                 '</div>'
               : '') +
             `<div class="canvas-geometry">${num('widows', item.widows || 2, 'Widows')}${num('orphans', item.orphans || 2, 'Orphans')}</div>` +

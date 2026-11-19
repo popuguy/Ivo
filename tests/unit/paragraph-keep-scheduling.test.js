@@ -677,3 +677,62 @@ test('a later tail reflow preserves a genuinely broken incoming previous join', 
     [[1, 'keepWithPrevious', 1]],
   );
 });
+
+test('forced starts distinguish the next physical column, frame, page and page parity', async () => {
+  const cols = Array.from({ length: 8 }, (_, i) => ({
+    ...column(134, 45),
+    frameId: 'F' + Math.floor(i / 2),
+    pageNumber: [1, 1, 2, 3][Math.floor(i / 2)],
+  }));
+  const compose = createParagraphComposer(backend().measure);
+  for (const [rule, expected] of Object.entries({
+    column: 1,
+    frame: 2,
+    page: 4,
+    even: 4,
+    odd: 6,
+  })) {
+    const req = request('Preface\u2029Deck\u2029Heading\u2029Body');
+    const layout = await compose.compose(req, cols, {
+      paragraphKeeps: [{}, { keepWithNext: true }, { paragraphStart: rule }, {}],
+    });
+    assert.deepEqual(
+      layout.placements.map((r) => r.frame),
+      [0, 0, expected, expected],
+      rule,
+    );
+    assert.deepEqual(
+      layout.keepViolations.map((v) => [v.paragraphIndex, v.reason]),
+      [[1, 'paragraph-start']],
+    );
+    const first = await compose.compose(request('Heading\u2029Body'), cols, {
+      paragraphKeeps: [{ paragraphStart: rule }, {}],
+    });
+    assert.deepEqual(
+      first.placements.map((r) => r.frame),
+      rule === 'even' ? [4, 4] : [0, 0],
+      rule,
+    );
+  }
+});
+
+test('future starts clone the last frame column count; repeated page starts advance from the prior paragraph', async () => {
+  const cols = [0, 1].map(() => ({ ...column(120, 45), frameId: 'one', pageNumber: 1 }));
+  const req = request('Preface\u2029First\u2029Second');
+  const compose = createParagraphComposer(backend().measure);
+  for (const [rule, frames] of Object.entries({
+    column: [0, 1, 2],
+    frame: [0, 2, 4],
+    page: [0, 2, 4],
+    odd: [0, 4, 8],
+    even: [0, 2, 6],
+  })) {
+    const layout = await compose.compose(req, cols, {
+      paragraphKeeps: [{}, { paragraphStart: rule }, { paragraphStart: rule }],
+    });
+    assert.deepEqual(
+      layout.placements.map((r) => r.frame),
+      frames,
+    );
+  }
+});

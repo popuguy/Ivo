@@ -84,6 +84,22 @@ const cases = [
     ],
     frames: [[0], [1, 2, 3], [4, 5]],
   },
+  {
+    name: 'section-starts',
+    html: '<p>PRE1 opening notes</p><p data-ivo-pstart="even">A1 section heading</p><p data-ivo-pstart="page">T1 next section</p>',
+    rows: ['PRE1 opening notes\u2029', 'A1 section heading\u2029', 'T1 next section\u2029'],
+    frames: [[0], [1], [2]],
+  },
+  {
+    name: 'odd-section-blank-page',
+    html: '<p>PRE1 opening paragraph</p><p data-ivo-pstart="odd">A1 next section heading</p><p>T1 remaining description</p>',
+    rows: [
+      'PRE1 opening paragraph\u2029',
+      'A1 next section heading\u2029',
+      'T1 remaining description\u2029',
+    ],
+    frames: [[0], [], [1, 2]],
+  },
 ];
 
 function fixture(definition) {
@@ -174,6 +190,7 @@ export async function verifyParagraphKeepsPDF({
             'keepTogether',
             'keepWithNext',
             'keepNextLines',
+            'paragraphStart',
             'keepWithPrevious',
             'widows',
             'orphans',
@@ -355,6 +372,7 @@ print(String(data: try JSONSerialization.data(withJSONObject: reports, options: 
     paragraphKeepPDFIndependentASCIIAndRowGeometry: true,
     paragraphKeepPDFLinkedHeadings: true,
     paragraphKeepPDFCountAndPrevious: true,
+    paragraphStartPDFPageOwnership: true,
     paragraphKeepPDFInspectedRows: cases.reduce((total, item) => total + item.rows.length, 0),
   };
 }

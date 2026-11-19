@@ -22,8 +22,14 @@ Focused frame/keep schedulers now own placement policy; the paragraph coordinato
 
 Linked headings use the following paragraph’s actual placement, including its own keep-together setting. When a join would cross a column, the scheduler walks back through the connected rows and refits that source suffix at the destination width. If the connected group already starts in an empty column and cannot fit, it preserves earlier joins and reports the broken join. Around artwork, fragments on either side of the same physical row move together. Existing native wrap limits still apply.
 
+## Starting a section
+
+**Start Paragraph** offers Anywhere, In Next Column, In Next Frame, On Next Page, On Next Odd Page and On Next Even Page. A frame can hold several columns and a page can hold several frames. Each choice follows those actual boundaries. Page parity uses the document’s one-based page order. An explicit start takes precedence over a preceding keep. At the beginning of a flow the first available slot qualifies immediately when its page parity matches.
+
+A flow with automatic continuation can create an intervening empty page to reach the requested side. Resetting to Anywhere can remove unused automatically created pages. A passive view reports overset when the requested page is beyond the existing thread.
+
 ## Remaining scope
 
-Minimum first/last lines of a split paragraph, start-on-column/frame/page, grids, tables/anchors/notes and wider script/device policies remain open. Existing nondefault widow/orphan counts stay gated until their distinct activation policy and scheduling are implemented. This bounded increment does not certify the whole keep capability or full InDesign parity.
+Minimum first/last lines of a split paragraph, grids, tables/anchors/notes and wider script/device policies remain open. Existing nondefault widow/orphan counts stay gated until their distinct activation policy and scheduling are implemented. This bounded increment does not certify the whole keep capability or full InDesign parity.
 
 The [verification record](verification.md) covers pure reference-derived fixtures, actual Properties/typing/undo/reopen, owned continuation handling and independent PDF source/page geometry. Original investigation artifacts remain private.

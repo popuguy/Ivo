@@ -2,7 +2,11 @@
 
 ## Paragraph joins across linked frames — 19 November 2026
 
-The hidden Mac editor reflows chained headings, a whole caption, a two-line heading rule and a backward caption rule. Focused geometry tests exercise all five counts, count both sides of an illustration as a single line, cover short paragraphs and check impossible joins after later edits. Editor checks cover the Properties controls, named heading style, undo and reopening. A folder vault test preserves a previous revision while saving the new settings. PDFKit independently extracts 33 source rows across four three-page publications and verifies their page ownership, left edges and baseline spacing.
+The hidden Mac editor reflows chained headings, a whole caption, a two-line heading rule and a backward caption rule. Focused geometry tests exercise all five counts, count both sides of an illustration as a single line, cover short paragraphs and check impossible joins after later edits. Editor checks cover the Properties controls, named heading style, undo and reopening. A folder vault test preserves a previous revision while saving the new settings. PDFKit independently extracts 39 source rows across six three-page publications and verifies their page ownership, left edges and baseline spacing.
+
+The Mac comparison used the same Minion Pro face, 12 pt size and fixed 14.4 pt leading in InDesign and Ivo. Ten heading and caption cases matched all 64 line endings, column assignments and baselines. Twenty-five section-start cases matched column ownership and overset, including a flow beginning on an even page and a frame with two columns. Disposable reference documents were closed after inspection. A separate editor regression changes the same paragraph twice from Properties after it moves to another frame.
+
+A two-thread regression verifies that inserting a continuation page before a previously composed even-page section moves its ink to the new even page. The Apple Silicon review build is `release/2026-11-19-paragraph-pagination/Ivo-darwin-arm64/Ivo.app`.
 
 ## Light publishing panels and contextual Text Wrap — 19 November 2026
 

@@ -1,6 +1,7 @@
 import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
 import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-flow.js';
 import { UnsupportedComposition } from './composition-source.js';
+import { paragraphStartLocations } from './paragraph-start-locations.js';
 import { scheduleParagraphKeeps } from './paragraph-keep-scheduling.js';
 import { WORD_SPACING_COST_POLICY } from '../../domain/text/word-spacing-adjustment.js';
 
@@ -108,6 +109,9 @@ export async function fitFrameParagraphs(
       fit,
       actualFrameCount: actualColumns.length,
       frameCount: columns.length,
+      startLocations: paragraphs.some((p) => p.keep.paragraphStart)
+        ? paragraphStartLocations(actualColumns, columns.length)
+        : undefined,
     }),
     lines = scheduled.lines;
   if (lines.length > MAX_LINES) failed('flow line budget');

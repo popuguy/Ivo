@@ -10,6 +10,7 @@ import {
   hasTextWrap,
   hasWordSpacing,
   hasExtendedKeeps,
+  hasParagraphStarts,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -307,7 +308,12 @@ function validateArchive(payload, parentTemplate) {
       fail(`${label} requires frame-composition archive schema 7`);
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
-    if (hasExtendedKeeps(doc) && (doc.canvasVersion !== 10 || payload.schemaVersion < 11))
+    if (hasParagraphStarts(doc) && (doc.canvasVersion !== 11 || payload.schemaVersion < 12))
+      fail(`${label} requires paragraph start archive 12 / canvas 11`);
+    if (
+      hasExtendedKeeps(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 10) || payload.schemaVersion < 11)
+    )
       fail(`${label} requires paragraph keep archive 11 / canvas 10`);
     if (
       hasWordSpacing(doc) &&

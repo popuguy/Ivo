@@ -252,6 +252,7 @@ function fontResolver(assets) {
 /** Unscaled, inset column slots; physical frame geometry and authored source remain unchanged. */
 export function nativeFlowColumns(doc, flow) {
   const result = [];
+  const pageNumbers = new Map(doc.pages.map((page, index) => [page.id, index + 1]));
   for (const frameId of flow.frameIds) {
     const frame = doc.blocks.find((b) => b.id === frameId);
     if (!frame || frame.textFlowId !== flow.id)
@@ -284,6 +285,7 @@ export function nativeFlowColumns(doc, flow) {
         id,
         frameId,
         pageId: frame.pageId,
+        pageNumber: pageNumbers.get(frame.pageId),
         textScale: frame.textScale || { x: 1, y: 1 },
         index: i,
         left: ((f.insetLeft || 0) + i * (width * sx + gutter)) / sx,
@@ -352,7 +354,11 @@ const flowKeeps = (source) =>
   );
 const hasKeeps = (source) =>
   source.paragraphs.some(
-    (paragraph) => paragraph.keepTogether || paragraph.keepWithNext || paragraph.keepWithPrevious,
+    (paragraph) =>
+      paragraph.keepTogether ||
+      paragraph.keepWithNext ||
+      paragraph.keepWithPrevious ||
+      (paragraph.paragraphStart && paragraph.paragraphStart !== 'anywhere'),
   );
 function validateResult(result, request) {
   if (
@@ -607,10 +613,12 @@ export async function composeNativeTextFlows(
     },
     fragments = new Map(),
     status = new Map(),
-    compositions = [];
-  let changed = false;
-  for (const flow of projection.textFlows) {
-    if (!flow.composition) continue;
+    byFlow = new Map(),
+    queue = projection.textFlows.filter((flow) => flow.composition);
+  let changed = false,
+    passes = 0;
+  for (let i = 0; i < queue.length; i++) {
+    const flow = queue[i];
     if (
       flow.composition.version !== 1 ||
       !['paragraph', 'single-line'].includes(flow.composition.composer)
@@ -760,13 +768,32 @@ export async function composeNativeTextFlows(
       token: result.token,
       diagnostics: result.diagnostics || [],
     });
-    compositions.push({
+    byFlow.set(flow, {
       token: result.token,
       result,
       source,
       frames: columns.filter((c) => flow.frameIds.includes(c.frameId)),
     });
+    // A different thread can insert or remove pages before one already fitted.
+    // Refit only sections whose physical frames changed parity before publishing.
+    if (changed && i + 1 === queue.length) {
+      const pageNumbers = new Map(projection.pages.map((page, n) => [page.id, n + 1]));
+      for (const [thread, placement] of byFlow) {
+        if (
+          placement.source.paragraphs.some(
+            (p) => p.paragraphStart === 'odd' || p.paragraphStart === 'even',
+          ) &&
+          placement.frames.some((c) => c.pageNumber % 2 !== pageNumbers.get(c.pageId) % 2)
+        )
+          queue.push(thread);
+      }
+      if (++passes > MAX_COLUMNS)
+        throw new UnsupportedComposition(
+          'interdependent page starts exceeded the pagination limit',
+        );
+    }
   }
+  const compositions = [...byFlow.values()];
   if (changed) {
     doc.pages = projection.pages;
     doc.blocks = projection.blocks;

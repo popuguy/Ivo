@@ -45,8 +45,7 @@ import { openParentEditor } from './ui/parent-editor.js';
 import {
   CURRENT_ARCHIVE_VERSION,
   markTypographyVersion,
-  hasWordSpacing,
-  hasExtendedKeeps,
+  hasNativeParagraphSettings,
 } from '../../domain/documents/capabilities.js';
 import {
   enablePublishing,
@@ -526,7 +525,7 @@ export function mountCanvasEditor(host, options) {
     requestFrame();
   }
   function validateNativeSources() {
-    if (hasWordSpacing(doc()) || hasExtendedKeeps(doc())) {
+    if (hasNativeParagraphSettings(doc())) {
       const legacy = [
         ...(doc().textFlows || [])
           .filter((flow) => !flow.composition)
@@ -551,9 +550,12 @@ export function mountCanvasEditor(host, options) {
     root.innerHTML = html || '';
     const summary = summarizeTextStyle(root, doc(), effectiveTextStyle(doc(), settings));
     if (
+      (summary.values.paragraphStart && summary.values.paragraphStart !== 'anywhere') ||
       summary.values.keepWithPrevious ||
       summary.values.keepNextLines > 1 ||
-      summary.mixed.some((key) => key === 'keepWithPrevious' || key === 'keepNextLines')
+      summary.mixed.some((key) =>
+        ['keepWithPrevious', 'keepNextLines', 'paragraphStart'].includes(key),
+      )
     )
       throw Error(
         'Extended paragraph keeps require native composition in every text flow using this paragraph style.',
@@ -912,7 +914,7 @@ export function mountCanvasEditor(host, options) {
     const flow = textFlowForFrame(doc(), object());
     if (!flow || !ownsInput() || !options.editing) return;
     if (composer === 'browser') {
-      if (hasExtendedKeeps(doc()) || hasWordSpacing(doc())) {
+      if (hasNativeParagraphSettings(doc())) {
         try {
           validateLegacyParagraphSettings(flow.html, flow.style);
         } catch (error) {
@@ -1162,6 +1164,10 @@ export function mountCanvasEditor(host, options) {
       textFlow.frameIds[0];
     positionFlowInput(sceneObject(doc(), id), offset, affinity);
     if (id === activeTextId) return;
+    // The canonical input and its character offsets survive a move to a new frame.
+    // An inspector field can own focus here, so the browser cannot resample the caret.
+    if (savedTextSelection?.id === activeTextId)
+      savedTextSelection = { id, bookmark: savedTextSelection.bookmark };
     activeTextId = id;
     element.dataset.sceneText = id;
     setSelectionState(id);
@@ -1299,16 +1305,15 @@ export function mountCanvasEditor(host, options) {
         options.assets?.() || options.fonts?.() || [],
       );
     } else if (
-      hasWordSpacing(doc()) ||
-      hasExtendedKeeps(doc()) ||
-      /\bdata-ivo-(?:wordspace|nextlines|previous)\s*=/i.test(canonical)
+      hasNativeParagraphSettings(doc()) ||
+      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart)\s*=/i.test(canonical)
     )
       validateLegacyParagraphSettings(canonical, textFlow?.style || item);
     if (element?.classList.contains('canvas-flow-input') && !textFlow?.composition)
       delete element.dataset.projectedStart;
     if (textFlow) textFlow.html = canonical;
     else if (item) item.html = canonical;
-    if (hasWordSpacing(doc()) || hasExtendedKeeps(doc())) markTypographyVersion(doc());
+    if (hasNativeParagraphSettings(doc())) markTypographyVersion(doc());
   }
   function activeText() {
     return activeTextId
@@ -1608,7 +1613,11 @@ export function mountCanvasEditor(host, options) {
           ? effectiveTextStyle(doc(), { paragraphStyle: value })
           : { [field]: value };
       let message;
-      if (settings.keepWithPrevious || settings.keepNextLines > 1)
+      if (
+        settings.keepWithPrevious ||
+        settings.keepNextLines > 1 ||
+        (settings.paragraphStart && settings.paragraphStart !== 'anywhere')
+      )
         message =
           'Choose native composition for this text flow before applying extended paragraph keeps.';
       if (wordSpacingSettings(settings.wordSpacing ?? 'normal'))

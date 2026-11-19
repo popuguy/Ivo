@@ -1,3 +1,4 @@
+import { PARAGRAPH_STARTS } from './paragraph-keep-policy.js';
 import { normalizeWordSpacing } from './word-spacing.js';
 
 export const TEXT_FONTS = Object.freeze({
@@ -62,6 +63,7 @@ export const TEXT_DEFAULTS = Object.freeze({
   keepWithNext: false,
   keepNextLines: 1,
   keepWithPrevious: false,
+  paragraphStart: 'anywhere',
   widows: 2,
   orphans: 2,
   direction: 'ltr',
@@ -112,6 +114,7 @@ export const PARAGRAPH_FIELDS = Object.freeze({
   keepWithNext: 'next',
   keepNextLines: 'nextlines',
   keepWithPrevious: 'previous',
+  paragraphStart: 'pstart',
   widows: 'widows',
   orphans: 'orphans',
   direction: 'dir',
@@ -163,6 +166,7 @@ const bounds = {
 };
 
 export function validTextAttribute(name, value) {
+  if (name === 'pstart') return Object.hasOwn(PARAGRAPH_STARTS, value) ? value : null;
   if (name === 'nextlines') return /^[1-5]$/.test(value) ? String(value) : null;
   if (name === 'wordspace') {
     try {
