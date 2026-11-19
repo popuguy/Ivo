@@ -1,10 +1,12 @@
 import { app, BrowserWindow, protocol, net } from 'electron';
+import { prepareBackgroundTest, testWindowOptions } from '../helpers/background.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const profile = await mkdtemp(path.join(tmpdir(), 'ivo-daily-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
@@ -18,12 +20,14 @@ app
       if (!target.startsWith(root + path.sep)) return new Response('Forbidden', { status: 403 });
       return net.fetch(pathToFileURL(target).href);
     });
-    const window = new BrowserWindow({
-      show: false,
-      width: 1200,
-      height: 850,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
-    });
+    const window = new BrowserWindow(
+      testWindowOptions({
+        show: false,
+        width: 1200,
+        height: 850,
+        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+      }),
+    );
     let settled = false;
     const timer = setTimeout(() => void finish(1, { error: 'Daily-use timeout' }), 20000);
     async function finish(code, result) {

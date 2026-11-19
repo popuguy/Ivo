@@ -1,5 +1,6 @@
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
+import { CURRENT_ARCHIVE_VERSION } from '../../../src/domain/documents/capabilities.js';
 const assert = (value, message) => {
   if (!value) throw new Error(message);
 };
@@ -42,7 +43,7 @@ try {
       loadAsset: async () => null,
       saveAsset: async () => {},
       saveDocument: async (doc) => {
-        validateImport({ schemaVersion: 5, documents: [doc], assets: [] });
+        validateImport({ schemaVersion: CURRENT_ARCHIVE_VERSION, documents: [doc], assets: [] });
         docs.set(doc.id, structuredClone(doc));
       },
       getMeta: async (id) => (meta.has(id) ? { id, value: structuredClone(meta.get(id)) } : null),
@@ -297,6 +298,11 @@ try {
   assert(
     document.querySelector('.canvas-flow-input').textContent === '',
     'New flowing note inserted placeholder text',
+  );
+  const typography = getComputedStyle(document.querySelector('.canvas-flow-input'));
+  assert(
+    typography.fontSize === '12px' && typography.lineHeight === '14.4px',
+    'New layout dialog lost the default type size or leading',
   );
   console.log(
     'IVO_TEXT_FLOW_APP_RESULT:' +

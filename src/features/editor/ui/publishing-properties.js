@@ -3,7 +3,7 @@ import { referencePoint } from '../../../domain/geometry/transform-reference.js'
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
 import { HIGHLIGHT_COLORS } from '../../../domain/text/typography.js';
-import { layersFor, layerFor } from '../../../domain/documents/publishing.js';
+import { basicParagraph, layersFor, layerFor } from '../../../domain/documents/publishing.js';
 
 export const section = (title, body) =>
   `<section class="publishing-section"><h3>${title}</h3>${body}</section>`;
@@ -57,7 +57,7 @@ export function styleProperties(item, doc, state) {
     definitions = doc.publishing?.[kind + 'Styles'] || [];
   return section(
     'Text Style',
-    `<div class="style-kind-tabs" role="group" aria-label="Text style kind">${['paragraph', 'character'].map((value) => `<button data-style-kind="${value}" aria-pressed="${kind === value}">${value === 'paragraph' ? 'Paragraph' : 'Character'} Styles</button>`).join('')}</div><div class="publishing-style-row">${choose(kind + 'Style', item[kind + 'Style'] || 'none', [['none', kind === 'paragraph' ? '[Basic Paragraph]' : '[None]'], ...definitions.map((s) => [s.id, s.name])], kind === 'paragraph' ? 'Paragraph Styles' : 'Character Styles')}${button('new-' + kind + '-style', 'New ' + kind + ' style', 'plus')}${button('edit-' + kind + '-style', 'Edit ' + kind + ' style', 'edit')}</div>${button('clear-overrides', 'Clear overrides in selection')}`,
+    `<div class="style-kind-tabs" role="group" aria-label="Text style kind">${['paragraph', 'character'].map((value) => `<button data-style-kind="${value}" aria-pressed="${kind === value}">${value === 'paragraph' ? 'Paragraph' : 'Character'} Styles</button>`).join('')}</div><div class="publishing-style-row">${choose(kind + 'Style', item[kind + 'Style'] || 'none', [['none', kind === 'paragraph' && !basicParagraph(doc) ? '[Basic Paragraph]' : '[None]'], ...definitions.map((s) => [s.id, s.name])], kind === 'paragraph' ? 'Paragraph Styles' : 'Character Styles')}${button('new-' + kind + '-style', 'New ' + kind + ' style', 'plus')}${button('edit-' + kind + '-style', 'Edit ' + kind + ' style', 'edit')}</div>${button('clear-overrides', 'Clear overrides in selection')}`,
   );
 }
 export function textProperties(item, fonts, installed = []) {

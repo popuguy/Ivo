@@ -1,5 +1,6 @@
 import { uid } from './model.js';
 import { upgradeDocument } from './scene.js';
+import { basicParagraph } from './publishing.js';
 export const isTemplate = (document) => document?.extensions?.ivoTemplate?.version === 1;
 
 /** Copy authored data, remapping owned IDs and self-links while retaining immutable asset refs. */
@@ -21,6 +22,8 @@ export function copyDocument(source, { title = source.title + ' (copy)', templat
   ])
     ids.set(item.id, uid('copy-'));
   document.id = ids.get(source.id);
+  const basic = basicParagraph(source);
+  if (basic) document.extensions.ivoTypography.defaultParagraphStyle = ids.get(basic.id);
   document.title = title.trim().slice(0, 180) || 'Untitled';
   document.aliases = [];
   document.version = 1;

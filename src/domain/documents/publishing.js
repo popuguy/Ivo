@@ -10,6 +10,10 @@ const baseLayer = () => ({
   locked: false,
 });
 export const layersFor = (doc) => doc.publishing?.layers || [baseLayer()];
+export function basicParagraph(doc) {
+  const id = doc.extensions?.ivoTypography?.defaultParagraphStyle;
+  return id && doc.publishing?.paragraphStyles.find((style) => style.id === id);
+}
 /** New capabilities are opt-in on authored mutations; opening an older note does not migrate it. */
 export function enablePublishing(doc) {
   doc.canvasVersion = Math.max(doc.canvasVersion || 1, 5);

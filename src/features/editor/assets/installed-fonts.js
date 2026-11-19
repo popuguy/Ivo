@@ -79,6 +79,13 @@ export function createInstalledFontLibrary({ native, assets, persist }) {
   }
   return {
     load,
+    async defaultDocumentFont() {
+      const preferred = 'MinionPro-Regular';
+      const saved = assets().find((asset) => asset.font?.postscript === preferred);
+      if (saved) return saved.id;
+      const face = (await load()).find((row) => row.postscript === preferred);
+      return face ? (await embed(face)).textStyle : 'cmu-serif';
+    },
     get rows() {
       return rows;
     },

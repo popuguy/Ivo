@@ -3,7 +3,7 @@ import { uid } from './model.js';
 import { copyDocument } from './copy.js';
 import { descendantsOf, worldRect, pagePositions } from './scene.js';
 import { selectionRoots } from '../geometry/selection.js';
-import { enablePublishing } from './publishing.js';
+import { basicParagraph, enablePublishing } from './publishing.js';
 import { validateImport } from './schema.js';
 import { attribute } from '../text/html.js';
 import { referencedFonts, legacyFontFamilies } from '../text/font-references.js';
@@ -132,6 +132,20 @@ export function pasteObjectSelection(
   if (incoming.publishing) {
     const publishing = enablePublishing(next),
       remap = new Map();
+    const fromBasic = basicParagraph(incoming),
+      toBasic = basicParagraph(next);
+    if (
+      fromBasic &&
+      toBasic &&
+      !fromBasic.basedOn &&
+      !toBasic.basedOn &&
+      fromBasic.name === toBasic.name &&
+      Object.keys(fromBasic.attributes).length === Object.keys(toBasic.attributes).length &&
+      Object.entries(fromBasic.attributes).every(
+        ([key, value]) => toBasic.attributes[key] === value,
+      )
+    )
+      remap.set(fromBasic.id, toBasic.id);
     for (const kind of ['paragraph', 'character']) {
       const key = kind + 'Styles';
       for (const [index, style] of incoming.publishing[key].entries()) {

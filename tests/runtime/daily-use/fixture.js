@@ -1,5 +1,6 @@
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
+import { CURRENT_ARCHIVE_VERSION } from '../../../src/domain/documents/capabilities.js';
 const assert = (value, message) => {
     if (!value) throw new Error(message);
   },
@@ -47,7 +48,7 @@ try {
       loadAsset: async () => null,
       saveAsset: async () => {},
       saveDocument: async (doc) => {
-        validateImport({ schemaVersion: 5, documents: [doc], assets: [] });
+        validateImport({ schemaVersion: CURRENT_ARCHIVE_VERSION, documents: [doc], assets: [] });
         docs.set(doc.id, structuredClone(doc));
       },
       getMeta: async (key) =>
@@ -85,6 +86,13 @@ try {
   );
   await wait(() => document.activeElement?.classList.contains('canvas-flow-input'));
   const source = document.activeElement;
+  const style = getComputedStyle(source);
+  assert(
+    style.fontSize === '12px' &&
+      parseFloat(style.lineHeight) === 14.4 &&
+      style.fontFamily.includes('CMU Serif'),
+    'New note did not inherit the offline document defaults',
+  );
   document.execCommand('insertText', false, 'Notes typed directly after naming.');
   await close();
   assert(

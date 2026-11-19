@@ -1,4 +1,5 @@
 import { verifyDocumentOperations, verifyListOperations } from './document-operations.js';
+import { verifyTypeShortcuts } from './type-shortcuts.js';
 import { verifyThreadedDeletion } from './threaded-deletion.js';
 import { verifyFlowSelectionBoundaries } from './boundaries.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
@@ -499,6 +500,7 @@ try {
     await verifyFlowSelectionBoundaries(host, window.textCoreTest);
     await verifyThreadedDeletion(host, window.textCoreTest);
     await verifyDocumentOperations(host, window.textCoreTest);
+    await verifyTypeShortcuts(host, window.textCoreTest);
     await verifyListOperations(host, window.textCoreTest);
     console.log('IVO_TEXT_CORE_RESULT:' + JSON.stringify({ phase: 'edit' }));
   }

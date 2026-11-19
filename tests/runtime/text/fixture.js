@@ -1,3 +1,4 @@
+import { CURRENT_ARCHIVE_VERSION } from '../../../src/domain/documents/capabilities.js';
 import { verifyFlowCaretGeometry } from './flow-geometry.js';
 import { verifyTextDecorations } from './decorations.js';
 import { verifyNativeTextFormatting } from './native-format.js';
@@ -72,7 +73,7 @@ try {
       loadAsset: async () => null,
       saveAsset: async () => {},
       saveDocument: async (d) => {
-        validateImport({ schemaVersion: 5, documents: [d], assets: [] });
+        validateImport({ schemaVersion: CURRENT_ARCHIVE_VERSION, documents: [d], assets: [] });
         documents.set(d.id, structuredClone(d));
       },
       getMeta: async (id) => {

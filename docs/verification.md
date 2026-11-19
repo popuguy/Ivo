@@ -1,5 +1,13 @@
 # Verification
 
+## Point size shortcuts and new document typography — 19 November 2026
+
+A hidden new InDesign document supplied the default face, 12 pt size, 120% Auto leading and zero paragraph spacing. The installed size and leading increment was 2 pt. Its default shortcut set maps Shift–Command–comma and Shift–Command–period to decrease and increase, with Option multiplying the step by five.
+
+The hidden Mac editor exercised both increments on a backward, mixed-size range, including a blank paragraph. It checked a single history entry, pending formatting at the caret, selected-frame sizing, Auto leading replacing fixed leading, and independent paragraph and capitalization commands. New document and new layout commands were tested through the workspace. The font check saved the exact Minion Pro Regular face in a temporary vault and reopened it with the system catalogue disconnected. The native composer accepted the same font, point size and leading settings. Windows modifier routing was tested independently. Physical Windows input and mobile hardware keys still need a device check.
+
+The Mac review build is under `release/2026-11-19-type-shortcuts-and-defaults/`.
+
 ## Desktop text shortcuts and list editing — 19 November 2026
 
 A disposable document supplied reference examples for word deletion. An offscreen AppKit text view distinguished scrolling from selection for Home, End, Page Up and Page Down on Mac.

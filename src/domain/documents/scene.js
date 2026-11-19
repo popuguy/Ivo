@@ -2,6 +2,7 @@ import { removeTextFlowFrames, duplicateTextFlows } from './text-flows.js';
 /** Page/object domain commands. All scene lengths are points; viewport state is separate. */
 import { uid, createDocument, createBlock } from './model.js';
 import { scaledPointType } from '../text/metrics.js';
+import { basicParagraph, effectiveTextStyle, saveTextStyle } from './publishing.js';
 
 export const DEFAULT_PAGE = Object.freeze({ width: 612, height: 792 });
 export const isSceneDocument = (document) =>
@@ -9,10 +10,24 @@ export const isSceneDocument = (document) =>
 export function makePage(size = DEFAULT_PAGE, name = 'Page 1') {
   return { id: uid('page-'), name, width: size.width, height: size.height };
 }
-export function createSceneDocument(title = 'Untitled', size = DEFAULT_PAGE) {
+export function createSceneDocument(title = 'Untitled', size = DEFAULT_PAGE, defaultFont) {
   const document = createDocument(title || 'Untitled');
   document.canvasVersion = 1;
   document.pages = [makePage(size)];
+  if (defaultFont) {
+    const style = saveTextStyle(document, 'paragraph', {
+      name: '[Basic Paragraph]',
+      attributes: {
+        textStyle: defaultFont,
+        fontSize: 12,
+        leading: 0,
+        autoLeading: 120,
+        paragraphBefore: 0,
+        paragraphAfter: 0,
+      },
+    });
+    document.extensions = { ivoTypography: { version: 1, defaultParagraphStyle: style.id } };
+  }
   return document;
 }
 /** Nonmutating preview/upgrade. The caller must retain a legacy revision before first save. */
@@ -107,7 +122,16 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
   const parent = parentId && sceneObject(document, parentId);
   if (parent && (parent.type !== 'polygon' || parent.pageId !== pageId))
     throw new Error('Draw inside requires a polygon on this page.');
-  const object = makeObject(type, pageId, overrides);
+  const defaults = ['text', 'quote'].includes(type) && basicParagraph(document);
+  const object = makeObject(type, pageId, {
+    ...(defaults && { ...defaults.attributes, paragraphStyle: defaults.id }),
+    ...overrides,
+  });
+  if (defaults && object.paragraphStyle === defaults.id) {
+    for (const key of Object.keys(defaults.attributes))
+      if (key in overrides && overrides[key] !== defaults.attributes[key])
+        (object.textOverrides ||= {})[key] = overrides[key];
+  }
   if (document.publishing) {
     const layer =
       document.publishing.layers.find((l) => l.id === (parent?.layerId || overrides.layerId)) ||
@@ -138,7 +162,14 @@ export function transformObject(document, id, rect, startingDocument = document)
     const child = sceneObject(document, old.id);
     Object.assign(child, { x: old.x * sx, y: old.y * sy, w: old.w * sx, h: old.h * sy });
     if (['text', 'quote'].includes(child.type))
-      Object.assign(child, scaledPointType(old, sx, sy, { min: 1, max: 2000 }));
+      Object.assign(
+        child,
+        scaledPointType(old, sx, sy, {
+          min: 1,
+          max: 2000,
+          baseSize: effectiveTextStyle(startingDocument, old).fontSize,
+        }),
+      );
   }
 }
 function rotateOffset(x, y, rotation = 0) {

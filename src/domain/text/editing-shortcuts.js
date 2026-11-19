@@ -11,6 +11,30 @@ function normalizedKey(event, apple) {
 }
 const applePlatform = (platform) => /Mac|iPad|iPhone/.test(platform);
 
+/** Type commands shared by a selected frame and an insertion point or text range. */
+export function typeShortcut(event, platform) {
+  const apple = applePlatform(platform);
+  if (
+    event.isComposing ||
+    !event.shiftKey ||
+    event.getModifierState?.('AltGraph') ||
+    (apple ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey)
+  )
+    return null;
+  const key = event.key.toLowerCase();
+  const step = event.altKey ? 10 : 2;
+  if (key === ',' || key === '<' || event.code === 'Comma')
+    return { field: 'fontSize', delta: -step };
+  if (key === '.' || key === '>' || event.code === 'Period')
+    return { field: 'fontSize', delta: step };
+  if (event.altKey)
+    return key === 'a' || event.code === 'KeyA' ? { field: 'leading', value: 0 } : null;
+  if (key === 'h' || key === 'k')
+    return { field: key === 'h' ? 'smallCaps' : 'allCaps', toggle: true };
+  const align = { l: 'left', c: 'center', r: 'right', j: 'justify', f: 'justify-all' }[key];
+  return align ? { field: 'align', value: align } : null;
+}
+
 export function textDeletionShortcut(event, platform) {
   if (event.isComposing || event.shiftKey) return null;
   const apple = applePlatform(platform);

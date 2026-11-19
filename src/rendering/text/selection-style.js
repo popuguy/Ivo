@@ -34,10 +34,8 @@ export function nodeTextStyle(node, inherited, doc) {
   return result;
 }
 
-/** Uniform and mixed formatting for a frame, range or insertion point. Source is never changed. */
-export function summarizeTextStyle(root, doc, defaults, { range = null, pending = {} } = {}) {
+export function textStyleReader(root, doc, defaults) {
   const base = { ...TEXT_DEFAULTS, ...defaults },
-    samples = [],
     styles = new WeakMap();
   const at = (node) => {
     const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
@@ -46,6 +44,13 @@ export function summarizeTextStyle(root, doc, defaults, { range = null, pending 
       styles.set(element, nodeTextStyle(element, at(element.parentElement), doc));
     return styles.get(element);
   };
+  return at;
+}
+
+/** Uniform and mixed formatting for a frame, range or insertion point. Source is never changed. */
+export function summarizeTextStyle(root, doc, defaults, { range = null, pending = {} } = {}) {
+  const samples = [],
+    at = textStyleReader(root, doc, defaults);
   if (range?.collapsed) {
     let node = range.startContainer;
     if (node.nodeType === Node.ELEMENT_NODE && node.childNodes.length)
@@ -75,7 +80,7 @@ export function summarizeTextStyle(root, doc, defaults, { range = null, pending 
       samples.push(at(node));
     }
   }
-  if (!samples.length) samples.push(base);
+  if (!samples.length) samples.push(at(root));
   const values = {},
     mixed = [];
   for (const key of Object.keys(TEXT_DEFAULTS)) {

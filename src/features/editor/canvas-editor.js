@@ -31,7 +31,11 @@ import {
   inputColumn,
 } from '../../rendering/text/flow-input.js';
 import { createContextualBar } from './ui/contextual-bar.js';
-import { summarizeTextStyle, reflectTextStyle } from '../../rendering/text/selection-style.js';
+import {
+  summarizeTextStyle,
+  reflectTextStyle,
+  textStyleReader,
+} from '../../rendering/text/selection-style.js';
 import { clearRangeOverrides } from '../../rendering/text/overrides.js';
 import { editReferenceRect } from '../../domain/geometry/transform-reference.js';
 import { openParentEditor } from './ui/parent-editor.js';
@@ -55,6 +59,7 @@ import { moveSingleFrameSelection } from '../../rendering/text/single-frame-navi
 import {
   textDeletionShortcut,
   textNavigationShortcut,
+  typeShortcut,
 } from '../../domain/text/editing-shortcuts.js';
 import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.js';
 import { wordSpacingSettings } from '../../domain/text/word-spacing.js';
@@ -1534,7 +1539,7 @@ export function mountCanvasEditor(host, options) {
     delete editor.dataset.gesture;
     return true;
   }
-  function applyTextProperty(field, value, { commit = true } = {}) {
+  function applyTextProperty(field, value, { commit = true, adjust } = {}) {
     const flow = textFlowForFrame(doc(), object());
     const wordSpacing =
       field === 'wordSpacing'
@@ -1551,13 +1556,13 @@ export function mountCanvasEditor(host, options) {
       return false;
     }
     if (!flow?.composition && !flowPlan.status.get(flow?.id)?.wrapped)
-      return applyTextPropertyValue(field, value, { commit });
+      return applyTextPropertyValue(field, value, { commit, adjust });
     finishText();
     const before = structuredClone(doc()),
       view = captureView(),
       marks = { ...pendingMarks };
     try {
-      const result = applyTextPropertyValue(field, value, { commit: false });
+      const result = applyTextPropertyValue(field, value, { commit: false, adjust });
       validateNativeSources();
       // Validate pending insertion formatting as well as existing source runs.
       if (flow.composition && Object.keys(pendingMarks).length) {
@@ -1579,7 +1584,7 @@ export function mountCanvasEditor(host, options) {
       return false;
     }
   }
-  function applyTextPropertyValue(field, value, { commit = true } = {}) {
+  function applyTextPropertyValue(field, value, { commit = true, adjust } = {}) {
     const item = object();
     if (!item || !['text', 'quote'].includes(item.type)) return false;
     finishText();
@@ -1587,6 +1592,15 @@ export function mountCanvasEditor(host, options) {
     const fontFace =
       field === 'textStyle' ? options.fonts?.().find((asset) => asset.id === value)?.font : null;
     const faceDefaults = fontFace ? { bold: fontFace.weight >= 600, italic: fontFace.italic } : {};
+    function rangeValue(root) {
+      if (!adjust) return value;
+      const style = textStyleReader(
+        root,
+        doc(),
+        effectiveTextStyle(doc(), frameTextSettings(doc(), item)),
+      );
+      return (node) => adjust(style(node)[field]);
+    }
     if (activeTextId !== item.id) {
       const before = structuredClone(doc()),
         viewBefore = captureView(),
@@ -1596,12 +1610,14 @@ export function mountCanvasEditor(host, options) {
       const all = document.createRange();
       all.selectNodeContents(root);
       if (CHARACTER_FIELDS[field]) {
-        formatRange(root, all, field, value);
+        const next = rangeValue(root);
+        formatRange(root, all, field, next);
         for (const [key, setting] of Object.entries(faceDefaults))
           formatRange(root, all, key, setting);
-        for (const blank of root.querySelectorAll('p,div,li'))
-          if (!blank.textContent && !blank.querySelector('p,div,li'))
-            setTextAttribute(blank, CHARACTER_FIELDS[field], value);
+        if (!adjust)
+          for (const blank of root.querySelectorAll('p,div,li'))
+            if (!blank.textContent && !blank.querySelector('p,div,li'))
+              setTextAttribute(blank, CHARACTER_FIELDS[field], value);
       } else formatParagraphs(root, all, field, value);
       settings[field] = value;
       Object.assign(settings, faceDefaults);
@@ -1654,16 +1670,18 @@ export function mountCanvasEditor(host, options) {
       range &&
       !range.collapsed &&
       CHARACTER_FIELDS[field] &&
+      !adjust &&
       rangeUsesFormat(element, range, field, value)
     )
       return true;
     const before = structuredClone(doc()),
       viewBefore = captureView();
     if (activeTextId === item.id && range && !range.collapsed && CHARACTER_FIELDS[field]) {
-      formatRange(element, range, field, value);
+      const selected = captureTextSelection(element);
+      formatRange(element, range, field, rangeValue(element));
       for (const [key, setting] of Object.entries(faceDefaults))
         formatRange(element, range, key, setting);
-      savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };
+      savedTextSelection = { id: item.id, bookmark: selected || bookmarkForRange(element, range) };
       restoreTextSelection(element, savedTextSelection.bookmark, { focus: false });
       writeText(item, element.innerHTML, element);
     } else if (
@@ -2402,6 +2420,7 @@ export function mountCanvasEditor(host, options) {
           scaledPointType(original, item.w / original.w, item.h / original.h, {
             min: 1,
             max: 2000,
+            baseSize: effectiveTextStyle(baseline, original).fontSize,
           }),
         );
       renderGuides(result.guides, g.pageId);
@@ -3551,6 +3570,30 @@ export function mountCanvasEditor(host, options) {
     }
     if (handleFieldTab(event)) return;
     const focusedText = activeText();
+    const typeAction = typeShortcut(event, navigator.platform);
+    if (
+      typeAction &&
+      !event.defaultPrevented &&
+      options.editing &&
+      (focusedText?.contains(event.target) ||
+        (!activeTextId &&
+          !typing(event.target) &&
+          (event.target === document.body || viewport.contains(event.target)))) &&
+      ['text', 'quote'].includes(object()?.type)
+    ) {
+      event.preventDefault();
+      const { field, delta, toggle, value } = typeAction;
+      if (delta) {
+        const base = effectiveTextStyle(doc(), frameTextSettings(doc(), object())).fontSize ?? 16;
+        const size =
+          activeTextId && window.getSelection()?.isCollapsed
+            ? (readSelectedTextStyle()?.values.fontSize ?? base)
+            : base;
+        const adjust = (points) => Math.max(1, Math.min(2000, points + delta));
+        applyTextProperty(field, adjust(size), { adjust });
+      } else applyTextProperty(field, toggle ? !readSelectedTextStyle()?.values[field] : value);
+      return;
+    }
     const move = textNavigationShortcut(event, navigator.platform);
     // The pasteboard owns the viewport when there is no text insertion point.
     if (
@@ -3742,11 +3785,6 @@ export function mountCanvasEditor(host, options) {
       if (['b', 'i'].includes(key) || (key === 'u' && event.shiftKey)) {
         event.preventDefault();
         command({ b: 'bold', i: 'italic', u: 'underline' }[key]);
-        return;
-      }
-      if (event.shiftKey && ['l', 'r', 'c'].includes(key)) {
-        event.preventDefault();
-        applyTextProperty('align', { l: 'left', r: 'right', c: 'center' }[key]);
         return;
       }
     }

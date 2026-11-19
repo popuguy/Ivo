@@ -26,7 +26,7 @@ OpenType options are anchored to the invoking control, fit above/below near canv
 
 ## Font portability
 
-CMU Serif is the default for new text; the interface stays in Geist. The font picker merges the shipped faces, fonts already contained in the vault and all currently available system faces from Core Text. Refresh installed fonts updates the list without changing the document. The desktop read-only helper runs outside the renderer; the same Core Text source is included by the iPhone/iPad plugin. No global font installation, web font permission or online font service is used.
+New documents use Minion Pro Regular when available. CMU Serif is the portable fallback. The interface uses Geist. The font picker merges the shipped faces, fonts already contained in the vault and all currently available system faces from Core Text. Refresh installed fonts updates the list without changing the document. The desktop read-only helper runs outside the renderer; the same Core Text source is included by the iPhone/iPad plugin. No global font installation, web font permission or online font service is used.
 
 Selecting an external face validates/decodes its font data, saves an immutable content-addressed vault asset, then applies its digest to the captured text/object selection. Repeated use reuses the stored copy. Font choice shares one undo transaction; a failed save or a changed selection leaves authored text untouched. Bold/italic requests include a real installed companion where available. Medium/Semibold and other selected faces keep their exact font data rather than being rematched as Regular/Bold. Imported variable fonts retain nondefault instance coordinates and their declared axes; default optical-size/weight coordinates do not pin automatic behavior.
 

@@ -3,12 +3,42 @@ import assert from 'node:assert/strict';
 import {
   textDeletionShortcut,
   textNavigationShortcut,
+  typeShortcut,
 } from '../../src/domain/text/editing-shortcuts.js';
 import {
   createTextNavigation,
   logicalSelection,
   moveTextPosition,
 } from '../../src/domain/text/flow-selection.js';
+
+test('type shortcuts distinguish point increments, formatting, and platform ownership', () => {
+  for (const [platform, modifier] of [
+    ['MacIntel', 'metaKey'],
+    ['Win32', 'ctrlKey'],
+  ]) {
+    const press = (key, options = {}) =>
+      typeShortcut({ key, shiftKey: true, [modifier]: true, ...options }, platform);
+    assert.deepEqual(press('<'), { field: 'fontSize', delta: -2 });
+    assert.deepEqual(press('>'), { field: 'fontSize', delta: 2 });
+    assert.deepEqual(press('¯', { code: 'Period', altKey: true }), {
+      field: 'fontSize',
+      delta: 10,
+    });
+    assert.deepEqual(press(',', { altKey: true }), { field: 'fontSize', delta: -10 });
+    assert.deepEqual(press('K'), { field: 'allCaps', toggle: true });
+    assert.deepEqual(press('H'), { field: 'smallCaps', toggle: true });
+    assert.deepEqual(press('A', { altKey: true }), { field: 'leading', value: 0 });
+    assert.deepEqual(press('J'), { field: 'align', value: 'justify' });
+    assert.deepEqual(press('F'), { field: 'align', value: 'justify-all' });
+    for (const options of [
+      { isComposing: true },
+      { shiftKey: false },
+      { getModifierState: () => true },
+    ])
+      assert.equal(press('>', options), null);
+    for (const key of ['[', ']', 'ArrowLeft', 'ArrowRight']) assert.equal(press(key), null);
+  }
+});
 
 test('compact Mac keys and translated extended keys have the same scroll, movement and selection behavior', () => {
   for (const [raw, translated, direction, scroll, select] of [

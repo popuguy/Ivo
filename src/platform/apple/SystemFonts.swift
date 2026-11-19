@@ -1,7 +1,10 @@
 import Foundation
 import CoreText
+#if os(macOS)
+import AppKit
+#endif
 
-/// Read-only access to registered font faces. Paths never cross the application bridge.
+/// Read-only local font catalogue. Paths never cross the application bridge.
 public enum SystemFonts {
     public struct Face: Codable {
         public let postscript: String
@@ -22,7 +25,27 @@ public enum SystemFonts {
     }
     private static func descriptors() -> [CTFontDescriptor] {
         let collection = CTFontCollectionCreateFromAvailableFonts([kCTFontCollectionRemoveDuplicatesOption: true] as CFDictionary)
-        return CTFontCollectionCreateMatchingFontDescriptors(collection) as? [CTFontDescriptor] ?? []
+        var faces = CTFontCollectionCreateMatchingFontDescriptors(collection) as? [CTFontDescriptor] ?? []
+        #if os(macOS)
+        // These local installations can provide Minion without registering it with Core Text.
+        // Registered faces take precedence. No path comes from renderer input.
+        let workspace = NSWorkspace.shared
+        let directories = [
+            workspace.urlForApplication(withBundleIdentifier: "com.adobe.Acrobat.Pro")?
+                .appendingPathComponent("Contents/Resources/Resource/Font"),
+            workspace.urlForApplication(withBundleIdentifier: "com.adobe.InDesign")?
+                .deletingLastPathComponent().appendingPathComponent("Resources/Required/fonts")
+        ].compactMap { $0 }
+        for directory in directories {
+            for name in ["MinionPro-Regular", "MinionPro-It", "MinionPro-Bold", "MinionPro-BoldIt"] {
+                let url = directory.appendingPathComponent(name).appendingPathExtension("otf")
+                guard FileManager.default.fileExists(atPath: url.path),
+                      let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor] else { continue }
+                faces += descriptors.filter { CTFontDescriptorCopyAttribute($0, kCTFontNameAttribute) as? String == name }
+            }
+        }
+        #endif
+        return faces
     }
     public static func list() -> [Face] {
         var seen = Set<String>()

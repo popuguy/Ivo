@@ -4,13 +4,20 @@ export function textScale(block) {
 }
 
 /** Normalize vertical point scaling into font size, as measured in the native fixture. */
-export function scaledPointType(block, widthRatio, heightRatio, { min = 10, max = 120 } = {}) {
-  const original = textScale(block),
-    size = block.fontSize || 16;
-  const fontSize = Math.max(min, Math.min(max, size * heightRatio));
-  const fontRatio = fontSize / size;
+export function scaledPointType(
+  block,
+  widthRatio,
+  heightRatio,
+  { min = 10, max = 120, baseSize = block.fontSize || 16 } = {},
+) {
+  const original = textScale(block);
+  const fontSize = Math.max(min, Math.min(max, baseSize * heightRatio));
+  const fontRatio = fontSize / baseSize;
   return {
     fontSize,
+    ...((block.paragraphStyle || block.characterStyle) && {
+      textOverrides: { ...block.textOverrides, fontSize },
+    }),
     textScale: {
       x: Math.max(0.01, Math.min(100, (original.x * widthRatio) / fontRatio)),
       y: Math.max(0.01, Math.min(100, (original.y * heightRatio) / fontRatio)),

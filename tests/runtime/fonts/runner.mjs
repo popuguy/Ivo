@@ -1,4 +1,5 @@
 import { app, BrowserWindow, protocol, net, ipcMain } from 'electron';
+import { prepareBackgroundTest, testWindowOptions } from '../helpers/background.mjs';
 import { buildNativeFonts } from '../../../scripts/build-native-fonts.mjs';
 import { createSystemFonts } from '../../../desktop/system-fonts.mjs';
 import { openVault } from '../../../desktop/vault.mjs';
@@ -11,6 +12,7 @@ if (process.platform !== 'darwin') {
   app.exit(0);
 } else {
   const preview = process.argv.includes('--preview');
+  if (!preview) prepareBackgroundTest(app);
   const root = path.resolve(fileURLToPath(new URL('../../../', import.meta.url))),
     profile = await mkdtemp(path.join(tmpdir(), 'ivo-font-test-'));
   app.setPath('userData', profile);
@@ -44,7 +46,7 @@ if (process.platform !== 'darwin') {
           return vault[method](value);
         throw new Error('Unknown test request');
       });
-      const window = new BrowserWindow({
+      const settings = {
         show: preview,
         title: 'Ivo font verification',
         width: 1200,
@@ -55,7 +57,8 @@ if (process.platform !== 'darwin') {
           nodeIntegration: false,
           sandbox: true,
         },
-      });
+      };
+      const window = new BrowserWindow(preview ? settings : testWindowOptions(settings));
       let settled = false;
       const timer = preview
         ? null
@@ -66,8 +69,11 @@ if (process.platform !== 'darwin') {
         clearTimeout(timer);
         console.log(JSON.stringify(result, null, 2));
         if (!window.isDestroyed()) window.destroy();
-        await rm(profile, { recursive: true, force: true });
-        app.exit(code);
+        try {
+          await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        } finally {
+          app.exit(code);
+        }
       }
       window.webContents.on('console-message', (event) => {
         if (event.level === 'error' && !event.message?.startsWith('IVO_FONTS_RESULT:'))

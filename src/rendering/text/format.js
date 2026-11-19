@@ -93,11 +93,6 @@ export function rangeUsesFormat(element, range, field, value) {
     styles.length > 0 &&
     styles.every((style) => {
       if (field === 'fontSize') return near(parseFloat(style.fontSize), Number(value));
-      if (field === 'leading')
-        return near(
-          parseFloat(style.lineHeight),
-          Number(value) === 0 ? parseFloat(style.fontSize) * 1.2 : Number(value),
-        );
       if (field === 'tracking')
         return near(
           style.letterSpacing === 'normal'
@@ -133,12 +128,26 @@ export function formatRange(element, range, field, value) {
   // would create invalid nested blocks and change paragraph source on reopening.
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT),
     parts = [];
+  if (typeof value === 'function') {
+    for (const blank of element.querySelectorAll('p,div,li,h2,h3,h4,blockquote')) {
+      if (
+        blank.textContent ||
+        blank.querySelector('p,div,li,h2,h3,h4,blockquote') ||
+        !range.isPointInRange(blank, 0) ||
+        (range.endContainer === blank && range.endOffset === 0)
+      )
+        continue;
+      const carrier = blank.querySelector('br')?.parentElement || blank;
+      setTextAttribute(carrier, attr, value(carrier));
+    }
+  }
   let node;
   while ((node = walker.nextNode()))
     if (range.intersectsNode(node)) {
       const start = node === range.startContainer ? range.startOffset : 0,
         end = node === range.endContainer ? range.endOffset : node.length;
-      if (end > start) parts.push({ node, start, end });
+      if (end > start)
+        parts.push({ node, start, end, value: typeof value === 'function' ? value(node) : value });
     }
   const spans = [];
   for (const part of parts.reverse()) {
@@ -146,7 +155,7 @@ export function formatRange(element, range, field, value) {
     selected.setStart(part.node, part.start);
     selected.setEnd(part.node, part.end);
     const span = document.createElement('span');
-    setTextAttribute(span, attr, value);
+    setTextAttribute(span, attr, part.value);
     span.append(selected.extractContents());
     selected.insertNode(span);
     spans.unshift(span);

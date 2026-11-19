@@ -1,6 +1,8 @@
 # Font portability
 
-New text defaults to the shipped CMU Serif family. Existing notes and templates retain their authored typography; the interface stays in Geist.
+New documents start with Minion Pro Regular at 12 pt, with 120% automatic leading and 0 pt before and after paragraphs. The new document’s [Basic Paragraph] style supplies these settings to subsequent frames and flows. Templates carry their own style definitions through duplication. Existing documents keep their authored typography.
+
+Ivo first looks for the exact MinionPro-Regular face in the vault. The Apple bridge can supply a locally available face, including Minion from an existing Acrobat or InDesign installation on macOS. Ivo validates and saves it before creating the document. The app ships CMU Serif for devices and vaults without Minion. The interface uses Geist.
 
 The picker combines shipped faces, faces contained in the vault and currently available system faces. Available families are represented by their individual named faces, including Medium/Semibold and italic variants. **Refresh installed fonts** updates the catalog. Fonts already contained in the vault remain usable when they are absent from the device.
 

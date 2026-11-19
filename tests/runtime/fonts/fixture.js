@@ -1,4 +1,6 @@
 import { createPDFSnapshot } from '../../../src/features/export/pdf-plan.js';
+import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
+import { validateNativeFlowSource } from '../../../src/rendering/text/native-flow-layout.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
 import { createInstalledFontLibrary } from '../../../src/features/editor/assets/installed-fonts.js';
@@ -204,12 +206,50 @@ try {
     'Sharing omitted portable legacy font bytes',
   );
   assert(JSON.stringify(legacy) === originalLegacy, 'Sharing changed existing font references');
+  const defaultId = await library.defaultDocumentFont();
+  const hasMinion = library.rows.some((face) => face.postscript === 'MinionPro-Regular');
+  if (hasMinion) {
+    assert(
+      assets.get(defaultId)?.font.postscript === 'MinionPro-Regular',
+      'Wrong default face embedded',
+    );
+    const note = createSceneDocument('New document', undefined, defaultId);
+    const body = insertObject(note, 'text', note.pages[0].id, {
+      html: '<p>First</p><p>Second</p>',
+    });
+    const flow = startTextFlow(note, body.id);
+    const projected = validateNativeFlowSource(note, flow, [...assets.values()]);
+    assert(
+      projected.runs.length &&
+        projected.runs.every(
+          (run) =>
+            run.size === 12 &&
+            run.leading === 0 &&
+            run.autoLeading === 120 &&
+            run.font === defaultId,
+        ),
+      'Native composition lost the new-document font or leading: ' +
+        JSON.stringify(projected.runs[0]),
+    );
+    await globalThis.ivoFontTest.saveDocument(note);
+    const saved = await globalThis.ivoFontTest.loadAssets();
+    validateImport({
+      schemaVersion: 6,
+      documents: await globalThis.ivoFontTest.loadDocuments(),
+      assets: saved,
+    });
+    const offline = createInstalledFontLibrary({ assets: () => saved });
+    assert(
+      (await offline.defaultDocumentFont()) === defaultId,
+      'Offline vault lost its default face',
+    );
+  } else assert(defaultId === 'cmu-serif', 'Unavailable default left an unresolved font');
   console.log(
     'IVO_FONTS_RESULT:' +
       JSON.stringify({
         ok: true,
         availableFaces: library.rows.length,
-        cmuDefault: true,
+        defaultFace: hasMinion ? 'MinionPro-Regular' : 'CMU Serif',
         saveBeforeReference: true,
         companionFace: true,
         immutableDeduplication: true,

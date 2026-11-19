@@ -2,6 +2,19 @@
 
 The daily-use command and input baseline follows Adobe's [InDesign shortcuts](https://helpx.adobe.com/indesign/desktop/get-started/settings-and-preferences/keyboard-shortcuts.html), [panel behavior](https://helpx.adobe.com/indesign/desktop/get-started/settings-and-preferences/customize-panels.html), [tab controls](https://helpx.adobe.com/indesign/desktop/format-and-style-text/tabs-indents-and-spacing/set-and-repeat-tabs.html), [default half-inch tabs](https://cdn.edex.adobe.com/v3/uploads/resourceFile/2016/c7421bbc-8888-486f-b02f-cacf6fb406a9.ef1f5338-5180-4ee2-b273-11cf69340835.pdf) and [Illustrator arrangement shortcuts](https://helpx.adobe.com/illustrator/desktop/get-started/preferences-and-settings/default-keyboard-shortcuts-for-illustrator.html). These are documented behavior references; this pass does not establish pixel/timing equivalence to a live Adobe session.
 
+## Type shortcuts
+
+| Action                                      | Mac         | Windows                     |
+| ------------------------------------------- | ----------- | --------------------------- |
+| Decrease / increase type size by 2 pt       | ⌘⇧, / ⌘⇧.   | Ctrl+Shift+, / Ctrl+Shift+. |
+| Decrease / increase type size by 10 pt      | Add Option  | Add Alt                     |
+| Auto leading                                | ⌘⌥⇧A        | Ctrl+Alt+Shift+A            |
+| Small Caps / All Caps                       | ⌘⇧H / ⌘⇧K   | Ctrl+Shift+H / Ctrl+Shift+K |
+| Align left / center / right                 | ⌘⇧L / C / R | Ctrl+Shift+L / C / R        |
+| Justify, last line left / justify all lines | ⌘⇧J / ⌘⇧F   | Ctrl+Shift+J / Ctrl+Shift+F |
+
+Size shortcuts adjust each selected run by the increment. At an insertion point they set the size for subsequent typing. With one text frame selected, formatting follows its text flow. Arrow-key navigation retains the platform behavior described in [text navigation](text-interaction-core.md).
+
 ## Tab and application chrome
 
 Tab at an active text insertion point inserts literal U+0009, retaining nearby formatting, selection ownership and text undo. Ordinary tabs advance to default 36-point stops in the native Core Text plan; browser layouts receive a disposable paragraph whitespace/tab projection. Canonical HTML retains the original tab character. The projection does not introduce a new saved tag, spacing override or format migration. A tab-containing paragraph preserves its literal whitespace for layout instead of collapsing it as browser HTML did. The later [clipboard correction](text-interaction-core.md#clipboard-whitespace) extends this projection to significant leading/trailing and repeated spaces; ordinary paragraphs retain their prior rules.

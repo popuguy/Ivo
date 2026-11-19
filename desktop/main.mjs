@@ -160,7 +160,8 @@ else {
       });
       ipcMain.handle('ivo:fonts', async (event, action, value) => {
         owner(event);
-        if (action === 'list') return systemFonts.list(value === true);
+        if (action === 'list')
+          return process.platform === 'darwin' ? systemFonts.list(value === true) : [];
         if (action === 'read') return systemFonts.read(value);
         throw new Error('Unknown font request.');
       });

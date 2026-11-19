@@ -1189,7 +1189,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     if (folder && !folderPaths(docs, libraryMeta).includes(normalizeFolder(folder)))
       throw new Error('The destination folder no longer exists.');
     captureTab();
-    const doc = createSceneDocument(title),
+    const doc = createSceneDocument(title, undefined, await fontLibrary.defaultDocumentFont()),
       p = doc.pages[0],
       frame = insertObject(doc, 'text', p.id, { x: 48, y: 48, w: p.width - 96, h: p.height - 96 });
     startTextFlow(doc, frame.id);
@@ -1268,10 +1268,14 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
           title = data.get('title').trim() || 'Untitled';
         const doc = template
           ? instantiateTemplate(template, title)
-          : createSceneDocument(title, {
-              width: Math.max(72, Math.min(14400, Number(data.get('width')) || 612)),
-              height: Math.max(72, Math.min(14400, Number(data.get('height')) || 792)),
-            });
+          : createSceneDocument(
+              title,
+              {
+                width: Math.max(72, Math.min(14400, Number(data.get('width')) || 612)),
+                height: Math.max(72, Math.min(14400, Number(data.get('height')) || 792)),
+              },
+              await fontLibrary.defaultDocumentFont(),
+            );
         if (!template && data.has('flow')) {
           const p = doc.pages[0],
             frame = insertObject(doc, 'text', p.id, {
@@ -2568,7 +2572,12 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   }
   document.addEventListener('keydown', (event) => {
     if (transitions.busy || event.isComposing || canvasHandle?.getState().composing) return;
-    if ((event.metaKey || event.ctrlKey) && ['k', 'o'].includes(event.key.toLowerCase())) {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      ['k', 'o'].includes(event.key.toLowerCase())
+    ) {
       event.preventDefault();
       if (dialog.open && dialog.dataset.dialogKind !== 'prompt') dialog.close();
       quickSwitcher();

@@ -14,6 +14,24 @@ import {
 import { enablePublishing, saveTextStyle } from '../../src/domain/documents/publishing.js';
 import { validateImport } from '../../src/domain/documents/schema.js';
 
+test('pasting between new documents shares equivalent basic type and preserves distinct defaults', () => {
+  const source = createSceneDocument('First', undefined, 'cmu-serif');
+  const frame = insertObject(source, 'text', source.pages[0].id, { html: '<p>Body</p>' });
+  const archive = readObjectClipboard(JSON.stringify(copyObjectSelection(source, [frame.id])));
+  for (const [font, count] of [
+    ['cmu-serif', 1],
+    ['geist', 2],
+  ]) {
+    const target = createSceneDocument('Second', undefined, font);
+    pasteObjectSelection(target, archive, { pageId: target.pages[0].id });
+    assert.equal(target.publishing.paragraphStyles.length, count);
+    const style = target.publishing.paragraphStyles.find(
+      (s) => s.id === target.blocks[0].paragraphStyle,
+    );
+    assert.equal(style.attributes.textStyle, 'cmu-serif');
+  }
+});
+
 test('threaded character defaults belong to the flow, never stale frame typography', () => {
   const doc = createSceneDocument(),
     frame = insertObject(doc, 'text', doc.pages[0].id, { italic: true, bold: true });

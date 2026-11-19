@@ -1,4 +1,4 @@
-import { objectAvailable } from '../documents/publishing.js';
+import { effectiveTextStyle, objectAvailable } from '../documents/publishing.js';
 import { pagePositions, worldRect, sceneObject, transformObject } from '../documents/scene.js';
 import { scaledPointType } from '../text/metrics.js';
 
@@ -122,7 +122,11 @@ export function transformSelection(document, ids, rect, baseline) {
     if (['text', 'quote'].includes(original.type))
       Object.assign(
         sceneObject(document, original.id),
-        scaledPointType(original, sx, sy, { min: 1, max: 2000 }),
+        scaledPointType(original, sx, sy, {
+          min: 1,
+          max: 2000,
+          baseSize: effectiveTextStyle(baseline, original).fontSize,
+        }),
       );
   }
 }

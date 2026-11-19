@@ -1,5 +1,6 @@
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
+import { CURRENT_ARCHIVE_VERSION } from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
 const assert = (value, message) => {
     if (!value) throw Error(message);
@@ -64,7 +65,11 @@ globalThis.ivoNative = {
       assets.set(asset.id, structuredClone(asset));
     },
     saveDocument: async (doc) => {
-      validateImport({ schemaVersion: 5, documents: [doc], assets: [...assets.values()] });
+      validateImport({
+        schemaVersion: CURRENT_ARCHIVE_VERSION,
+        documents: [doc],
+        assets: [...assets.values()],
+      });
       documents.set(doc.id, structuredClone(doc));
     },
     getMeta: async (key) =>

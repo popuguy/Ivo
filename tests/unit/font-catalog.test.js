@@ -5,6 +5,58 @@ import { createSceneDocument, insertObject } from '../../src/domain/documents/sc
 import { validateImport } from '../../src/domain/documents/schema.js';
 import { enablePublishing } from '../../src/domain/documents/publishing.js';
 import { createSystemFonts } from '../../desktop/system-fonts.mjs';
+import { createInstalledFontLibrary } from '../../src/features/editor/assets/installed-fonts.js';
+import { createUserTemplate, instantiateTemplate } from '../../src/domain/documents/copy.js';
+import { startTextFlow } from '../../src/domain/documents/text-flows.js';
+import { effectiveTextStyle } from '../../src/domain/documents/publishing.js';
+
+test('new document typography survives save, template duplication, threading and adding frames', () => {
+  const doc = createSceneDocument('Layout', undefined, 'geist');
+  const archived = validateImport({ schemaVersion: 6, assets: [], documents: [doc] }).documents[0];
+  const copy = instantiateTemplate(createUserTemplate(archived, 'Template'), 'Copy');
+  for (const document of [archived, copy]) {
+    const frame = insertObject(document, 'text', document.pages[0].id);
+    const flow = startTextFlow(document, frame.id);
+    const base = effectiveTextStyle(document, flow.style);
+    assert.deepEqual(
+      [
+        base.textStyle,
+        base.fontSize,
+        base.leading,
+        base.autoLeading,
+        base.paragraphBefore,
+        base.paragraphAfter,
+      ],
+      ['geist', 12, 0, 120, 0, 0],
+    );
+    const special = insertObject(document, 'text', document.pages[0].id, { fontSize: 23 });
+    assert.equal(effectiveTextStyle(document, special).fontSize, 23);
+    assert.equal(
+      validateImport({ schemaVersion: 6, assets: [], documents: [document] }).documents.length,
+      1,
+    );
+  }
+});
+
+test('new-document font reuses the exact vault face offline and falls back when absent', async () => {
+  const offline = (assets) => createInstalledFontLibrary({ assets: () => assets });
+  const regular = { id: 'font-' + '1'.repeat(64), font: { postscript: 'MinionPro-Regular' } };
+  const italic = { id: 'font-' + '2'.repeat(64), font: { postscript: 'MinionPro-It' } };
+  assert.equal(await offline([italic, regular]).defaultDocumentFont(), regular.id);
+  assert.equal(await offline([italic]).defaultDocumentFont(), 'cmu-serif');
+  const failing = createInstalledFontLibrary({
+    assets: () => [],
+    native: {
+      list: async () => [
+        { family: 'Minion Pro', style: 'Regular', postscript: 'MinionPro-Regular' },
+      ],
+      read: async () => {
+        throw Error('Font unavailable');
+      },
+    },
+  });
+  await assert.rejects(failing.defaultDocumentFont(), /Font unavailable/);
+});
 const faces = [
   {
     postscript: 'Example-Regular',

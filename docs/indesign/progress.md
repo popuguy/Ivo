@@ -6,6 +6,8 @@ Current overall engineering estimate, 19 November 2026:
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
 
+New documents now use the reference type size, automatic leading and paragraph spacing. Keyboard formatting covers relative point sizes in mixed selections, insertion points and selected frames. These refinements keep the overall estimate at **~36%**.
+
 ## Milestones reflected in this baseline
 
 - Shared canonical flow source, linked selection, typography/history corrections and portable fonts.
