@@ -4,6 +4,8 @@ Updated 19 November 2026. This file describes current contracts; the [verificati
 
 Ivo is a linked-document editor for Mac, iPhone and iPad: precise, independently sized pages, rich text and positioned objects, an interactive knowledge graph, and portable vaults. The interface uses Geist, a pale neutral palette and professional document language. New text defaults to CMU Serif. Preserve the smooth Illustrator-like frame movement and camera while extending the InDesign-based text system. Google Drive/other cloud replicas, physical mobile qualification and scans/OCR remain programme work.
 
+A signed iPhone build opens a local vault on first launch. The [iPhone startup check](../verification.md#iphone-startup-and-local-storage) covers the native bridge and a simulator document round trip. Physical typing, touch editing and iPad testing remain open.
+
 ## Text composition and current progress
 
 The [full text-parity programme](../indesign/text-parity-programme.md) still contains the same 66 included capabilities. The [overall engineering estimate](../indesign/progress.md) is **~35%**, not certified reference/device parity. Include its small progress bar after each completed milestone. Controls, stored values and browser appearance do not by themselves complete an engine capability. AI/online Adobe font features are excluded; the remaining engine, structure, editorial, publication and device scope is substantial.

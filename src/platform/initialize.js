@@ -14,7 +14,8 @@ export async function initializePlatform({ prepareForSuspend, createPlugin } = {
     const { registerPlugin } = await import('../../public/vendor/capacitor.js');
     createPlugin = () => registerPlugin('IvoAtlas');
   }
-  const plugin = await createPlugin();
+  // Capacitor dispatches property accesses as native methods, including "then".
+  const plugin = createPlugin();
   if (!globalThis.Capacitor.isPluginAvailable('IvoAtlas'))
     throw new Error('The iOS atlas plugin is unavailable. Rebuild the native app.');
   const info = await plugin.initialize();

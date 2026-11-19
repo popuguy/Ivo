@@ -21,6 +21,9 @@ test('asynchronous native startup binds lifecycle saves before returning a ready
     release = resolve;
   });
   const plugin = {
+    get then() {
+      assert.fail('Await a native method result, never the Capacitor plugin proxy itself');
+    },
     initialize: async () => {
       await gate;
       return { directory: 'test-atlas' };

@@ -1,5 +1,11 @@
 # Verification
 
+## iPhone startup and local storage
+
+On 19 November 2026, a signed build launched on a physical iPhone and created its vault manifest. The earlier build stayed blank because awaiting the Capacitor plugin itself dispatched a nonexistent native method named `then`. Registration now returns the plugin synchronously. Its initialization and file operations remain asynchronous. The startup unit test rejects any attempt to treat the plugin as a promise.
+
+On a fresh iPhone simulator, the first-run workspace appeared below the system status bar. Selecting **New document** wrote one document into the native vault. A cold relaunch restored its tab and page. Physical text entry, touch gestures and iPad layout need separate checks.
+
 ## Active document tab — 19 November 2026
 
 A hidden desktop workspace reproduced the one-pixel grey line between the selected tab and the white view header. The scrollable strip clipped the selected tab at its bottom border. The strip now paints its divider inside its background, where the selected tab covers it. A rendered-pixel check samples the join at three points and verifies that the divider continues beneath an inactive tab. Run it with `IVO_TEST_BACKGROUND=1 npm run test:shell -- --tab-seam`. The Mac review build is under `release/2026-11-19-active-tab-seam/`.
