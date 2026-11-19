@@ -17,22 +17,17 @@ test('All plus Next1 is admitted on one paragraph and retains immutable source f
   assert.equal(result[2].keepWithNext, true, 'A final paragraph can retain its dormant Next flag');
 });
 
-test('unqualified keep chains, following All and wrap combinations reject explicitly', () => {
-  assert.throws(
-    () => normalizeParagraphKeeps([{ keepWithNext: true }, { keepWithNext: true }], 2),
-    /chains/,
+test('linked headings and whole following paragraphs retain their independent policies', () => {
+  const flags = [{ keepWithNext: true }, { keepWithNext: true }, { keepTogether: true }];
+  const result = normalizeParagraphKeeps(flags, 3);
+  assert.deepEqual(
+    result.map((policy) => policy.keepWithNext),
+    [true, true, false],
   );
-  assert.throws(
-    () => normalizeParagraphKeeps([{ keepWithNext: true }, { keepTogether: true }], 2),
-    /following kept-together/,
+  assert.deepEqual(
+    result.map((policy) => policy.keepTogether),
+    [false, false, true],
   );
-  assert.throws(
-    () => normalizeParagraphKeeps([{ keepTogether: true }], 1, { wrapped: true }),
-    /object wrapping/,
-  );
-  assert.deepEqual(normalizeParagraphKeeps([{}], 1, { wrapped: true }), [
-    { keepTogether: false, keepWithNext: false },
-  ]);
 });
 
 test('keep policy validates source coverage and boolean fields before scheduling', () => {

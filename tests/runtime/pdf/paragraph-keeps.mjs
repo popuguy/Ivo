@@ -53,6 +53,21 @@ const cases = [
       'T5 tail\u2029',
     ],
   },
+  {
+    name: 'chain',
+    html: '<p>PRE1</p><p>PRE2</p><p data-ivo-next="true">A1 title</p><p data-ivo-next="true">A2 deck</p><p data-ivo-keep="true">N1 first<br>N2 second</p><p>T1 tail<br>T2 tail<br>T3 tail</p>',
+    rows: [
+      'PRE1\u2029',
+      'PRE2\u2029',
+      'A1 title\u2029',
+      'A2 deck\u2029',
+      'N1 first\u2028',
+      'N2 second\u2029',
+      'T1 tail\u2028',
+      'T2 tail\u2028',
+      'T3 tail\u2029',
+    ],
+  },
 ];
 
 function fixture(definition) {
@@ -270,7 +285,7 @@ print(String(data: try JSONSerialization.data(withJSONObject: reports, options: 
     path.join(output, 'native-paragraph-keeps-inspection.json'),
     JSON.stringify(inspection, null, 2),
   );
-  assert.equal(inspection.length, 2);
+  assert.equal(inspection.length, cases.length);
   for (const publication of inspection) {
     assert.equal(
       publication.sourceExact,
@@ -311,6 +326,7 @@ print(String(data: try JSONSerialization.data(withJSONObject: reports, options: 
     paragraphKeepPDFRetainedThreePagePlan: true,
     paragraphKeepPDFNativeMetadataBoundary: true,
     paragraphKeepPDFIndependentASCIIAndRowGeometry: true,
-    paragraphKeepPDFInspectedRows: 18,
+    paragraphKeepPDFLinkedHeadings: true,
+    paragraphKeepPDFInspectedRows: cases.reduce((total, item) => total + item.rows.length, 0),
   };
 }

@@ -198,9 +198,7 @@ export function createParagraphComposer(measure) {
       )
         throw new UnsupportedComposition('paragraph composition across unequal column widths');
       const paragraphs = validateParagraphSource(request.text),
-        keeps = normalizeParagraphKeeps(paragraphKeeps, paragraphs.length, {
-          wrapped: columns.some((column) => column.obstacles?.length),
-        }),
+        keeps = normalizeParagraphKeeps(paragraphKeeps, paragraphs.length),
         missing = new Map(),
         work = {
           paragraphs: paragraphs.length,

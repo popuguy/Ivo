@@ -374,6 +374,7 @@ export function* wrappedParagraphFlowSteps({
                 baseline,
                 left: segment.left,
                 width,
+                ...(after !== null ? { continuesRow: true } : {}),
                 naturalWidth: measured.width,
                 ascent: metrics.ascent,
                 descent: metrics.descent,

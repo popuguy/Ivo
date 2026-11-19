@@ -739,13 +739,13 @@ test('renderer-owned All policy forces planned Single-line geometry without nati
   assert.equal(native.calls.at(-1).mode, 'greedy-geometry-proof');
 });
 
-test('native keep source gates reject chains and wrap before backend calls or writes', async () => {
+test('native editor projection accepts chained and wrapped keeps without authoring source', async () => {
   const chained = fixture({ text: 'A\u2029B\u2029' }),
     native = port();
   chained.textFlows[0].style.keepWithNext = true;
   const before = structuredClone(chained);
-  assert.throws(() => validateNativeFlowSource(chained, chained.textFlows[0]), /chains/);
-  await assert.rejects(composeNativeTextFlows(chained, native), /chains/);
+  validateNativeFlowSource(chained, chained.textFlows[0]);
+  await composeNativeTextFlows(chained, { ...native, allowPages: false });
   assert.deepEqual(chained, before);
   const wrapped = fixture({ text: 'A\u2028B\u2029', width: 100, height: 100 });
   wrapped.textFlows[0].style.keepTogether = true;
@@ -760,10 +760,10 @@ test('native keep source gates reject chains and wrap before backend calls or wr
     textWrap: normalizeTextWrap({ mode: 'bounds' }),
   });
   const wrappedBefore = structuredClone(wrapped);
-  assert.throws(() => validateNativeFlowSource(wrapped, wrapped.textFlows[0]), /object wrapping/);
-  await assert.rejects(composeNativeTextFlows(wrapped, native), /object wrapping/);
+  validateNativeFlowSource(wrapped, wrapped.textFlows[0]);
+  await composeNativeTextFlows(wrapped, { ...native, allowPages: false });
   assert.deepEqual(wrapped, wrappedBefore);
-  assert.equal(native.calls.length, 0);
+  assert.equal(native.calls.at(-1).mode, 'planned-lines-proof');
 });
 
 test('native kept source creates and trims only its owned automatic continuations', async () => {

@@ -526,7 +526,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
   if (planned) validateParagraphSource(source.text);
-  normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length, { wrapped });
+  normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
   for (const paragraph of source.paragraphs) {

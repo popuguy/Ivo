@@ -1,4 +1,3 @@
-// Prepared for tests/runtime/native-editor-composition; not wired or executed yet.
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import { enablePublishing } from '../../../src/domain/documents/publishing.js';
 import {
@@ -460,6 +459,35 @@ export async function verifyNativeParagraphKeeps({
       source() === editedHTML && geometry() === editedGeometry && commits === 0 && changes === 0,
       'Cold archive keep reopen changed source, placement or history',
     );
+
+    const chainRows = [
+      'Preface\u2029',
+      'Title\u2029',
+      'Deck\u2029',
+      'Body one\u2028',
+      'Body two\u2029',
+      'Tail\u2029',
+    ];
+    ownFixture(
+      'Threaded heading, deck and caption',
+      '<p>Preface</p><p>Title</p><p>Deck</p><p data-ivo-keep="true">Body one<br>Body two</p><p>Tail</p>',
+    );
+    mount();
+    await settle();
+    await selectWord('Title');
+    await property('keepWithNext', true);
+    await selectWord('Deck');
+    await property('keepWithNext', true);
+    verifyPlan(chainRows, [[0], [1, 2, 3, 4], [5]]);
+    await diagnostics();
+    const joinedHTML = source();
+    await editor.command('undo');
+    await settle();
+    verifyPlan(chainRows, [[0, 1, 2], [3, 4, 5], []]);
+    await editor.command('redo');
+    await settle();
+    assert(source() === joinedHTML, 'Redo lost the authored heading chain');
+    verifyPlan(chainRows, [[0], [1, 2, 3, 4], [5]]);
 
     ownFixture('Native keep final row with next', nextHTML);
     mount();

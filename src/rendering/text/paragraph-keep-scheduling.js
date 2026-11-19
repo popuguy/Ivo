@@ -5,14 +5,26 @@ const capacity = () => {
 };
 const fits = (result) => result.status === 'fit';
 
-/** All and boolean Next1, constrained by measured physical columns. fit() owns
- * scheduling/cache/budgets and may return only fit or a genuine geometric nonfit.
- * Budget failures throw before arriving here and can never justify relaxation. */
+// One physical row can have several source fragments on either side of artwork.
+function tailStart(lines) {
+  let index = lines.length - 1;
+  while (index > 0 && lines[index].continuesRow) index--;
+  return index;
+}
+
+function firstRowEnd(lines) {
+  let index = 0;
+  while (lines[index + 1]?.continuesRow) index++;
+  return lines[index].end;
+}
+
+/** Resolve joins against the following paragraph's actual placement, including
+ * its own All rule. Refit just the connected suffix when a join crosses a column.
+ * Each new fit consumes the frame scheduler's shared work allowance. */
 export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount, frameCount }) {
-  const lines = [],
-    keepViolations = [];
+  const plans = [];
   let cursor = { frame: 0, baseline: null },
-    previousAfter = 0;
+    prefix = [];
   const violation = (paragraphIndex, kind, frame, start, end, reason) => ({
     paragraphIndex,
     start,
@@ -66,75 +78,87 @@ export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount
     };
   }
 
-  for (const [index, paragraph] of paragraphs.entries()) {
-    let own = paragraph.keep.keepTogether
+  for (let index = 0; index < paragraphs.length;) {
+    const paragraph = paragraphs[index];
+    const previousAfter =
+      cursor.baseline === null ? 0 : paragraphs[index - 1].layout.paragraphAfter;
+    const current = paragraph.keep.keepTogether
       ? await together(paragraph, index, cursor, previousAfter)
-      : { plan: await fit(paragraph, { cursor, previousAfter, role: 'ordinary' }), violations: [] };
-    if (!fits(own.plan)) capacity();
-    if (paragraph.keep.keepWithNext && paragraphs[index + 1]) {
-      const following = paragraphs[index + 1];
-      for (let attempt = 0; attempt < frameCount; attempt++) {
-        const tail = own.plan.lines.at(-1),
-          next = await fit(following, {
-            cursor: own.plan.cursor,
-            previousAfter: paragraph.layout.paragraphAfter,
-            role: 'next-probe',
-          });
-        if (!fits(next)) capacity();
-        if (next.lines[0].frame === tail.frame) break;
-        const all = paragraph.keep.keepTogether,
-          group = all ? own.plan.lines[0] : tail,
-          prefix = all ? [] : own.plan.lines.slice(0, -1),
-          occupied =
-            lines.some((line) => line.frame === group.frame) ||
-            prefix.some((line) => line.frame === group.frame);
-        if (!occupied || (all && own.violations.length)) {
-          own.violations.push(
-            violation(
-              index,
-              'keepWithNext',
-              tail.frame,
-              paragraph.start + tail.start,
-              following.start + next.lines[0].end,
-              all ? 'all-priority' : 'empty-column-capacity',
-            ),
-          );
+      : {
+          plan: await fit(paragraph, {
+            cursor,
+            previousAfter,
+            sourceStart: prefix.at(-1)?.end ?? 0,
+            role: prefix.length ? 'next-tail' : 'ordinary',
+          }),
+          violations: [],
+        };
+    if (!fits(current.plan)) capacity();
+    const rows = prefix.length ? [...prefix, ...current.plan.lines] : current.plan.lines;
+    prefix = [];
+    const previous = plans[index - 1];
+    if (
+      previous &&
+      paragraphs[index - 1].keep.keepWithNext &&
+      previous.lines.at(-1).frame !== rows[0].frame &&
+      !previous.brokenJoin
+    ) {
+      const frame = previous.lines.at(-1).frame;
+      // A multi-row paragraph connects just its last row, unless All binds its
+      // other rows too. Walk farther back only across an intact incoming join.
+      let first = index - 1,
+        row;
+      for (;;) {
+        const prior = plans[first];
+        row = paragraphs[first].keep.keepTogether ? 0 : tailStart(prior.lines);
+        if (
+          row ||
+          first === 0 ||
+          prior.lines[0].frame !== frame ||
+          !paragraphs[first - 1].keep.keepWithNext ||
+          plans[first - 1].brokenJoin ||
+          plans[first - 1].lines.at(-1).frame !== frame
+        )
           break;
-        }
-        const incoming = { frame: group.frame + 1, baseline: null };
-        if (incoming.frame >= frameCount) capacity();
-        if (all) own = await together(paragraph, index, incoming, 0);
-        else {
-          const suffix = await fit(paragraph, {
-            cursor: incoming,
-            sourceStart: tail.start,
-            previousAfter: 0,
-            role: 'next-tail',
-          });
-          if (!fits(suffix)) capacity();
-          const joined = [...prefix, ...suffix.lines];
-          own = {
-            plan: {
-              ...suffix,
-              lines: joined,
-              cost: joined.reduce((sum, line) => sum + line.cost, 0),
-            },
-            violations: own.violations,
-          };
-        }
-        if (attempt === frameCount - 1) capacity();
+        first--;
       }
+      const group = plans[first],
+        beforeGroup = row ? group.lines[row - 1] : plans[first - 1]?.lines.at(-1);
+      // A group already at an empty column cannot move forward indefinitely.
+      // An oversized All retains its distributed placement and priority.
+      if (group.lines[row].frame === frame && beforeGroup?.frame === frame) {
+        prefix = group.lines.slice(0, row);
+        plans.length = first;
+        index = first;
+        cursor = { frame: frame + 1, baseline: null };
+        if (cursor.frame >= frameCount) capacity();
+        continue;
+      }
+      previous.brokenJoin = true;
+      previous.violations.push(
+        violation(
+          index - 1,
+          'keepWithNext',
+          frame,
+          paragraphs[index - 1].start + previous.lines[tailStart(previous.lines)].start,
+          paragraph.start + firstRowEnd(rows),
+          paragraphs[index - 1].keep.keepTogether ? 'all-priority' : 'empty-column-capacity',
+        ),
+      );
     }
-    lines.push(
-      ...own.plan.lines.map((line) => ({
-        ...line,
-        start: line.start + paragraph.start,
-        end: line.end + paragraph.start,
-      })),
-    );
-    keepViolations.push(...own.violations);
-    cursor = { ...own.plan.cursor };
-    previousAfter = paragraph.layout.paragraphAfter;
+    plans.push({ lines: rows, violations: current.violations, brokenJoin: false });
+    cursor = current.plan.cursor;
+    index++;
   }
-  return { lines, cursor, keepViolations };
+  return {
+    lines: plans.flatMap(({ lines }, index) =>
+      lines.map((line) => ({
+        ...line,
+        start: paragraphs[index].start + line.start,
+        end: paragraphs[index].start + line.end,
+      })),
+    ),
+    cursor,
+    keepViolations: plans.flatMap((plan) => plan.violations),
+  };
 }

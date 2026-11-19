@@ -455,27 +455,16 @@ test('lower-only global work limits charge warm cache hits and every failed keep
     await assert.rejects(composer.compose(req, columns, { ...options, limits }), /work limits/);
 });
 
-test('unqualified keep combinations reject before native measurement; disabled defaults retain baseline layout', async () => {
+test('invalid keep policies reject before native measurement; disabled defaults retain baseline layout', async () => {
   const req = request('A\u2029B'),
     columns = [column(), column(200)],
     service = backend(),
     composer = createParagraphComposer(service.measure);
-  for (const policies of [
-    [keep(false, true), keep(false, true)],
-    [keep(false, true), keep(true)],
-    [keep()],
-    [null, keep()],
-  ])
+  for (const policies of [[keep()], [null, keep()]])
     await assert.rejects(
       composer.compose(req, columns, { paragraphKeeps: policies }),
       /keep|source/i,
     );
-  await assert.rejects(
-    composer.compose(req, [{ ...columns[0], obstacles: [{}] }], {
-      paragraphKeeps: [keep(true), keep()],
-    }),
-    /wrapping/,
-  );
   await assert.rejects(
     composer.compose({ ...req, protocol: 2 }, [column(), column()], {
       paragraphKeeps: [keep(true), keep()],
@@ -487,4 +476,86 @@ test('unqualified keep combinations reject before native measurement; disabled d
     (await composer.compose(req, columns, { paragraphKeeps: [keep(), keep()] })).placements,
     (await composer.compose(req, columns)).placements,
   );
+});
+
+test('heading chains recompose together and respect a following whole paragraph in both composers', async () => {
+  const req = request('PRE\u2029Title\u2029Deck\u2029A\u2028B\u2029Tail'),
+    flags = [keep(), keep(false, true), keep(false, true), keep(true), keep()],
+    columns = [column(120, 45), column(90, 60), column(180, 60)];
+  for (const mode of ['single-line', 'paragraph']) {
+    const composer = createParagraphComposer(backend().measure);
+    const result = await composer.compose(req, columns, { paragraphKeeps: flags, mode });
+    assert.deepEqual(
+      result.placements.map((row) => row.frame),
+      [0, 1, 1, 1, 1, 2],
+    );
+    assert.deepEqual(result.keepViolations, []);
+    const warm = await composer.compose(req, columns, { paragraphKeeps: flags, mode });
+    assert.deepEqual(warm.placements, result.placements);
+    assert.equal(warm.work.backendCalls, 0);
+  }
+});
+
+test('only the connected suffix moves; an impossible chain relaxes at its broken join', async () => {
+  const composer = createParagraphComposer(backend().measure);
+  const flags = [keep(false, true), keep(false, true), keep()];
+  const result = await composer.compose(
+    request('start\u2028tail\u2029Deck\u2029Body'),
+    [column(120, 45), column(120, 60)],
+    { paragraphKeeps: flags },
+  );
+  assert.deepEqual(
+    result.placements.map((row) => row.frame),
+    [0, 1, 1, 1],
+  );
+  const impossible = await composer.compose(request('A\u2029B\u2029C'), [column(120, 31)], {
+    paragraphKeeps: flags,
+  });
+  assert.deepEqual(
+    impossible.placements.map((row) => row.frame),
+    [0, 0, 1],
+  );
+  assert.deepEqual(
+    impossible.keepViolations.map((v) => [v.paragraphIndex, v.kind, v.start, v.end]),
+    [[1, 'keepWithNext', 2, 5]],
+  );
+});
+
+test('a keep moves both fragments of the last physical wrap row and recomposes them at the new width', async () => {
+  const req = request('PRE\u2029one two mid end\u2029after');
+  // Two 40-point segments on the second (last) row. Both belong to one moving tail.
+  const obstacle = {
+    mode: 'bounds',
+    side: 'both',
+    bounds: { left: 40, right: 80, top: 18, bottom: 45 },
+    polygons: [
+      [
+        { x: 40, y: 18 },
+        { x: 80, y: 18 },
+        { x: 80, y: 45 },
+        { x: 40, y: 45 },
+      ],
+    ],
+  };
+  const columns = [{ ...column(120, 31), obstacles: [obstacle] }, column(120, 60)];
+  const composer = createParagraphComposer(backend().measure);
+  const before = await composer.compose(req, columns);
+  assert.deepEqual(
+    before.placements.map((row) => [row.frame, row.left]),
+    [
+      [0, 0],
+      [0, 0],
+      [0, 80],
+      [1, 0],
+    ],
+  );
+  const kept = await composer.compose(req, columns, {
+    paragraphKeeps: [keep(), keep(false, true), keep()],
+  });
+  assert.deepEqual(sourceRows(kept, req.text), [
+    [0, 12, 'PRE\u2029'],
+    [1, 12, 'one two mid end\u2029'],
+    [1, 26.4, 'after'],
+  ]);
+  assert.deepEqual(kept.keepViolations, []);
 });

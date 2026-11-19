@@ -20,6 +20,8 @@ Focused frame/keep schedulers now own placement policy; the paragraph coordinato
 
 ## Remaining scope
 
-Native keeps with effective object exclusions, keep-with-next chains and Next followed by an All paragraph reject before native work or source writes. Partial first/last-row activation, counts beyond Next1, keep with previous, start-on-column/frame/page, grids, tables/anchors/notes and wider script/device policies remain open. Existing nondefault widow/orphan counts stay gated until their distinct activation policy and scheduling are implemented. This bounded increment does not certify the whole keep capability or full InDesign parity.
+Linked headings use the following paragraph’s actual placement, including its own keep-together setting. When a join would cross a column, the scheduler walks back through the connected rows and refits that source suffix at the destination width. If the connected group already starts in an empty column and cannot fit, it preserves earlier joins and reports the broken join. Around artwork, fragments on either side of the same physical row move together. Existing native wrap limits still apply.
+
+Partial first/last-row activation, counts beyond Next1, keep with previous, start-on-column/frame/page, grids, tables/anchors/notes and wider script/device policies remain open. Existing nondefault widow/orphan counts stay gated until their distinct activation policy and scheduling are implemented. This bounded increment does not certify the whole keep capability or full InDesign parity.
 
 The [verification record](verification.md) covers pure reference-derived fixtures, actual Properties/typing/undo/reopen, owned continuation handling and independent PDF source/page geometry. Original investigation artifacts remain private.
