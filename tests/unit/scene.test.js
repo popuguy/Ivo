@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createDocument, createBlock } from '../../src/domain/documents/model.js';
 import { validateImport } from '../../src/domain/documents/schema.js';
 import { buildIndex } from '../../src/domain/knowledge/index.js';
+import { enablePublishing } from '../../src/domain/documents/publishing.js';
 import {
   createSceneDocument,
   upgradeDocument,
@@ -24,6 +25,50 @@ import {
   easeCamera,
 } from '../../src/domain/geometry/viewport.js';
 const archive = (document) => ({ schemaVersion: 2, documents: [document], assets: [] });
+
+// Independent CSS affine witness: compose each rendered rotate-about-center matrix,
+// including containing masks. Do not use the scene command's coordinate helpers.
+function renderedMatrix(doc, item) {
+  const radians = ((item.rotation || 0) * Math.PI) / 180,
+    c = Math.cos(radians),
+    s = Math.sin(radians),
+    cx = item.w / 2,
+    cy = item.h / 2,
+    local = [c, s, -s, c, item.x + cx - c * cx + s * cy, item.y + cy - s * cx - c * cy];
+  if (!item.parentId) return local;
+  const [a, b, k, d, e, f] = renderedMatrix(
+      doc,
+      doc.blocks.find((block) => block.id === item.parentId),
+    ),
+    [g, h, i, j, x, y] = local;
+  return [
+    a * g + k * h,
+    b * g + d * h,
+    a * i + k * j,
+    b * i + d * j,
+    a * x + k * y + e,
+    b * x + d * y + f,
+  ];
+}
+function renderedPoint(doc, item, point) {
+  const [a, b, c, d, x, y] = renderedMatrix(doc, item);
+  return { x: a * point.x + c * point.y + x, y: b * point.x + d * point.y + y };
+}
+function renderedCorners(doc, item) {
+  return [
+    { x: 0, y: 0 },
+    { x: item.w, y: 0 },
+    { x: item.w, y: item.h },
+    { x: 0, y: item.h },
+  ].map((point) => renderedPoint(doc, item, point));
+}
+function closePoints(actual, expected) {
+  assert.equal(actual.length, expected.length);
+  for (let i = 0; i < actual.length; i++) {
+    assert.ok(Math.abs(actual[i].x - expected[i].x) < 1e-8, `Point ${i} moved horizontally`);
+    assert.ok(Math.abs(actual[i].y - expected[i].y) < 1e-8, `Point ${i} moved vertically`);
+  }
+}
 test('legacy upgrade preserves source and stable links without mutating old geometry', () => {
   const old = createDocument('Legacy');
   old.blocks = [
@@ -92,6 +137,81 @@ test('direct point editing changes shape while other vertices and clipped conten
   assert.equal(mask.y, 90.375);
   assert.ok(mask.clip);
   validateImport(archive(doc));
+});
+test('rotated point edits retain untouched vertices and nested clipped ink in rendered coordinates', () => {
+  for (const rotation of [17.5, 90, -135, 359.75]) {
+    const doc = createSceneDocument();
+    enablePublishing(doc);
+    const outer = insertObject(doc, 'polygon', doc.pages[0].id, {
+        x: 87.125,
+        y: 141.375,
+        w: 420.5,
+        h: 310.75,
+        rotation: -23.25,
+      }),
+      mask = insertObject(doc, 'polygon', outer.pageId, {
+        parentId: outer.id,
+        x: 47.25,
+        y: -12.625,
+        w: 200.5,
+        h: 150.25,
+        rotation,
+      }),
+      nested = insertObject(doc, 'polygon', outer.pageId, {
+        parentId: mask.id,
+        x: -7.125,
+        y: 18.75,
+        w: 113.5,
+        h: 93.25,
+        rotation: 11.125,
+      }),
+      text = insertObject(doc, 'text', outer.pageId, {
+        parentId: nested.id,
+        x: 11.375,
+        y: -3.25,
+        w: 87.125,
+        h: 72.5,
+        rotation: -7.75,
+        html: '<p><em>Unchanged</em> source [[Target]]</p>',
+      }),
+      before = structuredClone(doc),
+      ids = mask.points.map((point) => point.id),
+      pathBefore = mask.points.map((point) =>
+        renderedPoint(doc, mask, { x: point.x * mask.w, y: point.y * mask.h }),
+      ),
+      nestedBefore = renderedCorners(doc, nested),
+      textBefore = renderedCorners(doc, text),
+      destination = { x: mask.x - 31.875, y: mask.y - 19.125 },
+      expectedSelected = renderedPoint(doc, mask, {
+        x: destination.x - mask.x,
+        y: destination.y - mask.y,
+      });
+    moveVertex(doc, mask.id, ids[0], destination);
+    const pathAfter = mask.points.map((point) =>
+      renderedPoint(doc, mask, { x: point.x * mask.w, y: point.y * mask.h }),
+    );
+    closePoints(pathAfter, [expectedSelected, ...pathBefore.slice(1)]);
+    closePoints(renderedCorners(doc, nested), nestedBefore);
+    closePoints(renderedCorners(doc, text), textBefore);
+    assert.deepEqual(
+      mask.points.map((point) => point.id),
+      ids,
+    );
+    assert.deepEqual(
+      doc.blocks.map((item) => item.id),
+      before.blocks.map((item) => item.id),
+    );
+    const oldNested = before.blocks.find((item) => item.id === nested.id),
+      { x: oldX, y: oldY, ...oldSource } = oldNested,
+      { x: newX, y: newY, ...newSource } = nested;
+    assert.ok([oldX, oldY, newX, newY].every(Number.isFinite));
+    assert.deepEqual(newSource, oldSource);
+    assert.deepEqual(
+      text,
+      before.blocks.find((item) => item.id === text.id),
+    );
+    validateImport({ schemaVersion: 6, documents: [doc], assets: [] });
+  }
 });
 test('whole mask transform carries contents and duplication remaps all scene identities', () => {
   const doc = createSceneDocument(),
@@ -198,7 +318,84 @@ test('releasing a nested mask preserves content world geometry and its outer par
   assert.equal(content.parentId, outer.id);
   assert.equal(inner.clip, false);
   assert.equal(content.html, '<p>Source retained</p>');
+  assert.ok(!Object.hasOwn(content, 'rotation'));
   validateImport(archive(doc));
+});
+
+test('releasing rotated nested masks preserves descendant ink and composes child orientation', () => {
+  for (const rotation of [0, 32.75, 90, -135, 36000]) {
+    const doc = createSceneDocument();
+    enablePublishing(doc);
+    const outer = insertObject(doc, 'polygon', doc.pages[0].id, {
+        x: 103.125,
+        y: -11.375,
+        w: 480,
+        h: 330,
+        rotation: 21.5,
+      }),
+      mask = insertObject(doc, 'polygon', outer.pageId, {
+        parentId: outer.id,
+        x: -13.25,
+        y: 57.625,
+        w: 210.5,
+        h: 175.25,
+        rotation,
+      }),
+      nested = insertObject(doc, 'polygon', outer.pageId, {
+        parentId: mask.id,
+        x: 7.375,
+        y: 19.625,
+        w: 112.5,
+        h: 87.25,
+        rotation: 350.5,
+      }),
+      text = insertObject(doc, 'text', outer.pageId, {
+        parentId: nested.id,
+        x: -2.75,
+        y: 9.125,
+        w: 87.25,
+        h: 64.375,
+        rotation: -19.75,
+        html: '<p>Exact <em>source</em> [[Link]]</p>',
+      }),
+      plain = insertObject(doc, 'text', outer.pageId, {
+        parentId: mask.id,
+        x: 140.5,
+        y: 35.75,
+        w: 37.25,
+        h: 53.125,
+        html: '<p>Plain source</p>',
+      }),
+      before = structuredClone(doc),
+      nestedBefore = renderedCorners(doc, nested),
+      textBefore = renderedCorners(doc, text),
+      plainBefore = renderedCorners(doc, plain);
+    releaseMask(doc, mask.id);
+    closePoints(renderedCorners(doc, nested), nestedBefore);
+    closePoints(renderedCorners(doc, text), textBefore);
+    closePoints(renderedCorners(doc, plain), plainBefore);
+    assert.equal(nested.parentId, outer.id);
+    assert.equal(plain.parentId, outer.id);
+    assert.equal(mask.clip, false);
+    assert.deepEqual(nested.points, before.blocks.find((item) => item.id === nested.id).points);
+    assert.deepEqual(
+      doc.blocks.map((item) => item.id),
+      before.blocks.map((item) => item.id),
+    );
+    assert.deepEqual(
+      text,
+      before.blocks.find((item) => item.id === text.id),
+    );
+    assert.equal(plain.html, '<p>Plain source</p>');
+    if (rotation % 360 === 0) {
+      assert.equal(nested.rotation, 350.5);
+      assert.ok(!Object.hasOwn(plain, 'rotation'));
+    } else {
+      assert.equal(nested.rotation, (350.5 + rotation) % 360);
+      assert.equal(plain.rotation, rotation % 360);
+    }
+    validateImport({ schemaVersion: 6, documents: [doc], assets: [] });
+  }
 });
 
 test('fit all can frame a long legal page collection without hiding its ends', () => {

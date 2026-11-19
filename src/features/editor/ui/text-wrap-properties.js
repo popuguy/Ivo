@@ -42,7 +42,10 @@ export function textWrapProperties(objects, { editing = true } = {}) {
     disabled = editing ? '' : 'disabled',
     enabled = mode !== null && mode !== 'none',
     offsetsDisabled = enabled ? disabled : 'disabled',
-    uniform = mode === 'contour' || mode === 'next-column',
+    uniform =
+      mode === 'contour' ||
+      mode === 'next-column' ||
+      objects.some((object) => object.type === 'image' && object.parentId),
     fields = uniform
       ? offsetField(values, 'all', 'Offset · pt', offsetsDisabled)
       : `<div class="canvas-geometry">${['top', 'bottom', ...(mode === 'jump' ? [] : ['left', 'right'])].map((key) => offsetField(values, key, key[0].toUpperCase() + key.slice(1) + ' · pt', offsetsDisabled)).join('')}</div>`,

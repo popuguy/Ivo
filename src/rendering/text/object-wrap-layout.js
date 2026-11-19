@@ -83,6 +83,9 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
             start = initial.end;
             break;
           }
+          // A word too wide for the whole column cannot fit any narrower wrap
+          // segment. Try the next authored frame instead of scanning empty rows.
+          if (!initial.fits) break;
           let height = Math.max(initial.advance + initial.before, initial.bottom),
             bandTop = Math.min(0, initial.top),
             planned = [],
@@ -119,8 +122,8 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
                 next = line.end;
                 break;
               }
-              // A grapheme wider than the remaining side area must wait for a
-              // usable region; clipping it would preserve bytes but lose ink.
+              // An unbreakable word wider than a side area must wait for a
+              // usable region, without splitting it or hiding overflowing ink.
               if (!line.fits) continue;
               planned.push({ ...line, left: interval.left, width: interval.right - interval.left });
               rowBaseline = Math.max(rowBaseline, line.baseline);
@@ -156,7 +159,9 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
           if (band.nextColumn) break;
           if (!band.segments.length || !planned.length) {
             const nextY = band.nextY === null ? column.height : band.nextY - column.top;
-            y = Math.max(y + Math.max(1, initial.advance), nextY);
+            y = band.segments.length
+              ? y + Math.max(1, initial.advance)
+              : Math.max(y + Math.max(1, initial.advance), nextY);
             continue;
           }
           if (!stable) throw Error('Wrapped mixed-font line geometry did not settle.');
@@ -194,13 +199,14 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
         html: parts
           .map(
             (p) =>
-              `<div class="flow-column flow-wrap-segment" data-flow-column="${p.id}" ${p.justify ? 'data-wrap-soft="true"' : ''} style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;padding-top:${p.paddingTop}px;box-sizing:border-box;overflow:hidden;overflow-wrap:anywhere">${p.html}</div>`,
+              `<div class="flow-column flow-wrap-segment" data-flow-column="${p.id}" ${p.justify ? 'data-wrap-soft="true"' : ''} style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;padding-top:${p.paddingTop}px;box-sizing:border-box;overflow:hidden;overflow-wrap:normal">${p.html}</div>`,
           )
           .join(''),
       });
       if (
         start < measured.total &&
         frameIndex + 1 === flow.frameIds.length &&
+        (start > frameStart || obstacles.length > 0) &&
         flow.automaticPages &&
         allowPages
       ) {

@@ -206,6 +206,74 @@ function offsetConvex(input, distance) {
   return output;
 }
 
+function convexPieces(input) {
+  const points = simplePoints(input),
+    sign = direction(points);
+  return points.every(
+    (p, i) =>
+      orientation(p, points[(i + 1) % points.length], points[(i + 2) % points.length]) * sign >= 0,
+  )
+    ? [points]
+    : triangulateTextWrapContour(points);
+}
+
+function intersectConvex(subject, clip) {
+  let output = subject;
+  const sign = direction(clip);
+  for (let index = 0; index < clip.length && output.length; index++) {
+    const a = clip[index],
+      b = clip[(index + 1) % clip.length],
+      input = output;
+    output = [];
+    for (let i = 0; i < input.length; i++) {
+      const p = input[i],
+        q = input[(i + 1) % input.length],
+        insideP = orientation(a, b, p) * sign >= 0,
+        insideQ = orientation(a, b, q) * sign >= 0;
+      if (insideP) output.push(p);
+      if (insideP !== insideQ) {
+        const crossP = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x),
+          crossQ = (b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x),
+          t = Math.max(0, Math.min(1, crossP / (crossP - crossQ)));
+        output.push({ x: p.x + t * (q.x - p.x), y: p.y + t * (q.y - p.y) });
+      }
+    }
+    output = output.filter(
+      (p, i) =>
+        Math.hypot(
+          p.x - output[(i + 1) % output.length].x,
+          p.y - output[(i + 1) % output.length].y,
+        ) > EPS,
+    );
+  }
+  return output.length >= 3 && Math.abs(area(output)) > EPS ? output : [];
+}
+
+/** A placed graphic wraps its visible clipped contour, then its wrap offset.
+ * Preserve a single convex boundary when possible, so offsets never expand
+ * triangulation seams. Concave/disconnected nonzero buffering stays explicit. */
+export function clippedTextWrapPath(points, masks, distance = 0) {
+  let pieces = convexPieces(points);
+  for (const mask of masks) {
+    const clips = convexPieces(mask),
+      next = [];
+    if (pieces.length * clips.length > 4096)
+      throw new Error('Clipped text wrap exceeded the 4,096-piece geometry budget.');
+    for (const piece of pieces)
+      for (const clip of clips) {
+        const intersection = intersectConvex(piece, clip);
+        if (intersection.length) next.push(intersection);
+      }
+    pieces = next;
+    if (!pieces.length) return [];
+  }
+  if (Math.abs(distance) < EPS) return pieces;
+  if (pieces.length !== 1)
+    throw new Error('Concave clipped-image wrap offsets are not yet supported. Use zero offset.');
+  const expanded = offsetConvex(pieces[0], distance);
+  return expanded.length ? [expanded] : [];
+}
+
 /** Shared cross-field proof used before commands, import/storage and layout.
  * Options are already normalized. Returned points stay in object-local units. */
 export function textWrapObjectPath(object, options) {

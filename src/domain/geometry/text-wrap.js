@@ -1,6 +1,10 @@
 import { layerFor, layersFor, parentObjects } from '../documents/publishing.js';
 import { normalizeTextWrap, normalizeTextWrapPreferences } from '../documents/text-wrap.js';
-import { textWrapObjectPath, triangulateTextWrapContour as triangulate } from './wrap-contour.js';
+import {
+  textWrapObjectPath,
+  triangulateTextWrapContour as triangulate,
+  clippedTextWrapPath,
+} from './wrap-contour.js';
 
 const EPS = 1e-7;
 const area = (points) =>
@@ -120,6 +124,48 @@ export function textWrapObstacles(document, frame, { column } = {}) {
       stroke = path.stroke;
     const toWorld = (point) =>
       chain.reduce((value, ancestor) => localPoint(ancestor, value), point);
+    const masks =
+      object.type === 'image'
+        ? chain.slice(1).filter((ancestor) => ancestor.type === 'polygon' && ancestor.clip)
+        : [];
+    if (masks.length) {
+      // Graphic wrap is independent of the parent frame's own wrap settings,
+      // but invisible image content cannot contribute an exclusion rectangle.
+      const values =
+        options.mode === 'jump'
+          ? [options.offsets.top, options.offsets.bottom]
+          : Object.values(options.offsets);
+      if (!values.every((value) => value === values[0]))
+        throw new Error('Clipped-image text wrapping currently requires uniform offsets.');
+      const clips = masks.map((mask) => {
+        const owners = ancestors(mask, byId);
+        return mask.points.map((p) =>
+          owners.reduce((value, ancestor) => localPoint(ancestor, value), {
+            x: p.x * mask.w,
+            y: p.y * mask.h,
+          }),
+        );
+      });
+      const polygons = clippedTextWrapPath(
+        rectangle(0, 0, object.w, object.h).map(toWorld),
+        clips,
+        values[0] + stroke,
+      ).map((polygon) => polygon.map(toFrame));
+      if (polygons.length || options.invert)
+        result.push({
+          id: object.id,
+          mode: options.mode,
+          side: options.side,
+          invert: options.invert,
+          polygons,
+          bounds: polygons.length
+            ? extent(polygons.flat())
+            : { left: 0, top: 0, right: 0, bottom: 0 },
+          offsets: { ...options.offsets },
+          pageSide: textWrapPageSide(document, frame.pageId),
+        });
+      continue;
+    }
     let polygon;
     if (options.mode === 'contour') {
       polygon = path.points.map(toWorld);

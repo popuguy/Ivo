@@ -27,6 +27,7 @@ import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js
 import { validateNativeFlowSource } from '../../../src/rendering/text/native-flow-layout.js';
 import { verifyWrappedNavigation } from './navigation.js';
 import { verifyAdditionalComposition } from './additional-composition.js';
+import { verifyClippedGraphics } from './clipped-graphics.js';
 import { verifyWrapLayoutFailureFences, verifyWrappedTransactionFailure } from './review-fences.js';
 
 const assert = (value, message) => {
@@ -229,6 +230,7 @@ try {
       ...saved.reviewFences,
     });
   } else {
+    const clippedGraphics = verifyClippedGraphics({ verifyCoverage, paintFrame });
     const additionalComposition = verifyAdditionalComposition({
       verifyCoverage,
       verifyInkOutside,
@@ -621,7 +623,7 @@ try {
       obstacle: obstacle.id,
       geometry: signature(layout, frame.id),
       coldWrapLayoutMs,
-      additionalComposition,
+      additionalComposition: { ...additionalComposition, ...clippedGraphics },
       reviewFences: { ...layoutFences, ...transactionFences },
     });
     editor.destroy();

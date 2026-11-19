@@ -5,6 +5,7 @@ import {
   insertObject,
   addPage,
   isSceneDocument,
+  releaseMask,
 } from '../../src/domain/documents/scene.js';
 import {
   addLayer,
@@ -204,6 +205,95 @@ test('shape wrap follows full-band triangle extrema and preserves concave openin
     { left: 40, right: 70 },
     { left: 110, right: 140 },
   ]);
+});
+
+test('a masked image wraps visible clipped geometry, while parent Box remains a rectangle', () => {
+  const {
+      doc,
+      frame,
+      object: mask,
+    } = fixture([
+      { x: 0.5, y: 0 },
+      { x: 1, y: 0.5 },
+      { x: 0.5, y: 1 },
+      { x: 0, y: 0.5 },
+    ]),
+    image = insertObject(doc, 'image', mask.pageId, {
+      parentId: mask.id,
+      x: -20,
+      y: -20,
+      w: 140,
+      h: 140,
+    }),
+    row = band(30, 40);
+  setTextWrap(doc, [mask.id, image.id], { mode: 'contour' });
+  const source = JSON.stringify(doc),
+    shape = segments(doc, frame, row);
+  assert.deepEqual(shape, [
+    { left: 0, right: 80 },
+    { left: 100, right: 300 },
+  ]);
+  assert.equal(JSON.stringify(doc), source, 'Clipping is a read-only layout projection');
+  setTextWrap(doc, [mask.id], { mode: 'none' });
+  assert.deepEqual(segments(doc, frame, row), shape, 'Image wrap survives parent None');
+  setTextWrap(doc, [image.id], { mode: 'bounds' });
+  assert.deepEqual(segments(doc, frame, row), shape, 'Graphic Box honors its containing clip');
+  setTextWrap(doc, [image.id], { mode: 'none' });
+  setTextWrap(doc, [mask.id], { mode: 'bounds' });
+  assert.deepEqual(segments(doc, frame, row), [
+    { left: 0, right: 40 },
+    { left: 140, right: 300 },
+  ]);
+  setTextWrap(doc, [mask.id], { mode: 'none' });
+  setTextWrap(doc, [image.id], { mode: 'contour', offsets: offsets(8) });
+  const padded = segments(doc, frame, band(75, 85));
+  assert.ok(padded[0].right < 40 && padded[1].left > 140, 'Offset must expand AFTER clipping');
+  setTextWrap(doc, [image.id], { offsets: offsets(0) });
+  image.x = 500;
+  assert.deepEqual(segments(doc, frame, row), [{ left: 0, right: 300 }]);
+  releaseMask(doc, mask.id);
+  assert.equal(textWrapObstacles(doc, frame).length, 1, 'Release restores independent image wrap');
+});
+
+test('nested rotated clipping, concave openings and empty intersections bound image exclusions', () => {
+  const { doc, frame, object: mask } = fixture(concave),
+    image = insertObject(doc, 'image', mask.pageId, {
+      parentId: mask.id,
+      x: -10,
+      y: -10,
+      w: 120,
+      h: 120,
+    });
+  setTextWrap(doc, [image.id], { mode: 'contour' });
+  assert.deepEqual(segments(doc, frame, band(80, 100)), [
+    { left: 0, right: 40 },
+    { left: 70, right: 110 },
+    { left: 140, right: 300 },
+  ]);
+  const nested = insertObject(doc, 'polygon', mask.pageId, {
+    parentId: mask.id,
+    x: 20,
+    y: 20,
+    w: 60,
+    h: 60,
+    rotation: 33,
+  });
+  image.parentId = nested.id;
+  nested.clip = true;
+  Object.assign(image, { x: -100, y: -100, w: 300, h: 300 });
+  const clipped = textWrapObstacles(doc, frame)[0];
+  const c = Math.cos((33 * Math.PI) / 180),
+    s = Math.sin((33 * Math.PI) / 180);
+  for (const p of clipped.polygons.flat()) {
+    const dx = p.x - 90,
+      dy = p.y - 80;
+    assert.ok(Math.abs(c * dx + s * dy) <= 30 + 1e-6);
+    assert.ok(Math.abs(-s * dx + c * dy) <= 30 + 1e-6);
+  }
+  image.x = 1000;
+  assert.deepEqual(textWrapObstacles(doc, frame), []);
+  image.textWrap.invert = true;
+  assert.deepEqual(segments(doc, frame), [], 'Empty inverted clip admits no text');
 });
 
 test('convex contour expansion/contraction is explicit and concave offset limitations reject atomically', () => {

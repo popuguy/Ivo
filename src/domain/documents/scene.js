@@ -140,7 +140,15 @@ export function transformObject(document, id, rect, startingDocument = document)
       Object.assign(child, scaledPointType(old, sx, sy, { min: 1, max: 2000 }));
   }
 }
-/** Keep untouched vertices and child content stationary while a path point moves. */
+function rotateOffset(x, y, rotation = 0) {
+  if (!(rotation % 360)) return { x, y };
+  const radians = ((rotation % 360) * Math.PI) / 180,
+    c = Math.cos(radians),
+    s = Math.sin(radians);
+  return { x: c * x - s * y, y: s * x + c * y };
+}
+/** Keep untouched vertices and child content stationary while a path point moves.
+ * Position is in the unrotated parent's coordinates, as for existing callers. */
 export function moveVertex(document, id, vertexId, position) {
   const object = sceneObject(document, id);
   if (object?.type !== 'polygon') throw new Error('Select a polygon point.');
@@ -156,13 +164,18 @@ export function moveVertex(document, id, vertexId, position) {
     y = Math.min(...points.map((point) => point.y));
   const w = Math.max(0.01, Math.max(...points.map((point) => point.x)) - x),
     h = Math.max(0.01, Math.max(...points.map((point) => point.y)) - y);
+  // Reboxing changes CSS's rotation center. Compensate the origin so the new
+  // local frame has the old rendered transform, followed only by reboxing.
+  const dx = x + w / 2 - (object.x + object.w / 2),
+    dy = y + h / 2 - (object.y + object.h / 2),
+    rotated = rotateOffset(dx, dy, object.rotation);
   for (const child of childrenOf(document, id)) {
     child.x += object.x - x;
     child.y += object.y - y;
   }
   Object.assign(object, {
-    x,
-    y,
+    x: object.rotation % 360 ? x + rotated.x - dx : x,
+    y: object.rotation % 360 ? y + rotated.y - dy : y,
     w,
     h,
     points: points.map((point) => ({ id: point.id, x: (point.x - x) / w, y: (point.y - y) / h })),
@@ -230,8 +243,21 @@ export function releaseMask(document, id) {
   const mask = sceneObject(document, id);
   if (mask?.type !== 'polygon') throw new Error('Select a polygon mask.');
   for (const child of childrenOf(document, id)) {
-    child.x += mask.x;
-    child.y += mask.y;
+    if (mask.rotation % 360) {
+      const cx = mask.w / 2,
+        cy = mask.h / 2,
+        center = rotateOffset(
+          child.x + child.w / 2 - cx,
+          child.y + child.h / 2 - cy,
+          mask.rotation,
+        );
+      child.x = mask.x + cx + center.x - child.w / 2;
+      child.y = mask.y + cy + center.y - child.h / 2;
+      child.rotation = ((child.rotation || 0) + mask.rotation) % 360;
+    } else {
+      child.x += mask.x;
+      child.y += mask.y;
+    }
     if (mask.parentId) child.parentId = mask.parentId;
     else delete child.parentId;
   }

@@ -51,7 +51,7 @@ export function createWrapLineMeasurer(doc, flow) {
     columnCount: 'auto',
     columnWidth: 'auto',
     columnGap: 'normal',
-    overflowWrap: 'anywhere',
+    overflowWrap: 'normal',
     boxSizing: 'content-box',
   });
   document.body.append(root);
@@ -112,6 +112,7 @@ export function createWrapLineMeasurer(doc, flow) {
       bottom = -Infinity,
       firstBlock = null;
     let firstGlyphFits = true,
+      lineFits = true,
       sawGlyph = false;
     const metrics = { ascent: 0, 'cap-height': 0, 'x-height': 0, leading: 0 };
     while ((node = walker.nextNode())) {
@@ -158,6 +159,8 @@ export function createWrapLineMeasurer(doc, flow) {
       ])
         metrics[key] = Math.max(metrics[key], context.measureText(sample).actualBoundingBoxAscent);
       const rect = rects[0];
+      if (text && rect)
+        lineFits &&= rect.left >= origin.left - 0.01 && rect.right <= origin.left + width + 0.01;
       if (text && !sawGlyph && rect) {
         for (const glyph of segmenter.segment(node.data)) {
           if (!/\S/.test(glyph.segment)) continue;
@@ -224,7 +227,7 @@ export function createWrapLineMeasurer(doc, flow) {
         endPoint.index < source.total &&
         getComputedStyle(firstBlock || root).textAlign === 'justify',
       direction: getComputedStyle(firstBlock || root).direction,
-      fits: firstGlyphFits,
+      fits: firstGlyphFits && lineFits,
     };
   }
   return { total: source.total, measure, destroy: () => root.remove() };

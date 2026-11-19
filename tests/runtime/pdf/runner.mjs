@@ -411,7 +411,16 @@ app
       mode: 'bounds',
       offsets: { top: 8, right: 8, bottom: 8, left: 8 },
     });
-    const wrapSnapshot = createPDFSnapshot([wrapDoc], [], wrapDoc.id),
+    const clippedImage = insertObject(wrapDoc, 'image', {
+      parentId: wrapObject.id,
+      x: -60,
+      y: -60,
+      w: 260,
+      h: 260,
+      src: 'asset:' + asset.id,
+    });
+    setTextWrap(wrapDoc, [clippedImage.id], { mode: 'contour' });
+    const wrapSnapshot = createPDFSnapshot([wrapDoc], [asset], wrapDoc.id),
       wrapBefore = JSON.stringify(wrapSnapshot);
     let wrapInk;
     const wrappedPDF = await renderPDF(wrapSnapshot, {
@@ -446,6 +455,10 @@ app
         (c) => c.bottom <= 92.05 || c.top >= 247.95 || c.right <= 172.05 || c.left >= 327.95,
       ),
       'Frozen PDF renderer placed text inside object wrap offsets',
+    );
+    assert(
+      wrapInk.some((c) => c.left >= 120 && c.right <= 172 && c.top >= 100 && c.bottom <= 240),
+      'Hidden image rectangle still displaced exported text outside its clipping frame',
     );
     await writeFile(path.join(output, 'wrap.pdf'), wrappedPDF.bytes);
     await writeFile(path.join(output, 'wrap-ink.json'), JSON.stringify(wrapInk, null, 2));
@@ -482,6 +495,7 @@ app
           nativeRotatedScaledMaskedItalicText: true,
           nativeFontNames: [...nativeFonts],
           wrappedTextSourceAndExclusion: true,
+          clippedGraphicWrapping: true,
           wrapPDFInspection,
           warnings: manifest.warnings,
         },

@@ -14,6 +14,7 @@ This is a rough assessment of implementation and integration across the [66 incl
 - Contextual Tab behavior, ordinary half-inch text tabs, native arrangement commands, menu-owned Smart Guides and compact page/zoom navigation. These improve daily use and the command/input foundation; they do not complete paragraph tab composition or reference parity.
 - Literal leading-space preservation through rich/plain clipboard insertion, saved paint and linked/native source/history. This is an input correction within the current foundation; it does not move the rounded overall estimate.
 - [Object wrapping](../object-text-wrap.md) now excludes boxes/polygon contours in actual layout, on-page input, continuation and selectable PDF, with source/history protection. This closes a fixture-enabling geometry/input dependency and advances the broad estimate from ~20% to ~22%. Image/path contours, native wrap composition and full reference/device qualification remain open; no complete wrap capability is certified.
+- The disposable-layout follow-up corrects masked graphic contour ownership, clip-before-offset projection, whole-word contour flow and two mask-domain rotation operations. These fix the existing foundation and leave the rounded estimate at ~22%; advanced wrap and physical transform qualification remain open.
 
 ## Major work still driving the estimate
 
