@@ -13,6 +13,13 @@ import {
 } from '../../src/domain/workspace/state.js';
 import { setLibraryInfo, libraryInfo } from '../../src/domain/documents/library.js';
 import { validateImport } from '../../src/domain/documents/schema.js';
+import { createSceneDocument, insertObject } from '../../src/domain/documents/scene.js';
+import {
+  setTextWrap,
+  setIgnoreTextWrap,
+  setTextWrapPreferences,
+  setLayerIgnoreWrap,
+} from '../../src/domain/documents/text-wrap.js';
 
 async function fixture(t, options) {
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'ivo-vault-test-'));
@@ -43,6 +50,85 @@ test('file vault reopens documents, original asset bytes and local history', asy
     await fs.readFile(path.join(directory, manifest.assets[image.id].file)),
     Buffer.from([1, 2, 3, 4]),
   );
+});
+
+test('wrap9 canonical source and options survive fresh folder-engine reopen without changing manifest1 on read', async (t) => {
+  const { directory, vault } = await fixture(t),
+    manifestFile = path.join(directory, 'atlas.json'),
+    originalManifest = JSON.parse(await fs.readFile(manifestFile, 'utf8')),
+    doc = createSceneDocument('Durable object wrapping'),
+    source = '<p>Portable <em>canonical source</em>, with a leading space.</p>',
+    frame = insertObject(doc, 'text', doc.pages[0].id, {
+      html: source,
+      x: 40.125,
+      y: 50.25,
+      w: 300.5,
+      h: 210.75,
+    }),
+    object = insertObject(doc, 'polygon', doc.pages[0].id, {
+      x: 120.125,
+      y: 90.25,
+      w: 80.5,
+      h: 100.75,
+    });
+  setTextWrap(doc, [object.id], {
+    mode: 'bounds',
+    side: 'right',
+    offsets: { top: 4.5, right: 8.25, bottom: -1.125, left: 3.75 },
+  });
+  setIgnoreTextWrap(doc, [frame.id], true);
+  setTextWrapPreferences(doc, { onlyBelow: true, facingPages: true, firstPageSide: 'left' });
+  setLayerIgnoreWrap(doc, doc.publishing.layers[0].id, true);
+  const originalSource = structuredClone(doc),
+    expected = validateImport({ schemaVersion: 9, documents: [doc], assets: [] }).documents[0];
+  await vault.saveDocument(doc);
+  await vault.putMeta('history:' + doc.id, [doc]);
+  assert.deepEqual(
+    doc,
+    originalSource,
+    'Saving must not edit canonical source or geometry in place',
+  );
+  const committedManifestBytes = await fs.readFile(manifestFile, 'utf8'),
+    committedManifest = JSON.parse(committedManifestBytes),
+    objectFile = path.join(directory, committedManifest.documents[doc.id].file),
+    committedObjectBytes = await fs.readFile(objectFile),
+    reopened = await openVault(directory),
+    loaded = (await reopened.loadDocuments())[0];
+  assert.equal(originalManifest.schemaVersion, 1);
+  assert.equal(committedManifest.schemaVersion, 1);
+  assert.equal(committedManifest.format, 'ivo-folder');
+  assert.deepEqual(loaded, expected);
+  assert.equal(loaded.canvasVersion, 8);
+  assert.equal(loaded.blocks.find((block) => block.id === frame.id).ignoreTextWrap, true);
+  assert.deepEqual(loaded.blocks.find((block) => block.id === object.id).textWrap, object.textWrap);
+  assert.deepEqual(loaded.textWrapPreferences, doc.textWrapPreferences);
+  assert.equal(loaded.publishing.layers[0].ignoreWrap, true);
+  assert.equal(loaded.textFlows[0].html, source);
+  assert.deepEqual(loaded.textFlows[0].frameIds, [frame.id]);
+  assert.deepEqual((await reopened.getMeta('history:' + doc.id)).value, [expected]);
+  assert.equal(
+    await fs.readFile(manifestFile, 'utf8'),
+    committedManifestBytes,
+    'Fresh open must not rewrite manifest1',
+  );
+  assert.deepEqual(
+    await fs.readFile(objectFile),
+    committedObjectBytes,
+    'Fresh open must not normalize immutable source bytes on disk',
+  );
+  const invalid = structuredClone(loaded);
+  invalid.blocks.find((block) => block.id === object.id).textWrap = {
+    ...object.textWrap,
+    mode: 'jump',
+    invert: true,
+  };
+  await assert.rejects(reopened.saveDocument(invalid), /Inverted jump/);
+  assert.equal(
+    await fs.readFile(manifestFile, 'utf8'),
+    committedManifestBytes,
+    'Unsupported contour combinations must reject before commit',
+  );
+  assert.deepEqual(await reopened.loadDocuments(), [expected]);
 });
 
 test('interrupted import leaves the entire previous manifest readable and permits retry', async (t) => {

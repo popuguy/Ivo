@@ -148,6 +148,8 @@ export function appendTextFlowPage(document, textFlow) {
     h: last.h,
     textScale: structuredClone(last.textScale || { x: 1, y: 1 }),
     ...(last.frameOptions ? { frameOptions: structuredClone(last.frameOptions) } : {}),
+    ...(last.textWrap ? { textWrap: structuredClone(last.textWrap) } : {}),
+    ...(last.ignoreTextWrap !== undefined ? { ignoreTextWrap: last.ignoreTextWrap } : {}),
     ...(last.layerId ? { layerId: last.layerId } : {}),
     html: '',
     textKind: 'area',

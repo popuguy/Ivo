@@ -1,8 +1,19 @@
+import {
+  annotatedSource,
+  lift,
+  globalIndex,
+  copyRange,
+  displayHTML,
+  blockTags,
+} from './flow-source.js';
 import { composeFrameText, measureFrameText } from './frame-composition.js';
+import {
+  documentHasObjectWrap,
+  flowHasObjectWrap,
+  layoutWrappedTextFlow,
+} from './object-wrap-layout.js';
 import { effectiveTextStyle } from '../../domain/documents/publishing.js';
-import { cleanHTML } from '../../shared/html/sanitize.js';
 import { applyFrameTypography } from './format.js';
-import { textIndexMap, textIndexAt } from '../../shared/dom/text-selection.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
 import { applyNamedTextStyles } from './styles.js';
 let fontReady;
@@ -15,123 +26,6 @@ export function prepareTextFlowFonts() {
       'italic 700 16px "CMU Serif"',
     ].map((font) => document.fonts.load(font)),
   ).then(() => document.fonts.ready));
-}
-const blockTags = new Set(['P', 'DIV', 'LI', 'OL', 'UL', 'H2', 'H3', 'H4', 'BLOCKQUOTE']);
-function annotatedSource(html) {
-  const root = document.createElement('div');
-  root.innerHTML = cleanHTML(html);
-  const map = textIndexMap(root),
-    origins = new Map();
-  let serial = 0;
-  for (const element of root.querySelectorAll('*')) {
-    const id = String(serial++);
-    element.dataset.flowOrigin = id;
-    element.dataset.flowBefore = textIndexAt(
-      map,
-      element.parentNode,
-      [...element.parentNode.childNodes].indexOf(element),
-    );
-    const points = map.boundaries.get(element);
-    if (points && blockTags.has(element.tagName)) {
-      element.dataset.flowBlockStart = points[0];
-      element.dataset.flowBlockEnd = points.at(-1);
-      const at = [...element.parentNode.childNodes].indexOf(element);
-      element.dataset.flowBlockBefore = textIndexAt(map, element.parentNode, at);
-      element.dataset.flowBlockAfter = textIndexAt(map, element.parentNode, at + 1);
-      if (
-        !['OL', 'UL'].includes(element.tagName) &&
-        !element.querySelector('p,div,li,h2,h3,h4,blockquote')
-      )
-        element.dataset.flowParagraph = 'true';
-    }
-    if (element.tagName === 'BR') element.dataset.flowBreak = points?.[0];
-    origins.set(id, {
-      tag: element.tagName,
-      before: Number(element.dataset.flowBefore),
-      listIndex:
-        element.tagName === 'LI'
-          ? [...element.parentNode.children].filter((n) => n.tagName === 'LI').indexOf(element)
-          : 0,
-      listStart: element.tagName === 'OL' ? element.start || 1 : 1,
-    });
-  }
-  for (const segment of map.segments) {
-    const span = document.createElement('span');
-    span.dataset.flowText = segment.start;
-    span.dataset.flowBefore = segment.start;
-    segment.node.replaceWith(span);
-    span.append(segment.node);
-  }
-  return { html: root.innerHTML, origins, total: textIndexAt(map, root, root.childNodes.length) };
-}
-function lift(node, offset) {
-  if (offset) return { node, offset };
-  while (
-    node.parentNode &&
-    node.parentNode.dataset?.flowRoot !== 'true' &&
-    node === node.parentNode.firstChild
-  )
-    node = node.parentNode;
-  return { node: node.parentNode, offset: [...node.parentNode.childNodes].indexOf(node) };
-}
-function globalIndex(point, total) {
-  if (point.node.nodeType === Node.TEXT_NODE) {
-    const marker = point.node.parentElement.closest('[data-flow-text]');
-    if (marker) {
-      const prefix = document.createRange();
-      prefix.selectNodeContents(marker);
-      prefix.setEnd(point.node, point.offset);
-      return Number(marker.dataset.flowText) + prefix.toString().length;
-    }
-  }
-  const next = point.node.childNodes[point.offset];
-  return next
-    ? Number(next.dataset?.flowBefore ?? next.parentElement?.dataset.flowText ?? total)
-    : total;
-}
-function copyRange(range, start) {
-  let fragment = range.cloneContents();
-  let context = range.commonAncestorContainer;
-  if (context.nodeType === Node.TEXT_NODE) context = context.parentElement;
-  while (context && context.dataset?.flowRoot !== 'true') {
-    const wrapper = context.cloneNode(false);
-    wrapper.append(fragment);
-    const outer = document.createDocumentFragment();
-    outer.append(wrapper);
-    fragment = outer;
-    context = context.parentElement;
-  }
-  if (start.node.nodeType === Node.TEXT_NODE) {
-    const marker = start.node.parentElement.closest('[data-flow-text]')?.dataset.flowText,
-      first = marker !== undefined && fragment.querySelector(`[data-flow-text="${marker}"]`);
-    if (first) {
-      first.dataset.flowText = globalIndex(start, 0);
-      first.dataset.flowBefore = first.dataset.flowText;
-    }
-  }
-  return fragment;
-}
-function displayHTML(fragment, origins, start, _end) {
-  for (const list of fragment.querySelectorAll('ol')) {
-    const first = list.querySelector('li'),
-      source = first && origins.get(first.dataset.flowOrigin),
-      original = origins.get(list.dataset.flowOrigin);
-    if (source) list.start = (original?.listStart || 1) + source.listIndex;
-  }
-  for (const element of fragment.querySelectorAll('[data-flow-origin]')) {
-    const source = origins.get(element.dataset.flowOrigin);
-    if (source && source.before < start && blockTags.has(element.tagName)) {
-      element.dataset.flowContinuation = 'true';
-      if (element.tagName === 'LI') element.style.listStyleType = 'none';
-    }
-    delete element.dataset.flowOrigin;
-    delete element.dataset.flowBefore;
-  }
-  // Derived text origins let a preview click locate the same caret in the canonical TextFlow Editor.
-  for (const span of fragment.querySelectorAll('[data-flow-text]')) delete span.dataset.flowBefore;
-  const host = document.createElement('div');
-  host.append(fragment);
-  return host.innerHTML;
 }
 function splitColumns(probe, width, total, start) {
   const base = probe.getBoundingClientRect(),
@@ -191,7 +85,29 @@ const metrics = (frame) => ({
   h: frame.h / (frame.textScale?.y || 1),
 });
 /** Native browser column composition with derived fragments; canonical textFlow source is never split or rewritten. */
-export function layoutDocumentTextFlows(doc, { allowPages = true } = {}) {
+export function layoutDocumentTextFlows(doc, { allowPages = true, objectWrap = true } = {}) {
+  if (objectWrap && documentHasObjectWrap(doc)) {
+    const wrapped = (doc.textFlows || []).filter(
+      (flow) => !flow.composition && flowHasObjectWrap(doc, flow),
+    );
+    if (wrapped.length) {
+      const ids = new Set(wrapped.map((flow) => flow.id)),
+        projection = {
+          ...doc,
+          textFlows: (doc.textFlows || []).filter((flow) => !ids.has(flow.id)),
+        },
+        result = layoutDocumentTextFlows(projection, { allowPages, objectWrap: false });
+      doc.pages = projection.pages;
+      doc.blocks = projection.blocks;
+      for (const flow of wrapped) {
+        const plan = layoutWrappedTextFlow(doc, flow, { allowPages });
+        for (const [id, fragment] of plan.fragments) result.fragments.set(id, fragment);
+        result.status.set(flow.id, plan.status);
+        result.changed ||= plan.changed;
+      }
+      return result;
+    }
+  }
   // Each threaded source has one layout authority. Native flows stay in the
   // scene for page ownership checks, but never enter browser line composition.
   if (doc.textFlows?.some((flow) => flow.composition)) {

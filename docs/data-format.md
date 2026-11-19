@@ -1,6 +1,6 @@
 # Document and vault formats
 
-Explicit native text composition uses **archive 8 / canvas 7**. Authored first-baseline policies use **archive 7 / canvas 6**. Other publishing documents remain **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
+Authored object text wrap uses **archive 9 / canvas 8**. Explicit native text composition uses **archive 8 / canvas 7**. Authored first-baseline policies use **archive 7 / canvas 6**. Other publishing documents remain **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
 
 | Archive | Document capability                                                                                                |
 | ------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -12,6 +12,7 @@ Explicit native text composition uses **archive 8 / canvas 7**. Authored first-b
 | 6       | Publishing layers, parent definitions/overrides, sparse text styles, frame options and vault font assets, canvas 5 |
 | 7       | Explicit font-metric/fixed first-baseline policies and minimum offsets, canvas 6                                   |
 | 8       | Explicit native flow composition authority/policy, canvas 7                                                        |
+| 9       | Object text wrap, frame ignore-wrap and document/layer wrap policy, canvas 8                                       |
 
 A document has a stable ID and version, editable title, timestamps, tags/aliases, objects and (for current scenes) pages. A text flow has its own stable ID, rich HTML, ordered frame IDs, style, continuation policy and ownership of automatically generated pages. Frames hold geometry and a reference to their text flow; they do not duplicate its source. Images reference original assets. Polygon masks form a validated, bounded parent tree. Application extension data is namespaced and bounded; unknown extension namespaces survive validation.
 
@@ -43,7 +44,7 @@ Archive 8 / canvas 7 adds one optional authored field to a canonical text flow:
 "composition": { "version": 1, "composer": "paragraph" }
 ```
 
-The only accepted composers are `paragraph` and `single-line`. Version and composer are explicit; missing/unknown composers, a version other than 1, or extra fields in this object reject. Supplying the field under archive 7 or earlier, or a canvas version other than 7, rejects before any storage write. This is a persisted choice of composition authority/policy, not a claim that every typography capability is supported by the selected native implementation. Unsupported source/features must produce an explicit composition error while retaining the complete canonical HTML.
+The only accepted composers are `paragraph` and `single-line`. Version and composer are explicit; missing/unknown composers, a version other than 1, or extra fields in this object reject. Supplying the field under archive 7 or earlier, or a canvas version other than 7 or 8, rejects before any storage write. This is a persisted choice of composition authority/policy, not a claim that every typography capability is supported by the selected native implementation. Unsupported source/features must produce an explicit composition error while retaining the complete canonical HTML.
 
 `enableNativeComposition` opts a member flow into the capability. Opening archive 6 or 7 adds no `composition` field, does not change its canvas version and performs no disk write. The current decoder may also read older document capabilities inside an archive 8 container; that does not opt those documents into native composition. Publishing, first-baseline edits, copying and object paste retain an already higher canvas capability. Removing the composition field does not implicitly downgrade canvas 7. Sharing derives the minimum required archive version from the actual document capabilities and resources.
 
@@ -54,3 +55,29 @@ Automatically generated pages continue to use `autoPages: [{ "pageId": "…", "f
 History equality separately projects away only a native flow's exclusively owned continuation page whose sole physical object is that empty-source, root area-text frame. Legacy flows, mixed-content pages, malformed ownership and duplicate source are retained in the comparison. Intentional geometry, page metadata/order, frame threading, parent/layer/appearance edits or added objects release the affected native ownership before recording the command. Source/typography changes alone do not; an asynchronous grow/shrink arriving during that command is also excluded from authored equality. Explicit frame/page deletion disables native automatic continuation and, while other member frames remain, retains the complete canonical source as potentially overset text. Deleting every member frame removes the flow through the existing document command; undo retains its complete prior snapshot. Derived shrink uses a separate command and preserves the continuation policy. See [native composition ownership](native-composition-ownership.md).
 
 The new frozen `tests/fixtures/legacy/archive-v7.json` retains its original linked source and first-baseline geometry without native opt-in. `tests/unit/derived-text-layout.test.js` covers old/new gates, repeated normalization, copies/paste, stable continuation identities, source/style edits with asynchronous layout, promotion, deletion and strict history checks. No manifest, IndexedDB or cloud-provider format is advanced by this capability.
+
+## Object text wrap capability
+
+Archive 9 / canvas 8 adds optional source-owned object options:
+
+```json
+"textWrap": {
+  "mode": "bounds",
+  "offsets": { "top": 8, "right": 8, "bottom": 8, "left": 8 },
+  "side": "both",
+  "invert": false,
+  "contour": { "source": "frame" }
+}
+```
+
+Modes are `none`, `bounds`, `contour`, `jump` and `next-column`. Sides are `both`, `left`, `right`, `largest`, `inside` and `outside`. Offsets are finite document points from −2000 to 2000; contour and next-column modes require a uniform offset. Jump uses top/bottom spacing. Mode-specific inactive options can remain stored while disabled; active inverted jump/next-column behavior is explicitly unsupported. The current contour source is only `frame`: actual polygon vertices or the object's rectangular frame. Alpha channels, subject detection and imported clipping/Bezier contours are not represented by a fabricated frame contour. Unknown fields or contour sources, invalid enums, unsafe records and nonfinite values reject.
+
+`ignoreTextWrap` is an optional Boolean on actual text/quote frames. `textWrapPreferences` optionally stores `{ "onlyBelow": false, "facingPages": false, "firstPageSide": "right" }` on the document. `onlyBelow` limits exclusions to wrapping objects above the target in stacking order. `firstPageSide` accepts `left`/`right`; facing pages alternate that side in physical page order for toward/away-spine choices. A layer's optional Boolean `ignoreWrap` suppresses its wrapping only while the layer is hidden. These fields, including explicit disabled values and parent-template fields, require archive 9 / canvas 8. Removing options does not downgrade an already upgraded document.
+
+Authoring wrap adopts independent area text/quote on the affected pages into canonical text flows in the same undo transaction. Frame IDs, complete source HTML and effective quote typography remain intact; newly adopted flows disable automatic continuation until the user enables it. Point text is unchanged. The idempotent `ensureTextWrapFlows` command also adopts area frames added or moved onto wrapped pages. It never runs during reading, selection or rendering. New archives containing active-wrap pages and unthreaded actual area frames reject before writes instead of permitting a display/input mismatch. Parent definitions retain direct template source under a private recursive validation context; an archive field cannot opt out of the actual-page flow rule. Inherited parent text remains a separate readonly template-display case until overridden.
+
+Wrap geometry, transformed contours, triangulation, available line bands and source fragments are derived and never serialized as another text authority. The current polygon offset implementation supports convex straight contours (positive/negative offsets) and zero-offset unstroked concave contours. Nonzero concave offsets/stroke expansion, rounded-frame contours and self-intersecting contours produce explicit unsupported errors. Frame contour geometry is not image-alpha detection. Largest-side selection and transformed offset joins remain Ivo policies pending complete native reference qualification. Empty contracted inverse contours admit no text rather than silently disabling the wrap.
+
+Commands, archive validation and layout share one pure contour authority. It checks every nonadjacent segment pair before offset or triangulation, with exact binary-coordinate orientation when floating arithmetic is ambiguous; local turns or successful ear clipping cannot certify a pentagram. The same cross-field proof rejects unsupported contour/object combinations before storage, including inside parent templates. Object paste adopts newly affected destination area frames before assigning the replacement document; callers do not need a later repair to make pasted wrap data valid.
+
+The frozen inline archive-8 fixture in `tests/unit/text-wrap.test.js` verifies unchanged input, IDs, source and canvas capability with no wrap opt-in on read. Tests cover malformed/old gates, exact complete-band exclusions, stroke/offset semantics, hierarchy transforms, hidden-layer/stack/spine policies, source adoption/idempotence, parents, native-flow coexistence, copying/paste and continuation-frame options. Native manifest 1 and IndexedDB 4 are unchanged.

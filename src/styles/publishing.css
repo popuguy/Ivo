@@ -216,6 +216,35 @@
 .publishing-check input {
   margin: 0;
 }
+.text-wrap-modes {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0 0 10px;
+}
+.context-panel-group .text-wrap-modes button {
+  min-width: 0;
+  min-height: 25px;
+  padding: 3px 2px;
+  border: 1px solid var(--panel-line);
+  background: transparent;
+  color: var(--panel-muted);
+  font: 11px/17px var(--interface-font);
+  cursor: default;
+}
+.context-panel-group .text-wrap-modes button[aria-pressed='true'] {
+  background: var(--panel-active);
+  color: var(--panel-ink);
+  border-color: var(--panel-muted);
+}
+.text-wrap-mixed {
+  color: var(--panel-muted);
+  font-size: 10px;
+  margin: 0 0 7px;
+}
+.publishing-check .text-wrap-mixed {
+  margin: 0;
+}
 .publishing-more {
   margin: 7px 0;
 }

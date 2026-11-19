@@ -1,5 +1,7 @@
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
 import { textClipboardHTML } from './text/clipboard.js';
+import { ensureTextWrapFlows } from '../../domain/documents/text-wrap.js';
+import { reflectTextWrapControls } from './ui/text-wrap-properties.js';
 import { statusBarMarkup } from './ui/status-bar.js';
 import { handleFieldTab } from '../../shared/ui/keyboard-fields.js';
 import { caretInterval } from '../../domain/text/flow-selection.js';
@@ -416,6 +418,7 @@ export function mountCanvasEditor(host, options) {
     const before = structuredClone(doc());
     try {
       callback();
+      ensureTextWrapFlows(doc());
       validateNativeSources();
       updateFlowPlan();
     } catch (error) {
@@ -717,6 +720,7 @@ export function mountCanvasEditor(host, options) {
         nativeComposition: !!options.textComposition,
       });
     reflectTextStyle(editor, textSummary);
+    reflectTextWrapControls(editor);
   }
   function readSelectedTextStyle() {
     const item = object();
@@ -893,7 +897,9 @@ export function mountCanvasEditor(host, options) {
   function positionFlowInput(
     item,
     offset,
-    affinity = captureTextSelection(activeText())?.focus.affinity || 'forward',
+    affinity = flowSelection?.selection()?.focus.affinity ||
+      captureTextSelection(activeText())?.focus.affinity ||
+      'forward',
   ) {
     if (!item) return;
     const element = host.querySelector('.canvas-flow-input'),
@@ -904,14 +910,17 @@ export function mountCanvasEditor(host, options) {
       position = objectWorld(item),
       sx = item.textScale?.x || 1,
       sy = item.textScale?.y || 1;
-    const native = !!sourceTextFlow(element)?.composition;
+    const native = !!sourceTextFlow(element)?.composition,
+      wrapped = !!column.wrap;
+    element.toggleAttribute('data-flow-wrap', wrapped);
+    element.classList.toggle('wrapped-composition-input', wrapped);
     element.classList.toggle('native-composition-input', native);
-    if (!native) inputAnchor?.reset();
+    if (!native && !wrapped) inputAnchor?.reset();
     for (const preview of world.querySelectorAll('[data-flow-editing]'))
       delete preview.dataset.flowEditing;
     const preview = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`),
       physical = preview?.querySelectorAll('.flow-column')[column.index || 0] || preview;
-    if (physical && !native) physical.dataset.flowEditing = '';
+    if (physical && !native && !wrapped) physical.dataset.flowEditing = '';
     Object.assign(clip.style, {
       left: position.x + column.left * sx + 'px',
       top: position.y + column.top * sy + 'px',
@@ -933,6 +942,9 @@ export function mountCanvasEditor(host, options) {
     // Native selection scrolling must not move the input independently of its page.
     element.scrollTop = element.scrollLeft = clip.scrollTop = clip.scrollLeft = 0;
     applyPageCamera(layer, state.camera);
+    // Moving the retained input between exclusion segments changes its native
+    // caret query even when the painted fragment/source generation is unchanged.
+    if (native || wrapped) flowSelection?.sync({ force: true });
   }
   function followTextFlowCaret() {
     const element = activeText(),
@@ -946,7 +958,10 @@ export function mountCanvasEditor(host, options) {
     const offset = sourceCaretIndex();
     if (offset === null || flowSelection?.dragging || flowSelection?.sync()?.collapsed === false)
       return;
-    const affinity = captureTextSelection(element)?.focus.affinity || 'forward',
+    const affinity =
+        flowSelection?.selection()?.focus.affinity ||
+        captureTextSelection(element)?.focus.affinity ||
+        'forward',
       owner = caretInterval(
         { index: offset, affinity },
         textFlow.frameIds
@@ -1116,7 +1131,8 @@ export function mountCanvasEditor(host, options) {
   }
   function captureView() {
     const element = activeText(),
-      selection = element && document.activeElement === element && captureTextSelection(element);
+      selection =
+        element && document.activeElement === element && captureOwnedTextSelection(element);
     return {
       selection: state.selection.slice(),
       activePage: state.activePage,
@@ -1130,8 +1146,21 @@ export function mountCanvasEditor(host, options) {
   }
   function rememberTextSelection() {
     const element = activeText(),
-      bookmark = element && document.activeElement === element && captureTextSelection(element);
+      bookmark =
+        element && document.activeElement === element && captureOwnedTextSelection(element);
     if (bookmark) savedTextSelection = { id: activeTextId, bookmark };
+    return bookmark;
+  }
+  function captureOwnedTextSelection(element) {
+    const bookmark = captureTextSelection(element),
+      owned = flowSelection?.selection();
+    if (
+      bookmark &&
+      owned &&
+      bookmark.anchor.index === owned.anchor.index &&
+      bookmark.focus.index === owned.focus.index
+    )
+      for (const key of ['anchor', 'focus']) bookmark[key].affinity = owned[key].affinity;
     return bookmark;
   }
   function beginTextInput(type = 'insertText') {
@@ -1146,23 +1175,25 @@ export function mountCanvasEditor(host, options) {
     const item = sceneObject(doc(), element.dataset.sceneText),
       textFlow = sourceTextFlow(element);
     if (!item && !textFlow) return;
+    const rollback = textBefore || structuredClone(doc()),
+      view = textViewBefore || captureView();
     try {
       writeText(item, element.innerHTML, element);
+      if (!composing) applyNamedTextStyles(element, doc());
+      if (textFlow && !composing) {
+        refreshFlowPreview();
+        followTextFlowCaret();
+      }
+      if (item) measureText(item, element);
     } catch (error) {
-      if (!textFlow?.composition) throw error;
-      element.innerHTML = cleanHTML(textFlow.html);
-      applyNamedTextStyles(element, doc());
-      if (textViewBefore?.textSelection)
-        restoreTextSelection(element, textViewBefore.textSelection);
+      restoreGestureDocument(rollback);
+      textBefore = textViewBefore = null;
+      inputType = '';
+      flowSignature = '';
+      restoreView(view);
       options.onNotify?.(error.message);
       return false;
     }
-    if (!composing) applyNamedTextStyles(element, doc());
-    if (textFlow && !composing) {
-      refreshFlowPreview();
-      followTextFlowCaret();
-    }
-    if (item) measureText(item, element);
     selectionDirty = true;
     rememberTextSelection();
     requestFrame();
@@ -1380,7 +1411,8 @@ export function mountCanvasEditor(host, options) {
   }
   function applyTextProperty(field, value, { commit = true } = {}) {
     const flow = textFlowForFrame(doc(), object());
-    if (!flow?.composition) return applyTextPropertyValue(field, value, { commit });
+    if (!flow?.composition && !flowPlan.status.get(flow?.id)?.wrapped)
+      return applyTextPropertyValue(field, value, { commit });
     finishText();
     const before = structuredClone(doc()),
       view = captureView(),
@@ -1389,7 +1421,7 @@ export function mountCanvasEditor(host, options) {
       const result = applyTextPropertyValue(field, value, { commit: false });
       validateNativeSources();
       // Validate pending insertion formatting as well as existing source runs.
-      if (Object.keys(pendingMarks).length) {
+      if (flow.composition && Object.keys(pendingMarks).length) {
         const probe = structuredClone(flow);
         probe.style = { ...probe.style, ...readSelectedTextStyle()?.values, ...pendingMarks };
         validateNativeFlowSource(doc(), probe, options.assets?.() || options.fonts?.() || []);
@@ -1765,12 +1797,24 @@ export function mountCanvasEditor(host, options) {
         if (old.sourceIds) setSelectionState(old.sourceIds);
         paint();
       } else if (JSON.stringify(old.before.blocks) !== JSON.stringify(doc().blocks)) {
-        if (old.kind === 'move' && transferObjectsAtDrop(doc(), old.ids || [old.id])) {
+        const transferred =
+          old.kind === 'move' && transferObjectsAtDrop(doc(), old.ids || [old.id]);
+        if (transferred) {
           state.activePage = sceneObject(doc(), old.id)?.pageId || state.activePage;
           state.inside = null;
-          paint();
         }
-        if (doc().textFlows?.length) refreshFlowPreview();
+        try {
+          const adopted = ensureTextWrapFlows(doc());
+          validateNativeSources();
+          if (transferred || adopted.length) paint();
+          else if (doc().textFlows?.length) refreshFlowPreview();
+        } catch (error) {
+          restoreGestureDocument(old.before);
+          if (old.sourceIds) setSelectionState(old.sourceIds);
+          paint();
+          options.onNotify?.(error.message);
+          return;
+        }
         onCommit(old.before, {
           label: old.copying
             ? 'Duplicate and move'
@@ -2643,6 +2687,7 @@ export function mountCanvasEditor(host, options) {
           roots = pasteObjectSelection(planned, archive, context),
           existing = options.assets?.() || options.fonts?.() || [],
           resources = new Map(existing.map((asset) => [asset.id, asset]));
+        ensureTextWrapFlows(planned);
         for (const asset of archive.assets) {
           const prior = resources.get(asset.id);
           if (prior && (prior.data !== asset.data || prior.mimeType !== asset.mimeType))
@@ -3614,7 +3659,8 @@ export function mountCanvasEditor(host, options) {
     parentMode: options.parentMode,
   });
   inputAnchor = createNativeInputAnchor(host.querySelector('.canvas-flow-input'), {
-    allowed: () => !!sourceTextFlow()?.composition && alive,
+    allowed: () =>
+      (!!sourceTextFlow()?.composition || activeText()?.hasAttribute('data-flow-wrap')) && alive,
     isComposing: () => composing,
   });
   nativeSession = createCompositionSession({
@@ -3737,7 +3783,17 @@ export function mountCanvasEditor(host, options) {
       getDocument,
       mount: mountCanvasEditor,
       options,
-      onCommit,
+      onCommit: (before, metadata) => {
+        try {
+          ensureTextWrapFlows(doc());
+          validateNativeSources();
+          updateFlowPlan();
+        } catch (error) {
+          restoreGestureDocument(before);
+          throw error;
+        }
+        onCommit(before, metadata);
+      },
       onClose: () => {
         parentEditor = null;
         paint();

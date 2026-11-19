@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import { inspectFont } from '../../../src/domain/text/fonts.js';
+import { setTextWrap } from '../../../src/domain/documents/text-wrap.js';
+import { prepareBackgroundTest } from '../helpers/background.mjs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import {
   enablePublishing,
   createParent,
@@ -43,6 +47,7 @@ const insertObject = (doc, type, options = {}) => {
 const root = fileURLToPath(new URL('../../..', import.meta.url)),
   output = path.resolve(root, '../work/pdf-export/runtime');
 const profile = await mkdtemp(path.join(tmpdir(), 'ivo-pdf-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 app
@@ -373,6 +378,93 @@ app
       path.join(output, 'native-source.json'),
       JSON.stringify(nativeSnapshot, null, 2),
     );
+    const wrapDoc = createSceneDocument('Object wrap PDF', { width: 500, height: 500 }),
+      wrapSource = Array.from({ length: 100 }, (_, i) => 'word' + String(i).padStart(3, '0')).join(
+        ' ',
+      ),
+      wrapFrame = insertObject(wrapDoc, 'text', {
+        x: 20,
+        y: 20,
+        w: 460,
+        h: 430,
+        textStyle: 'cmu-serif',
+        fontSize: 16,
+        leading: 20,
+        html: '<p>' + wrapSource + '</p>',
+      }),
+      wrapObject = insertObject(wrapDoc, 'polygon', {
+        x: 180,
+        y: 100,
+        w: 140,
+        h: 140,
+        fill: 'none',
+        stroke: 'none',
+        strokeWidth: 0,
+        points: [
+          { id: 'a', x: 0, y: 0 },
+          { id: 'b', x: 1, y: 0 },
+          { id: 'c', x: 1, y: 1 },
+          { id: 'd', x: 0, y: 1 },
+        ],
+      });
+    setTextWrap(wrapDoc, [wrapObject.id], {
+      mode: 'bounds',
+      offsets: { top: 8, right: 8, bottom: 8, left: 8 },
+    });
+    const wrapSnapshot = createPDFSnapshot([wrapDoc], [], wrapDoc.id),
+      wrapBefore = JSON.stringify(wrapSnapshot);
+    let wrapInk;
+    const wrappedPDF = await renderPDF(wrapSnapshot, {
+      project: root,
+      onRendered: async (window) => {
+        wrapInk = await window.webContents.executeJavaScript(`(()=>{
+          const element=document.querySelector('[data-flow-frame="${wrapFrame.id}"]'), page=document.querySelector('.pdf-layout'),
+            origin=page.getBoundingClientRect(), factor=origin.width/500, result=[], walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT), range=document.createRange();
+          let node; while(node=walker.nextNode()) for(let i=0;i<node.length;i++) {
+            if(!/\\S/.test(node.data[i]))continue;
+            range.setStart(node,i);range.setEnd(node,i+1);const r=range.getBoundingClientRect();
+            result.push({char:node.data[i],left:(r.left-origin.left)/factor,right:(r.right-origin.left)/factor,
+              top:(r.top-origin.top)/factor,bottom:(r.bottom-origin.top)/factor});
+          } return result;
+        })()`);
+      },
+    });
+    assert.equal(
+      JSON.stringify(wrapSnapshot),
+      wrapBefore,
+      'Wrapped PDF mutated its source snapshot',
+    );
+    assert.equal((await PDFDocument.load(wrappedPDF.bytes)).getPageCount(), 1);
+    assert.deepEqual(wrappedPDF.manifest.warnings, []);
+    assert.equal(
+      wrapInk.map((c) => c.char).join(''),
+      wrapSource.replaceAll(' ', ''),
+      'Wrapped PDF renderer lost source characters',
+    );
+    assert(
+      wrapInk.every(
+        (c) => c.bottom <= 92.05 || c.top >= 247.95 || c.right <= 172.05 || c.left >= 327.95,
+      ),
+      'Frozen PDF renderer placed text inside object wrap offsets',
+    );
+    await writeFile(path.join(output, 'wrap.pdf'), wrappedPDF.bytes);
+    await writeFile(path.join(output, 'wrap-ink.json'), JSON.stringify(wrapInk, null, 2));
+    await writeFile(
+      path.join(output, 'wrap-source.json'),
+      JSON.stringify(
+        { text: wrapSource, exclusion: { left: 172, top: 92, right: 328, bottom: 248 } },
+        null,
+        2,
+      ),
+    );
+    const inspectedWrap = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      path.join(root, 'tests/runtime/pdf/inspect-wrap.swift'),
+      path.join(output, 'wrap.pdf'),
+    ]);
+    const wrapPDFInspection = JSON.parse(inspectedWrap.stdout);
     console.log(
       JSON.stringify(
         {
@@ -389,6 +481,8 @@ app
           publishingFontsParentsLayersHighlights: true,
           nativeRotatedScaledMaskedItalicText: true,
           nativeFontNames: [...nativeFonts],
+          wrappedTextSourceAndExclusion: true,
+          wrapPDFInspection,
           warnings: manifest.warnings,
         },
         null,

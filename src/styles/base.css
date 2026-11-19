@@ -3031,7 +3031,8 @@ dialog li {
   cursor: text;
   user-select: text;
 }
-.canvas-flow-input.native-composition-input {
+.canvas-flow-input.native-composition-input,
+.canvas-flow-input.wrapped-composition-input {
   opacity: 0;
   caret-color: transparent;
 }
@@ -3075,6 +3076,13 @@ dialog li {
 .flow-fragment [data-flow-continuation] {
   margin-top: 0 !important;
   text-indent: 0 !important;
+}
+.flow-wrap-segment[data-wrap-soft] p:last-child,
+.flow-wrap-segment[data-wrap-soft] div:last-child {
+  text-align-last: justify !important;
+}
+.canvas-flow-input[data-flow-wrap] {
+  overflow-wrap: anywhere;
 }
 .canvas-flow-status {
   font-size: 10px;

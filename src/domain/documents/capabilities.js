@@ -1,5 +1,5 @@
-export const CURRENT_ARCHIVE_VERSION = 8;
-export const CURRENT_CANVAS_VERSION = 7;
+export const CURRENT_ARCHIVE_VERSION = 9;
+export const CURRENT_CANVAS_VERSION = 8;
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 const oldFields = new Set([
   'textStyle',
@@ -25,7 +25,7 @@ const newAttrs = new RegExp(
 export function hasPublishingFeatures(doc) {
   return (
     !!doc.publishing ||
-    [5, 6, 7].includes(doc.canvasVersion) ||
+    [5, 6, 7, 8].includes(doc.canvasVersion) ||
     doc.blocks.some(
       (b) =>
         b.frameOptions ||
@@ -65,7 +65,7 @@ export function hasAdvancedTypography(document) {
 /** First-baseline policies require an explicit format gate; older readers reject archive 7. */
 export function hasFrameComposition(doc) {
   return (
-    [6, 7].includes(doc.canvasVersion) ||
+    [6, 7, 8].includes(doc.canvasVersion) ||
     [...doc.blocks, ...(doc.publishing?.parents || []).flatMap((p) => p.blocks)].some(
       (b) =>
         b.frameOptions?.firstBaseline !== undefined ||
@@ -81,7 +81,26 @@ export function hasNativeTextComposition(doc) {
   );
 }
 
+/** Wrap settings are authored layout authority, including disabled/sticky options. */
+export function hasTextWrap(doc) {
+  const blocks = Array.isArray(doc.blocks) ? doc.blocks : [],
+    parents = Array.isArray(doc.publishing?.parents) ? doc.publishing.parents : [],
+    layers = Array.isArray(doc.publishing?.layers) ? doc.publishing.layers : [];
+  return (
+    doc.canvasVersion === 8 ||
+    doc.textWrapPreferences !== undefined ||
+    [
+      ...blocks,
+      ...parents.flatMap((parent) => (Array.isArray(parent?.blocks) ? parent.blocks : [])),
+    ].some(
+      (block) => block && (block.textWrap !== undefined || block.ignoreTextWrap !== undefined),
+    ) ||
+    layers.some((layer) => layer?.ignoreWrap !== undefined)
+  );
+}
+
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasTextWrap)) return 9;
   if (documents.some(hasNativeTextComposition)) return 8;
   if (documents.some(hasFrameComposition)) return 7;
   if (assets.some((asset) => asset.font || asset.mimeType?.startsWith('font/'))) return 6;
@@ -96,6 +115,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasTextWrap(document)) {
+    document.canvasVersion = 8;
+    return document;
+  }
   if (hasNativeTextComposition(document)) {
     document.canvasVersion = 7;
     return document;

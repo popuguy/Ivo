@@ -20,6 +20,7 @@ import {
   textParagraphRanges,
 } from '../../../shared/dom/text-selection.js';
 import { projectFlowInput } from '../../../rendering/text/flow-input.js';
+import { mergeWrappedCaretRows } from '../../../rendering/text/wrap-caret-lines.js';
 const owners = new Map(),
   highlightName = 'ivo-flow-selection';
 function publish(owner, ranges) {
@@ -83,6 +84,31 @@ function previewRange(root, start, end, interval, revision) {
   else return null;
   return range;
 }
+function wrappedCaretBounds(column, point, revision) {
+  const leaves = previewLeaves(column.element, revision),
+    backward = point.affinity === 'backward',
+    leaf =
+      (backward
+        ? leaves.findLast((s) => s.start < point.index && s.end >= point.index)
+        : leaves.find((s) => s.start <= point.index && s.end > point.index)) ||
+      (backward ? leaves.at(-1) : leaves[0]);
+  if (leaf) {
+    const range = document.createRange();
+    range.setStart(leaf.node, Math.max(0, Math.min(leaf.node.length, point.index - leaf.start)));
+    range.collapse(true);
+    const rects = [...range.getClientRects()].filter((r) => r.height > 0),
+      rect = backward ? rects.at(-1) : rects[0];
+    if (rect) return { x: rect.left, y: rect.top, width: 0, height: rect.height };
+  }
+  const bounds = column.element.getBoundingClientRect(),
+    scaleY = bounds.height / column.height;
+  return {
+    x: bounds.left,
+    y: bounds.top + (column.before || 0) * scaleY,
+    width: 0,
+    height: Math.max(1, (column.advance || 16) * scaleY),
+  };
+}
 /** Retain one native input/IME owner while selecting and painting across physical frames. */
 export function installFlowSelection(
   viewport,
@@ -134,6 +160,7 @@ export function installFlowSelection(
     geometryCache = null,
     preferredX = null,
     nativeHint = null,
+    logicalHint = null,
     nativeAnimation = null;
   function columns({ measureBounds = true } = {}) {
     return (frames() || []).flatMap((frame) => {
@@ -154,7 +181,20 @@ export function installFlowSelection(
   }
   function current() {
     const value = selection();
-    return value?.anchor && value?.focus ? logicalSelection(value.anchor, value.focus) : null;
+    if (!value?.anchor || !value?.focus) return null;
+    // A projected input can split a text node exactly at a visual line ending.
+    // The DOM exposes offsets but cannot encode that caret's upstream affinity.
+    // Retain the commanded view point while source/owner/endpoints still match.
+    if (
+      logicalHint?.root === input() &&
+      logicalHint.flowId === flow()?.id &&
+      logicalHint.source === flow()?.html &&
+      logicalHint.range.anchor.index === value.anchor.index &&
+      logicalHint.range.focus.index === value.focus.index
+    )
+      return logicalHint.range;
+    logicalHint = null;
+    return logicalSelection(value.anchor, value.focus);
   }
   function navigationState() {
     if (textCache?.source !== flow().html || textCache?.flow !== flow().id) {
@@ -181,17 +221,15 @@ export function installFlowSelection(
       onNativeCaret(null);
       return;
     }
-    function polygon(column, rect, caret = false) {
-      const points = nativeRectScreenPoints(column, rect).map((point) =>
-        point.matrixTransform(inverse),
-      );
+    function paintPoints(screenPoints, caret = false, empty = false) {
+      const points = screenPoints.map((point) => point.matrixTransform(inverse));
       if (!points.length) return;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M${points.map((p) => `${p.x},${p.y}`).join('L')}Z`);
       path.setAttribute('fill', caret ? 'none' : 'var(--selection, #4b80ff)');
       path.setAttribute('fill-opacity', '0.25');
       path.setAttribute('stroke', caret ? 'var(--ink, #252525)' : 'var(--selection, #4b80ff)');
-      path.setAttribute('stroke-width', caret || !rect.width ? '1' : '0');
+      path.setAttribute('stroke-width', caret || empty ? '1' : '0');
       path.dataset.nativeSelection = caret ? 'caret' : 'range';
       nativeOverlay.append(path);
       if (caret && !matchMedia('(prefers-reduced-motion: reduce)').matches)
@@ -204,6 +242,9 @@ export function installFlowSelection(
           ],
           { duration: 1000, iterations: Infinity },
         );
+    }
+    function polygon(column, rect, caret = false) {
+      paintPoints(nativeRectScreenPoints(column, rect), caret, !rect.width);
     }
     if (showing)
       for (const part of selectionIntervals(range, columnList)) {
@@ -224,9 +265,13 @@ export function installFlowSelection(
     if (caret) {
       polygon(column, caret, true);
       onNativeCaret(nativeRectScreenBounds(column, caret), { column, caret });
+    } else if (column?.wrap) {
+      const rect = wrappedCaretBounds(column, range.focus, layoutKey());
+      paintPoints([new DOMPoint(rect.x, rect.y), new DOMPoint(rect.x, rect.y + rect.height)], true);
+      onNativeCaret(rect, { column, caret: range.focus });
     } else onNativeCaret(null);
   }
-  function sync() {
+  function sync({ force = false } = {}) {
     const root = input(),
       range = root && flow() && current(),
       showing = !!range && !range.collapsed && allowed();
@@ -245,9 +290,10 @@ export function installFlowSelection(
       ],
       hasNativeData = (frames() || []).some((frame) => {
         const part = fragment(frame.id);
-        return part?.native || part?.columns?.some((column) => column.native);
+        return part?.native || part?.columns?.some((column) => column.native || column.wrap);
       });
     if (
+      !force &&
       !hasNativeData &&
       !paintedNative &&
       globalThis.CSS?.highlights &&
@@ -257,8 +303,13 @@ export function installFlowSelection(
     )
       return range;
     const columnList = columns({ measureBounds: false }),
-      nativeColumns = columnList.filter(hasNativeColumn);
-    const nativeKey = nativeColumns.flatMap((column) => {
+      nativeColumns = columnList.filter(hasNativeColumn),
+      wrapColumns = columnList.filter((column) => column.wrap);
+    const nativeKey = [...nativeColumns, ...wrapColumns].flatMap((column) => {
+      if (column.wrap) {
+        const r = column.element.getBoundingClientRect();
+        return [column.element, r.x, r.y, r.width, r.height];
+      }
       const matrix = column.element.querySelector('svg[data-composed-text]')?.getScreenCTM();
       return [
         column.native,
@@ -273,6 +324,7 @@ export function installFlowSelection(
     });
     const paintKey = [...baseKey, ...nativeKey];
     if (
+      !force &&
       globalThis.CSS?.highlights &&
       globalThis.Highlight &&
       painted?.length === paintKey.length &&
@@ -280,7 +332,7 @@ export function installFlowSelection(
     )
       return range;
     painted = paintKey;
-    paintedNative = nativeColumns.length > 0;
+    paintedNative = nativeColumns.length > 0 || wrapColumns.length > 0;
     const ranges = showing
       ? selectionIntervals(
           range,
@@ -314,7 +366,7 @@ export function installFlowSelection(
           fallback.append(box);
         }
     }
-    if (nativeColumns.length) nativePaint(columnList, range, showing);
+    if (nativeColumns.length || wrapColumns.length) nativePaint(columnList, range, showing);
     else {
       nativeAnimation?.cancel();
       nativeAnimation = null;
@@ -414,6 +466,7 @@ export function installFlowSelection(
     const range = logicalSelection(value.anchor, value.focus);
     if (!range.collapsed) projectFlowInput(root, 0);
     restoreTextSelection(root, bookmark(range), { focus });
+    logicalHint = { root, flowId: flow()?.id, source: flow()?.html, range };
     onSelection();
     root.scrollTop = root.scrollLeft = 0;
     sync();
@@ -579,6 +632,22 @@ export function installFlowSelection(
     { capture: true },
   );
   listen(viewport, 'pointercancel', () => stop(true), { capture: true });
+  listen(
+    viewport,
+    'pointerdown',
+    () => {
+      logicalHint = null;
+    },
+    { capture: true },
+  );
+  listen(
+    viewport,
+    'beforeinput',
+    () => {
+      logicalHint = null;
+    },
+    { capture: true },
+  );
   listen(viewport, 'lostpointercapture', (event) => {
     if (drag?.pointerId === event.pointerId) stop(true, false);
   });
@@ -616,7 +685,7 @@ export function installFlowSelection(
           value.limitations.push(...part.limitations);
         }
       }
-      geometryCache = { key, native, value };
+      geometryCache = { key, native, value: mergeWrappedCaretRows(value, columnList) };
     }
     return geometryCache.value;
   }
@@ -707,18 +776,20 @@ export function installFlowSelection(
             destination = forward ? line.stops.at(-1) : line.stops[0];
           else {
             preferredX ??=
-              at.x * (columns({ measureBounds: false })[line.columnOrder]?.scaleX || 1);
+              (at.x - (line.wrapColumnLeft || 0)) *
+              (columns({ measureBounds: false })[line.columnOrder]?.scaleX || 1);
             const target = measured.lines[at.lineIndex + (forward ? 1 : -1)];
             destination =
               target?.stops.reduce(
                 (best, stop) =>
                   !best ||
                   Math.abs(
-                    stop.x * (columns({ measureBounds: false })[target.columnOrder]?.scaleX || 1) -
+                    (stop.x - (target.wrapColumnLeft || 0)) *
+                      (columns({ measureBounds: false })[target.columnOrder]?.scaleX || 1) -
                       preferredX,
                   ) <
                     Math.abs(
-                      best.x *
+                      (best.x - (target.wrapColumnLeft || 0)) *
                         (columns({ measureBounds: false })[target.columnOrder]?.scaleX || 1) -
                         preferredX,
                     )
@@ -749,6 +820,7 @@ export function installFlowSelection(
     { capture: true },
   );
   return {
+    selection: current,
     sync,
     hit,
     cancel: () => stop(true, false),

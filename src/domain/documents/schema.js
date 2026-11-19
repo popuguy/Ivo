@@ -7,7 +7,13 @@ import {
   hasPublishingFeatures,
   hasFrameComposition,
   hasNativeTextComposition,
+  hasTextWrap,
 } from './capabilities.js';
+import {
+  normalizeTextWrap,
+  normalizeTextWrapPreferences,
+  activeTextWrapPages,
+} from './text-wrap.js';
 import {
   CHARACTER_FIELDS,
   PARAGRAPH_FIELDS,
@@ -18,6 +24,7 @@ import {
 } from '../text/typography.js';
 import { resolvedTextStyle } from './publishing.js';
 import { inspectFont } from '../text/fonts.js';
+import { textWrapObjectPath } from '../geometry/wrap-contour.js';
 import { referencedFonts } from '../text/font-references.js';
 const _own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
@@ -205,9 +212,14 @@ function typography(input, out, label) {
 }
 
 export function validateImport(payload) {
+  return validateArchive(payload, false);
+}
+
+function validateArchive(payload, parentTemplate) {
   record(payload, 'archive');
   payload = migrateArchive(payload);
-  if (![1, 2, 3, 4, 5, 6, 7, 8].includes(payload.schemaVersion)) fail('unsupported schema version');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(payload.schemaVersion))
+    fail('unsupported schema version');
   if (!Array.isArray(payload.documents) || payload.documents.length > LIMITS.documents)
     fail(`documents must contain at most ${LIMITS.documents} entries`);
   if (
@@ -268,20 +280,24 @@ export function validateImport(payload) {
     record(doc, label);
     const documentId = id(doc.id, `${label}.id`);
     const paged = doc.canvasVersion !== undefined;
-    if (paged && (![1, 2, 4, 5, 6, 7].includes(doc.canvasVersion) || payload.schemaVersion < 2))
+    if (paged && (![1, 2, 4, 5, 6, 7, 8].includes(doc.canvasVersion) || payload.schemaVersion < 2))
       fail(
         `${label} requires page-scene archive schema 2 or later with a supported canvas version`,
       );
     if (paged && doc.canvasVersion === 4 && payload.schemaVersion < 5)
       fail(`${label} requires text flow archive schema 5`);
-    if ((doc.publishing || [5, 6, 7].includes(doc.canvasVersion)) && payload.schemaVersion < 6)
+    if ((doc.publishing || [5, 6, 7, 8].includes(doc.canvasVersion)) && payload.schemaVersion < 6)
       fail(`${label} requires publishing archive schema 6`);
-    if (doc.publishing && ![5, 6, 7].includes(doc.canvasVersion))
+    if (doc.publishing && ![5, 6, 7, 8].includes(doc.canvasVersion))
       fail(`${label} requires publishing canvas version 5`);
     if (paged && doc.canvasVersion === 6 && payload.schemaVersion < 7)
       fail(`${label} requires frame-composition archive schema 7`);
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
+    if (paged && doc.canvasVersion === 8 && payload.schemaVersion < 9)
+      fail(`${label} requires text-wrap archive schema 9`);
+    if (hasTextWrap(doc) && (doc.canvasVersion !== 8 || payload.schemaVersion < 9))
+      fail(`${label} text wrap requires archive 9 / canvas 8`);
     if (paged && doc.canvasVersion === 2 && payload.schemaVersion < 3)
       fail(`${label} requires typography archive schema 3`);
     if (!paged && doc.pages !== undefined) fail(`${label}.pages requires a canvas version`);
@@ -389,7 +405,7 @@ export function validateImport(payload) {
       if (paged) {
         if (!pageIds.has(block.pageId)) fail(`${key}.pageId is unknown`);
         normalized.pageId = block.pageId;
-        if ([5, 6, 7].includes(doc.canvasVersion)) {
+        if ([5, 6, 7, 8].includes(doc.canvasVersion)) {
           if (block.layerId !== undefined)
             normalized.layerId = string(block.layerId, `${key}.layerId`, 120);
           if (block.parentOriginId !== undefined)
@@ -404,6 +420,21 @@ export function validateImport(payload) {
             normalized.opacity = number(block.opacity, `${key}.opacity`, 0, 100);
           if (block.rotation !== undefined)
             normalized.rotation = number(block.rotation, `${key}.rotation`, -36000, 36000);
+          if (block.textWrap !== undefined) {
+            try {
+              normalized.textWrap = normalizeTextWrap(record(block.textWrap, `${key}.textWrap`));
+            } catch (error) {
+              fail(`${key}.textWrap: ${error.message}`);
+            }
+          }
+          if (block.ignoreTextWrap !== undefined) {
+            if (
+              !['text', 'quote'].includes(block.type) ||
+              typeof block.ignoreTextWrap !== 'boolean'
+            )
+              fail(`${key}.ignoreTextWrap requires a text frame and a boolean`);
+            normalized.ignoreTextWrap = block.ignoreTextWrap;
+          }
           if (block.frameOptions !== undefined) {
             const f = record(block.frameOptions, `${key}.frameOptions`);
             normalized.frameOptions = {};
@@ -432,7 +463,7 @@ export function validateImport(payload) {
               'top',
             );
             if (f.firstBaseline !== undefined || f.minimumFirstBaseline !== undefined) {
-              if (![6, 7].includes(doc.canvasVersion) || payload.schemaVersion < 7)
+              if (![6, 7, 8].includes(doc.canvasVersion) || payload.schemaVersion < 7)
                 fail(`${key} first-baseline policies require archive 7 / canvas 6`);
               normalized.frameOptions.firstBaseline = enumeration(
                 f.firstBaseline,
@@ -464,7 +495,7 @@ export function validateImport(payload) {
           fail(`${key} requires publishing canvas version 5`);
         if (block.textFlowId !== undefined) {
           if (
-            ![4, 5, 6, 7].includes(doc.canvasVersion) ||
+            ![4, 5, 6, 7, 8].includes(doc.canvasVersion) ||
             typeof block.textFlowId !== 'string' ||
             !ID_PATTERN.test(block.textFlowId) ||
             !['text', 'quote'].includes(block.type) ||
@@ -504,6 +535,13 @@ export function validateImport(payload) {
           normalized.clip = !!block.clip;
         }
       }
+      if (normalized.textWrap) {
+        try {
+          textWrapObjectPath(normalized, normalized.textWrap);
+        } catch (error) {
+          fail(`${key}.textWrap: ${error.message}`);
+        }
+      }
       if (block.extensions !== undefined)
         normalized.extensions = extensions(block.extensions, `${key}.extensions`);
       return normalized;
@@ -522,6 +560,15 @@ export function validateImport(payload) {
       version: revision(doc.version, `${label}.version`),
       template: string(doc.template, `${label}.template`, 100, 'blank'),
     };
+    if (doc.textWrapPreferences !== undefined) {
+      try {
+        normalized.textWrapPreferences = normalizeTextWrapPreferences(
+          record(doc.textWrapPreferences, `${label}.textWrapPreferences`),
+        );
+      } catch (error) {
+        fail(`${label}.textWrapPreferences: ${error.message}`);
+      }
+    }
     if (doc.publishing !== undefined) {
       const p = record(doc.publishing, `${label}.publishing`);
       if (p.version !== 1) fail(`${label} has an unsupported publishing version`);
@@ -535,12 +582,15 @@ export function validateImport(payload) {
           !/^#[0-9a-f]{6}$/i.test(layer.color)
         )
           fail(`${label} has invalid layer flags or color`);
+        if (layer.ignoreWrap !== undefined && typeof layer.ignoreWrap !== 'boolean')
+          fail(`${label} layer.ignoreWrap must be boolean`);
         return {
           id: id(layer.id, `${label}.layers[${i}]`),
           name: string(layer.name, label, 120),
           color: layer.color,
           visible: layer.visible,
           locked: layer.locked,
+          ...(layer.ignoreWrap !== undefined ? { ignoreWrap: layer.ignoreWrap } : {}),
         };
       });
       const layerIds = new Set(layers.map((l) => l.id));
@@ -600,19 +650,22 @@ export function validateImport(payload) {
           fail(`${label} exceeds the combined page and parent object limit`);
         totalHtml += parent.blocks.reduce((n, b) => n + (b.html || '').length, 0);
         if (totalHtml > 20000000) fail('total HTML exceeds 20 million characters');
-        const parentDoc = validateImport({
-          schemaVersion: payload.schemaVersion,
-          assets,
-          documents: [
-            {
-              id: parentId,
-              canvasVersion: doc.canvasVersion,
-              publishing: { ...normalized.publishing, parents: [] },
-              pages: [{ id: parentId + '-page', width, height }],
-              blocks: parent.blocks.map((b) => ({ ...b, pageId: parentId + '-page' })),
-            },
-          ],
-        }).documents[0];
+        const parentDoc = validateArchive(
+          {
+            schemaVersion: payload.schemaVersion,
+            assets,
+            documents: [
+              {
+                id: parentId,
+                canvasVersion: doc.canvasVersion,
+                publishing: { ...normalized.publishing, parents: [] },
+                pages: [{ id: parentId + '-page', width, height }],
+                blocks: parent.blocks.map((b) => ({ ...b, pageId: parentId + '-page' })),
+              },
+            ],
+          },
+          true,
+        ).documents[0];
         const result = parentDoc.blocks.map((b) => {
           id(b.id, label);
           for (const v of b.points || []) id(v.id, label);
@@ -690,7 +743,7 @@ export function validateImport(payload) {
     }
     if (doc.textFlows !== undefined) {
       if (
-        ![4, 5, 6, 7].includes(doc.canvasVersion) ||
+        ![4, 5, 6, 7, 8].includes(doc.canvasVersion) ||
         payload.schemaVersion < 5 ||
         !Array.isArray(doc.textFlows) ||
         doc.textFlows.length > 1000
@@ -704,7 +757,7 @@ export function validateImport(payload) {
         record(textFlow, key);
         let composition;
         if (textFlow.composition !== undefined) {
-          if (payload.schemaVersion < 8 || doc.canvasVersion !== 7)
+          if (payload.schemaVersion < 8 || ![7, 8].includes(doc.canvasVersion))
             fail(`${key} native composition requires archive 8 / canvas 7`);
           const value = record(textFlow.composition, `${key}.composition`);
           if (
@@ -825,18 +878,34 @@ export function validateImport(payload) {
         }
     if (
       hasPublishingFeatures(doc) &&
-      (payload.schemaVersion < 6 || ![5, 6, 7].includes(doc.canvasVersion))
+      (payload.schemaVersion < 6 || ![5, 6, 7, 8].includes(doc.canvasVersion))
     )
       fail(`${label} requires archive 6 / canvas 5 for publishing features`);
     if (
       hasFrameComposition(doc) &&
-      (payload.schemaVersion < 7 || ![6, 7].includes(doc.canvasVersion))
+      (payload.schemaVersion < 7 || ![6, 7, 8].includes(doc.canvasVersion))
     )
       fail(`${label} requires archive 7 / canvas 6 for frame composition`);
-    if (hasNativeTextComposition(doc) && (payload.schemaVersion < 8 || doc.canvasVersion !== 7))
+    if (
+      hasNativeTextComposition(doc) &&
+      (payload.schemaVersion < 8 || ![7, 8].includes(doc.canvasVersion))
+    )
       fail(`${label} requires archive 8 / canvas 7 for native text composition`);
     if (doc.extensions !== undefined)
       normalized.extensions = extensions(doc.extensions, `${label}.extensions`);
+    if (!parentTemplate && hasTextWrap(normalized)) {
+      const wrappedPages = activeTextWrapPages(normalized);
+      if (
+        normalized.blocks.some(
+          (block) =>
+            wrappedPages.has(block.pageId) &&
+            ['text', 'quote'].includes(block.type) &&
+            block.textKind !== 'point' &&
+            !block.textFlowId,
+        )
+      )
+        fail(`${label} active text-wrap pages require canonical text flows for area frames`);
+    }
     return normalized;
   });
   return {

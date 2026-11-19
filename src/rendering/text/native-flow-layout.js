@@ -8,6 +8,7 @@ import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
 import { effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
 import { escapeHTML } from '../../shared/html/sanitize.js';
+import { documentHasObjectWrap, flowHasObjectWrap } from './object-wrap-layout.js';
 
 const sessions = new WeakMap(),
   requestSessions = new WeakMap(),
@@ -340,6 +341,10 @@ const assetSignature = (assets) =>
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
 function projectNativeFlow(doc, flow, fonts) {
+  if (documentHasObjectWrap(doc) && flowHasObjectWrap(doc, flow))
+    throw new UnsupportedComposition(
+      'object text wrapping in the native preview; choose Existing layout for this flow',
+    );
   const root = document.createElement('div');
   root.innerHTML = flow.html;
   const effective = effectiveTextStyle(doc, flow.style),

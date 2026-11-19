@@ -7,6 +7,7 @@ import { enablePublishing } from './publishing.js';
 import { validateImport } from './schema.js';
 import { attribute } from '../text/html.js';
 import { referencedFonts, legacyFontFamilies } from '../text/font-references.js';
+import { ensureTextWrapFlows } from './text-wrap.js';
 
 export const OBJECT_CLIPBOARD_TYPE = 'application/x-ivo-objects+json';
 export const MAX_OBJECT_CLIPBOARD = 160 * 1024 * 1024;
@@ -183,6 +184,7 @@ export function pasteObjectSelection(
   }
   if (incoming.canvasVersion >= 5)
     next.canvasVersion = Math.max(next.canvasVersion, incoming.canvasVersion);
+  ensureTextWrapFlows(next);
   Object.assign(doc, next);
   return roots;
 }

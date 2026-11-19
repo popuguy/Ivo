@@ -1,0 +1,670 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  createSceneDocument,
+  insertObject,
+  addPage,
+  isSceneDocument,
+} from '../../src/domain/documents/scene.js';
+import {
+  addLayer,
+  createParent,
+  applyParent,
+  commitParentDefinition,
+} from '../../src/domain/documents/publishing.js';
+import {
+  normalizeTextWrap,
+  normalizeTextWrapPreferences,
+  setTextWrap,
+  setIgnoreTextWrap,
+  setTextWrapPreferences,
+  setLayerIgnoreWrap,
+  ensureTextWrapFlows,
+} from '../../src/domain/documents/text-wrap.js';
+import {
+  textWrapObstacles,
+  textWrapBand,
+  availableWrapSegments,
+  textWrapPageSide,
+} from '../../src/domain/geometry/text-wrap.js';
+import { validateImport } from '../../src/domain/documents/schema.js';
+import { archiveVersion, markTypographyVersion } from '../../src/domain/documents/capabilities.js';
+import {
+  startTextFlow,
+  enableNativeComposition,
+  appendTextFlowPage,
+} from '../../src/domain/documents/text-flows.js';
+import { copyDocument } from '../../src/domain/documents/copy.js';
+import {
+  copyObjectSelection,
+  readObjectClipboard,
+  pasteObjectSelection,
+} from '../../src/domain/documents/clipboard.js';
+const offsets = (value) => ({ top: value, right: value, bottom: value, left: value });
+const rectangle = [
+  { x: 0, y: 0 },
+  { x: 1, y: 0 },
+  { x: 1, y: 1 },
+  { x: 0, y: 1 },
+];
+const concave = [
+  { x: 0, y: 0 },
+  { x: 1, y: 0 },
+  { x: 1, y: 1 },
+  { x: 0.7, y: 1 },
+  { x: 0.7, y: 0.3 },
+  { x: 0.3, y: 0.3 },
+  { x: 0.3, y: 1 },
+  { x: 0, y: 1 },
+];
+function fixture(points = rectangle) {
+  const doc = createSceneDocument('Wrapping'),
+    frame = insertObject(doc, 'text', doc.pages[0].id, {
+      x: 0,
+      y: 0,
+      w: 300,
+      h: 250,
+      html: '<p>Keep <em>this source.</em></p>',
+    }),
+    object = insertObject(doc, 'polygon', doc.pages[0].id, {
+      x: 40,
+      y: 30,
+      w: 100,
+      h: 100,
+      stroke: 'none',
+      strokeWidth: 0,
+    });
+  object.points = points.map((p, i) => ({ ...p, id: object.id + '-vertex-' + i }));
+  object.stroke = 'none';
+  object.strokeWidth = 0;
+  return { doc, frame, object };
+}
+const band = (top = 40, bottom = 50) => ({ left: 0, right: 300, top, bottom });
+const segments = (doc, frame, value = band()) =>
+  availableWrapSegments(textWrapObstacles(doc, frame), value);
+
+test('text-wrap options are typed, mode-specific and reject unimplemented contour sources', () => {
+  assert.deepEqual(normalizeTextWrap(), {
+    mode: 'none',
+    offsets: offsets(0),
+    side: 'both',
+    invert: false,
+    contour: { source: 'frame' },
+  });
+  assert.deepEqual(normalizeTextWrapPreferences(), {
+    onlyBelow: false,
+    facingPages: false,
+    firstPageSide: 'right',
+  });
+  for (const input of [
+    null,
+    [],
+    { mode: 'magic' },
+    { mode: null },
+    { side: 'top' },
+    { invert: 'false' },
+    { offsets: null },
+    { offsets: { left: NaN } },
+    { offsets: { left: null } },
+    { offsets: { right: 2001 } },
+    { offsets: { unknown: 0 } },
+    { contour: { source: 'alpha' } },
+    { version: 2 },
+  ])
+    assert.throws(() => normalizeTextWrap(input));
+  assert.throws(() => normalizeTextWrap({ mode: 'contour', offsets: { left: 2 } }), /uniform/);
+  assert.equal(normalizeTextWrap({ mode: 'contour', offsets: offsets(-2.25) }).offsets.left, -2.25);
+  assert.throws(() => normalizeTextWrapPreferences({ onlyBelow: 'false' }));
+  assert.throws(() => normalizeTextWrapPreferences({ firstPageSide: null }));
+});
+
+test('wrap commands validate all selected objects before mutation and preserve source', () => {
+  const { doc, frame, object } = fixture(),
+    before = structuredClone(doc);
+  assert.throws(() => setTextWrap(doc, [object.id, 'missing'], { mode: 'bounds' }));
+  assert.deepEqual(doc, before);
+  assert.throws(() => setIgnoreTextWrap(doc, [object.id], true));
+  assert.deepEqual(doc, before);
+  setTextWrap(doc, [object.id], { mode: 'bounds', offsets: { left: 4.25, right: -2 } });
+  assert.equal(doc.canvasVersion, 8);
+  assert.equal(archiveVersion([doc]), 9);
+  assert.ok(isSceneDocument(doc));
+  assert.equal(doc.textFlows[0].html, before.blocks[0].html);
+  assert.equal(frame.html, '');
+  assert.throws(() => setTextWrap(doc, [object.id], { mode: 'contour' }), /uniform/);
+  setTextWrap(doc, [object.id], { mode: 'none' });
+  markTypographyVersion(doc);
+  assert.equal(doc.canvasVersion, 8);
+  assert.equal(archiveVersion([doc]), 9);
+  object.locked = true;
+  assert.throws(() => setTextWrap(doc, [object.id], { mode: 'bounds' }), /unlocked/);
+});
+
+test('bounding wrap includes visible stroke, independent offsets and complete band contact', () => {
+  const { doc, frame, object } = fixture();
+  Object.assign(frame, { x: 36, y: 36, w: 464, h: 364 });
+  Object.assign(object, { x: 50, y: 50, w: 190, h: 90, stroke: '#000000', strokeWidth: 1 });
+  setTextWrap(doc, [object.id], { mode: 'bounds', offsets: offsets(8), side: 'right' });
+  assert.deepEqual(
+    availableWrapSegments(textWrapObstacles(doc, frame), {
+      left: 0,
+      right: 464,
+      top: 0,
+      bottom: 20,
+    }),
+    [{ left: 212.5, right: 464 }],
+  );
+  assert.deepEqual(
+    availableWrapSegments(textWrapObstacles(doc, frame), {
+      left: 0,
+      right: 464,
+      top: 112.5,
+      bottom: 130,
+    }),
+    [{ left: 0, right: 464 }],
+  );
+  setTextWrap(doc, [object.id], {
+    side: 'both',
+    offsets: { top: 0, right: 4, bottom: 0, left: 2 },
+  });
+  assert.deepEqual(
+    availableWrapSegments(textWrapObstacles(doc, frame), {
+      left: 0,
+      right: 464,
+      top: 20,
+      bottom: 30,
+    }),
+    [
+      { left: 0, right: 11.5 },
+      { left: 208.5, right: 464 },
+    ],
+  );
+});
+
+test('shape wrap follows full-band triangle extrema and preserves concave openings', () => {
+  const { doc, frame, object } = fixture([
+    { x: 0, y: 0 },
+    { x: 1, y: 1 },
+    { x: 0, y: 1 },
+  ]);
+  setTextWrap(doc, [object.id], { mode: 'contour' });
+  assert.deepEqual(segments(doc, frame, band(30, 50)), [
+    { left: 0, right: 40 },
+    { left: 60, right: 300 },
+  ]);
+  const next = fixture(concave);
+  setTextWrap(next.doc, [next.object.id], { mode: 'contour' });
+  assert.deepEqual(segments(next.doc, next.frame, band(80, 100)), [
+    { left: 0, right: 40 },
+    { left: 70, right: 110 },
+    { left: 140, right: 300 },
+  ]);
+  setTextWrap(next.doc, [next.object.id], { invert: true });
+  assert.deepEqual(segments(next.doc, next.frame, band(80, 100)), [
+    { left: 40, right: 70 },
+    { left: 110, right: 140 },
+  ]);
+});
+
+test('convex contour expansion/contraction is explicit and concave offset limitations reject atomically', () => {
+  const { doc, frame, object } = fixture();
+  setTextWrap(doc, [object.id], { mode: 'contour', offsets: offsets(5) });
+  assert.deepEqual(segments(doc, frame), [
+    { left: 0, right: 35 },
+    { left: 145, right: 300 },
+  ]);
+  setTextWrap(doc, [object.id], { offsets: offsets(-10) });
+  assert.deepEqual(segments(doc, frame, band(50, 60)), [
+    { left: 0, right: 50 },
+    { left: 130, right: 300 },
+  ]);
+  setTextWrap(doc, [object.id], { offsets: offsets(-60) });
+  assert.deepEqual(segments(doc, frame), [{ left: 0, right: 300 }]);
+  setTextWrap(doc, [object.id], { invert: true });
+  assert.deepEqual(segments(doc, frame), []);
+  const other = fixture(concave),
+    before = structuredClone(other.doc);
+  assert.throws(
+    () => setTextWrap(other.doc, [other.object.id], { mode: 'contour', offsets: offsets(2) }),
+    /Concave/,
+  );
+  assert.deepEqual(other.doc, before);
+  other.object.stroke = '#000000';
+  other.object.strokeWidth = 1;
+  assert.throws(
+    () => setTextWrap(other.doc, [other.object.id], { mode: 'contour' }),
+    /stroke expansion/,
+  );
+});
+
+test('side, inverse, spine and largest choices leave deterministic legal segments', () => {
+  const { doc, frame, object } = fixture();
+  setTextWrap(doc, [object.id], { mode: 'bounds', side: 'left' });
+  assert.deepEqual(segments(doc, frame), [{ left: 0, right: 40 }]);
+  setTextWrap(doc, [object.id], { side: 'right' });
+  assert.deepEqual(segments(doc, frame), [{ left: 140, right: 300 }]);
+  setTextWrap(doc, [object.id], { side: 'largest' });
+  assert.deepEqual(segments(doc, frame), [{ left: 140, right: 300 }]);
+  setTextWrap(doc, [object.id], { side: 'inside' });
+  assert.deepEqual(segments(doc, frame), [{ left: 0, right: 40 }]);
+  setTextWrapPreferences(doc, { facingPages: true, firstPageSide: 'left' });
+  assert.deepEqual(segments(doc, frame), [{ left: 140, right: 300 }]);
+  const next = addPage(doc, doc.pages[0].id);
+  assert.equal(textWrapPageSide(doc, next.id), 'right');
+  setTextWrap(doc, [object.id], { side: 'outside' });
+  assert.deepEqual(segments(doc, frame), [{ left: 0, right: 40 }]);
+  setTextWrap(doc, [object.id], { invert: true });
+  assert.deepEqual(segments(doc, frame), [{ left: 40, right: 140 }]);
+  assert.deepEqual(segments(doc, frame, band(0, 10)), []);
+});
+
+test('jump and next-column signal only overlapping bands and frame ignore wins', () => {
+  const { doc, frame, object } = fixture();
+  setTextWrap(doc, [object.id], {
+    mode: 'jump',
+    offsets: { top: 5, bottom: 10, left: 200, right: 200 },
+  });
+  assert.deepEqual(textWrapBand(textWrapObstacles(doc, frame), band()), {
+    segments: [],
+    nextColumn: false,
+    nextY: 140,
+  });
+  assert.deepEqual(segments(doc, frame, band(140, 150)), [{ left: 0, right: 300 }]);
+  setTextWrap(doc, [object.id], { mode: 'next-column', offsets: offsets(0) });
+  assert.equal(textWrapBand(textWrapObstacles(doc, frame), band()).nextColumn, true);
+  assert.equal(textWrapBand(textWrapObstacles(doc, frame), band(0, 10)).nextColumn, false);
+  setIgnoreTextWrap(doc, [frame.id], true);
+  assert.deepEqual(textWrapObstacles(doc, frame), []);
+});
+
+test('hidden-layer suppression, stack preference and locked/hidden obstacles remain distinct', () => {
+  const { doc, frame, object } = fixture();
+  setTextWrap(doc, [object.id], { mode: 'bounds' });
+  object.hidden = true;
+  object.locked = true;
+  assert.equal(textWrapObstacles(doc, frame).length, 1);
+  const layer = doc.publishing.layers[0];
+  layer.visible = false;
+  assert.equal(textWrapObstacles(doc, frame).length, 1);
+  setLayerIgnoreWrap(doc, layer.id, true);
+  assert.equal(textWrapObstacles(doc, frame).length, 0);
+  layer.visible = true;
+  assert.equal(textWrapObstacles(doc, frame).length, 1);
+  doc.blocks = [object, frame];
+  setTextWrapPreferences(doc, { onlyBelow: true });
+  assert.equal(textWrapObstacles(doc, frame).length, 0);
+  const top = addLayer(doc, 'Above');
+  object.layerId = top.id;
+  assert.equal(textWrapObstacles(doc, frame).length, 1);
+});
+
+test('hierarchy transforms cancel into text-local coordinates and exclude a group own text', () => {
+  const { doc, frame, object } = fixture();
+  const group = insertObject(doc, 'polygon', doc.pages[0].id, {
+    x: 100,
+    y: 200,
+    w: 300,
+    h: 300,
+    rotation: 35,
+    clip: true,
+    stroke: 'none',
+  });
+  group.clip = true;
+  group.stroke = 'none';
+  frame.parentId = object.parentId = group.id;
+  Object.assign(frame, { x: 10, y: 20, textScale: { x: 2, y: 2 } });
+  Object.assign(object, { x: 70, y: 50 });
+  setTextWrap(doc, [object.id, group.id], { mode: 'bounds' });
+  const obstacles = textWrapObstacles(doc, frame, { column: { left: 10, top: 5 } });
+  assert.equal(obstacles.length, 1);
+  // Bounds wrap is the world-axis bounding box of the transformed object, then
+  // mapped back into this frame; contour wrap instead follows its rotated path.
+  setTextWrap(doc, [object.id], { mode: 'contour' });
+  const bounds = textWrapObstacles(doc, frame, { column: { left: 10, top: 5 } })[0].bounds;
+  for (const [key, value] of Object.entries({ left: 20, top: 10, right: 70, bottom: 60 }))
+    assert.ok(Math.abs(bounds[key] - value) < 1e-6, key);
+  assert.equal(textWrapObstacles(doc, group).length, 0);
+});
+
+// Frozen old representation: native composition exists, object wrap does not.
+const archive8 = JSON.parse(
+  '{"schemaVersion":8,"documents":[{"id":"frozen-wrap-before","title":"Before wrapping","canvasVersion":7,"pages":[{"id":"frozen-wrap-page","name":"Page 1","width":612,"height":792}],"blocks":[{"id":"frozen-wrap-frame","type":"text","textKind":"area","textFlowId":"frozen-wrap-flow","pageId":"frozen-wrap-page","x":40.125,"y":50.25,"w":300.5,"h":200.75,"html":"","textStyle":"cmu-serif","fontSize":16}],"textFlows":[{"id":"frozen-wrap-flow","html":"<p>Keep <em>original</em> source.</p>","frameIds":["frozen-wrap-frame"],"style":{"textStyle":"cmu-serif","fontSize":16,"align":"left"},"composition":{"version":1,"composer":"single-line"},"automaticPages":true,"deleteEmptyPages":true,"autoPages":[]}],"extensions":{"kept":{"x":1}}}],"assets":[]}',
+);
+test('frozen archive8 opens without wrap opt-in or input mutation', () => {
+  const before = JSON.stringify(archive8),
+    decoded = validateImport(archive8);
+  assert.equal(JSON.stringify(archive8), before);
+  assert.equal(decoded.schemaVersion, 8);
+  const doc = decoded.documents[0];
+  assert.equal(doc.canvasVersion, 7);
+  assert.equal(archiveVersion([doc]), 8);
+  assert.equal(doc.textWrapPreferences, undefined);
+  assert.equal(doc.blocks[0].textWrap, undefined);
+  assert.deepEqual(validateImport(decoded), decoded);
+});
+
+test('archive9 round trips wrap, preferences, layers, parents, native flows and copied objects', () => {
+  const { doc, frame, object } = fixture();
+  const parent = createParent(doc, doc.pages[0].id, 'Wrap parent');
+  setTextWrap(doc, [object.id], { mode: 'bounds', offsets: offsets(2.125) });
+  setIgnoreTextWrap(doc, [frame.id], true);
+  setTextWrapPreferences(doc, { onlyBelow: true });
+  setLayerIgnoreWrap(doc, doc.publishing.layers[0].id, true);
+  parent.blocks[1].textWrap = structuredClone(object.textWrap);
+  applyParent(doc, doc.pages[0].id, parent.id);
+  const decoded = validateImport({ schemaVersion: 9, documents: [doc], assets: [] });
+  assert.deepEqual(validateImport(decoded), decoded);
+  assert.equal(decoded.documents[0].publishing.parents[0].blocks[1].textWrap.offsets.left, 2.125);
+  const copied = copyDocument(doc);
+  assert.equal(copied.blocks[1].textWrap.offsets.left, 2.125);
+  const clipboard = readObjectClipboard(
+      JSON.stringify(copyObjectSelection(doc, [frame.id, object.id])),
+    ),
+    dest = createSceneDocument('Destination');
+  pasteObjectSelection(dest, clipboard, { pageId: dest.pages[0].id });
+  assert.equal(dest.canvasVersion, 8);
+  assert.equal(dest.blocks[1].textWrap.offsets.left, 2.125);
+  const flow = startTextFlow(doc, frame.id);
+  enableNativeComposition(doc, flow, 'single-line');
+  const continuation = appendTextFlowPage(doc, flow);
+  assert.equal(continuation.ignoreTextWrap, true);
+  assert.equal(
+    validateImport({ schemaVersion: 9, documents: [doc], assets: [] }).documents[0].textFlows[0]
+      .composition.composer,
+    'single-line',
+  );
+  const proxy = structuredClone(doc);
+  proxy.textFlows = [];
+  proxy.blocks = parent.blocks.map((b) => ({ ...structuredClone(b), pageId: parent.id }));
+  proxy.pages = [{ id: parent.id, name: parent.name, width: parent.width, height: parent.height }];
+  commitParentDefinition(doc, parent.id, proxy);
+  assert.equal(doc.canvasVersion, 8);
+});
+
+test('new wrap declarations reject under old gates and malformed new source never normalizes away', () => {
+  const { doc, object } = fixture();
+  setTextWrap(doc, [object.id], { mode: 'bounds' });
+  assert.throws(
+    () => validateImport({ schemaVersion: 8, documents: [doc], assets: [] }),
+    /schema 9/,
+  );
+  const old = structuredClone(doc);
+  old.canvasVersion = 7;
+  assert.throws(
+    () => validateImport({ schemaVersion: 9, documents: [old], assets: [] }),
+    /archive 9/,
+  );
+  for (const mutate of [
+    (d) => {
+      d.blocks[1].textWrap.offsets.left = Infinity;
+    },
+    (d) => {
+      d.blocks[1].textWrap.contour.source = 'alpha';
+    },
+    (d) => {
+      d.blocks[1].ignoreTextWrap = true;
+    },
+    (d) => {
+      d.publishing.layers[0].ignoreWrap = 'false';
+    },
+    (d) => {
+      d.textWrapPreferences = { onlyBelow: 1 };
+    },
+  ]) {
+    const invalid = structuredClone(doc);
+    mutate(invalid);
+    assert.throws(() => validateImport({ schemaVersion: 9, documents: [invalid], assets: [] }));
+  }
+  const bad = structuredClone(doc);
+  bad.canvasVersion = 9;
+  assert.throws(
+    () => validateImport({ schemaVersion: 9, documents: [bad], assets: [] }),
+    /supported canvas/,
+  );
+  assert.throws(
+    () => validateImport({ schemaVersion: 10, documents: [], assets: [] }),
+    /unsupported schema/,
+  );
+  assert.equal(doc.textFlows[0].html, '<p>Keep <em>this source.</em></p>');
+});
+
+test('wrap adoption creates one canonical area-flow owner in the authored transaction, preserving point text and quote style', () => {
+  const { doc, frame, object } = fixture(),
+    original = frame.html;
+  const point = insertObject(doc, 'text', doc.pages[0].id, { html: 'Point', textKind: 'point' }),
+    quote = insertObject(doc, 'quote', doc.pages[0].id, {
+      html: '<p>Quote <strong>source.</strong></p>',
+    });
+  setTextWrap(doc, [object.id], { mode: 'bounds' });
+  assert.equal(doc.textFlows.length, 2);
+  assert.equal(doc.textFlows.find((flow) => flow.frameIds.includes(frame.id)).html, original);
+  const quoteFlow = doc.textFlows.find((flow) => flow.frameIds.includes(quote.id));
+  assert.equal(quoteFlow.style.italic, true);
+  assert.equal(quoteFlow.html, '<p>Quote <strong>source.</strong></p>');
+  assert.equal(quoteFlow.automaticPages, false);
+  assert.equal(point.textFlowId, undefined);
+  assert.equal(point.html, 'Point');
+  const before = structuredClone(doc);
+  assert.deepEqual(ensureTextWrapFlows(doc), []);
+  assert.deepEqual(doc, before);
+  const extra = insertObject(doc, 'text', doc.pages[0].id, { html: '<p>Added later</p>' });
+  assert.throws(
+    () => validateImport({ schemaVersion: 9, documents: [doc], assets: [] }),
+    /canonical text flows/,
+  );
+  assert.equal(extra.textFlowId, undefined, 'Validation must not migrate malformed new source');
+  assert.equal(ensureTextWrapFlows(doc).length, 1);
+  assert.equal(
+    doc.textFlows.find((flow) => flow.frameIds.includes(extra.id)).html,
+    '<p>Added later</p>',
+  );
+  const ready = structuredClone(doc);
+  validateImport({ schemaVersion: 9, documents: [doc], assets: [] });
+  assert.deepEqual(doc, ready);
+});
+
+test('parent templates retain direct source while applying their wrap promotes real page frames only', () => {
+  const { doc, frame } = fixture(),
+    parent = createParent(doc, doc.pages[0].id, 'Inherited wrap');
+  const proxy = {
+    ...structuredClone(doc),
+    id: 'parent-edit-wrap',
+    pages: [{ id: parent.id, name: parent.name, width: parent.width, height: parent.height }],
+    blocks: parent.blocks.map((block) => ({ ...structuredClone(block), pageId: parent.id })),
+    textFlows: [],
+  };
+  setTextWrap(proxy, [proxy.blocks[1].id], { mode: 'bounds' });
+  assert.equal(proxy.textFlows.length, 0);
+  assert.equal(proxy.blocks[0].html, frame.html);
+  commitParentDefinition(doc, parent.id, proxy);
+  applyParent(doc, doc.pages[0].id, parent.id);
+  assert.equal(ensureTextWrapFlows(doc).length, 1);
+  assert.equal(doc.textFlows[0].html, '<p>Keep <em>this source.</em></p>');
+  const decoded = validateImport({ schemaVersion: 9, documents: [doc], assets: [] }).documents[0];
+  assert.equal(decoded.publishing.parents[0].blocks[0].textFlowId, undefined);
+  assert.equal(decoded.publishing.parents[0].blocks[0].html, '<p>Keep <em>this source.</em></p>');
+  assert.ok(
+    textWrapObstacles(doc, frame).some((obstacle) =>
+      obstacle.id.startsWith(doc.pages[0].id + '--'),
+    ),
+  );
+});
+
+test('pentagrams and overlapping contours reject before commands, import and triangulation despite same-sign local turns', () => {
+  const vertices = Array.from({ length: 5 }, (_, i) => ({
+    x: 0.5 + 0.45 * Math.cos((i * Math.PI * 2) / 5),
+    y: 0.5 + 0.45 * Math.sin((i * Math.PI * 2) / 5),
+  }));
+  const pentagram = [0, 2, 4, 1, 3].map((i) => vertices[i]);
+  const turns = pentagram.map((a, i) => {
+    const b = pentagram[(i + 1) % 5],
+      c = pentagram[(i + 2) % 5];
+    return Math.sign((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x));
+  });
+  assert.ok(
+    turns.every((value) => value === turns[0] && value !== 0),
+    'Witness must defeat a local-turn-only test',
+  );
+  for (const points of [
+    pentagram,
+    [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 0.5, y: 0 },
+      { x: 1, y: 1 },
+      { x: 0, y: 1 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 0.5, y: 0.5 },
+      { x: 1, y: 1 },
+      { x: 0, y: 1 },
+      { x: 0.5, y: 0.5 },
+    ],
+  ]) {
+    const { doc, frame, object } = fixture(points);
+    setTextWrap(doc, [object.id], { mode: 'bounds' });
+    const before = structuredClone(doc);
+    assert.throws(() => setTextWrap(doc, [object.id], { mode: 'contour' }), /Self-/);
+    assert.deepEqual(doc, before, 'Rejected contour must not change authored state or ownership');
+    object.textWrap = normalizeTextWrap({ mode: 'contour' });
+    assert.throws(
+      () => validateImport({ schemaVersion: 9, documents: [doc], assets: [] }),
+      /Self-/,
+    );
+    assert.throws(() => textWrapObstacles(doc, frame), /Self-/);
+  }
+  const simple = fixture(concave);
+  setTextWrap(simple.doc, [simple.object.id], { mode: 'contour' });
+  assert.doesNotThrow(() =>
+    validateImport({ schemaVersion: 9, documents: [simple.doc], assets: [] }),
+  );
+  assert.deepEqual(segments(simple.doc, simple.frame, band(80, 100)), [
+    { left: 0, right: 40 },
+    { left: 70, right: 110 },
+    { left: 140, right: 300 },
+  ]);
+  const collinear = fixture([
+    { x: 0, y: 0 },
+    { x: 0.5, y: 0 },
+    { x: 1, y: 0 },
+    { x: 1, y: 1 },
+    { x: 0, y: 1 },
+  ]);
+  setTextWrap(collinear.doc, [collinear.object.id], { mode: 'contour' });
+  assert.deepEqual(segments(collinear.doc, collinear.frame), [
+    { left: 0, right: 40 },
+    { left: 140, right: 300 },
+  ]);
+  const nearCollinear = fixture([
+    { x: 0, y: 0 },
+    { x: 0.5, y: 0.5 },
+    { x: 0.5, y: 0.5 + Number.EPSILON / 2 },
+    { x: 0, y: 1 },
+  ]);
+  setTextWrap(nearCollinear.doc, [nearCollinear.object.id], { mode: 'contour' });
+  assert.doesNotThrow(() =>
+    validateImport({ schemaVersion: 9, documents: [nearCollinear.doc], assets: [] }),
+  );
+  assert.doesNotThrow(
+    () => textWrapObstacles(nearCollinear.doc, nearCollinear.frame),
+    'A valid tiny turn must not be guessed collinear by an epsilon',
+  );
+});
+
+test('commands and archive validation share unsupported cross-field contour rules, including parent templates', () => {
+  const unsupported = [
+    {
+      change: (object) => {
+        object.frameOptions = { corner: 4 };
+      },
+      patch: { mode: 'contour' },
+      error: /Rounded-frame/,
+    },
+    {
+      change: (object) => {
+        object.points = concave.map((p, i) => ({ ...p, id: object.id + '-bad-' + i }));
+      },
+      patch: { mode: 'contour', offsets: offsets(2) },
+      error: /Concave/,
+    },
+    {
+      change: (object) => {
+        object.points = concave.map((p, i) => ({ ...p, id: object.id + '-bad-' + i }));
+        object.stroke = '#000000';
+        object.strokeWidth = 1;
+      },
+      patch: { mode: 'contour' },
+      error: /stroke expansion/,
+    },
+    { change: () => {}, patch: { mode: 'jump', invert: true }, error: /Inverted jump/ },
+    { change: () => {}, patch: { mode: 'next-column', invert: true }, error: /Inverted jump/ },
+  ];
+  for (const { change, patch, error } of unsupported) {
+    const { doc, frame, object } = fixture();
+    const parent = createParent(doc, doc.pages[0].id, 'Template proof');
+    setTextWrap(doc, [object.id], { mode: 'bounds' });
+    change(object);
+    const before = structuredClone(doc);
+    assert.throws(() => setTextWrap(doc, [object.id], patch), error);
+    assert.deepEqual(doc, before);
+    object.textWrap = normalizeTextWrap(patch);
+    assert.throws(() => validateImport({ schemaVersion: 9, documents: [doc], assets: [] }), error);
+    assert.throws(() => textWrapObstacles(doc, frame), error);
+    object.textWrap = normalizeTextWrap({ mode: 'bounds' });
+    change(parent.blocks[1]);
+    parent.blocks[1].textWrap = normalizeTextWrap(patch);
+    assert.throws(
+      () => validateImport({ schemaVersion: 9, documents: [doc], assets: [] }),
+      error,
+      'Parent-template context must not skip object/contour validation',
+    );
+  }
+});
+
+test('object paste atomically adopts destination area frames when it introduces active wrap', () => {
+  const source = fixture();
+  setTextWrap(source.doc, [source.object.id], { mode: 'bounds', offsets: offsets(3) });
+  const clipboard = readObjectClipboard(
+      JSON.stringify(copyObjectSelection(source.doc, [source.object.id])),
+    ),
+    destination = createSceneDocument('Paste wrap'),
+    area = insertObject(destination, 'text', destination.pages[0].id, {
+      html: '<p>Destination <em>source</em></p>',
+    }),
+    point = insertObject(destination, 'text', destination.pages[0].id, {
+      html: 'Point',
+      textKind: 'point',
+    });
+  const originalId = area.id;
+  pasteObjectSelection(destination, clipboard, { pageId: destination.pages[0].id });
+  assert.equal(area.id, originalId); // References held before the atomic replacement remain untouched.
+  const adopted = destination.blocks.find((block) => block.id === originalId);
+  assert.equal(destination.textFlows.length, 1);
+  assert.equal(destination.textFlows[0].frameIds[0], originalId);
+  assert.equal(destination.textFlows[0].html, '<p>Destination <em>source</em></p>');
+  assert.equal(adopted.html, '');
+  assert.equal(adopted.textFlowId, destination.textFlows[0].id);
+  assert.equal(destination.blocks.find((block) => block.id === point.id).textFlowId, undefined);
+  assert.deepEqual(ensureTextWrapFlows(destination), []);
+  assert.doesNotThrow(() =>
+    validateImport({ schemaVersion: 9, documents: [destination], assets: [] }),
+  );
+  const existingFlow = destination.textFlows[0].id,
+    plain = createSceneDocument('Plain source'),
+    plainFrame = insertObject(plain, 'text', plain.pages[0].id, {
+      html: '<p>Another independent area frame</p>',
+    });
+  pasteObjectSelection(
+    destination,
+    readObjectClipboard(JSON.stringify(copyObjectSelection(plain, [plainFrame.id]))),
+    { pageId: destination.pages[0].id },
+  );
+  assert.equal(destination.textFlows.length, 2);
+  assert.equal(destination.textFlows[0].id, existingFlow);
+  assert.equal(destination.textFlows[1].html, '<p>Another independent area frame</p>');
+  assert.doesNotThrow(() =>
+    validateImport({ schemaVersion: 9, documents: [destination], assets: [] }),
+  );
+});

@@ -55,8 +55,8 @@ const archive = (doc, schemaVersion = archiveVersion([doc])) =>
   validateImport({ schemaVersion, documents: [doc], assets: [] });
 
 test('native composition is explicit archive8/canvas7 source data; old formats reject it and retain their existing capability', async () => {
-  assert.equal(CURRENT_ARCHIVE_VERSION, 8);
-  assert.equal(CURRENT_CANVAS_VERSION, 7);
+  assert.equal(CURRENT_ARCHIVE_VERSION, 9);
+  assert.equal(CURRENT_CANVAS_VERSION, 8);
   for (const composer of ['paragraph', 'single-line']) {
     const { doc, flow } = fixture();
     enableNativeComposition(doc, flow, composer);

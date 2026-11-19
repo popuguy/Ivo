@@ -2,7 +2,7 @@
 
 Current overall engineering estimate, 18 November 2026:
 
-`[████░░░░░░░░░░░░░░░░] ~20%`
+`[████░░░░░░░░░░░░░░░░] ~22%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
 
@@ -13,6 +13,7 @@ This is a rough assessment of implementation and integration across the [66 incl
 - Independent paragraph decisions and unchanged-paragraph measurement/decision reuse.
 - Contextual Tab behavior, ordinary half-inch text tabs, native arrangement commands, menu-owned Smart Guides and compact page/zoom navigation. These improve daily use and the command/input foundation; they do not complete paragraph tab composition or reference parity.
 - Literal leading-space preservation through rich/plain clipboard insertion, saved paint and linked/native source/history. This is an input correction within the current foundation; it does not move the rounded overall estimate.
+- [Object wrapping](../object-text-wrap.md) now excludes boxes/polygon contours in actual layout, on-page input, continuation and selectable PDF, with source/history protection. This closes a fixture-enabling geometry/input dependency and advances the broad estimate from ~20% to ~22%. Image/path contours, native wrap composition and full reference/device qualification remain open; no complete wrap capability is certified.
 
 ## Major work still driving the estimate
 

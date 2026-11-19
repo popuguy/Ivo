@@ -6,6 +6,9 @@ export function compositionLayoutKey(doc) {
     doc.pages,
     doc.publishing?.paragraphStyles,
     doc.publishing?.characterStyles,
+    doc.publishing?.layers,
+    doc.publishing?.parents,
+    doc.textWrapPreferences,
   ]);
 }
 

@@ -1,6 +1,13 @@
 import { ARRANGE_COMMANDS, arrangeObjects } from '../../../domain/documents/arrange.js';
 import { legacyFontFamilies } from '../../../domain/text/font-references.js';
 import {
+  normalizeTextWrap,
+  setTextWrap,
+  setIgnoreTextWrap,
+  setTextWrapPreferences,
+  setLayerIgnoreWrap,
+} from '../../../domain/documents/text-wrap.js';
+import {
   enablePublishing,
   enableFrameComposition,
   layersFor,
@@ -272,6 +279,34 @@ export function installPublishingControls(
     }
     if (!allowed()) return;
     run(() => {
+      if (t.dataset.textWrapMode) {
+        const selected = objects();
+        if (
+          !selected.length ||
+          selected.every(
+            (object) => normalizeTextWrap(object.textWrap).mode === t.dataset.textWrapMode,
+          )
+        )
+          return;
+        const ids = selected.map((object) => object.id);
+        mutate(() => {
+          const mode = t.dataset.textWrapMode;
+          if (mode === 'contour' || mode === 'next-column') {
+            for (const object of selected) {
+              const current = normalizeTextWrap(object.textWrap),
+                offsets = Object.fromEntries(
+                  ['top', 'right', 'bottom', 'left'].map((side) => [side, current.offsets.top]),
+                );
+              setTextWrap(doc(), [object.id], {
+                mode,
+                offsets,
+                ...(mode === 'next-column' ? { invert: false } : {}),
+              });
+            }
+          } else setTextWrap(doc(), ids, { mode, ...(mode === 'jump' ? { invert: false } : {}) });
+        }, 'Text wrap mode');
+        return;
+      }
       if (t.dataset.highlightColor) {
         applyTextProperty('highlight', t.dataset.highlightColor);
         return;
@@ -331,6 +366,38 @@ export function installPublishingControls(
   listen(editor, 'change', (event) =>
     run(() => {
       const t = event.target;
+      if (t.dataset.textWrap) {
+        const ids = objects().map((object) => object.id),
+          key = t.dataset.textWrap,
+          value = t.type === 'checkbox' ? t.checked : t.value;
+        mutate(() => setTextWrap(doc(), ids, { [key]: value }), 'Text wrap options');
+        return;
+      }
+      if (t.dataset.textWrapOffset) {
+        if (!t.value.trim()) throw new Error('Enter a text wrap offset.');
+        const value = Number(t.value),
+          key = t.dataset.textWrapOffset,
+          ids = objects().map((object) => object.id),
+          offsets =
+            key === 'all'
+              ? Object.fromEntries(['top', 'right', 'bottom', 'left'].map((side) => [side, value]))
+              : { [key]: value };
+        mutate(() => setTextWrap(doc(), ids, { offsets }), 'Text wrap offset');
+        return;
+      }
+      if (t.hasAttribute('data-ignore-text-wrap')) {
+        const ids = objects()
+          .filter((object) => ['text', 'quote'].includes(object.type))
+          .map((object) => object.id);
+        mutate(() => setIgnoreTextWrap(doc(), ids, t.checked), 'Ignore text wrap');
+        return;
+      }
+      if (t.dataset.textWrapPref) {
+        const key = t.dataset.textWrapPref,
+          value = t.type === 'checkbox' ? t.checked : t.value;
+        mutate(() => setTextWrapPreferences(doc(), { [key]: value }), 'Text wrap preferences');
+        return;
+      }
       if (t.dataset.frameProp && objects().length === 1) {
         const key = t.dataset.frameProp,
           value = t.type === 'number' ? Number(t.value) : t.value;
@@ -511,13 +578,15 @@ export function installPublishingControls(
         const old = currentLayer();
         form(
           'Layer Options',
-          `<label>Name<input name="name" value="${esc(old.name)}" maxlength="120"></label><label>Color<input name="color" type="color" value="${old.color}"></label>`,
+          `<label>Name<input name="name" value="${esc(old.name)}" maxlength="120"></label><label>Color<input name="color" type="color" value="${old.color}"></label><label class="publishing-check"><input name="ignoreWrap" type="checkbox" ${old.ignoreWrap ? 'checked' : ''}>Suppress Text Wrap When Layer Is Hidden</label>`,
           (data) =>
             mutate(() => {
               const p = enablePublishing(doc()),
                 layer = p.layers.find((l) => l.id === old.id) || p.layers[0];
               layer.name = String(data.get('name')).trim() || 'Layer';
               layer.color = data.get('color');
+              if ((data.get('ignoreWrap') === 'on') !== !!old.ignoreWrap)
+                setLayerIgnoreWrap(doc(), layer.id, data.get('ignoreWrap') === 'on');
               state.activeLayer = layer.id;
             }, 'Layer options'),
         );
