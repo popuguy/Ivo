@@ -80,7 +80,8 @@ export async function fitFrameParagraphs(
         cursor,
         previousAfter,
         mode,
-        retainOversetPrefix: paragraph.hasNoBreak && onlyFrame === undefined,
+        retainOversetPrefix:
+          (paragraph.hasNoBreak || paragraph.text.includes('\u200b')) && onlyFrame === undefined,
         maxStates: maxStates - states,
         maxCandidates: maxCandidates - candidates,
         ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),

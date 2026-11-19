@@ -22,7 +22,7 @@ const MAX_POINTS = 1024,
 
 function opportunities(text, base, ranges, scan) {
   const points = [{ index: 0 }];
-  for (const match of text.matchAll(/[ \t]+|\r\n|[\n\r\u2028\u2029]/g)) {
+  for (const match of text.matchAll(/[ \t]+|\u200b|\r\n|[\n\r\u2028\u2029]/g)) {
     const index = match.index + match[0].length,
       space = base + index - 1;
     while (scan.index < ranges.length && ranges[scan.index].end <= space) scan.index++;

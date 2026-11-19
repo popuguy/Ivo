@@ -1,4 +1,21 @@
-export const NATIVE_TEXT_COMMANDS = Object.freeze(['bold', 'italic', 'underline', 'keep-options']);
+export const BREAK_COMMANDS = Object.freeze({
+  'forced-line-break': 'Forced Line Break',
+  'discretionary-line-break': 'Discretionary Line Break',
+});
+export const NATIVE_TEXT_COMMANDS = Object.freeze([
+  'bold',
+  'italic',
+  'underline',
+  'keep-options',
+  ...Object.keys(BREAK_COMMANDS),
+]);
+export function textCommandEnabled(name, state) {
+  return (
+    state.canFormat &&
+    (name !== 'keep-options' || state.canKeepOptions === true) &&
+    (!Object.hasOwn(BREAK_COMMANDS, name) || state.canInsertBreak === true)
+  );
+}
 export const NATIVE_TEXT_ACCELERATORS = Object.freeze({
   'keep-options': 'CmdOrCtrl+Alt+K',
   bold: 'CmdOrCtrl+B',
@@ -15,6 +32,7 @@ export function nativeTextMenuState(value) {
     ? {
         canFormat: true,
         textTarget: value.textTarget,
+        ...(value.canInsertBreak === true ? { canInsertBreak: true } : {}),
         ...(value.canKeepOptions === true ? { canKeepOptions: true } : {}),
       }
     : { canFormat: false, textTarget: '' };

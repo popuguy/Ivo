@@ -123,6 +123,12 @@ const cases = [
     frames: [[0], [], [1, 2]],
   },
   {
+    name: 'optional-line-break',
+    html: '<p>A1 ReferencePatternMM\u200bN1 original notes</p><p>T1 archival details</p>',
+    rows: ['A1 ReferencePatternMM\u200b', 'N1 original notes\u2029', 'T1 archival details\u2029'],
+    frames: [[0, 1, 2], [], []],
+  },
+  {
     name: 'section-starts',
     html: '<p>PRE1 opening notes</p><p data-ivo-pstart="even">A1 section heading</p><p data-ivo-pstart="page">T1 next section</p>',
     rows: ['PRE1 opening notes\u2029', 'A1 section heading\u2029', 'T1 next section\u2029'],
@@ -350,7 +356,7 @@ for item in cases {
       "rows": rows, "leftEdgesExact": rows.allSatisfy { abs(($0["left"] as! Double) - 40) < 0.06 },
       "spacingExact": tops.enumerated().allSatisfy { abs($0.element - tops[0] - Double($0.offset) * 20) < 0.06 }])
   }
-  let squash: (String) -> String = { $0.components(separatedBy: CharacterSet.whitespacesAndNewlines).joined() }
+  let squash: (String) -> String = { $0.components(separatedBy: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\\u{200B}"))).joined() }
   reports.append(["name": item["name"]!, "text": allText, "sourceExact": squash(allText) == squash(source), "pages": pages,
     "firstBaselinesConsistent": firstTops.allSatisfy { abs($0 - firstTops[0]) < 0.06 }])
 }

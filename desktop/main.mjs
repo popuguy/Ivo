@@ -5,6 +5,8 @@ import { WORKSPACE_FEATURES } from '../src/domain/workspace/features.js';
 import { configureTextInput } from './text-input-policy.mjs';
 import {
   NATIVE_TEXT_COMMANDS,
+  BREAK_COMMANDS,
+  textCommandEnabled,
   NATIVE_TEXT_ACCELERATORS,
   nativeTextMenuState,
 } from '../src/domain/text/native-commands.js';
@@ -557,7 +559,20 @@ else {
             { type: 'separator' },
           ];
         if (context.textEditing)
-          items.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { type: 'separator' });
+          items.push(
+            {
+              label: 'Insert Break Character',
+              submenu: Object.entries(BREAK_COMMANDS).map(([name, label]) => ({
+                label,
+                click: () => sendTextCommand(name),
+              })),
+            },
+            { type: 'separator' },
+            { role: 'cut' },
+            { role: 'copy' },
+            { role: 'paste' },
+            { type: 'separator' },
+          );
         items.push(
           { label: 'Duplicate', enabled: context.selected, click: () => send('duplicate') },
           { label: 'Delete', enabled: context.selected, click: () => send('delete') },
@@ -1239,8 +1254,7 @@ function sendTextCommand(name) {
     !record?.vault ||
     !record.group?.lease.canWrite(record) ||
     record.nativeDialogOpen ||
-    !state.canFormat ||
-    (name === 'keep-options' && !state.canKeepOptions) ||
+    !textCommandEnabled(name, state) ||
     !NATIVE_TEXT_COMMANDS.includes(name)
   )
     return;
@@ -1283,8 +1297,7 @@ function applyHistory(record) {
         !!record.vault &&
         !!record.group?.lease.canWrite(record) &&
         !record.nativeDialogOpen &&
-        text.canFormat &&
-        (name !== 'keep-options' || text.canKeepOptions === true);
+        textCommandEnabled(name, text);
   }
   for (const [id, value] of [
     ['go-back', state.canGoBack],
@@ -1415,13 +1428,28 @@ function installMenu() {
       },
       {
         label: 'Type',
-        submenu: NATIVE_TEXT_COMMANDS.map((name) => ({
-          id: 'type-' + name,
-          label: name === 'keep-options' ? 'Keep Options…' : name[0].toUpperCase() + name.slice(1),
-          enabled: false,
-          accelerator: NATIVE_TEXT_ACCELERATORS[name],
-          click: () => sendTextCommand(name),
-        })),
+        submenu: [
+          ...NATIVE_TEXT_COMMANDS.filter((name) => !Object.hasOwn(BREAK_COMMANDS, name)).map(
+            (name) => ({
+              id: 'type-' + name,
+              label:
+                name === 'keep-options' ? 'Keep Options…' : name[0].toUpperCase() + name.slice(1),
+              enabled: false,
+              accelerator: NATIVE_TEXT_ACCELERATORS[name],
+              click: () => sendTextCommand(name),
+            }),
+          ),
+          { type: 'separator' },
+          {
+            label: 'Insert Break Character',
+            submenu: Object.entries(BREAK_COMMANDS).map(([name, label]) => ({
+              id: 'type-' + name,
+              label,
+              enabled: false,
+              click: () => sendTextCommand(name),
+            })),
+          },
+        ],
       },
       {
         label: 'Select',

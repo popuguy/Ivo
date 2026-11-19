@@ -525,6 +525,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
       wrapped ||
       hasKeeps(source) ||
       source.noBreakRanges?.length ||
+      source.text.includes('\u200b') ||
       source.protocol === 5,
     limit = planned ? 10000 : 100000;
   if (
@@ -635,6 +636,7 @@ export async function composeNativeTextFlows(
         wrapped ||
         hasKeeps(source) ||
         source.noBreakRanges?.length ||
+        source.text.includes('\u200b') ||
         source.protocol === 5;
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });

@@ -1,5 +1,9 @@
 # Verification
 
+## Discretionary line breaks — 19 November 2026
+
+Nine original layouts exercised short and long frames, linked columns, both native composers, protected breaks and overset text. All 14 reference lines matched the installed InDesign in source ending, frame and baseline. A hidden editor test inserts both break types, replaces a selection, undoes, redoes, and reopens the file. PDFKit independently checks the visible words and row positions around a discretionary break. The marker remains part of the saved text. [Adobe paragraph break options](https://helpx.adobe.com/indesign/desktop/format-and-style-text/composition-and-text-wrapping/paragraph-break-options-in-indesign.html)
+
 ## Keep Options — 19 November 2026
 
 The installed default Mac shortcut set binds Keep Options to Option–Command–K. The editor regression opens it with that combination, changes several paragraph attributes, rejects an out-of-range value and verifies one-step undo and Cancel. A mixed-range case changes only the selected settings. A native menu check verifies the accelerator and its disabled state on a shape selection.

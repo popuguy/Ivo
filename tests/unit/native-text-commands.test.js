@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   NATIVE_TEXT_COMMANDS,
+  textCommandEnabled,
   MAX_TEXT_COMMAND_TARGET,
   nativeTextMenuState,
   nativeTextCommand,
@@ -42,4 +43,16 @@ test('native formatting descriptors reject arbitrary actions and stale or absent
     { name: 'italic', textTarget: 'x'.repeat(MAX_TEXT_COMMAND_TARGET + 1) },
   ])
     assert.equal(nativeTextCommand(value), null);
+});
+
+test('inserting a break requires a live text insertion target and Keep Options requires a native paragraph', () => {
+  const frame = { canFormat: true, canKeepOptions: true };
+  assert.equal(textCommandEnabled('keep-options', frame), true);
+  assert.equal(textCommandEnabled('discretionary-line-break', frame), false);
+  for (const name of ['forced-line-break', 'discretionary-line-break'])
+    assert.equal(textCommandEnabled(name, { ...frame, canInsertBreak: true }), true);
+  assert.equal(
+    textCommandEnabled('forced-line-break', { canFormat: false, canInsertBreak: true }),
+    false,
+  );
 });

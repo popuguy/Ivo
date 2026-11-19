@@ -827,3 +827,19 @@ test('No Break preserves an overset suffix, skips narrow frames, respects both c
     assert.deepEqual(empty.placements, []);
   }
 });
+
+test('an optional break retains its own source position and can be disabled by protecting the marker', () => {
+  const text = 'Patt\u200bern\u2028End';
+  const points = (ranges = []) => validateParagraphSource(text, ranges)[0].opportunities;
+  assert.deepEqual(points(), [
+    { index: 0 },
+    { index: 5, mandatory: false },
+    { index: 9, mandatory: true },
+    { index: 12, mandatory: true },
+  ]);
+  assert.deepEqual(
+    points([{ start: 4, end: 5 }]).map((p) => p.index),
+    [0, 9, 12],
+  );
+  assert.deepEqual(points([{ start: 5, end: 8 }]), points());
+});

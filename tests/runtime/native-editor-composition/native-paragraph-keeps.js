@@ -843,6 +843,51 @@ export async function verifyNativeParagraphKeeps({
     await editor.command('undo');
     await settle();
     assert(source() === mixedSource, 'Mixed-range Keep Options did not undo exactly');
+    ownFixture(
+      'Discretionary break insertion',
+      '<p>A1 ReferencePatternMMN1 original notes</p><p>T1 archival details</p>',
+    );
+    mount();
+    await settle();
+    await selectWord('N1 original');
+    const beforeBreak = source(),
+      beforeBreakHistory = commits;
+    await editor.command('discretionary-line-break');
+    await settle();
+    const optionalRows = [
+      'A1 ReferencePatternMM\u200b',
+      'N1 original notes\u2029',
+      'T1 archival details\u2029',
+    ];
+    verifyPlan(optionalRows, [[0, 1, 2], [], []]);
+    assert(
+      commits === beforeBreakHistory + 1 &&
+        source().includes('\u200b') &&
+        archiveVersion([doc]) === 8,
+      'Optional break mutated the archive version or source history',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(source() === beforeBreak, 'Undo lost the original character boundary');
+    await editor.command('redo');
+    await settle();
+    await save({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+    editor.destroy();
+    editor = null;
+    doc = validateImport(await load()).documents[0];
+    resetOwner();
+    mount();
+    await settle();
+    verifyPlan(optionalRows, [[0, 1, 2], [], []]);
+    await selectWord('original', { collapsed: false });
+    await editor.command('forced-line-break');
+    await settle();
+    assert(
+      painted().request.text ===
+        'A1 ReferencePatternMM\u200bN1 \u2028 notes\u2029T1 archival details\u2029',
+      'Forced line break did not replace the selected text at the cursor: ' +
+        JSON.stringify(painted().request.text),
+    );
     const phrase = 'fine wool blends and silk lining with a long matching fabric reference';
     ownFixture('Character No Break', '<p>Start ' + phrase + ' after.</p>', {
       automaticPages: true,
@@ -1013,6 +1058,7 @@ export async function verifyNativeParagraphKeeps({
       nativeParagraphStarts: true,
       nativeSplitParagraphCounts: true,
       keepOptionsAtomicApplyAndCancel: true,
+      optionalAndForcedLineBreakCommands: true,
       nativeNoBreakSelectionUndoAndOverset: true,
       ...(diagnosticsChecked ? { nativeKeepDerivedViolations: true } : {}),
     };

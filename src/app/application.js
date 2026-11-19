@@ -2722,6 +2722,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       ),
       ...nativeTextMenuState({
         canFormat: !!allowed,
+        canInsertBreak: !!allowed && canvasHandle?.getMenuState?.().canInsertBreak === true,
         canKeepOptions: !!allowed && canvasHandle?.getMenuState?.().canKeepOptions === true,
         textTarget: allowed ? canvasHandle?.textCommandTarget?.() : null,
       }),

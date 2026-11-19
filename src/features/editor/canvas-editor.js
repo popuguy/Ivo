@@ -1,3 +1,4 @@
+import { BREAK_COMMANDS } from '../../domain/text/native-commands.js';
 import { PANEL_LABELS } from '../../domain/workspace/panels.js';
 import { reflectPropertyFormatting } from './ui/publishing-properties.js';
 import { globalIndex as flowIndexAtPoint } from '../../rendering/text/flow-source.js';
@@ -2579,6 +2580,30 @@ export function mountCanvasEditor(host, options) {
       options.onNotify?.('Parent frames are independent text containers.');
       return;
     }
+    if (Object.hasOwn(BREAK_COMMANDS, name)) {
+      const text = activeText(),
+        range = preserveRange();
+      if (!options.editing || !text?.isContentEditable || !range) return;
+      text.focus({ preventScroll: true });
+      const selection = text.ownerDocument.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      rebasePendingMarks();
+      finishText();
+      beginTextInput('insertBreakCharacter');
+      inheritInputTypography(text);
+      const manual = name === 'forced-line-break',
+        type = manual ? 'insertLineBreak' : 'insertText',
+        value = manual ? '' : '\u200b';
+      const result = applyDocumentInput(text, type, value, pendingMarks);
+      if (result) finishDocumentInput(text, result);
+      else {
+        document.execCommand(type, false, value);
+        syncText(text);
+        finishText();
+      }
+      return;
+    }
     if (name === 'show-contextual') {
       editor.classList.remove('panels-hidden', 'tools-hidden');
       state.contextBarHidden = false;
@@ -3082,7 +3107,16 @@ export function mountCanvasEditor(host, options) {
     contextMenu = document.createElement('div');
     contextMenu.className = 'canvas-context-menu';
     contextMenu.setAttribute('role', 'menu');
-    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button><div class="menu-separator"></div><button role="menuitem" data-canvas-command="duplicate" ${context.selected ? '' : 'disabled'}>Duplicate</button><button role="menuitem" data-canvas-command="delete" ${context.selected ? '' : 'disabled'}>Delete</button><div class="menu-separator"></div><button role="menuitem" data-canvas-command="select-all">Select all</button><button role="menuitem" data-canvas-command="deselect">Deselect</button>`;
+    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button>${
+      context.textEditing
+        ? Object.entries(BREAK_COMMANDS)
+            .map(
+              ([id, label]) =>
+                `<button role="menuitem" data-canvas-command="${id}">${label}</button>`,
+            )
+            .join('')
+        : ''
+    }<div class="menu-separator"></div><button role="menuitem" data-canvas-command="duplicate" ${context.selected ? '' : 'disabled'}>Duplicate</button><button role="menuitem" data-canvas-command="delete" ${context.selected ? '' : 'disabled'}>Delete</button><div class="menu-separator"></div><button role="menuitem" data-canvas-command="select-all">Select all</button><button role="menuitem" data-canvas-command="deselect">Deselect</button>`;
     editor.append(contextMenu);
     const bounds = editor.getBoundingClientRect();
     contextMenu.style.left =
@@ -4379,6 +4413,7 @@ export function mountCanvasEditor(host, options) {
       if (raf) cancelAnimationFrame(raf);
     },
     getMenuState: () => ({
+      canInsertBreak: !!activeText()?.isContentEditable,
       canKeepOptions: !!(object() && textFlowForFrame(doc(), object())?.composition),
       canvasView: ownsInput() && !busy && !dialogOpen(),
       canArrange:
