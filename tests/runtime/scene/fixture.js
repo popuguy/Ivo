@@ -240,9 +240,7 @@ try {
   await editor.command('tool-select');
   await editor.command('fit-all');
   await next();
-  const snap = host.querySelector('[data-canvas-snap]');
-  snap.checked = false;
-  snap.dispatchEvent(new Event('change', { bubbles: true }));
+  if (editor.getState().snap) await editor.command('toggle-smart-guides');
   const maskSource = child.html,
     maskY = mask.y,
     sourcePage = doc.pages[0].id,

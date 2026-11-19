@@ -322,6 +322,23 @@ public final class TextCompositionEngine {
     // Equal-length engine normalization: paragraph identity remains in the source map.
     let attributed = NSMutableAttributedString(
       string: request.text.replacingOccurrences(of: "\u{2029}", with: "\n"))
+    // Repeating half-inch stops. Custom/decimal/right-indent tabs remain a
+    // separate paragraph capability; U+0009 stays source text, never spaces.
+    var interval: CGFloat = 36
+    var stops: CFArray = [] as CFArray
+    let paragraph = withUnsafePointer(to: &interval) { intervalPointer in
+      withUnsafePointer(to: &stops) { stopsPointer in
+        var settings = [
+          CTParagraphStyleSetting(spec: .defaultTabInterval, valueSize: MemoryLayout<CGFloat>.size,
+            value: intervalPointer),
+          CTParagraphStyleSetting(spec: .tabStops, valueSize: MemoryLayout<CFArray>.size,
+            value: stopsPointer),
+        ]
+        return CTParagraphStyleCreate(&settings, settings.count)
+      }
+    }
+    attributed.addAttribute(NSAttributedString.Key(kCTParagraphStyleAttributeName as String),
+      value: paragraph, range: NSRange(location: 0, length: attributed.length))
     for run in request.runs {
       let font = CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, nil, nil)
       attributed.addAttributes(

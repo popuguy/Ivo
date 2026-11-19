@@ -12,6 +12,7 @@ import { applyFrameTypography } from '../../../src/rendering/text/format.js';
 import { applyNamedTextStyles } from '../../../src/rendering/text/styles.js';
 import { cleanHTML } from '../../../src/shared/html/sanitize.js';
 import { captureTextSelection } from '../../../src/shared/dom/text-selection.js';
+import { applyPageCamera } from '../../../src/rendering/page-camera.js';
 
 /** Native Range geometry only; call inside the parent's sequential GUI fixture. */
 export async function verifyFlowCaretGeometry() {
@@ -34,8 +35,8 @@ export async function verifyFlowCaretGeometry() {
   const original = JSON.stringify(doc),
     plan = layoutDocumentTextFlows(doc, { allowPages: false }),
     camera = document.createElement('div');
-  camera.style.cssText =
-    'position:fixed;left:20px;top:20px;transform-origin:0 0;transform:translate3d(40px,30px,0) scale(1.5)';
+  camera.style.cssText = 'position:fixed;left:20px;top:20px;transform-origin:0 0';
+  applyPageCamera(camera, { x: 40, y: 30, zoom: 1.5 });
   document.body.append(camera);
   const columns = [frame, second].map((item, columnOrder) => {
     const part = plan.fragments.get(item.id),
@@ -133,8 +134,7 @@ export async function verifyFlowCaretGeometry() {
       frameId: line.frameId,
       stops: line.stops.map((stop) => ({ index: stop.index, x: stop.x, y: stop.y })),
     }));
-    camera.style.transform = 'translate3d(140px,130px,0)';
-    camera.style.zoom = '2';
+    applyPageCamera(camera, { x: 140, y: 130, zoom: 2 });
     const afterZoom = measureFlowCaretLines(columns);
     assert(
       afterZoom.lines.length === snapshot.length &&

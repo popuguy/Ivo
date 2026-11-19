@@ -17,6 +17,7 @@ const runtime = [
   'text-composition-bridge',
   'native-composition-geometry',
   'native-editor-composition',
+  'native-controls',
   'inline-metrics',
   'browser-storage',
   'pdf',
@@ -40,6 +41,10 @@ const runtime = [
 // These component runners support hidden offscreen windows and renderer input.
 // Native focus, menus, the clipboard and physical-device checks remain separate.
 const backgroundRuntime = [
+  'native-controls',
+  'text',
+  'scene',
+  'duplicate',
   'graph',
   'viewport',
   'render',

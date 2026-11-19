@@ -22,6 +22,8 @@ const frame = insertObject(doc, 'text', doc.pages[0].id, {
   html: '<p>Alpha beta gamma.</p><p>Second regular paragraph.</p>',
 });
 startTextFlow(doc, frame.id, { automaticPages: false });
+const lowerShape = insertObject(doc, 'polygon', doc.pages[0].id, { x: 48, y: 400, w: 60, h: 60 }),
+  upperShape = insertObject(doc, 'polygon', doc.pages[0].id, { x: 140, y: 400, w: 60, h: 60 });
 const vault = await openVault(vaultPath);
 await vault.saveImport({ schemaVersion: 5, documents: [doc], assets: [] });
 const original = doc.textFlows[0].html;
@@ -34,13 +36,18 @@ const globalForceClick = () => {
 const originalGlobalForceClick = process.platform === 'darwin' && globalForceClick();
 let window,
   state = null,
+  stage = 'startup',
   settled = false;
 const pause = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));
-const timer = setTimeout(() => void finish(1, { error: 'Native text menu timeout' }), 45000);
+const timer = setTimeout(
+  () => void finish(1, { error: 'Native text menu timeout', stage, state }),
+  45000,
+);
 ipcMain.on('ivo:history-state', (event, value) => {
   if (event.sender === window?.webContents) state = value;
 });
 async function wait(predicate, label) {
+  stage = label;
   for (let i = 0; i < 600; i++) {
     const result = await predicate();
     if (result) return result;
@@ -105,6 +112,64 @@ void (async () => {
     await wait(() => execute('ivoNative.windows.info().then(s=>s.active)'), 'Writer');
     send('toggle-edit');
     await wait(() => execute("!!document.querySelector('.scene-editing')"), 'Edit view');
+    await execute(
+      'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
+    );
+    const nativeItem = (id) => Menu.getApplicationMenu()?.getMenuItemById(id),
+      objectOrder = async () =>
+        (await execute('ivoNative.store.loadDocuments()'))[0].blocks.map((item) => item.id),
+      point = await execute(
+        `(()=>{const r=document.querySelector('[data-object="${upperShape.id}"]').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+      );
+    for (const type of ['mouseMove', 'mouseDown', 'mouseUp'])
+      window.webContents.sendInputEvent({
+        type,
+        ...point,
+        ...(type === 'mouseMove' ? {} : { button: 'left', clickCount: 1 }),
+      });
+    await wait(() => nativeItem('send-backward')?.enabled, 'Object arrangement menu');
+    assert.equal(nativeItem('send-backward').accelerator, 'CmdOrCtrl+[');
+    assert.equal(nativeItem('send-back').accelerator, 'CmdOrCtrl+Shift+[');
+    assert.equal(nativeItem('go-back').accelerator, 'CmdOrCtrl+Alt+[');
+    for (const type of ['keyDown', 'keyUp'])
+      window.webContents.sendInputEvent({
+        type,
+        keyCode: '[',
+        modifiers: [process.platform === 'darwin' ? 'meta' : 'control'],
+      });
+    await wait(
+      async () => (await objectOrder()).join() === [frame.id, upperShape.id, lowerShape.id].join(),
+      'Trusted send-backward shortcut',
+    );
+    nativeItem('send-back').click();
+    await wait(async () => (await objectOrder())[0] === upperShape.id, 'Native send-to-back menu');
+    send('undo');
+    await wait(async () => (await objectOrder())[1] === upperShape.id, 'Native arrangement undo');
+    nativeItem('bring-front').click();
+    await wait(
+      async () => (await objectOrder()).at(-1) === upperShape.id,
+      'Native bring-to-front menu',
+    );
+    const priorGuides = nativeItem('toggle-smart-guides').checked;
+    nativeItem('toggle-smart-guides').click();
+    await wait(
+      () =>
+        nativeItem('toggle-smart-guides').checked !== priorGuides &&
+        state.smartGuides !== priorGuides,
+      'Smart Guides checked state',
+    );
+    assert.equal(await source(), original, 'Smart Guides changed text source');
+    for (const expected of [true, false]) {
+      window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+      window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+      await wait(
+        () =>
+          execute(
+            `document.querySelector('.scene-editor').classList.contains('tools-hidden')===${expected}`,
+          ),
+        'Production Tab panel behavior',
+      );
+    }
     await execute(
       `(()=>{const element=document.querySelector('[data-object="${frame.id}"]'),r=element.getBoundingClientRect();element.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true,detail:2,clientX:r.x+10,clientY:r.y+10}));})()`,
     );
@@ -181,12 +246,12 @@ void (async () => {
     window.webContents.sendInputEvent({
       type: 'keyDown',
       keyCode: 'U',
-      modifiers: [process.platform === 'darwin' ? 'meta' : 'control'],
+      modifiers: [process.platform === 'darwin' ? 'meta' : 'control', 'shift'],
     });
     window.webContents.sendInputEvent({
       type: 'keyUp',
       keyCode: 'U',
-      modifiers: [process.platform === 'darwin' ? 'meta' : 'control'],
+      modifiers: [process.platform === 'darwin' ? 'meta' : 'control', 'shift'],
     });
     await wait(async () => (await style('Alpha')).underline, 'Native underline shortcut');
     assert.equal((await style('beta')).underline, false);
@@ -206,6 +271,22 @@ void (async () => {
       'Selection tool activated',
     );
     await execute("document.querySelector('.canvas-viewport').focus()");
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Shift', modifiers: [] });
+    // Whole-frame formatting requires a selected text frame; this fixture now
+    // also contains independent shape selections from its arrangement cases.
+    const framePoint = await execute(
+      `(()=>{const r=document.querySelector('[data-object="${frame.id}"]').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+    );
+    for (const type of ['mouseMove', 'mouseDown', 'mouseUp'])
+      window.webContents.sendInputEvent({
+        type,
+        ...framePoint,
+        modifiers: [],
+        ...(type === 'mouseMove' ? {} : { button: 'left', clickCount: 1 }),
+      });
+    await execute(
+      'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
+    );
     await wait(
       () =>
         state?.canFormat &&
@@ -251,6 +332,10 @@ void (async () => {
     await finish(0, {
       ok: true,
       actualTypeMenu: true,
+      actualArrangeMenu: true,
+      trustedBracketShortcut: true,
+      smartGuidesCheckedState: true,
+      productionTabPanels: true,
       partialRange: true,
       oneStepUndoRedo: true,
       staleTargetRejected: true,

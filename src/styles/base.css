@@ -57,6 +57,14 @@
 }
 body {
   margin: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+input,
+textarea,
+[contenteditable='true'] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 button,
 input,
@@ -2345,27 +2353,41 @@ dialog .dialog-close {
   background: var(--guide);
 }
 .canvas-status {
-  flex: 0 0 31px;
-  height: 31px;
+  flex: 0 0 22px;
+  height: 22px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 6px;
   border-top: 1px solid #d4d8dd;
   background: #f8f9fa;
-  padding: 0 10px;
+  padding: 0 4px;
   font-size: 10px;
   color: #727b87;
 }
-.canvas-snap {
+.canvas-page-navigation {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
 }
-.canvas-snap input {
-  width: 11px;
-  height: 11px;
-  margin: 0;
-  accent-color: var(--selection);
+.canvas-page-navigation select {
+  height: 19px;
+  max-width: 160px;
+  border: 0;
+  background: transparent;
+  font-size: 10px;
+}
+.canvas-page-navigation button {
+  width: 18px;
+  height: 19px;
+  padding: 3px;
+}
+.canvas-page-navigation .reference-icon {
+  width: 12px;
+  height: 12px;
+}
+.canvas-page-navigation .previous-page .reference-icon {
+  transform: rotate(180deg);
 }
 .canvas-zoom {
   display: flex;
@@ -2374,9 +2396,9 @@ dialog .dialog-close {
   margin-left: auto;
 }
 .canvas-zoom button {
-  height: 25px;
-  width: 25px;
-  padding: 5px;
+  height: 19px;
+  width: 21px;
+  padding: 3px;
   border-radius: 3px;
   justify-content: center;
 }
@@ -2564,9 +2586,6 @@ dialog .dialog-close {
 .scene-reading {
   grid-template-columns: minmax(0, 1fr) 224px;
 }
-.canvas-panel-toggle {
-  display: none !important;
-}
 @media (max-width: 1050px) {
   .scene-editor {
     grid-template-columns: 40px minmax(0, 1fr);
@@ -2590,12 +2609,6 @@ dialog .dialog-close {
   }
   .scene-editor.show-properties .canvas-properties {
     display: block;
-  }
-  .canvas-panel-toggle {
-    display: inline-flex !important;
-  }
-  .canvas-tool-status {
-    display: none;
   }
   .canvas-status {
     padding: 0 6px;
@@ -2864,9 +2877,6 @@ summary {
 }
 .panel-collapsed .canvas-properties {
   display: none;
-}
-.panel-collapsed .canvas-panel-toggle {
-  display: inline-flex !important;
 }
 .canvas-zoom .zoom-value {
   width: 62px;
@@ -3148,9 +3158,6 @@ dialog li {
 }
 .panel-collapsed .canvas-properties {
   display: none !important;
-}
-.panel-floating .canvas-panel-toggle {
-  display: inline-flex !important;
 }
 .workspace-panel-resize {
   position: absolute;
@@ -3712,9 +3719,6 @@ dialog li {
   .scene-editor.show-properties .canvas-properties {
     display: flex;
   }
-  .workspace-pane .canvas-panel-toggle {
-    display: flex !important;
-  }
   .panel-floating .canvas-properties {
     bottom: auto;
   }
@@ -3899,4 +3903,23 @@ dialog .prompt-instructions {
   position: absolute;
   background: Highlight;
   opacity: 0.35;
+}
+
+/* Tab stashes panel containers without changing their saved layout or live input. */
+.scene-editor.panels-hidden:not(.tools-hidden) {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+.scene-editor.panels-hidden.tools-hidden,
+.scene-editor.scene-reading.panels-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+.scene-editor.panels-hidden .canvas-panel-dock,
+.scene-editor.panels-hidden .context-panel-group,
+.scene-editor.panels-hidden .canvas-contextual-bar,
+.scene-editor.tools-hidden .canvas-tools {
+  display: none !important;
+}
+.canvas-status .reference-icon {
+  width: 13px;
+  height: 13px;
 }

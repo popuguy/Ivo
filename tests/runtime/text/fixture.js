@@ -433,6 +433,49 @@ try {
       document.querySelector('.canvas-flow-input').textContent === '',
     'Quick creation inserted authored placeholder content',
   );
+  await nativeCommand('document-text');
+  await tick();
+  await nativeCommand('tool-select');
+  viewport().focus();
+  await tick();
+  assert(
+    menuStates.at(-1).canFormat && JSON.parse(menuStates.at(-1).textTarget)[4] === null,
+    'Leaving linked text did not refresh the whole-frame native menu target: ' +
+      JSON.stringify(menuStates.at(-1)),
+  );
+  const toolButton = document.querySelector('[data-canvas-command="tool-select"]');
+  toolButton.focus();
+  toolButton.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }),
+  );
+  await tick();
+  assert(
+    document.querySelector('.scene-editor').classList.contains('tools-hidden'),
+    'Application Tab did not stash panels exactly once',
+  );
+  viewport().dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }),
+  );
+  await tick();
+  assert(
+    !document.querySelector('.scene-editor').classList.contains('panels-hidden'),
+    'Application Tab did not restore panels',
+  );
+  await nativeCommand('toggle-edit');
+  await tick();
+  viewport().dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }),
+  );
+  await tick();
+  const reading = document.querySelector('.scene-editor');
+  assert(
+    reading.classList.contains('scene-reading') &&
+      reading.classList.contains('panels-hidden') &&
+      Math.abs(
+        reading.querySelector('.canvas-center').getBoundingClientRect().width - reading.clientWidth,
+      ) < 1,
+    'Reading-view Shift Tab retained an empty tool column',
+  );
   console.log(
     'IVO_TEXT_RESULT:' +
       JSON.stringify({
@@ -450,6 +493,8 @@ try {
         fuzzySwitcher: true,
         mruToggle: true,
         quickCreation: true,
+        settledNativeFrameMenu: true,
+        applicationTabRouting: true,
       }),
   );
 } catch (error) {

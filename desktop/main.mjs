@@ -1,6 +1,12 @@
+import { ARRANGE_COMMANDS } from '../src/domain/documents/arrange.js';
+import { editorMenuState } from '../src/domain/workspace/editor-commands.js';
 import { WORKSPACE_FEATURES } from '../src/domain/workspace/features.js';
 import { configureTextInput } from './text-input-policy.mjs';
-import { NATIVE_TEXT_COMMANDS, nativeTextMenuState } from '../src/domain/text/native-commands.js';
+import {
+  NATIVE_TEXT_COMMANDS,
+  NATIVE_TEXT_ACCELERATORS,
+  nativeTextMenuState,
+} from '../src/domain/text/native-commands.js';
 import { createDocumentClipboard } from './document-clipboard.mjs';
 import { createSystemFonts } from './system-fonts.mjs';
 import {
@@ -530,6 +536,7 @@ else {
           canGoBack: state.canGoBack === true,
           canGoForward: state.canGoForward === true,
           ...nativeTextMenuState(state),
+          ...editorMenuState(state),
         };
         if (record === activeRecord() && !record.nativeDialogOpen) applyHistory(record);
       });
@@ -1250,6 +1257,21 @@ function applyHistory(record) {
       if (item.label !== title) item.label = title;
     }
   }
+  const canvas = editorMenuState(state);
+  for (const name of Object.keys(ARRANGE_COMMANDS)) {
+    const item = menu?.getMenuItemById(name);
+    if (item)
+      item.enabled =
+        !!record.vault &&
+        !!record.group?.lease.canWrite(record) &&
+        !record.nativeDialogOpen &&
+        canvas.canArrange;
+  }
+  const smartGuides = menu?.getMenuItemById('toggle-smart-guides');
+  if (smartGuides) {
+    smartGuides.checked = canvas.smartGuides;
+    smartGuides.enabled = !!record.vault && !record.nativeDialogOpen && canvas.canvasView;
+  }
   const text = nativeTextMenuState(state);
   for (const name of NATIVE_TEXT_COMMANDS) {
     const item = menu?.getMenuItemById('type-' + name);
@@ -1362,6 +1384,20 @@ function installMenu() {
         ],
       },
       {
+        label: 'Object',
+        submenu: [
+          {
+            label: 'Arrange',
+            submenu: Object.entries(ARRANGE_COMMANDS).map(([name, value]) => ({
+              id: name,
+              ...value,
+              enabled: false,
+              click: () => sendCommand(name),
+            })),
+          },
+        ],
+      },
+      {
         label: 'Insert',
         submenu: [{ label: 'Document Link…', enabled: hasVault, click: () => sendCommand('link') }],
       },
@@ -1371,7 +1407,7 @@ function installMenu() {
           id: 'type-' + name,
           label: name[0].toUpperCase() + name.slice(1),
           enabled: false,
-          accelerator: 'CmdOrCtrl+' + name[0].toUpperCase(),
+          accelerator: NATIVE_TEXT_ACCELERATORS[name],
           click: () => sendTextCommand(name),
         })),
       },
@@ -1397,6 +1433,16 @@ function installMenu() {
       {
         label: 'View',
         submenu: [
+          {
+            id: 'toggle-smart-guides',
+            label: 'Smart Guides',
+            type: 'checkbox',
+            checked: false,
+            enabled: false,
+            accelerator: 'CmdOrCtrl+U',
+            click: () => sendCommand('toggle-smart-guides'),
+          },
+          { type: 'separator' },
           { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', click: () => sendCommand('zoom-in') },
           { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => sendCommand('zoom-out') },
           {
@@ -1464,14 +1510,14 @@ function installMenu() {
             id: 'go-back',
             label: 'Back',
             enabled: hasVault,
-            accelerator: 'CmdOrCtrl+[',
+            accelerator: 'CmdOrCtrl+Alt+[',
             click: () => sendCommand('go-back'),
           },
           {
             id: 'go-forward',
             label: 'Forward',
             enabled: hasVault,
-            accelerator: 'CmdOrCtrl+]',
+            accelerator: 'CmdOrCtrl+Alt+]',
             click: () => sendCommand('go-forward'),
           },
           { type: 'separator' },

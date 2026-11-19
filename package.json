@@ -85,7 +85,9 @@
     "test:native-editor-composition": "electron tests/runtime/native-editor-composition/runner.mjs",
     "pretest:native-editor-composition": "node scripts/reference-art.mjs",
     "preview:composition": "node scripts/build-composition-preview.mjs",
-    "test:background": "node scripts/check.mjs --background-runtime"
+    "test:background": "node scripts/check.mjs --background-runtime",
+    "test:native-controls": "electron tests/runtime/native-controls/runner.mjs",
+    "pretest:native-controls": "node scripts/reference-art.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

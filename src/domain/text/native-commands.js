@@ -1,4 +1,9 @@
 export const NATIVE_TEXT_COMMANDS = Object.freeze(['bold', 'italic', 'underline']);
+export const NATIVE_TEXT_ACCELERATORS = Object.freeze({
+  bold: 'CmdOrCtrl+B',
+  italic: 'CmdOrCtrl+I',
+  underline: 'CmdOrCtrl+Shift+U',
+});
 export const MAX_TEXT_COMMAND_TARGET = 16384;
 const validTarget = (value) =>
   typeof value === 'string' && value.length > 0 && value.length <= MAX_TEXT_COMMAND_TARGET;

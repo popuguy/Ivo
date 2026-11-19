@@ -47,9 +47,7 @@ async function mount(value) {
   viewport = host.querySelector('.canvas-viewport');
   viewport.setPointerCapture = () => {};
   viewport.releasePointerCapture = () => {};
-  const snap = host.querySelector('[data-canvas-snap]');
-  snap.checked = false;
-  snap.dispatchEvent(new Event('change', { bubbles: true }));
+  if (editor.getState().snap) await editor.command('toggle-smart-guides');
   await tick();
 }
 function step(direction) {
@@ -270,9 +268,7 @@ try {
   );
   await mount(basic());
   a = doc.blocks[0];
-  const snap = host.querySelector('[data-canvas-snap]');
-  snap.checked = true;
-  snap.dispatchEvent(new Event('change', { bubbles: true }));
+  if (!editor.getState().snap) await editor.command('toggle-smart-guides');
   p = begin(a.id);
   end = move(p, 40, 2, { altKey: true });
   copy = doc.blocks.find((b) => b.id !== a.id);

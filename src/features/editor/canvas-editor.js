@@ -1,3 +1,6 @@
+import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
+import { statusBarMarkup } from './ui/status-bar.js';
+import { handleFieldTab } from '../../shared/ui/keyboard-fields.js';
 import { caretInterval } from '../../domain/text/flow-selection.js';
 import { installFlowSelection } from './text/flow-selection.js';
 import { createNativeInputAnchor } from './text/native-input-anchor.js';
@@ -246,7 +249,7 @@ export function mountCanvasEditor(host, options) {
     .map(([name, label]) => control('tool-' + name, label, name))
     .join(
       '',
-    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-input-world" hidden><div class="canvas-flow-clip"><div class="rich-text canvas-text canvas-flow-input"></div></div></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div><footer class="canvas-status"><span class="canvas-tool-status"></span><label class="canvas-snap"><input type="checkbox" data-canvas-snap checked>Snap</label><button class="canvas-panel-toggle" data-canvas-command="toggle-properties" aria-label="Toggle properties">Properties</button><div class="canvas-zoom">${control('zoom-out', 'Zoom out', 'minus')}<button data-canvas-command="zoom-100" class="zoom-value" title="Actual size">100%</button>${control('zoom-in', 'Zoom in', 'plus')}${control('fit-page', 'Fit page', 'fit')}${control('fit-all', 'Fit all pages', 'fit')}</div></footer></div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
+    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-input-world" hidden><div class="canvas-flow-clip"><div class="rich-text canvas-text canvas-flow-input"></div></div></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div>${statusBarMarkup(control)}</div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
   const editor = host.firstElementChild,
     viewport = host.querySelector('.canvas-viewport'),
     world = host.querySelector('.canvas-world'),
@@ -284,6 +287,7 @@ export function mountCanvasEditor(host, options) {
     if (next.join('|') !== state.selection.join('|')) selectionDirty = true;
     state.selection = next;
     state.selected = next.at(-1) || null;
+    options.onViewChange?.();
   }
   setSelectionState(state.selection);
   function positions() {
@@ -317,6 +321,7 @@ export function mountCanvasEditor(host, options) {
     const label = (state.camera.zoom * 100).toFixed(2) + '%';
     const zoomLabel = host.querySelector('.zoom-value');
     if (zoomLabel.textContent !== label) zoomLabel.textContent = label;
+    renderPageNavigation();
     renderSelection();
     flowSelection?.sync();
   }
@@ -353,6 +358,25 @@ export function mountCanvasEditor(host, options) {
     renderTools();
     renderSelection(true);
   }
+  let pageNavigationKey = '';
+  function renderPageNavigation() {
+    const select = host.querySelector('[data-active-page]'),
+      key = JSON.stringify(doc().pages.map(({ id, name }) => [id, name]));
+    if (key !== pageNavigationKey) {
+      select.innerHTML = doc()
+        .pages.map(
+          (page, index) =>
+            `<option value="${esc(page.id)}">${index + 1} · ${esc(page.name)}</option>`,
+        )
+        .join('');
+      pageNavigationKey = key;
+    }
+    select.value = state.activePage;
+    const index = doc().pages.findIndex((page) => page.id === state.activePage);
+    host.querySelector('[data-canvas-command="previous-page"]').disabled = index <= 0;
+    host.querySelector('[data-canvas-command="next-page"]').disabled =
+      index >= doc().pages.length - 1;
+  }
   function renderTools() {
     editor.dataset.tool = state.tool;
     host.querySelectorAll('[data-canvas-command^="tool-"]').forEach((button) => {
@@ -365,7 +389,7 @@ export function mountCanvasEditor(host, options) {
     host
       .querySelector('[data-canvas-command="inside"]')
       .setAttribute('aria-pressed', String(!!state.inside));
-    host.querySelector('.canvas-tool-status').textContent = state.inside
+    editor.dataset.toolLabel = state.inside
       ? 'Draw inside'
       : {
           select: 'Selection',
@@ -1198,6 +1222,7 @@ export function mountCanvasEditor(host, options) {
     pendingMarks = {};
     flowSelection?.sync();
     selectionDirty = true;
+    options.onViewChange?.();
     return true;
   }
   function focusText(id, event, word = false) {
@@ -2268,11 +2293,41 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     if (name === 'show-contextual') {
+      editor.classList.remove('panels-hidden', 'tools-hidden');
       state.contextBarHidden = false;
       selectionDirty = true;
       requestFrame();
       return;
     }
+    if (name === 'toggle-smart-guides') {
+      state.snap = snapEnabled = !snapEnabled;
+      try {
+        localStorage.setItem('ivo:snapping', String(state.snap));
+      } catch {}
+      window.dispatchEvent(new Event('ivo:smart-guides-changed'));
+      return;
+    }
+    if (name === 'toggle-panels' || name === 'toggle-side-panels') {
+      finishGesture();
+      const hidden = !editor.classList.contains('panels-hidden');
+      editor.classList.toggle('panels-hidden', hidden);
+      editor.classList.toggle('tools-hidden', hidden && name === 'toggle-panels');
+      viewport.focus({ preventScroll: true });
+      requestFrame();
+      return;
+    }
+    if (name.startsWith('show-panel-') || name === 'show-contextual') {
+      editor.classList.remove('panels-hidden', 'tools-hidden');
+    }
+    if (
+      Object.hasOwn(ARRANGE_COMMANDS, name) &&
+      (!options.editing ||
+        !canWrite() ||
+        activeTextId ||
+        typing(document.activeElement) ||
+        !objects().length)
+    )
+      return;
     if (publishingControls.command(name, { anchor })) return;
     if (['document-text', 'start-flow', 'thread'].includes(name) && !options.editing) return;
     if (name === 'flow-previous' || name === 'flow-next') {
@@ -2297,7 +2352,7 @@ export function mountCanvasEditor(host, options) {
         endTextEditing();
         state.tool = 'select';
         renderTools();
-        host.querySelector('.canvas-tool-status').textContent = 'Choose an empty text frame';
+        options.onNotify?.('Choose an empty text frame');
       }
       return;
     }
@@ -2315,7 +2370,7 @@ export function mountCanvasEditor(host, options) {
       threadFrom = object().id;
       state.tool = 'select';
       renderTools();
-      host.querySelector('.canvas-tool-status').textContent = 'Choose an empty text frame';
+      options.onNotify?.('Choose an empty text frame');
       return;
     }
     if (name === 'start-flow' && object()) {
@@ -2344,6 +2399,16 @@ export function mountCanvasEditor(host, options) {
     if (name.startsWith('tool-')) {
       tool(name.slice(5));
       paint();
+      return;
+    }
+    if (name === 'previous-page' || name === 'next-page') {
+      if (endTextEditing() === false) return;
+      const index = doc().pages.findIndex((page) => page.id === state.activePage),
+        next = doc().pages[index + (name === 'next-page' ? 1 : -1)];
+      if (next) {
+        state.activePage = next.id;
+        fit();
+      }
       return;
     }
     if (name === 'zoom-in') return zoom(1.25);
@@ -2854,12 +2919,12 @@ export function mountCanvasEditor(host, options) {
       });
       return;
     }
-    if (el.matches('[data-canvas-snap]')) {
-      state.snap = el.checked;
-      snapEnabled = state.snap;
-      try {
-        localStorage.setItem('ivo:snapping', String(state.snap));
-      } catch {}
+    if (el.matches('[data-active-page]')) {
+      if (endTextEditing() === false) return;
+      if (doc().pages.some((page) => page.id === el.value)) {
+        state.activePage = el.value;
+        fit();
+      }
       return;
     }
     if (el.matches('.canvas-file-input')) {
@@ -3235,7 +3300,44 @@ export function mountCanvasEditor(host, options) {
       event.preventDefault();
       return;
     }
+    if (handleFieldTab(event)) return;
     const modifier = event.metaKey || event.ctrlKey;
+    if (event.key === 'Tab' && !modifier && !event.altKey) {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      const text = activeText();
+      if (text?.isContentEditable && text.contains(event.target)) {
+        if (event.shiftKey) options.onNotify?.('Right-indent tabs are not available yet.');
+        else {
+          beginTextInput('insertText');
+          document.execCommand('insertText', false, '\t');
+          syncText(text);
+          finishText();
+        }
+      } else if (!typing(event.target))
+        command(event.shiftKey ? 'toggle-side-panels' : 'toggle-panels');
+      return;
+    }
+    if (modifier && !event.altKey && event.key.toLowerCase() === 'u' && !event.shiftKey) {
+      event.preventDefault();
+      command('toggle-smart-guides');
+      return;
+    }
+    if (modifier && !event.altKey && ['[', ']', '{', '}'].includes(event.key)) {
+      event.preventDefault();
+      if (!typing(event.target)) {
+        command(
+          ['[', '{'].includes(event.key)
+            ? event.shiftKey
+              ? 'send-back'
+              : 'send-backward'
+            : event.shiftKey
+              ? 'bring-front'
+              : 'bring-forward',
+        );
+      }
+      return;
+    }
     const flowInput = activeText();
     if (sourceTextFlow(flowInput) && event.target === flowInput) {
       if (modifier && event.key.toLowerCase() === 'a') {
@@ -3295,7 +3397,7 @@ export function mountCanvasEditor(host, options) {
     }
     if (activeTextId && event.target.closest('[data-scene-text]') && modifier) {
       const key = event.key.toLowerCase();
-      if (['b', 'i', 'u'].includes(key)) {
+      if (['b', 'i'].includes(key) || (key === 'u' && event.shiftKey)) {
         event.preventDefault();
         command({ b: 'bold', i: 'italic', u: 'underline' }[key]);
         return;
@@ -3419,6 +3521,11 @@ export function mountCanvasEditor(host, options) {
         }
       });
     }
+  });
+  listen(window, 'ivo:smart-guides-changed', () => {
+    state.snap = snapEnabled;
+    guides.replaceChildren();
+    options.onViewChange?.();
   });
   listen(window, 'keyup', (event) => {
     editor.dataset.option = String(event.altKey);
@@ -3660,7 +3767,6 @@ export function mountCanvasEditor(host, options) {
   setSelectionState(state.selection);
   if (!doc().pages.some((p) => p.id === state.activePage)) state.activePage = doc().pages[0].id;
   if (!sceneObject(doc(), state.inside)) state.inside = null;
-  host.querySelector('[data-canvas-snap]').checked = state.snap;
   paint();
   if (documentContent(initialDocument) !== documentContent(doc())) onChange();
   document.fonts?.ready.then(() => {
@@ -3786,6 +3892,19 @@ export function mountCanvasEditor(host, options) {
       observer.disconnect();
       if (raf) cancelAnimationFrame(raf);
     },
+    getMenuState: () => ({
+      canvasView: ownsInput() && !busy && !dialogOpen(),
+      canArrange:
+        ownsInput() &&
+        canWrite() &&
+        options.editing &&
+        !busy &&
+        !composing &&
+        !activeTextId &&
+        !typing(document.activeElement) &&
+        objects().length > 0,
+      smartGuides: snapEnabled,
+    }),
     getState: () => structuredClone({ ...state, activeTextId, composing, busy }),
   };
 }

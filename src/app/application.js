@@ -1,3 +1,6 @@
+import { ARRANGE_COMMANDS } from '../domain/documents/arrange.js';
+import { editorMenuState } from '../domain/workspace/editor-commands.js';
+import { handleFieldTab } from '../shared/ui/keyboard-fields.js';
 import { WORKSPACE_FEATURES } from '../domain/workspace/features.js';
 import {
   nativeTextMenuState,
@@ -688,7 +691,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     });
   }
   function attachSaveStatus(pane) {
-    const footer = pane.element.querySelector('.canvas-status,.graph-footer');
+    const footer = pane.element.querySelector('.graph-footer');
     if (!footer || footer.querySelector('[data-save-status]')) return;
     const status = document.createElement('span');
     status.className = 'save-status';
@@ -807,6 +810,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         prepareDocumentFonts: (doc) => fontLibrary.prepareDocument(doc),
         ensureFontVariant: (id, bold, italic) => fontLibrary.ensureVariant(id, bold, italic),
         onCommit: (before, metadata) => commitDocument(id, tab.id, before, metadata),
+        onViewChange: scheduleNativeMenu,
         onChange: () => {
           changed(docs.find((doc) => doc.id === id));
           // Derived native pagination advances the saved revision asynchronously.
@@ -1822,6 +1826,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   async function viewOptions() {
     const id = workspace.active,
       tab = activeTab(workspace),
+      canvasMenu = editorMenuState(canvasHandle?.getMenuState?.()),
       items = [
         ...(workspaceFeatures.savedLayouts
           ? [
@@ -1840,6 +1845,40 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
                 id: 'toggle-stack',
                 label: isStacked(activeGroup(workspace)) ? 'Unstack tabs' : 'Stack tabs',
               },
+            ]
+          : []),
+        ...(tab.kind === 'document'
+          ? [
+              {
+                label: 'View',
+                submenu: [
+                  {
+                    id: 'toggle-smart-guides',
+                    label: 'Smart Guides',
+                    type: 'checkbox',
+                    checked: canvasMenu.smartGuides,
+                    enabled: canvasMenu.canvasView,
+                  },
+                  {
+                    id: 'toggle-panels',
+                    label: 'Show/Hide Panels',
+                    enabled: canvasMenu.canvasView,
+                  },
+                  ...['properties', 'pages', 'layers', 'links'].map((kind) => ({
+                    id: 'show-panel-' + kind,
+                    label: kind[0].toUpperCase() + kind.slice(1),
+                  })),
+                ],
+              },
+              {
+                label: 'Arrange',
+                submenu: Object.entries(ARRANGE_COMMANDS).map(([id, value]) => ({
+                  id,
+                  label: value.label,
+                  enabled: canvasMenu.canArrange,
+                })),
+              },
+              { type: 'separator' },
             ]
           : []),
         ...(tab.linkedTo ? [{ id: 'unlink-view', label: 'Unlink view' }] : []),
@@ -1874,6 +1913,15 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       anchor: panes.get(workspace.active)?.element.querySelector('[data-action="view-options"]'),
     });
     if (!choice || !workspace.tabs.some((tab) => tab.id === id)) return;
+    if (
+      Object.hasOwn(ARRANGE_COMMANDS, choice) ||
+      choice === 'toggle-smart-guides' ||
+      choice === 'toggle-panels' ||
+      choice.startsWith('show-panel-')
+    ) {
+      if (workspace.active !== id) return;
+      return canvasHandle?.command(choice);
+    }
     if (choice === 'insert-link') {
       await transitions.run(() => activateTabNow(id));
       return runAction('insert-link');
@@ -2180,6 +2228,46 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     root.addEventListener(name, activatePaneFromEvent, { capture: true });
   root.addEventListener('wheel', activatePaneFromEvent, { capture: true, passive: false });
   document.addEventListener('keydown', (event) => {
+    if (handleFieldTab(event)) return;
+    if (
+      event.key !== 'Tab' ||
+      event.defaultPrevented ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.isComposing ||
+      dialog.open
+    )
+      return;
+    const target = event.target;
+    if (
+      !(target instanceof Element) ||
+      target.isContentEditable ||
+      target.closest('[contenteditable=true]')
+    )
+      return;
+    if (target.closest('[data-document-title]')) return;
+    event.preventDefault();
+    if (
+      !target.closest('input,textarea,select') &&
+      !transitions.busy &&
+      !canvasHandle?.getState().composing &&
+      view === 'document'
+    )
+      canvasHandle?.command(event.shiftKey ? 'toggle-side-panels' : 'toggle-panels');
+  });
+  document.addEventListener('keydown', (event) => {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      ['[', ']', '{', '}'].includes(event.key)
+    ) {
+      // Reserve arrangement keys even where arrangement is unavailable; never
+      // fall through to browser history or browser-tab navigation.
+      event.preventDefault();
+      if (view !== 'document' || dialog.open || transitions.busy) event.stopPropagation();
+      return;
+    }
     if (
       dialog.open ||
       transitions.busy ||
@@ -2189,7 +2277,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     )
       return;
     const modifier = event.metaKey || event.ctrlKey;
-    if (modifier && !event.shiftKey && ['[', ']'].includes(event.key)) {
+    if (modifier && event.altKey && !event.shiftKey && ['[', ']'].includes(event.key)) {
       event.preventDefault();
       event.stopPropagation();
       runAction(event.key === '[' ? 'go-back' : 'go-forward');
@@ -2561,6 +2649,14 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     const id = new URLSearchParams(location.hash.slice(1)).get('doc');
     if (id && (view !== 'document' || id !== activeId)) openDocument(id);
   });
+  let nativeMenuFrame = 0;
+  function scheduleNativeMenu() {
+    if (nativeMenuFrame) return;
+    nativeMenuFrame = requestAnimationFrame(() => {
+      nativeMenuFrame = 0;
+      updateNativeHistory();
+    });
+  }
   function updateNativeHistory() {
     if (!globalThis.ivoNative?.updateHistory) return;
     const target = document.activeElement,
@@ -2589,6 +2685,11 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         : !!(allowed && timeline?.canRedo),
       undoLabel: nativeField ? '' : allowed ? timeline?.undoLabel || '' : '',
       redoLabel: nativeField ? '' : allowed ? timeline?.redoLabel || '' : '',
+      ...editorMenuState(
+        !dialog.open && !transitions.busy && view === 'document'
+          ? canvasHandle?.getMenuState?.()
+          : null,
+      ),
       ...nativeTextMenuState({
         canFormat: !!allowed,
         textTarget: allowed ? canvasHandle?.textCommandTarget?.() : null,

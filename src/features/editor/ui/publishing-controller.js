@@ -1,3 +1,4 @@
+import { ARRANGE_COMMANDS, arrangeObjects } from '../../../domain/documents/arrange.js';
 import { legacyFontFamilies } from '../../../domain/text/font-references.js';
 import {
   enablePublishing,
@@ -553,24 +554,15 @@ export function installPublishingControls(
         clearOverrides();
         return true;
       }
-      if (name === 'bring-front' || name === 'send-back') {
+      if (Object.hasOwn(ARRANGE_COMMANDS, name)) {
         mutate(
-          () => {
-            const ids = new Set(objects().map((b) => b.id));
-            let changed = true;
-            while (changed) {
-              changed = false;
-              for (const b of doc().blocks)
-                if (b.parentId && ids.has(b.parentId) && !ids.has(b.id)) {
-                  ids.add(b.id);
-                  changed = true;
-                }
-            }
-            const chosen = doc().blocks.filter((b) => ids.has(b.id)),
-              rest = doc().blocks.filter((b) => !ids.has(b.id));
-            doc().blocks = name === 'bring-front' ? [...rest, ...chosen] : [...chosen, ...rest];
-          },
-          name === 'bring-front' ? 'Bring to front' : 'Send to back',
+          () =>
+            arrangeObjects(
+              doc(),
+              objects().map((item) => item.id),
+              name,
+            ),
+          ARRANGE_COMMANDS[name].label,
         );
         return true;
       }

@@ -47,6 +47,34 @@ const portable = (req) => ({
 });
 
 test(
+  'literal tabs use half-inch stops with shared native caret and PDF geometry',
+  { skip: process.platform !== 'darwin' },
+  async (t) => {
+    const service = createTextComposition(await buildNativeText());
+    t.after(() => service.close());
+    const req = await request('A\tB\tC');
+    req.frames = [{ id: 'tabs', width: 200, height: 100 }];
+    const result = await service.compose(req),
+      line = result.layout.lines[0];
+    for (const [index, x] of [
+      [2, 36],
+      [4, 72],
+    ])
+      assert(
+        Math.abs(line.carets.find((caret) => caret.index === index).primary - x) < 0.001,
+        'Native tab did not reach its next half-inch stop',
+      );
+    assert.equal(result.layout.coveredLength, req.text.length);
+    assert.equal(
+      (
+        await PDFDocument.load(Buffer.from((await service.pdf(result.token)).data, 'base64'))
+      ).getPageCount(),
+      1,
+    );
+  },
+);
+
+test(
   'incremental Core Text paragraphs equal a cold reflow after edits, resizing and exact-face changes',
   { skip: process.platform !== 'darwin' },
   async (t) => {

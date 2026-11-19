@@ -12,6 +12,12 @@ The [native composition editor preview](native-composition-editor.md) now connec
 
 Installed font discovery and automatic vault font packaging are delivered for the desktop/shared Apple bridge, with CMU Serif as the new-text default. See [font portability](font-portability.md). Existing note typography is preserved; unsupported/oversized fonts, direct collection-file imports, glyph-fallback capture and physical iPhone/iPad verification remain scoped boundaries.
 
+## Native app behavior and command priorities
+
+User direction, 18 November: [milestone updates include the text-parity progress bar](indesign/progress.md). Preserve an overall native application feel: no app-wide browser Tab traversal or selectable UI labels, and eventually no browser-looking control styling, cursor/hover/focus/scroll/drop behavior or navigation leakage across desktop, browser and phone/tablet. This is a final interaction/appearance acceptance requirement; normal document text selection, native-like property/dialog field entry and accessibility remain required.
+
+[The native controls increment](native-editing-controls.md) implements ordinary text Tab, contextual Tab/Shift-Tab panel stashing, stable sibling arrangement commands/shortcuts, menu-owned Smart Guides, and a narrow page/zoom-only status strip. **Next at the paragraph stage:** custom left/right/center/decimal stops, right-indent Tab/Shift-Tab, leaders and repeated stops, then table-cell Tab navigation with structured text. **Geometry follow-up:** true point/grid/ruler-guide snapping and complete Illustrator Smart Guide categories, feedback and persistence. **Final UI pass:** comparative app-wide native behavior/styling audit at Mac and iPhone/iPad scale. These fit the existing programme; they do not replace the core composition priority.
+
 ## Delivered: object clipboard and shared text-style correction
 
 Native object copy/cut/paste now preserves selected frames, masks/children, rich source, styles, resource bytes and independent copied flows with undo/redo. Clipboard resources persist before objects are inserted; failed or stale operations preserve authored content. Inactive display and dragging consume the same flow-owned typography as editing and PDF, preventing old per-frame defaults from reviving italic/bold/size settings. See [text-flow.md](text-flow.md) and [verification](verification.md). Cross-frame selection/composition and full InDesign text-engine parity remain in the existing publishing scope.
