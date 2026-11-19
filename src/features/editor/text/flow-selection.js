@@ -209,19 +209,15 @@ export function installFlowSelection(
     return (state.edges ||= new Set(state.navigation.graphemeBoundaries));
   }
   function nativePaint(columnList, range, showing) {
-    nativeAnimation?.cancel();
-    nativeAnimation = null;
-    nativeOverlay.replaceChildren();
-    nativeOverlay.setAttribute(
-      'viewBox',
-      `0 0 ${Math.max(1, viewport.clientWidth)} ${Math.max(1, viewport.clientHeight)}`,
-    );
+    // Read all screen transforms before replacing the overlay. With no viewBox,
+    // one SVG unit is one CSS pixel at every viewport size.
     const inverse = nativeOverlay.getScreenCTM()?.inverse();
-    if (!inverse) {
-      onNativeCaret(null);
-      return;
-    }
+    const paths = document.createDocumentFragment();
+    let blinkingPath,
+      anchor = null,
+      anchorInfo;
     function paintPoints(screenPoints, caret = false, empty = false) {
+      if (!inverse) return;
       const points = screenPoints.map((point) => point.matrixTransform(inverse));
       if (!points.length) return;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -231,17 +227,8 @@ export function installFlowSelection(
       path.setAttribute('stroke', caret ? 'var(--ink, #252525)' : 'var(--selection, #4b80ff)');
       path.setAttribute('stroke-width', caret || empty ? '1' : '0');
       path.dataset.nativeSelection = caret ? 'caret' : 'range';
-      nativeOverlay.append(path);
-      if (caret && !matchMedia('(prefers-reduced-motion: reduce)').matches)
-        nativeAnimation = path.animate(
-          [
-            { opacity: 1, offset: 0 },
-            { opacity: 1, offset: 0.49 },
-            { opacity: 0, offset: 0.5 },
-            { opacity: 0, offset: 1 },
-          ],
-          { duration: 1000, iterations: Infinity },
-        );
+      paths.append(path);
+      if (caret) blinkingPath = path;
     }
     function polygon(column, rect, caret = false) {
       paintPoints(nativeRectScreenPoints(column, rect), caret, !rect.width);
@@ -264,18 +251,48 @@ export function installFlowSelection(
       caret = column && hasNativeColumn(column) && nativeCaretRect(column, range.focus, { hint });
     if (caret) {
       polygon(column, caret, true);
-      onNativeCaret(nativeRectScreenBounds(column, caret), { column, caret });
+      anchor = nativeRectScreenBounds(column, caret);
+      anchorInfo = { column, caret };
     } else if (column?.wrap) {
       const rect = wrappedCaretBounds(column, range.focus, layoutKey());
       paintPoints([new DOMPoint(rect.x, rect.y), new DOMPoint(rect.x, rect.y + rect.height)], true);
-      onNativeCaret(rect, { column, caret: range.focus });
-    } else onNativeCaret(null);
+      anchor = rect;
+      anchorInfo = { column, caret: range.focus };
+    }
+    onNativeCaret(anchor, anchorInfo);
+    nativeAnimation?.cancel();
+    nativeOverlay.replaceChildren(paths);
+    nativeAnimation =
+      blinkingPath && !matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? blinkingPath.animate(
+            [
+              { opacity: 1, offset: 0 },
+              { opacity: 1, offset: 0.49 },
+              { opacity: 0, offset: 0.5 },
+              { opacity: 0, offset: 1 },
+            ],
+            { duration: 1000, iterations: Infinity },
+          )
+        : null;
   }
   function sync({ force = false } = {}) {
     const root = input(),
       range = root && flow() && current(),
       showing = !!range && !range.collapsed && allowed();
     showRange(showing);
+    if (!showing && (!range || !allowed() || document.activeElement !== root)) {
+      if (painted) {
+        publish(owner, []);
+        fallback.replaceChildren();
+        nativeAnimation?.cancel();
+        nativeAnimation = null;
+        nativeOverlay.replaceChildren();
+        onNativeCaret(null);
+        painted = null;
+        paintedNative = false;
+      }
+      return range;
+    }
     const baseKey = [
         layoutKey(),
         showing,
@@ -303,14 +320,20 @@ export function installFlowSelection(
     )
       return range;
     const columnList = columns({ measureBounds: false }),
-      nativeColumns = columnList.filter(hasNativeColumn),
+      nativeColumns = columnList.filter((column) => {
+        if (!column.native) return false;
+        column.screenMatrix = column.element
+          .querySelector('svg[data-composed-text]')
+          ?.getScreenCTM();
+        return !!column.screenMatrix;
+      }),
       wrapColumns = columnList.filter((column) => column.wrap);
     const nativeKey = [...nativeColumns, ...wrapColumns].flatMap((column) => {
       if (column.wrap) {
         const r = column.element.getBoundingClientRect();
         return [column.element, r.x, r.y, r.width, r.height];
       }
-      const matrix = column.element.querySelector('svg[data-composed-text]')?.getScreenCTM();
+      const matrix = column.screenMatrix;
       return [
         column.native,
         column.element,

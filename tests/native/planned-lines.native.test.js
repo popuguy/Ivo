@@ -435,3 +435,99 @@ print(String(data: try JSONSerialization.data(withJSONObject: rows), encoding: .
     }
   },
 );
+
+test(
+  'incremental editor output is identical to full Core Text across edits and shifted source ranges',
+  mac,
+  async (t) => {
+    const { createInteractiveTextPort } =
+      await import('../../src/rendering/text/retained-geometry.js');
+    const service = await serviceFor(t),
+      messages = [];
+    let mismatch = false;
+    const port = createInteractiveTextPort({
+      async compose(input) {
+        messages.push(input);
+        const result = await service.compose(input);
+        if (mismatch && input.retainedLines?.length) {
+          mismatch = false;
+          result.layout.lines.find((line) => line.retainedGeometry).width += 1;
+        }
+        return result;
+      },
+    });
+    let resources;
+    async function compare(parts, options = {}) {
+      const req = await request(parts.map((s) => s + '\u2029').join(''));
+      resources ??= req.resources;
+      req.resources = resources;
+      // A real flow maps text and its virtual separator independently.
+      req.spans = req.paragraphs.flatMap(({ start, end }) => [
+        { kind: 'text', start, end: end - 1, logicalStart: start, logicalEnd: end - 1 },
+        { kind: 'paragraph', start: end - 1, end, logicalStart: end - 1, logicalEnd: end },
+      ]);
+      req.placements = req.paragraphs.map(({ end }, i) => ({
+        end,
+        frame: 0,
+        baseline: 18 + 18 * i,
+        left: 0,
+        width: 300,
+      }));
+      if (options.left) Object.assign(req.placements.at(-1), { left: 2, width: 298 });
+      if (options.style) req.runs[0].tracking = 10;
+      if (options.protocol) {
+        req.protocol = options.protocol;
+        req.runs[0].baselineShift = 1;
+        req.runs[0].horizontalScale = 103;
+        if (req.protocol === 5)
+          for (const p of req.paragraphs)
+            p.wordSpacing = { minimum: 80, desired: 115, maximum: 133 };
+      }
+      if (options.greedy) {
+        req.mode = 'greedy-geometry-proof';
+        delete req.placements;
+      }
+      const actual = await port.compose(req);
+      const expected = await service.compose(req);
+      assert.deepEqual(actual.layout, expected.layout);
+      assert.deepEqual(actual.diagnostics, expected.diagnostics);
+      assert.deepEqual(actual.vectors, expected.vectors);
+      assert.ok(actual.token);
+      return actual;
+    }
+    const paragraphs = ['Office filing', 'A second phrase', 'Shifted caret', 'A second phrase'];
+    await compare(paragraphs);
+    const start = messages.length;
+    const shifted = await compare(['The first paragraph changed', ...paragraphs.slice(1)]);
+    assert.ok(messages[start].retainedLines.some((line) => line.start > 0));
+    assert.equal(messages[start].resources[0].data, undefined);
+    const frozen = await service.pdf(shifted.token);
+    assert.equal((await PDFDocument.load(Buffer.from(frozen.data, 'base64'))).getPageCount(), 1);
+    await compare(paragraphs);
+    await compare([paragraphs[0], 'Edit in the middle', ...paragraphs.slice(2)]);
+    await compare([...paragraphs.slice(0, 3), 'Last paragraph edit']);
+    const copy = ['Collection', '“Prêt-à-porter” — café', 'Café and cafe\u0301…', 'Fall’s edit'];
+    await compare(copy);
+    const latinStart = messages.length;
+    await compare(['Révision', ...copy.slice(1)]);
+    assert.equal(messages[latinStart].retainedLines.length, 3);
+    await compare(paragraphs, { left: true });
+    await compare(paragraphs, { style: true });
+    for (const protocol of [4, 5]) {
+      await compare(paragraphs, { protocol });
+      const before = messages.length;
+      await compare(['Changed width', ...paragraphs.slice(1)], { protocol });
+      assert.ok(messages[before].retainedLines?.length);
+    }
+    await compare(paragraphs, { style: true });
+    await compare(paragraphs, { protocol: 4, greedy: true });
+    const greedyStart = messages.length;
+    await compare(['Alter early text', ...paragraphs.slice(1)], { protocol: 4, greedy: true });
+    assert.ok(messages[greedyStart].retainedLines?.length);
+    await compare(paragraphs, { style: true });
+    mismatch = true;
+    await compare(paragraphs, { style: true });
+    assert.equal(mismatch, false);
+    assert.equal(messages.at(-1).retainedLines, undefined);
+  },
+);

@@ -34,6 +34,21 @@ const sha = async (bytes) =>
     .map((n) => n.toString(16).padStart(2, '0'))
     .join('');
 
+// Conservative cost for LRU eviction. Serializing thousands of glyph/caret
+// records here would perform a second full transport on the input thread.
+function geometrySize(result) {
+  let bytes = 2048;
+  for (const vector of result.vectors || [])
+    bytes += 128 + 2 * (vector.id.length + vector.pathD.length);
+  for (const line of result.layout.lines) {
+    bytes += 1024 + (line.carets?.length || 0) * 384;
+    for (const run of line.runs || []) {
+      bytes += 512;
+      for (const glyph of run.glyphs) bytes += 512 + 64 * (glyph.sourceRanges?.length || 0);
+    }
+  }
+  return bytes;
+}
 /** A small per-port LRU survives immutable document snapshots without retaining font bytes. */
 function composeRequest(compose, request, wordSpacingPlan) {
   let cache = requestSessions.get(compose);
@@ -66,7 +81,7 @@ function composeRequest(compose, request, wordSpacingPlan) {
       validateResult(result, request);
       if (request.protocol === 5) validateWordSpacingResult(result, request, wordSpacingPlan);
       if (cache.entries.get(key) === entry) {
-        const cost = JSON.stringify(result).length * 2;
+        const cost = geometrySize(result);
         entry.cost += cost;
         cache.bytes += cost;
         trim();
@@ -429,14 +444,17 @@ function fragmentsFor(source, result, columns, flow, fragments, prefix) {
       .map((column) => {
         const lines = result.layout.lines.filter((line) => line.frame === column.id),
           start = logicalEnd,
-          nativeStart = nativeEnd;
+          nativeStart = nativeEnd,
+          paint = {};
         if (lines.length) nativeEnd = lines.at(-1).end;
         logicalEnd = nativeSourceBoundary(source, nativeEnd);
         return {
           ...column,
           start,
           end: logicalEnd,
+          paint,
           html: composedSVG(result, column, {
+            paint,
             text: source.text,
             styles: source.runs,
             links: source.links,
@@ -702,20 +720,8 @@ export async function composeNativeTextFlows(
       if (!appendTextFlowPage(projection, flow)) break;
       changed = true;
     }
-    const prefix =
-        'ivo-' +
-        (
-          await sha(
-            new TextEncoder().encode(
-              JSON.stringify([
-                flow.id,
-                request.sourceDigest,
-                request.runs,
-                request.resources.map((r) => r.digest),
-              ]),
-            ),
-          )
-        ).slice(0, 24),
+    // Outline IDs already include immutable face/size/transform identity.
+    const prefix = 'ivo-' + (await sha(new TextEncoder().encode(flow.id))).slice(0, 24),
       used = fragmentsFor(source, result, columns, flow, fragments, prefix),
       overset = result.layout.coveredLength < source.text.length;
     if (allowPages && trimTextFlowPages(projection, flow, Math.max(1, used))) {

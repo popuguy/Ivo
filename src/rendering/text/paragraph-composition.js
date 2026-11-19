@@ -127,7 +127,7 @@ export function createParagraphComposer(measure) {
     entry.decisions.set(key, { ...value, cacheBytes: cost });
     entry.bytes += cost;
     if (retained) bytes += cost;
-    while (entry.decisions.size > 4) {
+    while (entry.decisions.size > 128) {
       const [oldest, removed] = entry.decisions.entries().next().value;
       entry.decisions.delete(oldest);
       entry.bytes -= removed.cacheBytes;
@@ -397,7 +397,7 @@ export function createParagraphComposer(measure) {
             candidates: result.candidates,
             policy: result.policy,
           };
-          // Four exact widths per paragraph; decisions retain only source ends.
+          // Bounded decisions retain source ends across repeated frame positions.
           // Their storage is bounded separately (64 * 4 * 1023 ends at most).
           rememberDecision(entry, decisionKey, chosen);
         }

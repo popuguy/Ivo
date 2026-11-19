@@ -205,7 +205,7 @@ export async function verifyCharacterPDF({ renderPDF, root, output, profile, nat
           uses:svg.querySelectorAll('use').length,
           browserInk:document.querySelectorAll('[data-flow-frame] [data-flow-text]').length,
           glyphs:${JSON.stringify(words.map(({ word, start }) => ({ word, start })))}.map(({word,start})=>{
-            const use=svg.querySelector('use[data-composed-index="'+start+'"]'), box=use.getBBox(), matrix=use.transform.baseVal.consolidate().matrix;
+            const use=[...svg.querySelectorAll('use[data-glyph-offset]')].find(node=>Number(node.parentElement.dataset.lineStart)+Number(node.dataset.glyphOffset)===start), box=use.getBBox(), matrix=use.transform.baseVal.consolidate().matrix;
             return {word,start,box:{x:box.x,y:box.y,width:box.width,height:box.height},matrix:{a:matrix.a,b:matrix.b,c:matrix.c,d:matrix.d,e:matrix.e,f:matrix.f}};
           }),
           decorations:[...svg.querySelectorAll('rect')].map(rect=>({

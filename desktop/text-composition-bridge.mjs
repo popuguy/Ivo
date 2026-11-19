@@ -13,6 +13,7 @@ const fields = {
     'runs',
     'paragraphs',
     'placements',
+    'retainedLines',
     'resources',
     'frames',
     'allowFallback',
@@ -52,6 +53,7 @@ const fields = {
     'wordSpacing',
   ],
   wordSpacing: ['minimum', 'desired', 'maximum'],
+  retainedLine: ['start', 'end', 'availableWidth', 'originX', 'width'],
   placement: ['end', 'frame', 'baseline', 'left', 'width'],
   features: ['dlig', 'smcp', 'onum', 'tnum', 'zero', 'frac', 'ordn', 'salt'],
 };
@@ -82,6 +84,13 @@ export function validateCompositionRequest(request) {
       !['measure-lines-proof', 'planned-lines-proof'].includes(request.mode))
   )
     throw Error('Invalid text composition paragraph protocol.');
+  if (
+    request.retainedLines !== undefined &&
+    (request.protocol < 2 ||
+      request.allowFallback ||
+      !['planned-lines-proof', 'greedy-geometry-proof'].includes(request.mode))
+  )
+    throw Error('Invalid retained geometry request.');
   const arrays = [
     ['spans', 30000, 'span'],
     ['runs', 10000, 'run'],
@@ -89,6 +98,7 @@ export function validateCompositionRequest(request) {
     ['frames', 128, 'frame'],
     ['paragraphs', 10000, 'paragraph'],
     ['placements', 2048, 'placement'],
+    ['retainedLines', 4096, 'retainedLine'],
     ['candidates', 4096, 'candidate'],
     ['breaks', 2048, null],
   ];
@@ -104,14 +114,32 @@ export function validateCompositionRequest(request) {
   for (const [key, value] of Object.entries(request)) if (!arrayFields.has(key)) atom(value);
   for (const [name, maximum, shape] of arrays) {
     const value = request[name];
-    if (value === undefined && ['candidates', 'breaks', 'paragraphs', 'placements'].includes(name))
+    if (
+      value === undefined &&
+      ['candidates', 'breaks', 'paragraphs', 'placements', 'retainedLines'].includes(name)
+    )
       continue;
     if (!Array.isArray(value) || value.length > maximum)
       throw Error('Invalid text composition ' + name + '.');
+    const retainedStarts = name === 'retainedLines' ? new Set() : null;
     for (const row of value) {
       if (!shape) atom(row);
       else {
         record(row, fields[shape]);
+        if (retainedStarts) {
+          if (
+            !Number.isSafeInteger(row.start) ||
+            !Number.isSafeInteger(row.end) ||
+            row.start < 0 ||
+            row.end <= row.start ||
+            row.end > request.text.length ||
+            retainedStarts.has(row.start) ||
+            ![row.originX, row.width, row.availableWidth].every(Number.isFinite) ||
+            row.availableWidth <= 0
+          )
+            throw Error('Invalid retained geometry range.');
+          retainedStarts.add(row.start);
+        }
         if (shape === 'run') {
           for (const [key, minimum, maximum] of [
             ['baselineShift', -2000, 2000],

@@ -186,6 +186,21 @@ try {
   assert(!editor.getState().selection.length, 'Locked content remained editable');
   host.querySelector(`[data-layer-id="${added.id}"][data-layer-toggle="locked"]`).click();
   pick();
+  const block = doc.blocks[0],
+    objectLock = host.querySelector(`[data-object-toggle="locked"][data-object-id="${block.id}"]`),
+    pageNode = host.querySelector('[data-page]');
+  objectLock.click();
+  assert(
+    block.locked && !editor.getState().selection.length && pageNode.isConnected,
+    'Locking an object must deselect it while preserving its page',
+  );
+  const unlock = host.querySelector(`[data-object-toggle="locked"][data-object-id="${block.id}"]`);
+  unlock.click();
+  assert(
+    !block.locked && unlock.isConnected && unlock.getAttribute('aria-label') === 'Lock object',
+    'Unlock must update the same control and restore editability',
+  );
+  pick();
   const beforePanels = JSON.stringify(doc),
     tab = host.querySelector('[data-canvas-panel="layers"]'),
     group = tab.closest('[data-context-group]');

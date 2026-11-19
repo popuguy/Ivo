@@ -89,7 +89,8 @@
     "test:native-controls": "electron tests/runtime/native-controls/runner.mjs",
     "pretest:native-controls": "node scripts/reference-art.mjs",
     "test:text-wrap": "electron tests/runtime/text-wrap/runner.mjs",
-    "pretest:text-wrap": "node scripts/reference-art.mjs"
+    "pretest:text-wrap": "node scripts/reference-art.mjs",
+    "test:responsiveness": "npm run build && electron tests/runtime/responsiveness/runner.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

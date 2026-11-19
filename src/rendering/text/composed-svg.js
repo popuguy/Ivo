@@ -1,6 +1,8 @@
+import { glyphGeometryIdentity } from './retained-geometry.js';
 import { escapeHTML as esc } from '../../shared/html/sanitize.js';
 import { characterInkBox, characterDecorationY } from '../../domain/text/character-geometry.js';
 import { runExtent, runCaret } from '../../domain/text/run-geometry.js';
+const plainInk = new WeakMap();
 const checked = new WeakMap(),
   identifier = /^[A-Za-z][A-Za-z0-9_-]{0,159}$/,
   pathCharacters = /^[MmLlQqCcZzHhVvSsTtAa0-9eE+.,\s-]*$/,
@@ -80,13 +82,11 @@ function styleRanges(styles, length) {
 export function composedSVG(
   result,
   frame,
-  { text = '', styles = [], links = [], label = 'Document text', idPrefix = 'ivo' } = {},
+  { text = '', styles = [], links = [], label = 'Document text', idPrefix = 'ivo', paint } = {},
 ) {
   const vectors = vectorsFor(result),
     used = new Set(),
-    ink = [],
-    decorations = [],
-    linkRegions = [],
+    planes = [[], [], []],
     lines = result.layout.lines.filter((line) => line.frame === frame.id),
     sourceStyles = styleRanges(styles, text.length);
   if (
@@ -96,9 +96,37 @@ export function composedSVG(
     !identifier.test(idPrefix)
   )
     throw Error('Invalid composed frame geometry.');
+  // Paint-only formatting and links have their own source ranges. Only reuse a
+  // plain row when its native glyphs, horizontal placement and baseline agree.
+  const plain =
+    paint &&
+    !links.length &&
+    !sourceStyles.some(
+      (style) =>
+        style.underline || style.strikethrough || (style.highlight && style.highlight !== 'none'),
+    );
   for (const line of lines) {
+    const decorations = [],
+      ink = [],
+      linkRegions = [];
     if (![line.baseline, line.ascent, line.descent].every(finite))
       throw Error('Invalid composed line geometry.');
+    const identity =
+      plain && line.runs.every((run) => run.textColor) && glyphGeometryIdentity(line.runs);
+    const cached = identity && plainInk.get(identity);
+    if (
+      cached &&
+      cached.prefix === idPrefix &&
+      cached.baseline === line.baseline &&
+      cached.vectors.every((id) => vectors.has(id))
+    ) {
+      planes[0].push('');
+      planes[1].push(cached.ink);
+      planes[2].push('');
+      for (const id of cached.vectors) used.add(id);
+      continue;
+    }
+    const rowVectors = identity && new Set();
     const carets = new Map(),
       geometry = new Map();
     for (const caret of line.carets || [])
@@ -164,8 +192,9 @@ export function composedSVG(
         if (!vectors.has(glyph.vector) || !glyph.position.every(finite))
           throw Error('Invalid composed glyph reference.');
         used.add(glyph.vector);
+        if (rowVectors) rowVectors.add(glyph.vector);
         ink.push(
-          `<use data-composed-index="${glyph.index}" data-composed-end="${glyph.end}" href="#${idPrefix}-${glyph.vector}" transform="translate(${glyph.position[0]} ${line.baseline - glyph.position[1]}) scale(1 -1)" fill="${fill}"/>`,
+          `<use data-glyph-offset="${glyph.index - line.start}" href="#${idPrefix}-${glyph.vector}" transform="translate(${glyph.position[0]} ${line.baseline - glyph.position[1]}) scale(1 -1)" fill="${fill}"/>`,
         );
       }
       for (const span of spans)
@@ -208,12 +237,37 @@ export function composedSVG(
           `<a ${attributes}><title>${esc(text.slice(link.start, link.end))}</title>${regions.join('')}</a>`,
         );
     }
+    planes[0].push(decorations.join(''));
+    const rowInk = ink.join('');
+    if (identity)
+      plainInk.set(identity, {
+        prefix: idPrefix,
+        baseline: line.baseline,
+        vectors: [...rowVectors],
+        ink: rowInk,
+      });
+    planes[1].push(rowInk);
+    planes[2].push(linkRegions.join(''));
   }
-  const definitions = [...used]
-    .map((id) => `<path id="${idPrefix}-${id}" d="${vectors.get(id)}"/>`)
-    .join('');
+  const outlines = new Map([...used].map((id) => [idPrefix + '-' + id, vectors.get(id)]));
+  const definitions = [...outlines].map(([id, d]) => `<path id="${id}" d="${d}"/>`).join('');
   const token = /^ct1-[a-f0-9]{64}$/.test(result.token || '')
     ? ` data-composition-token="${result.token}"`
     : '';
-  return `<svg data-composed-text="true"${token} class="composed-text" xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}" role="img" aria-label="${esc(label)}"><defs>${definitions}</defs>${decorations.join('')}${ink.join('')}${linkRegions.join('')}</svg>`;
+  const starts = lines.map((line) => line.start);
+  if (paint) Object.assign(paint, { outlines, planes, starts, token: result.token, label });
+  const groups = planes
+    .map(
+      (rows, plane) =>
+        '<g>' +
+        rows
+          .map(
+            (row, i) =>
+              (plane === 1 ? '<g data-line-start="' + starts[i] + '">' : '<g>') + row + '</g>',
+          )
+          .join('') +
+        '</g>',
+    )
+    .join('');
+  return `<svg data-composed-text="true"${token} class="composed-text" xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}" role="img" aria-label="${esc(label)}"><defs>${definitions}</defs>${groups}</svg>`;
 }

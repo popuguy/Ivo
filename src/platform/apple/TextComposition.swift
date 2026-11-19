@@ -144,6 +144,13 @@ public final class TextCompositionEngine {
     let left: Double
     let width: Double
   }
+  struct RetainedLine: Decodable {
+    let start: Int
+    let end: Int
+    let availableWidth: Double
+    let originX: Double
+    let width: Double
+  }
   struct Request: Decodable {
     let `protocol`: Int
     let mode: String
@@ -162,6 +169,7 @@ public final class TextCompositionEngine {
     let includeVectors: Bool?
     let paragraphs: [Paragraph]?
     let placements: [Placement]?
+    let retainedLines: [RetainedLine]?
   }
   struct FrozenLine {
     let page: Int
@@ -216,6 +224,16 @@ public final class TextCompositionEngine {
     try require(
       request.placements == nil || (request.protocol >= 3 && request.mode == "planned-lines-proof"),
       "Placements require the planned-lines policy")
+    if let retained = request.retainedLines {
+      try require(
+        request.protocol >= 2 && !request.allowFallback
+          && ["planned-lines-proof", "greedy-geometry-proof"].contains(request.mode)
+          && retained.count <= 4096 && Set(retained.map { $0.start }).count == retained.count
+          && retained.allSatisfy {
+            $0.start >= 0 && $0.end > $0.start && $0.end <= length && $0.availableWidth > 0
+              && $0.availableWidth.isFinite && $0.originX.isFinite && $0.width.isFinite
+          }, "Invalid retained geometry ranges")
+    }
     try require(!request.id.isEmpty && request.id.utf8.count <= 120, "Invalid source identity")
     try require(
       length > 0 && length <= 100_000 && request.logicalLength >= 0
@@ -966,6 +984,7 @@ public final class TextCompositionEngine {
     var diagnostics = Set<String>()
     let known = Set(request.resources.map { $0.postscript })
     var paragraphIndex = 0
+    let retained = Dictionary(uniqueKeysWithValues: (request.retainedLines ?? []).map { ($0.start, $0) })
     for (page, frame) in request.frames.enumerated() {
       var previousBaseline: Double? = nil
       let frameStart = frozen.count
@@ -1175,7 +1194,19 @@ public final class TextCompositionEngine {
             "Explicit line exceeds its indented line area")
         }
         var runRows: [[String: Any]] = []
-        for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+        let reuseDetails = retained[position].map {
+          $0.end == end && $0.availableWidth == availableWidth && $0.originX == originX
+            && $0.width == width
+        } ?? false
+        let nativeRuns = CTLineGetGlyphRuns(line) as! [CTRun]
+        if reuseDetails {
+          // Freeze the actual new CTLine for PDF. The editor already owns the
+          // detail arrays for this paragraph, font identity and horizontal area.
+          try validateFallback(line, request: request)
+          glyphBudget += nativeRuns.reduce(0) { $0 + CTRunGetGlyphCount($1) }
+          try require(glyphBudget <= 100_000, "Glyph budget exceeded")
+        }
+        for run in reuseDetails ? [] : nativeRuns {
           let attrs = CTRunGetAttributes(run) as NSDictionary
           let font = attrs[kCTFontAttributeName] as! CTFont
           let name = CTFontCopyPostScriptName(font) as String
@@ -1266,7 +1297,7 @@ public final class TextCompositionEngine {
         try require(caretBudget <= 110_000, "Caret budget exceeded")
         var spaceCursor = 0
         var spaceDelta = 0.0
-        let carets: [[String: Any]] = lineBoundaries.map { index in
+        let carets: [[String: Any]] = reuseDetails ? [] : lineBoundaries.map { index in
           var secondary = CGFloat.zero
           let boundary = min(index, contentEnd)
           while spaceCursor < wordSpaceChanges.count
@@ -1327,6 +1358,7 @@ public final class TextCompositionEngine {
           row["paragraphStart"] = paragraph!.start
           row["paragraphEnd"] = paragraph!.end
         }
+        if reuseDetails { row["retainedGeometry"] = true }
         if placement != nil { row["placementIndex"] = output.count }
         if let character = character {
           row["inkAscent"] = Double(character.inkAscent)

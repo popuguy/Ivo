@@ -154,7 +154,7 @@ function svg(column) {
   return column.svg || column.element?.querySelector('svg[data-composed-text]');
 }
 function matrix(column) {
-  return svg(column)?.getScreenCTM?.() || null;
+  return column.screenMatrix ?? svg(column)?.getScreenCTM?.() ?? null;
 }
 export function hasNativeColumn(column) {
   return !!data(column) && !!matrix(column);

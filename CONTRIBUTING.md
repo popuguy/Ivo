@@ -56,6 +56,10 @@ Runtime runners create temporary vaults/profiles and never use a personal vault.
 
 Keep the user's laptop usable while developing. Prefer command-line workers and `test:background`, which runs seventeen selected component groups sequentially with hidden offscreen windows, no native window focus, and macOS activation prohibited for those test processes. The helper fails the run if a test window becomes visible or focused. Renderer-directed input still exercises the real editor/bridge/worker. The ordinary runtime commands retain their foreground behavior; this subset does not qualify physical input, native menus, the system clipboard, production-window activation or devices. Give a heads-up before necessary foreground checks, and do not launch review apps merely to show progress. Global settings and personal app sessions remain untouched.
 
+### Measure desktop interaction latency
+
+Run `npm run test:responsiveness` in an idle Mac desktop session. It opens a normal Ivo window with a temporary vault, measures submitted input through the first matching window frame, and checks that rapid edits reach disk. The default is Paragraph Composer. Set `IVO_RESPONSIVENESS_COMPOSER=single-line` or `browser` to exercise the other modes. Set `IVO_LATENCY_BUDGET=1` for reference-Mac median limits of 25 ms for Layers locks, 80 ms for fresh middle-of-paragraph edits and 65 ms for the repeated last-page edit. Review the full distribution for slow inputs. Run the modes sequentially with other suites idle.
+
 ## Build and artwork
 
 Served builds retain debuggable ESM files. esbuild produces the standalone app and its worker; do not add a hand-maintained module list or rewrite import syntax. The offline cache is generated from the shipped source/assets with a content digest. Add normal imports and assets; no manual cache list update is needed.

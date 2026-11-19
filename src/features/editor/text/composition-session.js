@@ -2,11 +2,11 @@
 export function compositionLayoutKey(doc) {
   return JSON.stringify([
     doc.textFlows || [],
-    doc.blocks,
+    doc.blocks.map(({ locked: _locked, ...geometry }) => geometry),
     doc.pages,
     doc.publishing?.paragraphStyles,
     doc.publishing?.characterStyles,
-    doc.publishing?.layers,
+    doc.publishing?.layers?.map(({ locked: _locked, ...geometry }) => geometry),
     doc.publishing?.parents,
     doc.textWrapPreferences,
   ]);

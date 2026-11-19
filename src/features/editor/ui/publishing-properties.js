@@ -144,6 +144,12 @@ export function frameProperties(item) {
     )}${frameField('Minimum first baseline · pt', 'minimumFirstBaseline', f.minimumFirstBaseline || 0)}</details>`,
   );
 }
+const lockIcons = () =>
+  '<span class="layer-lock-open">' +
+  icon('unlock') +
+  '</span><span class="layer-lock-closed">' +
+  icon('lock') +
+  '</span>';
 export function layersContent(doc, state, selected, editing) {
   const layers = layersFor(doc),
     disabled = editing ? '' : 'disabled';
@@ -151,14 +157,14 @@ export function layersContent(doc, state, selected, editing) {
     .reverse()
     .map(
       (layer) =>
-        `<div class="publishing-layer ${state.activeLayer === layer.id ? 'active' : ''}" data-layer-row="${layer.id}" draggable="${editing}"><div class="layer-heading"><button data-layer-toggle="visible" data-layer-id="${layer.id}" aria-label="${layer.visible ? 'Hide' : 'Show'} ${esc(layer.name)}" data-tooltip="Toggle visibility" ${disabled}>${icon(layer.visible ? 'eye' : 'eye-off')}</button><button data-layer-toggle="locked" data-layer-id="${layer.id}" aria-label="${layer.locked ? 'Unlock' : 'Lock'} ${esc(layer.name)}" data-tooltip="Toggle lock" ${disabled}>${icon(layer.locked ? 'lock' : 'unlock')}</button><button data-layer-select="${layer.id}" class="layer-name" style="--layer-color:${layer.color}">${esc(layer.name)}</button><button data-layer-move="${layer.id}" aria-label="Move selection to ${esc(layer.name)}" data-tooltip="Move selection to this layer" ${selected.length && editing ? '' : 'disabled'}>▪</button></div><div role="group">${[
+        `<div class="publishing-layer ${state.activeLayer === layer.id ? 'active' : ''}" data-layer-row="${layer.id}" draggable="${editing}"><div class="layer-heading"><button data-layer-toggle="visible" data-layer-id="${layer.id}" aria-label="${layer.visible ? 'Hide' : 'Show'} ${esc(layer.name)}" data-tooltip="Toggle visibility" ${disabled}>${icon(layer.visible ? 'eye' : 'eye-off')}</button><button class="layer-lock" aria-pressed="${!!layer.locked}" data-layer-toggle="locked" data-layer-id="${layer.id}" aria-label="${layer.locked ? 'Unlock' : 'Lock'} ${esc(layer.name)}" data-tooltip="Toggle lock" ${disabled}>${lockIcons()}</button><button data-layer-select="${layer.id}" class="layer-name" style="--layer-color:${layer.color}">${esc(layer.name)}</button><button data-layer-move="${layer.id}" aria-label="Move selection to ${esc(layer.name)}" data-tooltip="Move selection to this layer" ${selected.length && editing ? '' : 'disabled'}>▪</button></div><div role="group">${[
           ...doc.blocks,
         ]
           .reverse()
           .filter((b) => !b.parentId && layerFor(doc, b).id === layer.id)
           .map(
             (b) =>
-              `<div class="layer-object ${selected.some((s) => s.id === b.id) ? 'selected' : ''}"><button data-object-toggle="hidden" data-object-id="${b.id}" aria-label="${b.hidden ? 'Show' : 'Hide'} object" ${disabled}>${icon(b.hidden ? 'eye-off' : 'eye')}</button><button data-object-toggle="locked" data-object-id="${b.id}" aria-label="${b.locked ? 'Unlock' : 'Lock'} object" ${disabled}>${icon(b.locked ? 'lock' : 'unlock')}</button><button data-layer-object="${b.id}">${esc(b.name || b.type[0].toUpperCase() + b.type.slice(1))}</button></div>`,
+              `<div class="layer-object ${selected.some((s) => s.id === b.id) ? 'selected' : ''}"><button data-object-toggle="hidden" data-object-id="${b.id}" aria-label="${b.hidden ? 'Show' : 'Hide'} object" ${disabled}>${icon(b.hidden ? 'eye-off' : 'eye')}</button><button class="layer-lock" aria-pressed="${!!b.locked}" data-object-toggle="locked" data-object-id="${b.id}" aria-label="${b.locked ? 'Unlock' : 'Lock'} object" ${disabled}>${lockIcons()}</button><button data-layer-object="${b.id}">${esc(b.name || b.type[0].toUpperCase() + b.type.slice(1))}</button></div>`,
           )
           .join('')}</div></div>`,
     )

@@ -187,6 +187,7 @@ export function installWorkspacePanels(
   function select(kind) {
     const group = groupFor(kind);
     if (!group) return;
+    if (selectedGroup === group.id && group.active === kind) return;
     selectedGroup = group.id;
     group.active = kind;
     onSelect(kind);
@@ -735,6 +736,7 @@ export function installWorkspacePanels(
       editor.classList.add('show-properties');
       apply();
       store();
+      onRender();
     },
     reset,
     getState: () => structuredClone(saved),

@@ -28,6 +28,8 @@ export function createContextualBar(
   const controller = new AbortController();
   let token = '',
     drag = null,
+    viewportWidth = 0,
+    viewportHeight = 0,
     width = 600,
     height = 35,
     lastRect = null,
@@ -40,8 +42,10 @@ export function createContextualBar(
   const geometry = new ResizeObserver(() => {
     const a = viewport.getBoundingClientRect(),
       b = editor.getBoundingClientRect();
+    viewportWidth = viewport.clientWidth;
+    viewportHeight = viewport.clientHeight;
     origin = { x: a.left - b.left, y: a.top - b.top };
-    bar.style.maxWidth = Math.max(80, viewport.clientWidth - 16) + 'px';
+    bar.style.maxWidth = Math.max(80, viewportWidth - 16) + 'px';
     layout();
   });
   geometry.observe(viewport);
@@ -142,10 +146,10 @@ export function createContextualBar(
     const offset = state.contextBarOffset || { x: 0, y: 0 },
       selection = lastRect;
     if (!selection) return;
-    const x = Math.max(4, Math.min(viewport.clientWidth - width - 8, selection.x + offset.x));
+    const x = Math.max(4, Math.min(viewportWidth - width - 8, selection.x + offset.x));
     const y = Math.max(
       4,
-      Math.min(viewport.clientHeight - height - 8, selection.y + selection.h + 12 + offset.y),
+      Math.min(viewportHeight - height - 8, selection.y + selection.h + 12 + offset.y),
     );
     bar.style.transform = `translate3d(${origin.x + x}px,${origin.y + y}px,0)`;
   }

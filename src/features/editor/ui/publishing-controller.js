@@ -436,23 +436,31 @@ export function installPublishingControls(
         return;
       }
       if (t.dataset.layerToggle) {
-        mutate(() => {
-          const old = currentLayer(),
-            p = enablePublishing(doc()),
-            layer =
-              p.layers.find((l) => l.id === t.dataset.layerId) ||
-              p.layers.find((l) => l.name === old.name);
-          layer[t.dataset.layerToggle] = !layer[t.dataset.layerToggle];
-          state.activeLayer = layer.id;
-        }, 'Layer ' + t.dataset.layerToggle);
+        mutate(
+          () => {
+            const old = currentLayer(),
+              p = enablePublishing(doc()),
+              layer =
+                p.layers.find((l) => l.id === t.dataset.layerId) ||
+                p.layers.find((l) => l.name === old.name);
+            layer[t.dataset.layerToggle] = !layer[t.dataset.layerToggle];
+            state.activeLayer = layer.id;
+          },
+          'Layer ' + t.dataset.layerToggle,
+          t.dataset.layerToggle === 'locked' ? t : null,
+        );
         return;
       }
       if (t.dataset.objectToggle) {
-        mutate(() => {
-          enablePublishing(doc());
-          const item = doc().blocks.find((b) => b.id === t.dataset.objectId);
-          item[t.dataset.objectToggle] = !item[t.dataset.objectToggle];
-        }, 'Object ' + t.dataset.objectToggle);
+        mutate(
+          () => {
+            enablePublishing(doc());
+            const item = doc().blocks.find((b) => b.id === t.dataset.objectId);
+            item[t.dataset.objectToggle] = !item[t.dataset.objectToggle];
+          },
+          'Object ' + t.dataset.objectToggle,
+          t.dataset.objectToggle === 'locked' ? t : null,
+        );
         return;
       }
       if (t.dataset.layerMove) {
@@ -572,7 +580,26 @@ export function installPublishingControls(
       .catch((error) => notify?.(error.message))
       .finally(() => fontPending--);
   });
+  let pressedLock = false;
+  listen(
+    editor,
+    'pointerdown',
+    (event) => {
+      pressedLock = !!event.target.closest('.layer-lock');
+    },
+    { capture: true },
+  );
+  listen(editor, 'pointerup', () => {
+    pressedLock = false;
+  });
+  listen(editor, 'pointercancel', () => {
+    pressedLock = false;
+  });
   listen(editor, 'dragstart', (event) => {
+    if (pressedLock && event.target.closest('[data-layer-row]')) {
+      event.preventDefault();
+      return;
+    }
     const layer = event.target.closest('[data-layer-row]');
     if (!layer || !allowed()) return;
     draggedLayer = layer.dataset.layerRow;

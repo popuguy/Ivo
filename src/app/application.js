@@ -1,3 +1,4 @@
+import { createInteractiveTextPort } from '../rendering/text/retained-geometry.js';
 import { ARRANGE_COMMANDS } from '../domain/documents/arrange.js';
 import { editorMenuState } from '../domain/workspace/editor-commands.js';
 import { handleFieldTab } from '../shared/ui/keyboard-fields.js';
@@ -243,6 +244,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     pendingTabRestore = null;
     workspace = nextWorkspace;
     applyChrome(saved.chrome);
+    root.classList.remove('workspace-mounted');
     root.innerHTML = '';
     lastWorkspace = JSON.stringify(nextWorkspace);
     adoptTab();
@@ -644,6 +646,9 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   }
   function ensureShell() {
     if (root.querySelector('.workspace-layout')) return;
+    // The shell owns its mode. A relational selector on #app would invalidate
+    // the entire workspace whenever a caret or glyph entered the document.
+    root.classList.add('workspace-mounted');
     root.innerHTML = `${workspaceViews.windowHeader()}${ribbon()}${sidebar()}<div class="app-main page-workspace"><main class="workspace-layout" aria-label="Document workspace"></main></div>`;
     sidebarController?.destroy();
     sidebarController = installSidebar(root, {
@@ -801,7 +806,9 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         fonts: () => [...assets.values()].filter((asset) => asset.font),
         assets: () => [...assets.values()],
         systemFonts: () => fontLibrary?.rows || [],
-        textComposition: globalThis.ivoNative?.textComposition || globalThis.ivoTextComposition,
+        textComposition: createInteractiveTextPort(
+          globalThis.ivoNative?.textComposition || globalThis.ivoTextComposition,
+        ),
         refreshSystemFonts: async () => {
           await fontLibrary.load(true);
           for (const other of panes.values()) other.canvas?.refreshFonts();
@@ -1200,6 +1207,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   async function renderVaultManager() {
     const entries = await globalThis.ivoNative.vaults.list();
     document.title = 'Ivo vaults';
+    root.classList.remove('workspace-mounted');
     root.innerHTML = `<main class="vault-manager"><aside><h1>Vaults</h1><div class="vault-list">${entries.map((entry) => `<div class="vault-list-row"><button data-vault-open="${esc(entry.id)}"><strong>${esc(entry.name)}</strong><span>${esc(entry.parent)}</span>${entry.open ? '<small>Open</small>' : ''}</button><button class="icon-button" data-vault-forget="${esc(entry.id)}" ${entry.open ? 'disabled' : ''} aria-label="Remove ${esc(entry.name)} from list" title="Remove from list. Files stay in their folder.">${icon('close')}</button></div>`).join('') || '<p>No vaults added.</p>'}</div></aside><section><div><h2>Create new vault</h2><p>Create an Ivo vault in a folder you choose.</p>${button('vault-create', 'Create')}</div><div><h2>Open folder as vault</h2><p>Open an existing Ivo vault, or initialize an empty folder.</p>${button('vault-choose', 'Open')}</div></section></main>`;
   }
   async function vaultAction(name, id) {
@@ -2607,6 +2615,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
           layoutController = null;
           sidebarController?.destroy();
           sidebarController = null;
+          root.classList.remove('workspace-mounted');
           root.innerHTML = '';
           canvasHandle = null;
           documentSession.clearLegacy();
@@ -3037,6 +3046,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       layoutController?.destroy();
       sidebarController?.destroy();
       root.inert = false;
+      root.classList.remove('workspace-mounted');
       root.innerHTML = `<main class="startup-error" role="alert"><h1>Unable to open vault</h1><p>${esc(error.message)}</p><p>Your vault files have been left in place.</p><button type="button" data-retry-startup>Retry</button></main>`;
       root.querySelector('[data-retry-startup]').addEventListener('click', () => location.reload());
       await presentStartup(root, { failed: true }).catch(() => {});

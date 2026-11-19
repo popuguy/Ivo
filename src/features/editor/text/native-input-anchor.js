@@ -63,7 +63,7 @@ export function createNativeInputAnchor(
     x = y = 0;
     pending = null;
   }
-  function update(target) {
+  function update(target, { measure = true } = {}) {
     if (!alive || !allowed()) return { applied: false, reason: 'inactive-owner' };
     if (!target || !['x', 'y', 'height'].every((key) => Number.isFinite(target[key]))) {
       reset();
@@ -90,7 +90,7 @@ export function createNativeInputAnchor(
       y += delta.y;
       root.style.translate = `${x}px ${y}px`;
     }
-    const measured = caretBounds(root);
+    const measured = measure ? caretBounds(root) : null;
     return {
       applied: true,
       source,

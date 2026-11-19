@@ -313,6 +313,23 @@
   min-width: 21px;
   text-align: left;
 }
+/* Preview the outcome on press. The ordinary click still owns the undoable edit,
+   so dragging outside before release cancels it. */
+.layer-lock > span {
+  display: none;
+}
+.layer-lock[aria-pressed='false'] > .layer-lock-open,
+.layer-lock[aria-pressed='true'] > .layer-lock-closed {
+  display: inline;
+}
+.layer-lock[aria-pressed='false']:enabled:active:hover > .layer-lock-open,
+.layer-lock[aria-pressed='true']:enabled:active:hover > .layer-lock-closed {
+  display: none;
+}
+.layer-lock[aria-pressed='false']:enabled:active:hover > .layer-lock-closed,
+.layer-lock[aria-pressed='true']:enabled:active:hover > .layer-lock-open {
+  display: inline;
+}
 .layer-heading .layer-name {
   flex: 1;
   padding-left: 9px;

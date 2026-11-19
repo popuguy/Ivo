@@ -165,7 +165,7 @@ export async function verifyWordSpacingPDF({
             nativeFrames:document.querySelectorAll('svg[data-composed-text]').length,
             browserInk:document.querySelectorAll('[data-flow-frame] [data-flow-text]').length,
             glyphs:${JSON.stringify(words.map(({ start }) => start))}.map(start=>{
-              const use=svg.querySelector('use[data-composed-index="'+start+'"]'), matrix=use.transform.baseVal.consolidate().matrix, box=use.getBBox();
+              const use=[...svg.querySelectorAll('use[data-glyph-offset]')].find(node=>Number(node.parentElement.dataset.lineStart)+Number(node.dataset.glyphOffset)===start), matrix=use.transform.baseVal.consolidate().matrix, box=use.getBBox();
               return {start,x:matrix.e,y:matrix.f,a:matrix.a,d:matrix.d,width:box.width,height:box.height};
             })};
         })()`);

@@ -167,7 +167,9 @@ export async function verifyNativeCharacterEditing({
   function wordGeometry(word) {
     const value = nativeWord(word),
       svg = host.querySelector('svg[data-composed-text]'),
-      glyph = svg.querySelector(`use[data-composed-index="${value.glyphs[0].index}"]`),
+      glyph = svg.querySelector(
+        `[data-line-start="${value.line.start}"] use[data-glyph-offset="${value.glyphs[0].index - value.line.start}"]`,
+      ),
       box = glyph?.getBBox(),
       matrix = glyph?.transform.baseVal.consolidate()?.matrix,
       first = value.line.carets.find((caret) => caret.index === value.start),

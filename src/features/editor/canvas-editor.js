@@ -1,3 +1,4 @@
+import { patchComposedFrame } from './text/composed-frame.js';
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
 import { textClipboardHTML } from './text/clipboard.js';
 import { ensureTextWrapFlows } from '../../domain/documents/text-wrap.js';
@@ -186,7 +187,8 @@ export function mountCanvasEditor(host, options) {
     flowPreviewDirty = true,
     threadFrom = null,
     sceneRevision = 0;
-  const flowRenderCache = new Map();
+  const flowRenderCache = new Map(),
+    panelHTML = new WeakMap();
   let alive = true,
     raf = 0,
     gesture = null,
@@ -413,16 +415,21 @@ export function mountCanvasEditor(host, options) {
     renderPanel();
     renderSelection(true);
   }
-  function mutate(callback, label = 'Edit') {
+  function mutate(callback, label = 'Edit', lockButton = null) {
     finishGesture();
     const viewBefore = captureView();
-    endTextEditing();
+    if (activeTextId) endTextEditing();
     const before = structuredClone(doc());
+    const lockOnly = lockButton && before.publishing;
     try {
       callback();
-      ensureTextWrapFlows(doc());
-      validateNativeSources();
-      updateFlowPlan();
+      // Publishing adoption assigns real layer IDs. Give that first edit the normal rebuild.
+      if (lockOnly) updateLock(lockButton, viewBefore);
+      else {
+        ensureTextWrapFlows(doc());
+        validateNativeSources();
+        updateFlowPlan();
+      }
     } catch (error) {
       const current = doc();
       for (const key of Object.keys(current)) delete current[key];
@@ -431,7 +438,34 @@ export function mountCanvasEditor(host, options) {
       throw error;
     }
     onCommit(before, { label, viewBefore, viewAfter: captureView() });
-    paint();
+    if (!lockOnly) paint();
+    // Locking an automatic continuation is also an authored ownership change.
+    // The commit hook can promote that frame; recheck before a pending result lands.
+    else if (before.textFlows?.some((flow) => flow.autoPages?.length)) refreshFlowPreview();
+  }
+  function updateLock(button, viewBefore) {
+    const layer = doc().publishing.layers.find((value) => value.id === button.dataset.layerId);
+    const target = layer || sceneObject(doc(), button.dataset.objectId);
+    button.setAttribute('aria-pressed', String(!!target.locked));
+    button.setAttribute(
+      'aria-label',
+      (target.locked ? 'Unlock ' : 'Lock ') + (layer?.name || 'object'),
+    );
+    // Nested masks and children inherit a parent's or layer's editability.
+    const blocks = new Map(doc().blocks.map((item) => [item.id, item]));
+    for (const node of world.querySelectorAll('[data-object]')) {
+      const item = blocks.get(node.dataset.object);
+      if (item) node.style.pointerEvents = objectAvailable(doc(), item) ? '' : 'none';
+    }
+    setSelectionState(state.selection);
+    if (viewBefore.activeTextId || viewBefore.selection.length !== state.selection.length) {
+      renderPanel();
+      renderSelection(true);
+    } else if (layer) {
+      for (const row of editor.querySelectorAll('[data-layer-row]'))
+        row.classList.toggle('active', row.dataset.layerRow === layer.id);
+    }
+    requestFrame();
   }
   function validateNativeSources() {
     if (hasWordSpacing(doc())) {
@@ -722,13 +756,16 @@ export function mountCanvasEditor(host, options) {
       }
     }
   }
-  function renderPanel() {
+  function renderPanel({ visibleOnly = false } = {}) {
     textSummary = readSelectedTextStyle();
     workspacePanels.select(state.panel);
     const selectedObjects = objects(),
-      index = options.index?.();
-    for (const { kind, content } of workspacePanels.entries())
-      content.innerHTML = propertiesContent({
+      panelEntries = workspacePanels
+        .entries()
+        .filter(({ content }) => !visibleOnly || !content.hidden),
+      index = panelEntries.some(({ kind }) => kind === 'links') ? options.index?.() : undefined;
+    for (const { kind, content } of panelEntries) {
+      const html = propertiesContent({
         document: doc(),
         documents: options.documents,
         state: { ...state, panel: kind },
@@ -744,6 +781,11 @@ export function mountCanvasEditor(host, options) {
         textSummary,
         nativeComposition: !!options.textComposition,
       });
+      if (!visibleOnly || panelHTML.get(content) !== html) {
+        content.innerHTML = html;
+        panelHTML.set(content, html);
+      }
+    }
     reflectTextStyle(editor, textSummary);
     reflectTextWrapControls(editor);
   }
@@ -881,18 +923,22 @@ export function mountCanvasEditor(host, options) {
         sourceHTML = part?.html || '',
         cached = flowRenderCache.get(item.id);
       element.toggleAttribute('data-native-flow', !!textFlowForFrame(doc(), item)?.composition);
-      if (cached?.sourceHTML === sourceHTML && cached.element === element) continue;
-      const html =
-        cached?.sourceHTML === sourceHTML
+      if (
+        cached?.element === element &&
+        (cached.part === part || (!part?.native && cached.sourceHTML === sourceHTML))
+      )
+        continue;
+      const html = part?.native
+        ? sourceHTML
+        : cached?.sourceHTML === sourceHTML
           ? cached.html
-          : part?.native
-            ? sourceHTML
-            : readableHTML(sourceHTML, options.documents, doc().id, {
-                preserveWikiText: true,
-                trustedFlow: true,
-              });
-      if (element.innerHTML !== html) element.innerHTML = html;
-      flowRenderCache.set(item.id, { sourceHTML, html, element });
+          : readableHTML(sourceHTML, options.documents, doc().id, {
+              preserveWikiText: true,
+              trustedFlow: true,
+            });
+      if (!(cached?.element === element && patchComposedFrame(element, cached.part, part)))
+        element.innerHTML = html;
+      flowRenderCache.set(item.id, { sourceHTML, html, element, part });
     }
     applySceneTypography(world, renderingDocument());
     selectionDirty = true;
@@ -912,7 +958,9 @@ export function mountCanvasEditor(host, options) {
       ? doc().textFlows?.find((textFlow) => textFlow.id === element.dataset.textFlow)
       : null;
   }
+  let lastFlowPosition = null;
   function hideFlowInput() {
+    lastFlowPosition = null;
     inputAnchor?.reset();
     host.querySelector('.canvas-input-world').hidden = true;
     host.querySelector('.canvas-input-world').classList.remove('flow-range-active');
@@ -937,6 +985,27 @@ export function mountCanvasEditor(host, options) {
       sy = item.textScale?.y || 1;
     const native = !!sourceTextFlow(element)?.composition,
       wrapped = !!column.wrap;
+    const positionKey = [
+      item.id,
+      column.index,
+      position.x,
+      position.y,
+      column.left,
+      column.top,
+      column.width,
+      column.height,
+      sx,
+      sy,
+      item.w,
+      item.h,
+      item.rotation,
+      state.camera.x,
+      state.camera.y,
+      state.camera.zoom,
+    ].join('/');
+    if (native && positionKey === lastFlowPosition && element.dataset.projectedStart === '0')
+      return;
+    lastFlowPosition = native ? positionKey : null;
     element.toggleAttribute('data-flow-wrap', wrapped);
     element.classList.toggle('wrapped-composition-input', wrapped);
     element.classList.toggle('native-composition-input', native);
@@ -981,7 +1050,11 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     const offset = sourceCaretIndex();
-    if (offset === null || flowSelection?.dragging || flowSelection?.sync()?.collapsed === false)
+    if (
+      offset === null ||
+      flowSelection?.dragging ||
+      flowSelection?.selection()?.collapsed === false
+    )
       return;
     const affinity =
         flowSelection?.selection()?.focus.affinity ||
@@ -1143,7 +1216,8 @@ export function mountCanvasEditor(host, options) {
       );
     } else if (hasWordSpacing(doc()) || /\bdata-ivo-wordspace\s*=/i.test(canonical))
       validateLegacyWordSpacing(canonical, textFlow?.style || item);
-    if (element?.classList.contains('canvas-flow-input')) delete element.dataset.projectedStart;
+    if (element?.classList.contains('canvas-flow-input') && !textFlow?.composition)
+      delete element.dataset.projectedStart;
     if (textFlow) textFlow.html = canonical;
     else if (item) item.html = canonical;
     if (hasWordSpacing(doc())) markTypographyVersion(doc());
@@ -3726,7 +3800,8 @@ export function mountCanvasEditor(host, options) {
       nativePlan = plan;
       nativePlanKey = compositionLayoutKey(snapshot);
       if (plan.changed) {
-        doc().blocks = snapshot.blocks;
+        const liveBlocks = new Map(doc().blocks.map((block) => [block.id, block]));
+        doc().blocks = snapshot.blocks.map((block) => liveBlocks.get(block.id) || block);
         doc().pages = snapshot.pages;
         for (const flow of doc().textFlows || []) {
           const derived = snapshot.textFlows?.find((value) => value.id === flow.id);
@@ -3740,7 +3815,7 @@ export function mountCanvasEditor(host, options) {
       flowSignature = '';
       refreshFlowPreview();
       followTextFlowCaret();
-      renderPanel();
+      renderPanel({ visibleOnly: true });
       flowSelection?.sync();
     },
     onError: (error) => {
@@ -3785,7 +3860,7 @@ export function mountCanvasEditor(host, options) {
     fragment: (id) => flowPlan.fragments.get(id),
     layoutKey: () => flowSignature + ':' + sceneRevision,
     preview: (id) => world.querySelector(`[data-flow-frame="${CSS.escape(id)}"]`),
-    onNativeCaret: (rect) => inputAnchor.update(rect),
+    onNativeCaret: (rect) => inputAnchor.update(rect, { measure: false }),
     activate: (id, event) => {
       const native = activeText() && captureTextSelection(activeText());
       if (

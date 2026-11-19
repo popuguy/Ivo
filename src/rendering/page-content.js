@@ -37,16 +37,26 @@ export function sceneObjectHTML(
     content = `<div class="rich-text canvas-text ${item.textFlowId ? 'flow-fragment ' : ''}${item.textStyle || 'serif'}" ${item.textFlowId ? 'data-flow-frame' : 'data-scene-text'}="${esc(item.id)}" data-text-kind="${item.textKind || 'area'}" ${!item.textFlowId && editableId === item.id ? 'contenteditable="true" role="textbox" aria-label="Edit text object"' : ''} style="font-size:${item.fontSize || 16}px;text-align:${item.align || 'left'};--text-scale-x:${item.textScale?.x ?? 1};--text-scale-y:${item.textScale?.y ?? 1}">${item.textFlowId ? flow?.fragments.get(item.id)?.html || '' : textHTML(item)}</div>`;
   return `<div class="canvas-object object-${item.type}" data-object="${esc(item.id)}" tabindex="${editing ? 0 : -1}" role="group" aria-label="${esc(item.type)} object" style="left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;${item.frameOptions ? `background:${item.frameOptions.fill === 'none' ? 'transparent' : item.frameOptions.fill || 'transparent'};border:${item.frameOptions.strokeWidth || 0}px solid ${item.frameOptions.stroke === 'none' ? 'transparent' : item.frameOptions.stroke || 'transparent'};border-radius:${item.frameOptions.corner || 0}px;box-sizing:border-box;` : ''}opacity:${(item.opacity ?? 100) / 100};transform:rotate(${item.rotation || 0}deg);${objectAvailable(doc, item) ? '' : 'pointer-events:none;'}">${content}</div>`;
 }
+// Native frames contain potentially thousands of instantiated SVG glyphs.
+// Clearing and restoring inherited type styles on every input invalidates them all.
+const framePresentation = new WeakMap();
 export function applySceneTypography(root, doc) {
   const composedFlows = new Set(
     (doc.textFlows || []).filter((flow) => flow.composition).map((flow) => flow.id),
   );
   for (const item of doc.blocks) {
+    if (item.type !== 'text' && item.type !== 'quote') continue;
     const element = root.querySelector(
       `[data-scene-text="${CSS.escape(item.id)}"],[data-flow-frame="${CSS.escape(item.id)}"]`,
     );
     if (element) {
-      applyFrameTypography(element, effectiveTextStyle(doc, frameTextSettings(doc, item)));
+      const settings = effectiveTextStyle(doc, frameTextSettings(doc, item));
+      if (composedFlows.has(item.textFlowId)) {
+        const key = JSON.stringify([settings, item.textScale, item.frameOptions, item.textKind]);
+        if (framePresentation.get(element) === key) continue;
+        framePresentation.set(element, key);
+      } else framePresentation.delete(element);
+      applyFrameTypography(element, settings);
       // Native glyphs already carry resolved run paint. Walking every SVG path
       // as browser rich text duplicates work and can decorate SVG title nodes.
       if (!composedFlows.has(item.textFlowId)) applyNamedTextStyles(element, doc);

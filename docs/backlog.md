@@ -1,27 +1,10 @@
 # Ivo implementation backlog
 
-## Current priority: editing responsiveness — 19 November 2026
+## Editing responsiveness — 19 November 2026
 
-Paul reports perceptible layer-lock and typing delay compared with InDesign/Illustrator, with zoom explicitly excluded from this concern. Prioritize an interaction/composition responsiveness pass before expanding text features. The document model, canonical source, immutable vault transactions, history and working camera remain foundations to preserve; the update/render boundary needs focused architectural work.
+The [Mac desktop benchmark](verification.md#desktop-editing-responsiveness--19-november-2026) covers visible Layers lock feedback and typing in browser-composed and native-composed flows. Lock updates retain page objects. Typing retains matching native line data and vector ink. The workspace styles now depend on an explicit mount state. Keep these paths covered when adding layout features.
 
-A hidden/offscreen Mac component probe against commit `6c5f076` reproduces the delay using the actual editor/native worker, CMU Serif 16pt, 20pt leading, 30 ordinary polygons, one/two/three authored text frames, real document history and the real save-queue enqueue path with disposable no-op storage. Each warmed scenario samples six lock clicks and five single-character edits. Payload counting is performed after the measured feedback interval. These are diagnostic medians on this machine, not physical input-to-display measurements or an Adobe A/B benchmark.
-
-| Approximate rich-text source  | Lock click handler | Input → new native glyph DOM |
-| ----------------------------- | ------------------ | ---------------------------- |
-| 337 characters, one page      | 6 ms               | 50 ms                        |
-| 2,661 characters, two pages   | 31 ms              | 171 ms                       |
-| 5,317 characters, three pages | 56 ms              | 321 ms                       |
-
-Those source sizes include HTML; the final native transport sizes are 325 / 2,565 / 5,125 UTF-16 units, including paragraph marks. The synchronous native input handlers take about 3 / 5 / 8 ms. The comparable 2,661-character browser fixture has a 5 ms lock handler and a 4 ms input handler; browser glyph paint was not measured. History plus save-queue enqueue takes about 0.2–0.3 ms in the fixture. Actual application indexing, other panes, installed-font lists, native controls and display/trackpad timing need separate qualification. The attempted 8k paragraph fixture exceeded the current break-opportunity budget; no performance claim is made at that size.
-
-Concrete findings and next work:
-
-1. **Lock/control feedback:** every measured lock click replaces the page DOM and layer button despite unchanged geometry. `mutate()` runs all-flow adoption/validation/layout and `paint()` rebuilds pages and panels. No actual native-worker call occurs for these locks, so worker cache hits alone do not fix this path. Introduce command-specific invalidation and retained control/object updates. Check press versus release feedback and drag-away cancellation against the native reference; do not silently change click/keyboard semantics.
-2. **Typing feedback:** measurement reuse exists, but final geometry is still generated for the whole flow. The medium and long final round trips are about 99 / 197 ms and deliver approximately 0.90 / 1.78 MB of JSON per edit. Retain unchanged glyph/run/row resources, use changed-paragraph/affected-flow work and compact incremental geometry, and avoid replacing unchanged frame SVGs merely because the full composition token changed. Preserve exact font shaping, source/caret maps, linked selection, IME, undo and frozen PDF authority. A temporary browser-text flash is not a fidelity solution.
-3. **Main-thread work:** coalesce repeated source/style/key work and panel refreshes; retain the Properties controls/font list instead of rebuilding them after unrelated changes. Keep correct history and persistence snapshots while scheduling nonessential indexing/mirror/bookkeeping work outside the immediate feedback path. Saving currently debounces asynchronously; no awaited disk write was found before feedback.
-4. **Acceptance:** add explicit event-to-feedback and long-task budgets to representative small/long-note interaction tests. Aim for next-frame visible control and local text feedback at the display's refresh rate, with larger repagination handled incrementally. Record warm/cold, ordinary/burst typing, IME, same/different paragraphs, multi-page notes and background work separately. Qualify actual Mac input-to-display against Adobe and then iPhone/iPad; hidden-window DOM readiness is only a lower-level measurement.
-
-The prior functional suites establish correctness, not responsiveness. Keep this work independent of visual reskinning. Raw synthetic probe code/logs/results remain privately under parent `work/responsiveness-assessment-2026-11-19/`. Text parity remains ~35%; this assessment adds no engine capability and does not claim a performance fix.
+Remaining performance qualification includes physical input and IME, iPhone/iPad, cold font loading, long single paragraphs, complex scripts and larger documents under simultaneous repagination. Measure those cases separately. Expand the retained geometry path to additional script contexts only with cold native equality checks.
 
 [Native word spacing](native-word-spacing.md) now integrates atomic paragraph preferences, measured space capacities, soft-bound justification/final-line condensation, source-correct carets, styles, full-paragraph rich paste, history and PDF. The unchanged 66-capability engineering estimate is **~35%**. Next: authored letter/glyph constraints and hyphenation, then the remaining keeps/grids, advanced wraps/shaping and structured/editorial systems. The full paragraph objective, special spaces/scripts and physical devices remain qualification work.
 

@@ -23,6 +23,20 @@ const request = () => ({
   allowFallback: false,
 });
 
+test('geometry reuse admits only unique bounded lines on a final exact-font request', () => {
+  const line = { start: 0, end: 4, originX: 0, width: 12, availableWidth: 80 };
+  const valid = { ...request(), protocol: 2, paragraphs: [], retainedLines: [line] };
+  assert.equal(validateCompositionRequest(valid), valid);
+  for (const invalid of [
+    { allowFallback: true },
+    { mode: 'measure-lines-proof' },
+    { retainedLines: [line, line] },
+    { retainedLines: [{ ...line, end: 5 }] },
+    { retainedLines: [{ ...line, originX: 'unknown' }] },
+  ])
+    assert.throws(() => validateCompositionRequest({ ...valid, ...invalid }), /Invalid/);
+});
+
 test('paragraph transport is versioned and accepts only bounded byte-only paragraph fields', () => {
   const paragraph = {
       start: 0,

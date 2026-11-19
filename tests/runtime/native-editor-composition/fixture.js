@@ -1,3 +1,4 @@
+import { createInteractiveTextPort } from '../../../src/rendering/text/retained-geometry.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import {
   startTextFlow,
@@ -79,9 +80,10 @@ try {
     nativeWordSpacing = {},
     held = null,
     history = createDocumentHistory();
+  const interactive = createInteractiveTextPort(window.nativeEditorTest);
   const native = {
     compose: async (request) => {
-      const result = await window.nativeEditorTest.compose(request);
+      const result = await interactive.compose(request);
       const gate = held;
       if (gate && !gate.started && request.mode !== 'measure-lines-proof') {
         gate.started = { request, result };

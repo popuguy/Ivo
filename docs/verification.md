@@ -1,5 +1,27 @@
 # Verification
 
+## Desktop editing responsiveness — 19 November 2026
+
+Layers changes update the affected controls and object editability. Holding the button previews the lock state immediately, releasing over the button commits one change, and dragging away cancels. A workspace-wide relational CSS selector had made the browser reconsider roughly 23,000 elements when native text or the caret changed in the three-page fixture. The shell now tracks its mounted state explicitly. The editor updates changed vector lines in place and retains unaffected glyphs, outlines and carets. Native composition still establishes the current line breaks, line metrics and frozen PDF on each new composition.
+
+The desktop benchmark runs in an ordinary Ivo window with a temporary vault, three threaded pages, 5,184 text characters, CMU Serif at 16 pt with 20 pt leading and 30 polygons. It exercises the real installed-font picker, input and save paths. Each mode measures eight locks, eight unlocks, twelve fresh insertions and twelve independent deletions near the start of the document. Paragraph Composer also measures six repetitions each of adding and removing a last-page character. A rapid ten-character sequence must arrive intact in the input, native glyph output where applicable and a separate read of the saved vault. [Run the benchmark](../CONTRIBUTING.md#measure-desktop-interaction-latency).
+
+All three modes passed the opt-in median budgets on the reference Mac. The values below are milliseconds from input dispatch to a compositor sample showing the edit. They describe fresh edits near the start of the text.
+
+| Composer                          | Lock | Unlock | Insert | Backspace |
+| --------------------------------- | ---: | -----: | -----: | --------: |
+| Paragraph                         |   15 |     13 |     60 |        57 |
+| Single-line                       |   13 |     13 |     46 |        44 |
+| Browser layout in the desktop app |   11 |     14 |     18 |        17 |
+
+The earlier three-page component fixture took 56 ms in the lock handler and 321 ms from input to new native glyph elements. With the same fixture these fell to approximately 1 ms and 39 ms, respectively. Those component timings end before the window paints.
+
+An independent macOS window capture measured the actual lock and glyph transition in small regions of the disposable app window. Median dispatch-to-window-frame times were **13.5 ms to lock**, **10.5 ms to unlock**, **23 ms to insert at the end of page three** and **22 ms to remove that character**. All 28 transitions were observed. On two Single-line Composer deletions the app's frame callback arrived at 108 and 110 ms while macOS showed the changed text at 50 and 49 ms. The permanent benchmark records the first matching compositor callback and a separate settled sample. A settled sample without a matching callback is reported as an upper bound. Physical keyboard, mouse and display latency require their own measurement.
+
+Native comparisons against full fresh results exercise upstream edits, moved source ranges, repeated paragraphs, ordinary and advanced fonts and spacing, both native composers, Latin accents, combining marks, typographic punctuation and forced replay after a mismatched line. They compare the complete line, caret and outline data and exercise frozen PDF export. Additional checks cover selection, partial italics, undo/redo, actual save/reopen and retained page/control identity. Complex scripts use the existing full-detail path. Long single paragraphs, cold font loading, physical IME and mobile performance remain to be qualified.
+
+Validation passed 483 unit tests, 44 native tests, 17 background component groups, the workspace shell check and the three desktop latency gates. The Apple Silicon review build is `release/2026-11-19-responsiveness/Ivo-darwin-arm64/Ivo.app`. Byte verification covers 156 shared source files, 17 desktop source files, both executable helpers, and 229 web files in both the packaged app and the synchronized iOS project. The packaged native worker also produced selectable PDF with the expected space and caret positions.
+
 ## Native paragraph word spacing — 19 November 2026
 
 The [word-spacing milestone](native-word-spacing.md) passes **482 unit tests**, all **43 native tests**, standard format/lint/architecture/build checks, both actual app/PDF preload transports and **17 sequential background component groups**. The final dialog field/button appearance additionally passes the focused actual-editor run with **168 native requests** and inspected hidden captures. The suite uses temporary documents/profiles and the current production worker; it does not qualify physical focus, menus, clipboard, IME or mobile devices.
