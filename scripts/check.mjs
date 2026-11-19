@@ -61,15 +61,17 @@ const backgroundRuntime = [
   'native-editor-composition',
 ];
 const background = process.argv.includes('--background-runtime');
+const fullRuntime = process.argv.includes('--runtime');
 const commands = background
   ? backgroundRuntime.map((name) => 'test:' + name)
-  : process.argv.includes('--runtime')
+  : fullRuntime
     ? runtime.map((name) => 'test:' + name)
     : ['format:check', 'lint', 'check:architecture', 'test', 'build'];
 if (background)
   console.log(
     'Background component checks only; native foreground and device checks are separate.',
   );
+const failures = [];
 for (const name of commands) {
   console.log(`\nChecking ${name}`);
   const code = await new Promise((resolve, reject) => {
@@ -80,6 +82,13 @@ for (const name of commands) {
     child.on('error', reject);
     child.on('exit', resolve);
   });
-  if (code !== 0) process.exit(code || 1);
+  if (code !== 0) {
+    if (!fullRuntime) process.exit(code || 1);
+    failures.push(name);
+  }
+}
+if (failures.length) {
+  console.error(`Failed ${failures.length} of ${commands.length} checks: ${failures.join(', ')}`);
+  process.exit(1);
 }
 console.log(`Passed ${commands.length} checks.`);

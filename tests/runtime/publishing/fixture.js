@@ -69,6 +69,7 @@ try {
       },
     });
   editor = mount();
+  await editor.command('show-panel-properties');
   await tick();
   const pick = () =>
     editor.restoreView({ selection: [frame.id], activePage: page.id, tool: 'select' });

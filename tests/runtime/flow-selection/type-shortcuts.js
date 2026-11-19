@@ -110,8 +110,10 @@ export async function verifyTypeShortcuts(host, bridge) {
       doc.textFlows[0].style.fontSize === 14 && source().includes('data-ivo-size="12"'),
       'Selected frame lost relative point sizes: ' + source(),
     );
+    await editor.command('show-panel-properties');
     const field = host.querySelector('[data-object-prop="fontSize"]');
     field.focus();
+    assert(document.activeElement === field, 'The Properties field must own the shortcut');
     const prev = source();
     await key(',');
     assert(source() === prev, 'Inspector field routed to canvas text');

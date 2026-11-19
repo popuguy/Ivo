@@ -22,6 +22,7 @@ app
       return net.fetch(pathToFileURL(target).href);
     });
     const window = new BrowserWindow({
+      enableLargerThanScreen: true,
       show: true,
       width: 1500,
       height: 850,

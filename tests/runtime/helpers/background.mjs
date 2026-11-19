@@ -21,9 +21,11 @@ export function prepareBackgroundTest(app) {
   });
 }
 export function testWindowOptions(options) {
+  // macOS otherwise clamps a requested desktop fixture to the CI display's smaller work area.
+  const sized = { enableLargerThanScreen: true, ...options };
   return backgroundTest
     ? {
-        ...options,
+        ...sized,
         show: false,
         webPreferences: {
           ...options.webPreferences,
@@ -31,7 +33,7 @@ export function testWindowOptions(options) {
           backgroundThrottling: false,
         },
       }
-    : options;
+    : sized;
 }
 export function focusTestWindow(window) {
   if (!backgroundTest) window.focus();

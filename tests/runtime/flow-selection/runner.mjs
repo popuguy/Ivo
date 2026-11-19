@@ -34,8 +34,11 @@ app
       clearTimeout(timer);
       console.log(JSON.stringify(value, null, 2));
       window?.destroy();
-      await rm(profile, { recursive: true, force: true });
-      app.exit(code);
+      try {
+        await rm(profile, { recursive: true, force: true, maxRetries: 4 });
+      } finally {
+        app.exit(code);
+      }
     }
     const owned = (event) => {
       if (event.sender !== window.webContents) throw Error('Not the test window');

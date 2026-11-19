@@ -33,6 +33,7 @@ export async function verifyWrapPanels(host, assert, tick) {
     await tick();
   };
   try {
+    await editor.command('show-panel-properties');
     for (const [ids, expected] of [
       [[], false],
       [[text.id], false],

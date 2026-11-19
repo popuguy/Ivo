@@ -38,6 +38,7 @@ export async function verifyTextControls(host) {
   const pick = () =>
     editor.restoreView({ selection: [item.id], activePage: item.pageId, tool: 'select' });
   pick();
+  await editor.command('show-panel-properties');
   await tick();
   const field = (name) => host.querySelector(`[data-object-prop="${name}"]`);
   assert(

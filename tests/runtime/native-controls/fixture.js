@@ -106,6 +106,7 @@ try {
     footer.children.length === 2 && footer.offsetHeight === 22,
     'Status bar is not a narrow page/zoom strip',
   );
+  await editor.command('show-panel-properties');
   const fields = [...host.querySelectorAll('.canvas-properties input')].filter(
     (field) => !field.disabled && field.getClientRects().length,
   );
