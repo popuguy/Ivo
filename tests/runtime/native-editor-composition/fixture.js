@@ -28,6 +28,7 @@ import { verifyNativeCharacterProjection } from './character-projection.js';
 import { verifyNativeCharacterEditing } from './native-character-editing.js';
 import { verifyNativeParagraphKeeps } from './native-paragraph-keeps.js';
 import { verifyParagraphKeepProjection } from './paragraph-keep-projection.js';
+import { verifyNativeWordSpacing } from './native-word-spacing.js';
 const assert = (value, message) => {
     if (!value) throw Error(message);
   },
@@ -75,6 +76,7 @@ try {
     nativeWrappedFlow = {},
     nativeCharacterEditing = {},
     nativeParagraphKeeps = {},
+    nativeWordSpacing = {},
     held = null,
     history = createDocumentHistory();
   const native = {
@@ -629,6 +631,15 @@ try {
       readKeepViolations: ({ editor, document }) =>
         editor.getTextFlowStatus(document.textFlows[0].id)?.keepViolations || [],
     });
+    nativeWordSpacing = await verifyNativeWordSpacing({
+      host,
+      compose: native.compose,
+      insert: window.nativeEditorTest.insert,
+      key: window.nativeEditorTest.key,
+      save: window.nativeEditorTest.save,
+      load: window.nativeEditorTest.load,
+      capture: (name = 'native-word-spacing') => window.nativeEditorTest.capture(name),
+    });
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
       x: 30,
@@ -920,6 +931,7 @@ try {
       ...nativeWrappedFlow,
       ...nativeCharacterEditing,
       ...nativeParagraphKeeps,
+      ...nativeWordSpacing,
       realNativeBridge: true,
       composerPreflight: true,
       vectorInk: true,

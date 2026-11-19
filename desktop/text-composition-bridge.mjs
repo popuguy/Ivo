@@ -49,7 +49,9 @@ const fields = {
     'leftIndent',
     'rightIndent',
     'firstLineIndent',
+    'wordSpacing',
   ],
+  wordSpacing: ['minimum', 'desired', 'maximum'],
   placement: ['end', 'frame', 'baseline', 'left', 'width'],
   features: ['dlig', 'smcp', 'onum', 'tnum', 'zero', 'frac', 'ordn', 'salt'],
 };
@@ -66,7 +68,7 @@ function record(value, allowed) {
 export function validateCompositionRequest(request) {
   record(request, fields.request);
   if (
-    ![1, 2, 3, 4].includes(request.protocol) ||
+    ![1, 2, 3, 4, 5].includes(request.protocol) ||
     (request.protocol === 1 && request.paragraphs !== undefined) ||
     (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
     (request.protocol < 3 && request.placements !== undefined) ||
@@ -75,7 +77,9 @@ export function validateCompositionRequest(request) {
     (request.protocol === 4 &&
       !['greedy-geometry-proof', 'measure-lines-proof', 'planned-lines-proof'].includes(
         request.mode,
-      ))
+      )) ||
+    (request.protocol === 5 &&
+      !['measure-lines-proof', 'planned-lines-proof'].includes(request.mode))
   )
     throw Error('Invalid text composition paragraph protocol.');
   const arrays = [
@@ -116,23 +120,38 @@ export function validateCompositionRequest(request) {
           ])
             if (
               Object.hasOwn(row, key) &&
-              (request.protocol !== 4 ||
+              (request.protocol < 4 ||
                 !Number.isFinite(row[key]) ||
                 row[key] < minimum ||
                 row[key] > maximum)
             )
               throw Error('Invalid native character protocol or value.');
           if (Object.hasOwn(row, 'features')) {
-            if (request.protocol !== 4)
-              throw Error('Native character features require protocol 4.');
+            if (request.protocol < 4)
+              throw Error('Native character features require protocol 4 or 5.');
             record(row.features, fields.features);
             for (const value of Object.values(row.features))
               if (typeof value !== 'boolean') throw Error('Invalid native character feature.');
           }
         }
+        if (shape === 'paragraph' && Object.hasOwn(row, 'wordSpacing')) {
+          if (request.protocol !== 5) throw Error('Word spacing requires protocol 5.');
+          record(row.wordSpacing, fields.wordSpacing);
+          const { minimum, desired, maximum } = row.wordSpacing;
+          if (
+            ![minimum, desired, maximum].every(
+              (value) => Number.isFinite(value) && value >= 0 && value <= 1000,
+            ) ||
+            minimum > desired ||
+            desired > maximum
+          )
+            throw Error('Invalid native word-spacing percentages.');
+        }
         for (const [key, cell] of Object.entries(row)) {
           if (shape === 'run' && key === 'features')
             for (const flag of Object.values(cell)) atom(flag);
+          else if (shape === 'paragraph' && key === 'wordSpacing')
+            for (const value of Object.values(cell)) atom(value);
           else atom(cell);
         }
       }

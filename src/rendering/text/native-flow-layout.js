@@ -15,6 +15,8 @@ import { escapeHTML } from '../../shared/html/sanitize.js';
 import { documentHasObjectWrap } from './object-wrap-layout.js';
 import { nativeWrapColumns, validateNativeWrapping } from './native-wrap-columns.js';
 import { PARAGRAPH_LAYOUT_FIELDS, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
+import { wordSpacingSettings, wordSpacingSourceError } from '../../domain/text/word-spacing.js';
+import { validateWordSpacingResult } from './word-spacing-result.js';
 import {
   PARAGRAPH_KEEP_FIELDS,
   normalizeParagraphKeeps,
@@ -33,7 +35,7 @@ const sha = async (bytes) =>
     .join('');
 
 /** A small per-port LRU survives immutable document snapshots without retaining font bytes. */
-function composeRequest(compose, request) {
+function composeRequest(compose, request, wordSpacingPlan) {
   let cache = requestSessions.get(compose);
   if (!cache) requestSessions.set(compose, (cache = { entries: new Map(), bytes: 0 }));
   const key = JSON.stringify({
@@ -62,6 +64,7 @@ function composeRequest(compose, request) {
     .then(() => compose(request))
     .then((result) => {
       validateResult(result, request);
+      if (request.protocol === 5) validateWordSpacingResult(result, request, wordSpacingPlan);
       if (cache.entries.get(key) === entry) {
         const cost = JSON.stringify(result).length * 2;
         entry.cost += cost;
@@ -356,7 +359,7 @@ function validateResult(result, request) {
       line.end > request.text.length
     )
       throw Error('Native text lines lost their ordered source or frame identity.');
-    if (request.protocol === 4) {
+    if (request.protocol >= 4) {
       const validInk = (value) =>
         [value.inkAscent, value.inkDescent].every(
           (n) => Number.isFinite(n) && Math.abs(n) <= 1000000,
@@ -490,7 +493,11 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   const source = compositionSource(root, { id: flow.id, doc, settings, fontFor: fonts.fontFor });
   const columns = compositionColumns(doc, flow),
     wrapped = columns.some((column) => column.obstacles?.length),
-    planned = flow.composition?.composer === 'paragraph' || wrapped || hasKeeps(source),
+    planned =
+      flow.composition?.composer === 'paragraph' ||
+      wrapped ||
+      hasKeeps(source) ||
+      source.protocol === 5,
     limit = planned ? 10000 : 100000;
   if (
     source.text.length > limit ||
@@ -505,6 +512,17 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
   for (const paragraph of source.paragraphs) {
+    if (wordSpacingSettings(paragraph.wordSpacing)) {
+      if (wrapped) throw new UnsupportedComposition('word spacing with wrapped fragments');
+      const issue = wordSpacingSourceError(source.text.slice(paragraph.start, paragraph.end));
+      if (issue) throw new UnsupportedComposition(issue);
+      if (
+        source.runs.some(
+          (run) => run.start < paragraph.end && run.end > paragraph.start && run.tracking < 0,
+        )
+      )
+        throw new UnsupportedComposition('word spacing with negative tracking');
+    }
     const fits = (column) => {
       try {
         paragraphLineArea(paragraph, column.width, true);
@@ -582,12 +600,16 @@ export async function composeNativeTextFlows(
       source = projectNativeFlow(projection, flow, fonts, { deferUnavailable: true }),
       initial = compositionColumns(projection, flow),
       wrapped = initial.some((column) => column.obstacles?.length),
-      planned = flow.composition.composer === 'paragraph' || wrapped || hasKeeps(source);
+      planned =
+        flow.composition.composer === 'paragraph' ||
+        wrapped ||
+        hasKeeps(source) ||
+        source.protocol === 5;
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
     const request = {
-        protocol: source.protocol === 4 ? 4 : planned ? 3 : source.protocol,
+        protocol: source.protocol >= 4 ? source.protocol : planned ? 3 : source.protocol,
         id: source.id,
         sourceHTML: source.sourceHTML,
         sourceDigest: await sha(new TextEncoder().encode(source.sourceHTML)),
@@ -625,6 +647,9 @@ export async function composeNativeTextFlows(
           start,
           end,
           ...Object.fromEntries(PARAGRAPH_LAYOUT_FIELDS.map((key) => [key, metadata[key]])),
+          ...(wordSpacingSettings(metadata.wordSpacing)
+            ? { wordSpacing: wordSpacingSettings(metadata.wordSpacing) }
+            : {}),
         })),
         resources,
         allowFallback: false,
@@ -656,7 +681,7 @@ export async function composeNativeTextFlows(
             ? { breaks: decision.breaks }
             : {}),
       };
-      result = await composeRequest(compose, input);
+      result = await composeRequest(compose, input, decision?.wordSpacingPlan);
       validateResult(result, input);
       if (result.layout.coveredLength === source.text.length || !allowPages || !flow.automaticPages)
         break;
@@ -708,6 +733,14 @@ export async function composeNativeTextFlows(
       policy: decision?.policy || 'native-single-line',
       ...(wrapped ? { wrapped: true } : {}),
       ...(decision ? { paragraphWork: decision.work } : {}),
+      ...(decision?.wordSpacingDiagnostics?.length
+        ? {
+            wordSpacingDiagnostics: decision.wordSpacingDiagnostics.map((diagnostic) => ({
+              ...diagnostic,
+              future: diagnostic.frame >= columns.length,
+            })),
+          }
+        : {}),
       ...(decision?.keepViolations?.length
         ? {
             keepViolations: decision.keepViolations.map((violation) => ({

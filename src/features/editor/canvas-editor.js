@@ -32,6 +32,7 @@ import { openParentEditor } from './ui/parent-editor.js';
 import {
   CURRENT_ARCHIVE_VERSION,
   markTypographyVersion,
+  hasWordSpacing,
 } from '../../domain/documents/capabilities.js';
 import {
   enablePublishing,
@@ -44,6 +45,7 @@ import {
 import { installPublishingControls } from './ui/publishing-controller.js';
 import { applyNamedTextStyles } from '../../rendering/text/styles.js';
 import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.js';
+import { wordSpacingSettings } from '../../domain/text/word-spacing.js';
 import { readImageFile } from './assets/image-import.js';
 import { propertiesContent } from './ui/properties.js';
 import { documentContent } from '../../domain/history/document-history.js';
@@ -432,11 +434,34 @@ export function mountCanvasEditor(host, options) {
     paint();
   }
   function validateNativeSources() {
+    if (hasWordSpacing(doc())) {
+      const legacy = [
+        ...(doc().textFlows || [])
+          .filter((flow) => !flow.composition)
+          .map((flow) => ({ html: flow.html, settings: flow.style })),
+        ...[
+          ...doc().blocks,
+          ...(doc().publishing?.parents || []).flatMap((parent) => parent.blocks),
+        ]
+          .filter((block) => ['text', 'quote'].includes(block.type) && !block.textFlowId)
+          .map((block) => ({ html: block.html, settings: block })),
+      ];
+      for (const owner of legacy) validateLegacyWordSpacing(owner.html, owner.settings);
+    }
     for (const flow of doc().textFlows || [])
       if (flow.composition) {
         validateNativeFlowSource(doc(), flow, options.assets?.() || options.fonts?.() || []);
         nativeFlowColumns(doc(), flow);
       }
+  }
+  function validateLegacyWordSpacing(html, settings) {
+    const root = document.createElement('div');
+    root.innerHTML = html || '';
+    const summary = summarizeTextStyle(root, doc(), effectiveTextStyle(doc(), settings));
+    if (summary.mixed.includes('wordSpacing') || wordSpacingSettings(summary.values.wordSpacing))
+      throw Error(
+        'Word spacing requires native composition in every text flow using this paragraph style.',
+      );
   }
   function polygonPoints(item, local = false) {
     return item.points
@@ -1107,22 +1132,21 @@ export function mountCanvasEditor(host, options) {
   }
   function writeText(item, html, element) {
     const textFlow = (element && sourceTextFlow(element)) || textFlowForFrame(doc(), item);
+    const canonical = element?.classList.contains('canvas-flow-input')
+      ? flowInputHTML(element)
+      : cleanHTML(html);
     if (textFlow?.composition) {
-      const canonical = element?.classList.contains('canvas-flow-input')
-        ? flowInputHTML(element)
-        : cleanHTML(html);
       validateNativeFlowSource(
         doc(),
         { ...textFlow, html: canonical },
         options.assets?.() || options.fonts?.() || [],
       );
-    }
+    } else if (hasWordSpacing(doc()) || /\bdata-ivo-wordspace\s*=/i.test(canonical))
+      validateLegacyWordSpacing(canonical, textFlow?.style || item);
     if (element?.classList.contains('canvas-flow-input')) delete element.dataset.projectedStart;
-    if (textFlow)
-      textFlow.html = element?.classList.contains('canvas-flow-input')
-        ? flowInputHTML(element)
-        : cleanHTML(html);
-    else if (item) item.html = cleanHTML(html);
+    if (textFlow) textFlow.html = canonical;
+    else if (item) item.html = canonical;
+    if (hasWordSpacing(doc())) markTypographyVersion(doc());
   }
   function activeText() {
     return activeTextId
@@ -1413,6 +1437,20 @@ export function mountCanvasEditor(host, options) {
   }
   function applyTextProperty(field, value, { commit = true } = {}) {
     const flow = textFlowForFrame(doc(), object());
+    const wordSpacing =
+      field === 'wordSpacing'
+        ? value
+        : field === 'paragraphStyle'
+          ? effectiveTextStyle(doc(), { paragraphStyle: value }).wordSpacing
+          : 'normal';
+    if (wordSpacingSettings(wordSpacing) && !flow?.composition) {
+      const error = Error(
+        'Choose native text composition for this text flow before applying word spacing.',
+      );
+      if (!commit) throw error;
+      options.onNotify?.(error.message);
+      return false;
+    }
     if (!flow?.composition && !flowPlan.status.get(flow?.id)?.wrapped)
       return applyTextPropertyValue(field, value, { commit });
     finishText();
@@ -3612,6 +3650,7 @@ export function mountCanvasEditor(host, options) {
     select,
     preserveRange,
     allowed: () => ownsInput() && options.editing && !busy && !composing && !dialogOpen(),
+    dialogAllowed: () => ownsInput() && options.editing && !busy && !composing,
     notify: options.onNotify,
     onAsset: options.onAsset,
     onEditParent: editParent,

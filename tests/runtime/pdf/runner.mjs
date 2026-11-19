@@ -28,6 +28,7 @@ import { createTextComposition } from '../../../desktop/text-composition.mjs';
 import { nativeTextTestExecutable } from '../helpers/native-text.mjs';
 import { verifyCharacterPDF } from './character-export.mjs';
 import { verifyParagraphKeepsPDF } from './paragraph-keeps.mjs';
+import { verifyWordSpacingPDF } from './word-spacing.mjs';
 let compositionBridge;
 const nativeCompositions = [];
 const renderPDF = (snapshot, options) =>
@@ -781,6 +782,13 @@ print(String(data: summaryData, encoding: .utf8)!)
       profile,
       nativeCompositions,
     });
+    const wordSpacingPDFInspection = await verifyWordSpacingPDF({
+      renderPDF,
+      root,
+      output,
+      profile,
+      nativeCompositions,
+    });
     console.log(
       JSON.stringify(
         {
@@ -807,6 +815,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           nativeWrapPDFInspection,
           ...characterPDFInspection,
           ...paragraphKeepPDFInspection,
+          ...wordSpacingPDFInspection,
           warnings: manifest.warnings,
         },
         null,

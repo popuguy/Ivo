@@ -1,5 +1,5 @@
-export const CURRENT_ARCHIVE_VERSION = 9;
-export const CURRENT_CANVAS_VERSION = 8;
+export const CURRENT_ARCHIVE_VERSION = 10;
+export const CURRENT_CANVAS_VERSION = 9;
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 const oldFields = new Set([
   'textStyle',
@@ -25,7 +25,7 @@ const newAttrs = new RegExp(
 export function hasPublishingFeatures(doc) {
   return (
     !!doc.publishing ||
-    [5, 6, 7, 8].includes(doc.canvasVersion) ||
+    [5, 6, 7, 8, 9].includes(doc.canvasVersion) ||
     doc.blocks.some(
       (b) =>
         b.frameOptions ||
@@ -65,7 +65,7 @@ export function hasAdvancedTypography(document) {
 /** First-baseline policies require an explicit format gate; older readers reject archive 7. */
 export function hasFrameComposition(doc) {
   return (
-    [6, 7, 8].includes(doc.canvasVersion) ||
+    [6, 7, 8, 9].includes(doc.canvasVersion) ||
     [...doc.blocks, ...(doc.publishing?.parents || []).flatMap((p) => p.blocks)].some(
       (b) =>
         b.frameOptions?.firstBaseline !== undefined ||
@@ -99,7 +99,26 @@ export function hasTextWrap(doc) {
   );
 }
 
+/** A stored policy, including an explicit reset, requires a reader that knows it. */
+export function hasWordSpacing(doc) {
+  const owns = (settings) =>
+      settings?.wordSpacing !== undefined || settings?.textOverrides?.wordSpacing !== undefined,
+    markup = (html) => /\bdata-ivo-wordspace\s*=/i.test(html || '');
+  return (
+    doc.canvasVersion === 9 ||
+    [
+      ...(doc.blocks || []),
+      ...(doc.publishing?.parents || []).flatMap((parent) => parent.blocks || []),
+    ].some((block) => owns(block) || markup(block.html)) ||
+    (doc.textFlows || []).some((flow) => owns(flow.style) || markup(flow.html)) ||
+    [...(doc.publishing?.paragraphStyles || []), ...(doc.publishing?.characterStyles || [])].some(
+      (style) => owns(style.attributes),
+    )
+  );
+}
+
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasWordSpacing)) return 10;
   if (documents.some(hasTextWrap)) return 9;
   if (documents.some(hasNativeTextComposition)) return 8;
   if (documents.some(hasFrameComposition)) return 7;
@@ -115,6 +134,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasWordSpacing(document)) {
+    document.canvasVersion = 9;
+    return document;
+  }
   if (hasTextWrap(document)) {
     document.canvasVersion = 8;
     return document;

@@ -45,6 +45,41 @@ test('paragraph transport is versioned and accepts only bounded byte-only paragr
   ])
     assert.throws(() => validateCompositionRequest(value), /Invalid/);
 });
+
+test('word-spacing transport5 owns one bounded ordered policy and rejects downgrades and nested paths', () => {
+  const input = {
+    ...request(),
+    protocol: 5,
+    mode: 'measure-lines-proof',
+    candidates: [],
+    paragraphs: [{ start: 0, end: 4, wordSpacing: { minimum: 0, desired: 100.25, maximum: 1000 } }],
+    runs: [{ start: 0, end: 4, horizontalScale: 125, baselineShift: -2, features: { smcp: true } }],
+  };
+  assert.equal(validateCompositionRequest(input), input);
+  for (const protocol of [1, 2, 3, 4])
+    assert.throws(() => validateCompositionRequest({ ...input, protocol }));
+  for (const mode of ['greedy-geometry-proof', 'explicit-lines-proof'])
+    assert.throws(() => validateCompositionRequest({ ...input, mode }), /protocol/);
+  for (const wordSpacing of [
+    null,
+    [],
+    {},
+    { minimum: 0, desired: 100 },
+    { minimum: 80, desired: 79, maximum: 133 },
+    { minimum: 80, desired: 200, maximum: 133 },
+    { minimum: -1, desired: 100, maximum: 133 },
+    { minimum: 0, desired: 100, maximum: 1001 },
+    { minimum: 0, desired: NaN, maximum: 133 },
+    { minimum: 0, desired: '100', maximum: 133 },
+    { minimum: 0, desired: 100, maximum: 133, path: '/font' },
+  ])
+    assert.throws(() =>
+      validateCompositionRequest({
+        ...input,
+        paragraphs: [{ ...input.paragraphs[0], wordSpacing }],
+      }),
+    );
+});
 test('character transport requires protocol4 and strict bounded scalar/feature values', () => {
   const paragraph = {
       start: 0,

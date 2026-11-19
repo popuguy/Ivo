@@ -4,7 +4,8 @@ import { uid, createDocument, createBlock } from './model.js';
 import { scaledPointType } from '../text/metrics.js';
 
 export const DEFAULT_PAGE = Object.freeze({ width: 612, height: 792 });
-export const isSceneDocument = (document) => [1, 2, 4, 5, 6, 7, 8].includes(document.canvasVersion);
+export const isSceneDocument = (document) =>
+  [1, 2, 4, 5, 6, 7, 8, 9].includes(document.canvasVersion);
 export function makePage(size = DEFAULT_PAGE, name = 'Page 1') {
   return { id: uid('page-'), name, width: size.width, height: size.height };
 }

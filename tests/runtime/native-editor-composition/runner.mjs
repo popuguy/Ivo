@@ -99,6 +99,7 @@ app
           'End',
           'Backspace',
           'Escape',
+          'Enter',
           'A',
         ].includes(value?.key) &&
         Array.isArray(value.modifiers)
@@ -108,6 +109,12 @@ app
           keyCode: value.key,
           modifiers: value.modifiers,
         });
+        if (value.key === 'Enter')
+          window.webContents.sendInputEvent({
+            type: 'char',
+            keyCode: '\r',
+            modifiers: value.modifiers,
+          });
         window.webContents.sendInputEvent({
           type: 'keyUp',
           keyCode: value.key,

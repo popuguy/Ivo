@@ -1,5 +1,12 @@
 import { FIRST_BASELINES } from './frame-composition.js';
 import { paragraphLayout } from './paragraph-layout.js';
+import {
+  adjustWordSpacing,
+  normalizeWordSpacingPolicy,
+  wordSpacingMeasurement,
+  wordSpacingMinimumWidth,
+  WORD_SPACING_COST_POLICY,
+} from './word-spacing-adjustment.js';
 
 const integer = (value) => Number.isSafeInteger(value) && value >= 0,
   finite = (value, minimum, maximum) =>
@@ -19,6 +26,7 @@ function* inputs({
   mode,
   maxStates,
   maxCandidates,
+  wordSpacing,
 }) {
   if (
     !integer(start) ||
@@ -105,13 +113,18 @@ function* inputs({
     )
       throw Error('Invalid or duplicate paragraph-flow measurement');
     seen.add(key);
+    const spacing = wordSpacing ? wordSpacingMeasurement(measurement, wordSpacing) : null,
+      minimumWidth = spacing
+        ? wordSpacingMinimumWidth({ ...measurement, wordSpacing: spacing }, style.align)
+        : measurement.width;
     const maximumWidth = widest - (measurement.start === start ? style.firstLineIndent : 0);
-    if (b <= nextMandatory[a] && measurement.width <= maximumWidth + 0.000001)
+    if (b <= nextMandatory[a] && minimumWidth <= maximumWidth + 0.000001)
       edges.get(measurement.start).push({
         ...Object.fromEntries(fields.map((field) => [field, measurement[field]])),
         start: measurement.start,
         end: measurement.end,
         penalty: points[b].penalty,
+        ...(spacing ? { wordSpacing: spacing } : {}),
       });
     if (++prepared % 1024 === 0)
       yield { stage: 'prepare', measurements: prepared, states: 1, candidates: 0 };
@@ -133,10 +146,24 @@ function firstBaseline(column, measured) {
 
 /** The metrics belong to the selected alternative, not a paragraph-wide maximum.
  * Baselines here remain Top-aligned; the owner aligns the completed physical column. */
-function placement(measured, column, frame, baseline, style, first, previousAfter) {
+function placement(
+  measured,
+  column,
+  frame,
+  baseline,
+  style,
+  first,
+  previousAfter,
+  last,
+  wordSpacing,
+) {
   const left = style.leftIndent + (first ? style.firstLineIndent : 0),
     width = column.width - left - style.rightIndent;
-  if (width < 1 || measured.width > width + 0.000001) return null;
+  const spacing = measured.wordSpacing
+    ? adjustWordSpacing(measured, width, style.align, last, wordSpacing.desired)
+    : null;
+  if (width < 1 || (measured.wordSpacing ? !spacing : measured.width > width + 0.000001))
+    return null;
   const nextBaseline =
     baseline === null
       ? firstBaseline(column, measured)
@@ -154,6 +181,7 @@ function placement(measured, column, frame, baseline, style, first, previousAfte
     descent: measured.descent,
     advance: measured.advance,
     penalty: measured.penalty,
+    ...(spacing ? { wordSpacing: spacing } : {}),
   };
 }
 
@@ -175,7 +203,10 @@ export function* paragraphFlowSteps({
   mode = 'paragraph',
   maxStates = 100000,
   maxCandidates = 1000000,
+  wordSpacing: inputWordSpacing,
 }) {
+  const wordSpacing = normalizeWordSpacingPolicy(inputWordSpacing),
+    costPolicy = wordSpacing ? WORD_SPACING_COST_POLICY : policy;
   const { style, frames, points, edges } = yield* inputs({
     start,
     end,
@@ -188,13 +219,14 @@ export function* paragraphFlowSteps({
     mode,
     maxStates,
     maxCandidates,
+    wordSpacing,
   });
   let states = 1,
     candidates = 0,
     budget = null;
   const failed = (reason) => ({
       status: 'unfit',
-      policy,
+      policy: costPolicy,
       mode,
       start,
       end,
@@ -209,7 +241,7 @@ export function* paragraphFlowSteps({
       lines.reverse();
       return {
         status: 'fit',
-        policy,
+        policy: costPolicy,
         mode,
         start,
         end,
@@ -218,6 +250,18 @@ export function* paragraphFlowSteps({
         cost: state.cost,
         states,
         candidates,
+        ...(wordSpacing
+          ? {
+              wordSpacingDiagnostics: lines
+                .filter((line) => line.wordSpacing?.diagnostic)
+                .map((line) => ({
+                  ...line.wordSpacing.diagnostic,
+                  start: line.start,
+                  end: line.end,
+                  frame: line.frame,
+                })),
+            }
+          : {}),
       };
     },
     fitsAt = function* (state) {
@@ -238,12 +282,21 @@ export function* paragraphFlowSteps({
             style,
             state.end === start,
             previousAfter,
+            measured.end === end,
+            wordSpacing,
           );
           if (line) {
             line.cost =
               1 +
               measured.penalty +
-              (line.end === end ? 0 : 100 * ((line.width - line.naturalWidth) / line.width) ** 2);
+              (line.wordSpacing?.badness !== null && line.wordSpacing?.badness !== undefined
+                ? line.wordSpacing.badness
+                : line.end === end
+                  ? 0
+                  : 100 *
+                    ((line.width - (line.wordSpacing?.scoreWidth ?? line.naturalWidth)) /
+                      line.width) **
+                      2);
             available.push(line);
           }
         }

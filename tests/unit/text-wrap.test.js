@@ -29,7 +29,12 @@ import {
   textWrapPageSide,
 } from '../../src/domain/geometry/text-wrap.js';
 import { validateImport } from '../../src/domain/documents/schema.js';
-import { archiveVersion, markTypographyVersion } from '../../src/domain/documents/capabilities.js';
+import {
+  archiveVersion,
+  markTypographyVersion,
+  CURRENT_ARCHIVE_VERSION,
+  CURRENT_CANVAS_VERSION,
+} from '../../src/domain/documents/capabilities.js';
 import {
   startTextFlow,
   enableNativeComposition,
@@ -658,13 +663,13 @@ test('new wrap declarations reject under old gates and malformed new source neve
     assert.throws(() => validateImport({ schemaVersion: 9, documents: [invalid], assets: [] }));
   }
   const bad = structuredClone(doc);
-  bad.canvasVersion = 9;
+  bad.canvasVersion = CURRENT_CANVAS_VERSION + 1;
   assert.throws(
     () => validateImport({ schemaVersion: 9, documents: [bad], assets: [] }),
     /supported canvas/,
   );
   assert.throws(
-    () => validateImport({ schemaVersion: 10, documents: [], assets: [] }),
+    () => validateImport({ schemaVersion: CURRENT_ARCHIVE_VERSION + 1, documents: [], assets: [] }),
     /unsupported schema/,
   );
   assert.equal(doc.textFlows[0].html, '<p>Keep <em>this source.</em></p>');

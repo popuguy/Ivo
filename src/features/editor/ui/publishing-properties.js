@@ -117,7 +117,7 @@ export function textProperties(item, fonts, installed = []) {
           ['auto', 'Automatic'],
         ],
         'Direction',
-      )}</details>`,
+      )}${button('word-spacing', 'Word Spacing…')}</details>`,
     ) +
     section('Text Highlight', highlightControls(item.highlight))
   );

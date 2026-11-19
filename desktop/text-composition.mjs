@@ -221,7 +221,7 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
       result = await invoke({ payload });
     }
     if (
-      ![1, 2, 3, 4].includes(request.protocol) ||
+      ![1, 2, 3, 4, 5].includes(request.protocol) ||
       result.protocol !== request.protocol ||
       result.requestDigest !== hash(payload) ||
       result.sourceDigest !== request.sourceDigest ||

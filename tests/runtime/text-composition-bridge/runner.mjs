@@ -214,6 +214,56 @@ app.whenReady().then(async () => {
       );
       assert.match(invalid, /Invalid/);
     }
+    const spacing = {
+      ...character,
+      protocol: 5,
+      frames: character.frames.map((frame) => ({ ...frame, width: 600 })),
+      placements: character.placements.map((placement) => ({ ...placement, width: 580 })),
+      paragraphs: character.paragraphs.map((paragraph) => ({
+        ...paragraph,
+        wordSpacing: { minimum: 80, desired: 200, maximum: 300 },
+      })),
+    };
+    for (const window of windows) {
+      const result = await window.webContents.executeJavaScript(
+        'ivoTextComposition.compose(' + JSON.stringify(spacing) + ')',
+      );
+      assert.equal(result.protocol, 5);
+      assert.equal(result.layout.lines[0].wordSpacing.percentage, 200);
+      assert.equal(result.layout.lines[0].wordSpacing.justified, false);
+      assert.equal(result.layout.lines[0].wordSpacing.eligibleGaps, 2);
+      assert(result.layout.lines[0].visibleWidth > 0);
+      const pdf = await window.webContents.executeJavaScript(
+        'ivoTextComposition.pdf(' + JSON.stringify(result.token) + ')',
+      );
+      assert.equal((await PDFDocument.load(Buffer.from(pdf.data, 'base64'))).getPageCount(), 1);
+      for (const invalid of [
+        { ...spacing, protocol: 4 },
+        { ...spacing, mode: 'greedy-geometry-proof' },
+        {
+          ...spacing,
+          paragraphs: [
+            { ...spacing.paragraphs[0], wordSpacing: { minimum: 200, desired: 100, maximum: 300 } },
+          ],
+        },
+        {
+          ...spacing,
+          paragraphs: [
+            {
+              ...spacing.paragraphs[0],
+              wordSpacing: { ...spacing.paragraphs[0].wordSpacing, path: '/forbidden' },
+            },
+          ],
+        },
+      ]) {
+        const rejected = await window.webContents.executeJavaScript(
+          'ivoTextComposition.compose(' +
+            JSON.stringify(invalid) +
+            ').then(()=>"allowed",error=>error.message)',
+        );
+        assert.notEqual(rejected, 'allowed');
+      }
+    }
     console.log(
       JSON.stringify({
         ok: true,
@@ -224,6 +274,7 @@ app.whenReady().then(async () => {
         exactNativePDF: true,
         exactPlannedTransport: true,
         exactCharacterTransport: true,
+        exactWordSpacingTransport: true,
       }),
     );
   } catch (error) {

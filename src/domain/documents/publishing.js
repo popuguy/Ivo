@@ -1,5 +1,6 @@
 import { uid } from './model.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS, validTextAttribute } from '../text/typography.js';
+import { markTypographyVersion } from './capabilities.js';
 
 const baseLayer = () => ({
   id: 'default',
@@ -153,6 +154,7 @@ export function saveTextStyle(
   const preview = { ...doc, publishing: { ...p, [key]: [...definitions, next] } };
   resolvedTextStyle(preview, kind, id);
   enablePublishing(doc)[key] = [...definitions, next];
+  markTypographyVersion(doc);
   return next;
 }
 export function createParent(doc, pageId, name = 'Parent') {

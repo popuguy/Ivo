@@ -2,6 +2,7 @@ import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
 import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-flow.js';
 import { UnsupportedComposition } from './composition-source.js';
 import { scheduleParagraphKeeps } from './paragraph-keep-scheduling.js';
+import { WORD_SPACING_COST_POLICY } from '../../domain/text/word-spacing-adjustment.js';
 
 const MAX_LINES = 2048;
 const frameShape = (column) => ({
@@ -60,6 +61,7 @@ export async function fitFrameParagraphs(
           sourceStart,
           onlyFrame ?? null,
           paragraph.keep,
+          ...(paragraph.wordSpacing ? [paragraph.wordSpacing, WORD_SPACING_COST_POLICY] : []),
         ]),
       ownColumns = onlyFrame === undefined ? columns : columns.slice(0, onlyFrame + 1);
     let chosen = entry.decisions.get(key);
@@ -79,6 +81,7 @@ export async function fitFrameParagraphs(
         mode,
         maxStates: maxStates - states,
         maxCandidates: maxCandidates - candidates,
+        ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),
       });
       let step = steps.next();
       while (!step.done) {
@@ -131,8 +134,41 @@ export async function fitFrameParagraphs(
       left,
       width,
     })),
-    policy: mode === 'single-line' ? 'native-fragment-greedy-v1' : 'ragged-right-quadratic-v1',
+    policy: paragraphs.some((paragraph) => paragraph.wordSpacing)
+      ? mode === 'single-line'
+        ? 'native-fragment-word-spacing-greedy-v1'
+        : WORD_SPACING_COST_POLICY
+      : mode === 'single-line'
+        ? 'native-fragment-greedy-v1'
+        : 'ragged-right-quadratic-v1',
     keepViolations: scheduled.keepViolations,
+    ...(paragraphs.some((paragraph) => paragraph.wordSpacing)
+      ? {
+          wordSpacingPlan: lines.map((line) =>
+            line.wordSpacing
+              ? {
+                  start: line.start,
+                  end: line.end,
+                  visibleWidth: line.wordSpacing.visibleWidth,
+                  percentage: line.wordSpacing.percentage,
+                  eligibleGaps: line.wordSpacing.eligibleGaps,
+                  nominalSpaceWidth: line.wordSpacing.nominalSpaceWidth,
+                  justified: line.wordSpacing.justified,
+                  fallback: line.wordSpacing.fallback,
+                }
+              : null,
+          ),
+          wordSpacingDiagnostics: lines
+            .filter((line) => line.wordSpacing?.diagnostic)
+            .map((line) => ({
+              ...line.wordSpacing.diagnostic,
+              start: line.start,
+              end: line.end,
+              frame: line.frame,
+              future: line.frame >= actualColumns.length,
+            })),
+        }
+      : {}),
     work: { ...work, states, candidates, fitProbes, keepProbes },
   };
 }

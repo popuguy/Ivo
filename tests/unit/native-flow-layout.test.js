@@ -795,3 +795,51 @@ test('native kept source creates and trims only its owned automatic continuation
   assert.deepEqual(doc.pages[0], authoredPage);
   assert.deepEqual(doc.blocks[0], authoredFrame);
 });
+
+test('word spacing is paragraph-owned and explicitly activates native protocol5 without character leakage', () => {
+  const doc = fixture(),
+    flow = doc.textFlows[0];
+  const baseline = validateNativeFlowSource(doc, flow);
+  assert.equal(baseline.protocol, 2);
+  assert(!Object.hasOwn(baseline.paragraphs[0], 'wordSpacing'));
+  flow.style.wordSpacing = '80:200:300';
+  const before = structuredClone(doc),
+    source = validateNativeFlowSource(doc, flow);
+  assert.equal(source.protocol, 5);
+  assert.equal(source.paragraphs[0].wordSpacing, '80:200:300');
+  assert(source.runs.every((run) => !Object.hasOwn(run, 'wordSpacing')));
+  assert.equal(source.text, flow.html + '\u2029');
+  assert.deepEqual(doc, before);
+  flow.style.wordSpacing = 'normal';
+  assert.deepEqual(validateNativeFlowSource(doc, flow), baseline);
+});
+
+test('unsupported word-spacing combinations reject synchronously and before native calls or authored writes', async () => {
+  for (const text of ['A\tB', 'A\u00a0B', 'A\u202fB']) {
+    const doc = fixture({ text }),
+      native = port();
+    doc.textFlows[0].style.wordSpacing = '0:100:133';
+    const before = structuredClone(doc);
+    assert.throws(
+      () => validateNativeFlowSource(doc, doc.textFlows[0]),
+      /word spacing with tabs or nonbreaking/,
+    );
+    await assert.rejects(
+      composeNativeTextFlows(doc, native),
+      /word spacing with tabs or nonbreaking/,
+    );
+    assert.equal(native.calls.length, 0);
+    assert.deepEqual(doc, before);
+  }
+  const doc = fixture(),
+    native = port();
+  Object.assign(doc.textFlows[0].style, { wordSpacing: '80:100:133', tracking: -1 });
+  const before = structuredClone(doc);
+  assert.throws(
+    () => validateNativeFlowSource(doc, doc.textFlows[0]),
+    /word spacing with negative tracking/,
+  );
+  await assert.rejects(composeNativeTextFlows(doc, native), /word spacing with negative tracking/);
+  assert.equal(native.calls.length, 0);
+  assert.deepEqual(doc, before);
+});

@@ -4,6 +4,11 @@ import { paragraphLayout, paragraphLineArea } from '../../domain/text/paragraph-
 
 import { fitFrameParagraphs } from './paragraph-frame-scheduler.js';
 import { normalizeParagraphKeeps } from '../../domain/text/paragraph-keep-policy.js';
+import { wordSpacingSourceError } from '../../domain/text/word-spacing.js';
+import {
+  normalizeWordSpacingPolicy,
+  wordSpacingMeasurement,
+} from '../../domain/text/word-spacing-adjustment.js';
 
 const MAX_POINTS = 1024,
   MAX_ALTERNATIVES = 100000,
@@ -83,6 +88,7 @@ function paragraphIdentity(request, paragraph) {
     frameMetrics: request.protocol >= 3,
     allowFallback: request.allowFallback,
     text: paragraph.text,
+    ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),
     ...(paragraph.text.includes('\t')
       ? { tabOrigins: [paragraph.layout.leftIndent, paragraph.layout.firstLineIndent] }
       : {}),
@@ -139,7 +145,9 @@ export function createParagraphComposer(measure) {
       measurements,
       decisions: new Map(),
       bytes:
-        key.length * 2 + measurements.length * (measurements[0]?.ascent === undefined ? 48 : 112),
+        key.length * 2 +
+        measurements.length *
+          (measurements[0]?.wordSpacing ? 176 : measurements[0]?.ascent === undefined ? 48 : 112),
     };
     cache.set(key, entry);
     bytes += entry.bytes;
@@ -147,7 +155,16 @@ export function createParagraphComposer(measure) {
     return entry;
   };
   return {
-    async compose(request, columns, { mode = 'paragraph', paragraphKeeps, limits = {} } = {}) {
+    async compose(request, columns, options = {}) {
+      if (
+        !options ||
+        typeof options !== 'object' ||
+        Array.isArray(options) ||
+        ![Object.prototype, null].includes(Object.getPrototypeOf(options)) ||
+        Object.keys(options).some((key) => !['mode', 'paragraphKeeps', 'limits'].includes(key))
+      )
+        throw Error('Invalid paragraph composition options.');
+      const { mode = 'paragraph', paragraphKeeps, limits = {} } = options;
       if (!['paragraph', 'single-line'].includes(mode)) throw Error('Invalid native fitting mode.');
       if (!limits || typeof limits !== 'object' || Array.isArray(limits))
         throw Error('Invalid paragraph work limits.');
@@ -201,6 +218,28 @@ export function createParagraphComposer(measure) {
       for (const [index, paragraph] of paragraphs.entries()) {
         paragraph.keep = keeps[index];
         const authored = request.paragraphs?.[index];
+        if (Object.hasOwn(authored ?? {}, 'wordSpacing') && request.protocol !== 5)
+          throw new UnsupportedComposition('word spacing without native protocol 5');
+        if (Object.hasOwn(authored ?? {}, 'wordSpacing') && authored.wordSpacing == null)
+          throw Error('Native word-spacing policy must contain three percentages.');
+        paragraph.wordSpacing = normalizeWordSpacingPolicy(authored?.wordSpacing);
+        if (paragraph.wordSpacing) {
+          if (request.protocol !== 5)
+            throw new UnsupportedComposition('word spacing without native protocol 5');
+          if (columns.some((column) => column.obstacles?.length))
+            throw new UnsupportedComposition('word spacing with wrapped fragments');
+          const issue = wordSpacingSourceError(paragraph.text);
+          if (issue) throw new UnsupportedComposition(issue);
+          if (
+            request.runs.some(
+              (run) =>
+                run.start < paragraph.start + paragraph.text.length &&
+                run.end > paragraph.start &&
+                run.tracking < 0,
+            )
+          )
+            throw new UnsupportedComposition('word spacing with negative tracking');
+        }
         if (
           request.protocol >= 2 &&
           (authored.start !== paragraph.start ||
@@ -298,7 +337,15 @@ export function createParagraphComposer(measure) {
               metrics[key] = measurement[key];
             }
           }
-          group.measurements.push({ ...candidate, width: measurement.width, ...metrics });
+          const row = { ...candidate, width: measurement.width, ...metrics };
+          if (group.paragraphs[0].wordSpacing)
+            row.wordSpacing = wordSpacingMeasurement(
+              { ...row, wordSpacing: measurement.wordSpacing },
+              group.paragraphs[0].wordSpacing,
+            );
+          else if (measurement.wordSpacing !== undefined)
+            throw Error('Unexpected native word-spacing capacities.');
+          group.measurements.push(row);
         }
         work.backendCalls++;
         work.measuredCandidates += batch.length;

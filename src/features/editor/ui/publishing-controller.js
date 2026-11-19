@@ -21,12 +21,18 @@ import {
   saveTextStyle,
 } from '../../../domain/documents/publishing.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../../../domain/text/typography.js';
+import {
+  DEFAULT_WORD_SPACING,
+  normalizeWordSpacing,
+  wordSpacingSettings,
+} from '../../../domain/text/word-spacing.js';
 import { prepareFont } from '../assets/font-import.js';
 import { dialogMarkup, installDialogDismissal } from '../../../shared/ui/dialog.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { createOpenTypePopover } from './opentype-popover.js';
+import { createWordSpacingDialog } from './word-spacing-dialog.js';
 
-/** Nonmodal publishing controls. Document edits use the same transaction/history owner as canvas edits. */
+/** Publishing controls use the same transaction/history owner as canvas edits. */
 export function installPublishingControls(
   editor,
   {
@@ -38,6 +44,7 @@ export function installPublishingControls(
     render,
     select,
     allowed,
+    dialogAllowed,
     preserveRange,
     notify,
     onAsset,
@@ -72,6 +79,7 @@ export function installPublishingControls(
         { signal: controller.signal, ...options },
       );
   let popover = null,
+    wordSpacingDialog = null,
     draggedLayer = null,
     fontWork = Promise.resolve(),
     fontPending = 0,
@@ -114,6 +122,55 @@ export function installPublishingControls(
     popover?.destroy();
     popover = null;
   }
+  function closeWordSpacingDialog() {
+    wordSpacingDialog?.destroy();
+    wordSpacingDialog = null;
+  }
+  function nativeTextFlow() {
+    const item = objects()[0];
+    return doc().textFlows?.find((flow) => flow.id === item?.textFlowId && flow.composition);
+  }
+  function openWordSpacing() {
+    preserveRange();
+    const summary = textState(),
+      flow = nativeTextFlow();
+    if (!summary || !flow) {
+      notify?.('Choose a text flow with native composition before editing word spacing.');
+      return;
+    }
+    const owner = {
+      document: doc().id,
+      flow: flow.id,
+      selection: objects()
+        .map((item) => item.id)
+        .join('|'),
+      source: flow.html,
+    };
+    closePopover();
+    closeWordSpacingDialog();
+    wordSpacingDialog = createWordSpacingDialog({
+      summary,
+      apply: (value) => {
+        const current = nativeTextFlow();
+        if (
+          controller.signal.aborted ||
+          !dialogAllowed?.() ||
+          owner.document !== doc().id ||
+          owner.flow !== current?.id ||
+          owner.source !== current.html ||
+          owner.selection !==
+            objects()
+              .map((item) => item.id)
+              .join('|')
+        )
+          throw Error('The text selection changed. Reopen Word Spacing for the current text.');
+        const result = applyTextProperty('wordSpacing', value);
+        if (result !== false) render();
+        return result;
+      },
+      onClose: () => (wordSpacingDialog = null),
+    });
+  }
   function run(action) {
     if (!allowed()) return;
     try {
@@ -152,6 +209,7 @@ export function installPublishingControls(
     });
     dialog.showModal();
     dialog.querySelector('input')?.focus();
+    return dialog;
   }
   function styleForm(kind, edit = false) {
     const item = objects()[0],
@@ -172,7 +230,14 @@ export function installPublishingControls(
       Object.fromEntries(
         fields.filter((key) => settings[key] !== undefined).map((key) => [key, settings[key]]),
       );
-    form(
+    const spacing = wordSpacingSettings(attributes.wordSpacing ?? 'normal') || DEFAULT_WORD_SPACING,
+      spacingMode =
+        attributes.wordSpacing === undefined
+          ? 'inherit'
+          : attributes.wordSpacing === 'normal'
+            ? 'normal'
+            : 'custom';
+    const dialog = form(
       (edit ? 'Edit ' : 'New ') + kind + ' style',
       `<label>Name<input name="name" value="${esc(existing?.name || '')}" required maxlength="120"></label><label>Based on<select name="basedOn"><option value="">[None]</option>${definitions
         .filter((s) => s.id !== existing?.id)
@@ -182,12 +247,51 @@ export function installPublishingControls(
         )
         .join(
           '',
-        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label><label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>`,
+        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label><label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
+        kind === 'paragraph'
+          ? `<label>Word spacing<select name="wordSpacingMode" data-style-word-spacing-mode>${[
+              ['inherit', 'Inherited'],
+              ['normal', 'Normal'],
+              ['custom', 'Custom'],
+            ]
+              .map(
+                ([value, label]) =>
+                  `<option value="${value}" ${spacingMode === value ? 'selected' : ''}>${label}</option>`,
+              )
+              .join(
+                '',
+              )}</select></label><div class="canvas-geometry" style="grid-template-columns:repeat(3,minmax(0,1fr))">${[
+              ['minimum', 'Minimum'],
+              ['desired', 'Desired'],
+              ['maximum', 'Maximum'],
+            ]
+              .map(
+                ([key, label]) =>
+                  `<label>${label} · %<input type="number" min="0" max="1000" step="any" name="wordSpacing-${key}" data-style-word-spacing-field value="${spacing[key]}"></label>`,
+              )
+              .join('')}</div>`
+          : ''
+      }`,
       (data) => {
         const next = { ...attributes };
         for (const key of ['fontSize', 'leading', 'tracking'])
           if (data.get(key) === '') delete next[key];
           else next[key] = Number(data.get(key));
+        if (kind === 'paragraph') {
+          const mode = data.get('wordSpacingMode');
+          if (mode === 'inherit') delete next.wordSpacing;
+          else
+            next.wordSpacing =
+              mode === 'normal'
+                ? 'normal'
+                : normalizeWordSpacing(
+                    ['minimum', 'desired', 'maximum']
+                      .map((key) => data.get('wordSpacing-' + key))
+                      .join(':'),
+                  );
+          if (next.wordSpacing !== attributes.wordSpacing && !nativeTextFlow())
+            throw Error('Choose a text flow with native composition before editing word spacing.');
+        }
         mutate(
           () =>
             saveTextStyle(doc(), kind, {
@@ -200,6 +304,15 @@ export function installPublishingControls(
         );
       },
     );
+    const mode = dialog.querySelector('[data-style-word-spacing-mode]');
+    if (mode) {
+      const reflect = () => {
+        for (const field of dialog.querySelectorAll('[data-style-word-spacing-field]'))
+          field.disabled = mode.value !== 'custom';
+      };
+      mode.addEventListener('change', reflect);
+      reflect();
+    }
   }
   function openType(anchor) {
     closePopover();
@@ -229,7 +342,11 @@ export function installPublishingControls(
     });
   }
   listen(editor, 'pointerdown', (event) => {
-    if (event.target.closest('[data-highlight-color],[data-type-feature]')) {
+    if (
+      event.target.closest(
+        '[data-highlight-color],[data-type-feature],[data-canvas-command="word-spacing"]',
+      )
+    ) {
       preserveRange();
       if (event.target.closest('button')) event.preventDefault();
     }
@@ -555,6 +672,10 @@ export function installPublishingControls(
         openType(anchor);
         return true;
       }
+      if (name === 'word-spacing') {
+        openWordSpacing();
+        return true;
+      }
       if (name === 'refresh-fonts') {
         if (refreshSystemFonts) void refreshSystemFonts().catch((error) => notify?.(error.message));
         return true;
@@ -670,6 +791,7 @@ export function installPublishingControls(
     },
     destroy() {
       closePopover();
+      closeWordSpacingDialog();
       controller.abort();
     },
   };

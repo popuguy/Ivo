@@ -1,6 +1,6 @@
 # Document and vault formats
 
-Authored object text wrap uses **archive 9 / canvas 8**. Explicit native text composition uses **archive 8 / canvas 7**. Authored first-baseline policies use **archive 7 / canvas 6**. Other publishing documents remain **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
+Authored paragraph word spacing uses **archive 10 / canvas 9**. Authored object text wrap uses **archive 9 / canvas 8**. Explicit native text composition uses **archive 8 / canvas 7**. Authored first-baseline policies use **archive 7 / canvas 6**. Other publishing documents remain **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
 
 | Archive | Document capability                                                                                                |
 | ------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -13,6 +13,7 @@ Authored object text wrap uses **archive 9 / canvas 8**. Explicit native text co
 | 7       | Explicit font-metric/fixed first-baseline policies and minimum offsets, canvas 6                                   |
 | 8       | Explicit native flow composition authority/policy, canvas 7                                                        |
 | 9       | Object text wrap, frame ignore-wrap and document/layer wrap policy, canvas 8                                       |
+| 10      | Atomic paragraph word-spacing preferences, including explicit normal/reset, canvas 9                               |
 
 A document has a stable ID and version, editable title, timestamps, tags/aliases, objects and (for current scenes) pages. A text flow has its own stable ID, rich HTML, ordered frame IDs, style, continuation policy and ownership of automatically generated pages. Frames hold geometry and a reference to their text flow; they do not duplicate its source. Images reference original assets. Polygon masks form a validated, bounded parent tree. Application extension data is namespaced and bounded; unknown extension namespaces survive validation.
 
@@ -87,3 +88,11 @@ Wrap geometry, transformed contours, triangulation, available line bands and sou
 Commands, archive validation and layout share one pure contour authority. It checks every nonadjacent segment pair before offset or triangulation, with exact binary-coordinate orientation when floating arithmetic is ambiguous; local turns or successful ear clipping cannot certify a pentagram. The same cross-field proof rejects unsupported contour/object combinations before storage, including inside parent templates. Object paste adopts newly affected destination area frames before assigning the replacement document; callers do not need a later repair to make pasted wrap data valid.
 
 The frozen inline archive-8 fixture in `tests/unit/text-wrap.test.js` verifies unchanged input, IDs, source and canvas capability with no wrap opt-in on read. Tests cover malformed/old gates, exact complete-band exclusions, stroke/offset semantics, hierarchy transforms, hidden-layer/stack/spine policies, source adoption/idempotence, parents, native-flow coexistence, copying/paste and continuation-frame options. Native manifest 1 and IndexedDB 4 are unchanged.
+
+## Paragraph word-spacing capability
+
+Archive 10 / canvas 9 adds the atomic paragraph field `wordSpacing`, stored as a normalized `minimum:desired:maximum` string or `normal`, and source attribute `data-ivo-wordspace`. Percentages are finite, ordered and within 0…1000; fractional values survive normalization. Explicit values in flow/block settings, overrides, paragraph source, named styles and parent definitions require this gate, even when the value is `normal` or a named definition is not currently used. Reset retains canvas 9, preventing an old writer from silently dropping the field. Native manifest 1 and browser IndexedDB 4 are unchanged.
+
+Frozen `tests/fixtures/legacy/archive-v9.json` was normalized with the preceding implementation. Reads keep its prior source, IDs, geometry and version; no word-spacing value or native composer is introduced. New writes preserve immutable prior object bytes and use the existing atomic manifest transaction. Copy/paste retains separate flow IDs and the explicit capability. Invalid/crossed triples reject before replacing stored content.
+
+This persisted capability is separate from internal native protocol 5 and its disposable measured word-spacing plans. UI authoring currently requires an explicitly native flow; the first admission is simple LTR ordinary spaces without effective wraps, tabs, special/nonbreaking spaces or negative tracking. No browser CSS approximation or automatic native opt-in is added. See [native paragraph word spacing](native-word-spacing.md) for layout rules and open qualification.

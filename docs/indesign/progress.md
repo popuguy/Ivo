@@ -2,7 +2,7 @@
 
 Current overall engineering estimate, 19 November 2026:
 
-`[███████░░░░░░░░░░░░░] ~33%`
+`[███████░░░░░░░░░░░░░] ~35%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
 
@@ -29,6 +29,8 @@ The [native character milestone](../native-character-shaping.md) adds exact-face
 The [native keep milestone](../native-paragraph-keeps.md) connects All/Next1 to measured unequal-column reflow, local relaxation, source/history and publication. It advances the same estimate from ~31% to ~33%; partial/count/chain/start policies, wrapping interactions and the complete reference/device gates remain open.
 
 The [native PDF encoding correction](../native-pdf-encoding.md) improves eligible PDFKit source copying/search without repainting, with explicit original-byte fallback for ambiguous literal/ASCII cases. This is a correction within the existing composition/publication foundation; the overall estimate remains ~33%.
+
+The [native word-spacing milestone](../native-word-spacing.md) adds measured minimum/desired/maximum preferences, soft-bound full and condensed-final composition, source-correct carets, paragraph/style controls and selectable PDF. Actual editor tests cover range isolation, one-step undo, paragraph entry, full-paragraph paste capability promotion and cold archive10 reopen. This advances the same estimate from ~33% to ~35%; letter/glyph constraints, hyphenation, the complete paragraph objective, wrapped/script-specific spacing and devices remain open. It does not certify the justification capability.
 
 1. Complete paragraph composition: custom/decimal/right-indent tabs and leaders, justification constraints, hyphenation, keeps, grids and native wraps.
 2. Complete shaping/source maps: fallback capture, full OpenType/variable/language support, bidi/complex scripts/CJK and deterministic cross-device behavior.

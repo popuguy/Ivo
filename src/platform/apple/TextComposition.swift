@@ -25,6 +25,8 @@ public final class TextCompositionEngine {
   private var fontBytes = 0
   private var snapshots: [String: Snapshot] = [:], snapshotOrder: [String] = [], snapshotBytes = 0
   private var vectorCache: [String: String] = [:], vectorOrder: [String] = [], vectorBytes = 0
+  private let unsupportedWordSpaceScript = try! NSRegularExpression(
+    pattern: "[^\\p{Latin}\\p{Greek}\\p{Cyrillic}\\p{Common}\\p{Inherited}]")
   public init() {}
   // Bounded exact-font shaping and line geometry. Paragraph policy belongs to the caller.
   struct SourceSpan: Decodable {
@@ -73,13 +75,17 @@ public final class TextCompositionEngine {
       autoLeading = try values.decodeIfPresent(Double.self, forKey: .autoLeading)
       // Absent defaults are allowed; explicitly malformed/null character values
       // must not disappear into an optional and silently change saved intent.
-      baselineShift = values.contains(.baselineShift)
+      baselineShift =
+        values.contains(.baselineShift)
         ? try values.decode(Double.self, forKey: .baselineShift) : nil
-      horizontalScale = values.contains(.horizontalScale)
+      horizontalScale =
+        values.contains(.horizontalScale)
         ? try values.decode(Double.self, forKey: .horizontalScale) : nil
-      verticalScale = values.contains(.verticalScale)
+      verticalScale =
+        values.contains(.verticalScale)
         ? try values.decode(Double.self, forKey: .verticalScale) : nil
-      features = values.contains(.features)
+      features =
+        values.contains(.features)
         ? try values.decode([String: Bool].self, forKey: .features) : nil
     }
   }
@@ -96,6 +102,11 @@ public final class TextCompositionEngine {
     let end: Int
     let offset: Double?
   }
+  struct WordSpacing: Decodable {
+    let minimum: Double
+    let desired: Double
+    let maximum: Double
+  }
   struct Paragraph: Decodable {
     let start: Int
     let end: Int
@@ -105,6 +116,26 @@ public final class TextCompositionEngine {
     let leftIndent: Double
     let rightIndent: Double
     let firstLineIndent: Double
+    let wordSpacing: WordSpacing?
+    enum CodingKeys: String, CodingKey {
+      case start, end, align, paragraphBefore, paragraphAfter, leftIndent, rightIndent,
+        firstLineIndent
+      case wordSpacing
+    }
+    init(from decoder: Decoder) throws {
+      let values = try decoder.container(keyedBy: CodingKeys.self)
+      start = try values.decode(Int.self, forKey: .start)
+      end = try values.decode(Int.self, forKey: .end)
+      align = try values.decode(String.self, forKey: .align)
+      paragraphBefore = try values.decode(Double.self, forKey: .paragraphBefore)
+      paragraphAfter = try values.decode(Double.self, forKey: .paragraphAfter)
+      leftIndent = try values.decode(Double.self, forKey: .leftIndent)
+      rightIndent = try values.decode(Double.self, forKey: .rightIndent)
+      firstLineIndent = try values.decode(Double.self, forKey: .firstLineIndent)
+      wordSpacing =
+        values.contains(.wordSpacing)
+        ? try values.decode(WordSpacing.self, forKey: .wordSpacing) : nil
+    }
   }
   struct Placement: Decodable {
     let end: Int
@@ -156,8 +187,11 @@ public final class TextCompositionEngine {
   func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
     try require(
-      [1, 2, 3, 4].contains(request.protocol)
-        && ["greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof", "planned-lines-proof"].contains(
+      [1, 2, 3, 4, 5].contains(request.protocol)
+        && [
+          "greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof",
+          "planned-lines-proof",
+        ].contains(
           request.mode),
       "Unsupported composition protocol or policy")
     try require(
@@ -167,12 +201,18 @@ public final class TextCompositionEngine {
       request.mode != "planned-lines-proof" || request.protocol >= 3,
       "Planned lines require composition protocol 3 or 4")
     try require(
-      request.protocol != 3 || ["measure-lines-proof", "planned-lines-proof"].contains(request.mode),
+      request.protocol != 3
+        || ["measure-lines-proof", "planned-lines-proof"].contains(request.mode),
       "Composition protocol 3 requires measured or planned lines")
     try require(
       request.protocol != 4
-        || ["greedy-geometry-proof", "measure-lines-proof", "planned-lines-proof"].contains(request.mode),
+        || ["greedy-geometry-proof", "measure-lines-proof", "planned-lines-proof"].contains(
+          request.mode),
       "Composition protocol 4 requires greedy, measured or planned lines")
+    try require(
+      request.protocol != 5
+        || ["measure-lines-proof", "planned-lines-proof"].contains(request.mode),
+      "Composition protocol 5 requires measured or planned lines")
     try require(
       request.placements == nil || (request.protocol >= 3 && request.mode == "planned-lines-proof"),
       "Placements require the planned-lines policy")
@@ -215,8 +255,10 @@ public final class TextCompositionEngine {
           paragraph.start == paragraphStart && paragraph.end > paragraph.start
             && paragraph.end <= length, "Discontinuous paragraph layout")
         try require(
-          ["left", "center", "right", "justify", "justify-center", "justify-right", "justify-all",
-            "start", "end"].contains(paragraph.align), "Unsupported paragraph alignment")
+          [
+            "left", "center", "right", "justify", "justify-center", "justify-right", "justify-all",
+            "start", "end",
+          ].contains(paragraph.align), "Unsupported paragraph alignment")
         try require(
           finite(paragraph.paragraphBefore, 0, 2000) && finite(paragraph.paragraphAfter, 0, 2000)
             && finite(paragraph.leftIndent, -2000, 2000)
@@ -224,6 +266,28 @@ public final class TextCompositionEngine {
             && finite(paragraph.firstLineIndent, -2000, 2000), "Invalid paragraph geometry")
         let value = string.substring(
           with: NSRange(location: paragraph.start, length: paragraph.end - paragraph.start))
+        if let spacing = paragraph.wordSpacing {
+          try require(request.protocol == 5, "Word spacing requires composition protocol 5")
+          try require(
+            finite(spacing.minimum, 0, 1000) && finite(spacing.desired, spacing.minimum, 1000)
+              && finite(spacing.maximum, spacing.desired, 1000), "Invalid word-spacing preferences")
+          try require(
+            value.unicodeScalars.allSatisfy {
+              !CharacterSet.whitespacesAndNewlines.contains($0)
+                || [0x20, 10, 13, 0x2028, 0x2029].contains($0.value)
+            },
+            "Explicit word spacing requires qualified ordinary spaces without tabs or fixed spaces")
+          try require(
+            !value.unicodeScalars.contains {
+              (0x202A...0x202E).contains($0.value) || (0x2066...0x2069).contains($0.value)
+                || [0x200E, 0x200F, 0x061C].contains($0.value)
+            }, "Explicit word spacing requires qualified left-to-right text")
+          try require(
+            unsupportedWordSpaceScript.firstMatch(
+              in: value,
+              range: NSRange(value.startIndex..., in: value)) == nil,
+            "Explicit word spacing requires qualified Latin, Greek or Cyrillic source")
+        }
         try require(
           !value.contains("\t") || ["left", "start"].contains(paragraph.align),
           "Aligned native tab paragraphs require a qualified tab policy")
@@ -236,8 +300,8 @@ public final class TextCompositionEngine {
             && paragraph.leftIndent + paragraph.firstLineIndent >= 0,
           "Paragraph indents leave no valid line area")
         for frame in request.frames
-          where request.protocol == 2
-            || (request.protocol == 4 && request.mode == "greedy-geometry-proof")
+        where request.protocol == 2
+          || (request.protocol == 4 && request.mode == "greedy-geometry-proof")
         {
           let width = frame.width - paragraph.leftIndent - paragraph.rightIndent
           try require(
@@ -345,7 +409,7 @@ public final class TextCompositionEngine {
     var position = 0
     for run in request.runs {
       try require(
-        request.protocol == 4
+        request.protocol >= 4
           || (run.baselineShift == nil && run.horizontalScale == nil && run.verticalScale == nil
             && run.features == nil),
         "Character transforms and OpenType settings require composition protocol 4")
@@ -355,11 +419,15 @@ public final class TextCompositionEngine {
           && (run.verticalScale == nil || finite(run.verticalScale!, 10, 1000)),
         "Invalid character transform")
       if let features = run.features {
-        let supported: Set<String> = ["dlig", "smcp", "onum", "tnum", "zero", "frac", "ordn", "salt"]
-        try require(features.count <= 8 && Set(features.keys).isSubset(of: supported),
+        let supported: Set<String> = [
+          "dlig", "smcp", "onum", "tnum", "zero", "frac", "ordn", "salt",
+        ]
+        try require(
+          features.count <= 8 && Set(features.keys).isSubset(of: supported),
           "Unsupported OpenType feature setting")
         for tag in features.keys.sorted() where features[tag] == true {
-          try require(fontFeatures[run.font]?.contains(tag) == true,
+          try require(
+            fontFeatures[run.font]?.contains(tag) == true,
             "Font does not support OpenType feature: " + tag)
         }
       }
@@ -369,6 +437,12 @@ public final class TextCompositionEngine {
       try require(
         fonts[run.font] != nil && finite(run.size, 1, 2000) && finite(run.tracking, -1000, 10000),
         "Unavailable font or invalid run metrics")
+      if request.paragraphs?.contains(where: {
+        $0.wordSpacing != nil && $0.start < run.end && $0.end > run.start
+      }) == true {
+        try require(
+          run.tracking >= 0, "Explicit word spacing requires qualified nonnegative tracking")
+      }
       try require(
         run.kerning == nil || run.kerning == "metrics" || run.kerning == "none",
         "Unsupported kerning policy")
@@ -449,7 +523,8 @@ public final class TextCompositionEngine {
           let value = string.substring(
             with: NSRange(location: previousEnd, length: placement.end - previousEnd))
           try require(
-            !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }),
+            !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }
+            ),
             "Planned line crosses a forced break")
           while paragraphIndex + 1 < request.paragraphs!.count
             && previousEnd >= request.paragraphs![paragraphIndex].end
@@ -458,25 +533,29 @@ public final class TextCompositionEngine {
           try require(placement.end <= paragraph.end, "Planned line crosses a paragraph")
           if placement.frame < request.frames.count {
             let frame = request.frames[placement.frame]
-            let indent = paragraph.leftIndent
+            let indent =
+              paragraph.leftIndent
               + (previousEnd == paragraph.start ? paragraph.firstLineIndent : 0)
             try require(
               placement.left + 0.000001 >= indent
-                && placement.left + placement.width <= frame.width - paragraph.rightIndent + 0.000001
+                && placement.left + placement.width <= frame.width - paragraph.rightIndent
+                  + 0.000001
                 && placement.baseline <= frame.height,
               "Planned line lies outside its frame or paragraph area")
           }
           if let prior = previous {
             try require(placement.frame >= prior.frame, "Planned frame order goes backwards")
             if placement.frame == prior.frame {
-              try require(placement.baseline + 0.000001 >= prior.baseline,
+              try require(
+                placement.baseline + 0.000001 >= prior.baseline,
                 "Planned baseline order goes backwards")
               if abs(placement.baseline - prior.baseline) <= 0.000001 {
                 try require(
                   placement.left + 0.000001 >= prior.left + prior.width,
                   "Planned row segments overlap or go backwards")
                 let last = string.character(at: previousEnd - 1)
-                try require(![10, 13, 0x2028, 0x2029].contains(Int(last)),
+                try require(
+                  ![10, 13, 0x2028, 0x2029].contains(Int(last)),
                   "Planned forced break continues on the same row")
               }
             }
@@ -526,7 +605,8 @@ public final class TextCompositionEngine {
     var transform = CGAffineTransform(
       scaleX: (run.horizontalScale ?? 100) / 100,
       y: (run.verticalScale ?? 100) / 100)
-    var font = transform.isIdentity
+    var font =
+      transform.isIdentity
       ? CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, nil, nil)
       : CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, &transform, nil)
     if var features = run.features, !features.isEmpty {
@@ -534,10 +614,14 @@ public final class TextCompositionEngine {
       // Some faces have oldstyle glyphs but no proportional alternate.
       if features["onum"] == true && features["tnum"] != true
         && declaredFeatures(font).contains("pnum")
-      { features["pnum"] = true }
+      {
+        features["pnum"] = true
+      }
       let settings = features.keys.sorted().map { tag in
-        [kCTFontOpenTypeFeatureTag as String: tag,
-          kCTFontOpenTypeFeatureValue as String: features[tag]! ? 1 : 0] as [String: Any]
+        [
+          kCTFontOpenTypeFeatureTag as String: tag,
+          kCTFontOpenTypeFeatureValue as String: features[tag]! ? 1 : 0,
+        ] as [String: Any]
       }
       let descriptor = CTFontDescriptorCreateWithAttributes(
         [kCTFontFeatureSettingsAttribute: settings] as CFDictionary)
@@ -565,18 +649,21 @@ public final class TextCompositionEngine {
     let nativeFonts = nativeRuns.map {
       (CTRunGetAttributes($0) as NSDictionary)[kCTFontAttributeName] as! CTFont
     }
-    let actualFonts = nativeFonts.isEmpty
+    let actualFonts =
+      nativeFonts.isEmpty
       ? sourceRuns.map { characterFont($0, fonts: fonts) } : nativeFonts
     let struts = actualFonts.map { untransformedFont($0) }
     var inkAscent = CGFloat.zero
     var inkDescent = CGFloat.zero
     if nativeFonts.isEmpty {
-      inkAscent = zip(sourceRuns, actualFonts).map { pair in
-        CTFontGetAscent(pair.1) + (pair.0.baselineShift ?? 0)
-      }.max() ?? 0
-      inkDescent = zip(sourceRuns, actualFonts).map { pair in
-        CTFontGetDescent(pair.1) - (pair.0.baselineShift ?? 0)
-      }.max() ?? 0
+      inkAscent =
+        zip(sourceRuns, actualFonts).map { pair in
+          CTFontGetAscent(pair.1) + (pair.0.baselineShift ?? 0)
+        }.max() ?? 0
+      inkDescent =
+        zip(sourceRuns, actualFonts).map { pair in
+          CTFontGetDescent(pair.1) - (pair.0.baselineShift ?? 0)
+        }.max() ?? 0
     } else {
       let boxes = nativeRuns.map { run -> (CGFloat, CGFloat) in
         let attrs = CTRunGetAttributes(run) as NSDictionary
@@ -606,15 +693,18 @@ public final class TextCompositionEngine {
     let paragraph = withUnsafePointer(to: &interval) { intervalPointer in
       withUnsafePointer(to: &stops) { stopsPointer in
         var settings = [
-          CTParagraphStyleSetting(spec: .defaultTabInterval, valueSize: MemoryLayout<CGFloat>.size,
+          CTParagraphStyleSetting(
+            spec: .defaultTabInterval, valueSize: MemoryLayout<CGFloat>.size,
             value: intervalPointer),
-          CTParagraphStyleSetting(spec: .tabStops, valueSize: MemoryLayout<CFArray>.size,
+          CTParagraphStyleSetting(
+            spec: .tabStops, valueSize: MemoryLayout<CFArray>.size,
             value: stopsPointer),
         ]
         return CTParagraphStyleCreate(&settings, settings.count)
       }
     }
-    attributed.addAttribute(NSAttributedString.Key(kCTParagraphStyleAttributeName as String),
+    attributed.addAttribute(
+      NSAttributedString.Key(kCTParagraphStyleAttributeName as String),
       value: paragraph, range: NSRange(location: 0, length: attributed.length))
     for run in request.runs {
       let font = characterFont(run, fonts: fonts)
@@ -640,8 +730,158 @@ public final class TextCompositionEngine {
     }
     return attributed
   }
+  struct WordSpaceShape {
+    let start: Int
+    let contentEnd: Int
+    let trailingStart: Int
+    let spaces: [Int]
+    let nominalSpaceWidth: Double
+  }
+  func fontSpaceAdvance(_ font: CTFont) throws -> Double {
+    var character: UniChar = 32
+    var glyph: CGGlyph = 0
+    var advance = CGSize.zero
+    try require(
+      CTFontGetGlyphsForCharacters(font, &character, &glyph, 1),
+      "Font has no qualified ordinary space")
+    CTFontGetAdvancesForGlyphs(font, .horizontal, &glyph, &advance, 1)
+    try require(advance.width.isFinite && advance.width > 0, "Invalid native space advance")
+    return Double(advance.width)
+  }
+  func wordSpaceShape(_ source: NSAttributedString, start: Int, contentEnd: Int) throws
+    -> WordSpaceShape
+  {
+    let text = source.string as NSString
+    var trailingStart = contentEnd
+    while trailingStart > start && text.character(at: trailingStart - 1) == 32 {
+      trailingStart -= 1
+    }
+    let spaces = (start..<trailingStart).filter { text.character(at: $0) == 32 }
+    var nominal = 0.0
+    for index in spaces {
+      let font =
+        source.attribute(
+          NSAttributedString.Key(kCTFontAttributeName as String), at: index,
+          effectiveRange: nil) as! CTFont
+      nominal += try fontSpaceAdvance(font)
+    }
+    return WordSpaceShape(
+      start: start, contentEnd: contentEnd, trailingStart: trailingStart,
+      spaces: spaces, nominalSpaceWidth: nominal)
+  }
+  func wordSpaceCapacities(_ shape: WordSpaceShape, naturalWidth: Double, policy: WordSpacing)
+    -> [String: Any]
+  {
+    // The exact native font's transformed U+0020 advances are the affine slope;
+    // tracking stays additive and trailing spaces do not contribute visible width.
+    func width(_ percent: Double) -> Double {
+      max(0, naturalWidth + shape.nominalSpaceWidth * (percent / 100 - 1))
+    }
+    return [
+      "minimumWidth": width(policy.minimum), "desiredWidth": width(policy.desired),
+      "maximumWidth": width(policy.maximum), "eligibleGaps": shape.spaces.count,
+      "nominalSpaceWidth": shape.nominalSpaceWidth,
+    ]
+  }
+  func wordSpacedLine(
+    _ source: NSAttributedString, shape: WordSpaceShape, percent: Double,
+    collapseTrailing: Bool, offset: Double
+  ) throws -> CTLine {
+    if shape.contentEnd == shape.start {
+      return CTLineCreateWithAttributedString(NSAttributedString(string: ""))
+    }
+    let attributed = NSMutableAttributedString(attributedString: source)
+    for index in shape.spaces + Array(shape.trailingStart..<shape.contentEnd) {
+      let font =
+        source.attribute(
+          NSAttributedString.Key(kCTFontAttributeName as String), at: index,
+          effectiveRange: nil) as! CTFont
+      let key = NSAttributedString.Key(kCTTrackingAttributeName as String)
+      let tracking =
+        (source.attribute(key, at: index, effectiveRange: nil) as? NSNumber)?.doubleValue ?? 0
+      let nominal = try fontSpaceAdvance(font)
+      // CoreText tracking is already in transformed point units. Adding a kern
+      // while tracking exists is ignored; changing only this source-space
+      // tracking preserves nonspace shaping, ligatures and source clusters.
+      let adjusted =
+        collapseTrailing && index >= shape.trailingStart
+        ? -nominal : tracking + nominal * (percent / 100 - 1)
+      attributed.addAttribute(key, value: adjusted, range: NSRange(location: index, length: 1))
+    }
+    return CTTypesetterCreateLineWithOffset(
+      CTTypesetterCreateWithAttributedString(attributed),
+      CFRange(location: shape.start, length: shape.contentEnd - shape.start), offset)
+  }
+  func collapsedSpaceEdge(_ line: CTLine, shape: WordSpaceShape) throws -> Double? {
+    guard shape.trailingStart < shape.contentEnd else { return nil }
+    var edge: Double?
+    var covered = Set<Int>()
+    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+      let count = CTRunGetGlyphCount(run)
+      var indices = [CFIndex](repeating: 0, count: count)
+      var positions = [CGPoint](repeating: .zero, count: count)
+      var advances = [CGSize](repeating: .zero, count: count)
+      CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+      CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+      CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
+      let matrix = CTRunGetTextMatrix(run)
+      for index in 0..<count
+      where indices[index] >= shape.trailingStart && indices[index] < shape.contentEnd {
+        let x = Double(positions[index].applying(matrix).x)
+        try require(
+          abs(advances[index].width) < 0.000001
+            && (edge == nil || abs(x - edge!) < 0.000001), "Native trailing spaces did not collapse"
+        )
+        edge = x
+        covered.insert(indices[index])
+      }
+    }
+    try require(
+      covered.count == shape.contentEnd - shape.trailingStart && edge != nil,
+      "Native trailing-space source coverage changed")
+    return edge
+  }
+  struct WordSpaceChange {
+    let index: Int
+    let delta: Double
+  }
+  func wordSpaceChanges(_ original: CTLine, final: CTLine, shape: WordSpaceShape) throws
+    -> [WordSpaceChange]
+  {
+    let sourceSpaces = Set(shape.spaces + Array(shape.trailingStart..<shape.contentEnd))
+    func advances(_ line: CTLine) throws -> [Int: Double] {
+      var result: [Int: Double] = [:]
+      for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+        let count = CTRunGetGlyphCount(run)
+        var indices = [CFIndex](repeating: 0, count: count)
+        var widths = [CGSize](repeating: .zero, count: count)
+        CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+        CTRunGetAdvances(run, CFRange(location: 0, length: 0), &widths)
+        for index in 0..<count where sourceSpaces.contains(indices[index]) {
+          try require(
+            result[indices[index]] == nil && widths[index].width.isFinite,
+            "Native word-space source cluster is not qualified")
+          result[indices[index]] = Double(widths[index].width)
+        }
+      }
+      try require(
+        result.count == sourceSpaces.count,
+        "Native word-space source coverage changed")
+      return result
+    }
+    let before = try advances(original)
+    let after = try advances(final)
+    return sourceSpaces.sorted().map { WordSpaceChange(index: $0, delta: after[$0]! - before[$0]!) }
+  }
+  func validateWordSpaceDirection(_ line: CTLine) throws {
+    try require(
+      !(CTLineGetGlyphRuns(line) as! [CTRun]).contains {
+        CTRunGetStatus($0).contains(.rightToLeft)
+      }, "Explicit word spacing requires qualified left-to-right shaping")
+  }
   func measureCandidates(_ request: Request, fonts: [String: CGFont]) throws -> [[String: Any]] {
-    let typesetter = CTTypesetterCreateWithAttributedString(attributedSource(request, fonts: fonts))
+    let attributed = attributedSource(request, fonts: fonts)
+    let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let string = request.text as NSString
     return try request.candidates!.map { candidate in
       var end = candidate.end
@@ -675,7 +915,8 @@ public final class TextCompositionEngine {
         descent = actualFonts.map { CTFontGetDescent($0) }.max() ?? 0
         leading = actualFonts.map { CTFontGetLeading($0) }.max() ?? 0
       }
-      let character = request.protocol == 4
+      let character =
+        request.protocol >= 4
         ? characterMetrics(line, sourceRuns: sourceRuns, fonts: fonts) : nil
       if let character = character {
         ascent = character.ascent
@@ -698,6 +939,13 @@ public final class TextCompositionEngine {
       if let character = character {
         row["inkAscent"] = Double(character.inkAscent)
         row["inkDescent"] = Double(character.inkDescent)
+      }
+      if let policy = request.paragraphs?.first(where: {
+        $0.start <= candidate.start && $0.end > candidate.start
+      })?.wordSpacing {
+        try validateWordSpaceDirection(line)
+        let shape = try wordSpaceShape(attributed, start: candidate.start, contentEnd: end)
+        row["wordSpacing"] = wordSpaceCapacities(shape, naturalWidth: width, policy: policy)
       }
       return row
     }
@@ -723,7 +971,8 @@ public final class TextCompositionEngine {
       let frameStart = frozen.count
       while position < textLength {
         try require(output.count < 4096, "Composed line budget exceeded")
-        let placement = request.mode == "planned-lines-proof" ? request.placements![output.count] : nil
+        let placement =
+          request.mode == "planned-lines-proof" ? request.placements![output.count] : nil
         if let placement = placement {
           if placement.frame > page { break }
           try require(placement.frame == page, "Planned frame does not match its source cursor")
@@ -737,13 +986,15 @@ public final class TextCompositionEngine {
           (paragraph?.leftIndent ?? 0)
           + (paragraphFirstLine ? paragraph?.firstLineIndent ?? 0 : 0)
         let indent = placement?.left ?? paragraphIndent
-        let availableWidth = placement?.width
+        let availableWidth =
+          placement?.width
           ?? (frame.width - paragraphIndent - (paragraph?.rightIndent ?? 0))
         var count =
-          placement != nil ? placement!.end - position
+          placement != nil
+          ? placement!.end - position
           : request.mode == "explicit-lines-proof"
-          ? request.breaks!.first(where: { $0 > position })! - position
-          : CTTypesetterSuggestLineBreakWithOffset(typesetter, position, availableWidth, indent)
+            ? request.breaks!.first(where: { $0 > position })! - position
+            : CTTypesetterSuggestLineBreakWithOffset(typesetter, position, availableWidth, indent)
         if count <= 0 {
           count = (boundaries.first(where: { $0 > position }) ?? textLength) - position
           diagnostics.insert("unbreakable-cluster-overflow")
@@ -766,9 +1017,80 @@ public final class TextCompositionEngine {
         var visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
         let paragraphLastLine = paragraph.map { end >= $0.end } ?? false
         let alignment = paragraph?.align ?? "left"
-        let justified = alignment.hasPrefix("justify")
+        let justified =
+          alignment.hasPrefix("justify")
           && (!paragraphLastLine || alignment == "justify-all")
-        if justified && visibleWidth > 0 && visibleWidth < availableWidth,
+        var wordSpacingRow: [String: Any]?
+        var collapsedShape: WordSpaceShape?
+        var collapsedEdge: Double?
+        var originalWordSpaceLine: CTLine?
+        var wordSpaceChanges: [WordSpaceChange] = []
+        if let policy = paragraph?.wordSpacing {
+          let original = line
+          try validateWordSpaceDirection(line)
+          let shape = try wordSpaceShape(attributed, start: position, contentEnd: contentEnd)
+          let nominal = shape.nominalSpaceWidth
+          let desired = max(0, visibleWidth + nominal * (policy.desired / 100 - 1))
+          let minimum = max(0, visibleWidth + nominal * (policy.minimum / 100 - 1))
+          let condensesLast =
+            alignment.hasPrefix("justify") && paragraphLastLine
+            && alignment != "justify-all" && desired > availableWidth
+          let adjustsToArea = justified || condensesLast
+          let target = adjustsToArea ? availableWidth : desired
+          if condensesLast {
+            try require(
+              minimum <= availableWidth + 0.000001,
+              "Final justified line exceeds its minimum word-space preference")
+          }
+          if nominal > 0 && adjustsToArea {
+            try require(
+              visibleWidth - nominal <= availableWidth + 0.000001,
+              "Justified line exceeds its zero-word-space physical floor")
+          }
+          let percentage =
+            nominal > 0
+            ? policy.desired + (target - desired) / nominal * 100 : policy.desired
+          try require(
+            percentage.isFinite && percentage >= -0.000001,
+            "Invalid solved native word spacing")
+          line = try wordSpacedLine(
+            attributed, shape: shape, percent: max(0, percentage),
+            collapseTrailing: adjustsToArea, offset: indent)
+          var fallback = false
+          if justified && nominal == 0 && visibleWidth > 0.000001 && visibleWidth < availableWidth,
+            let expanded = CTLineCreateJustifiedLine(line, 1, availableWidth)
+          {
+            // Preserve the already-qualified native single-word letter-spreading
+            // fallback. This does not implement authored letter-spacing limits.
+            line = expanded
+            fallback = true
+          }
+          width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+          visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
+          if nominal > 0 {
+            try require(
+              abs(visibleWidth - target) < 0.000001,
+              "Native word spacing did not realize its measured target")
+          }
+          if adjustsToArea {
+            collapsedEdge = try collapsedSpaceEdge(line, shape: shape)
+            if collapsedEdge != nil { collapsedShape = shape }
+          }
+          if !fallback && (!shape.spaces.isEmpty || shape.trailingStart < shape.contentEnd) {
+            originalWordSpaceLine = original
+            wordSpaceChanges = try self.wordSpaceChanges(original, final: line, shape: shape)
+          }
+          wordSpacingRow = [
+            "percentage": max(0, percentage), "eligibleGaps": shape.spaces.count,
+            "nominalSpaceWidth": nominal, "justified": adjustsToArea,
+            "offPreference": percentage < policy.minimum - 0.000001
+              || percentage > policy.maximum + 0.000001,
+            "fallback": fallback ? "single-word" : NSNull(),
+          ]
+          if let collapsed = collapsedShape {
+            wordSpacingRow!["collapsedTrailingStart"] = collapsed.trailingStart
+          }
+        } else if justified && visibleWidth > 0 && visibleWidth < availableWidth,
           let expanded = CTLineCreateJustifiedLine(line, 1, availableWidth)
         {
           line = expanded
@@ -790,7 +1112,8 @@ public final class TextCompositionEngine {
           leading = CTFontGetLeading(font)
         }
         let sourceRuns = request.runs.filter { $0.start < end && $0.end > position }
-        let character = request.protocol == 4
+        let character =
+          request.protocol >= 4
           ? characterMetrics(line, sourceRuns: sourceRuns, fonts: fonts) : nil
         if let character = character {
           // Manual character transforms affect ink, not InDesign's baseline strut.
@@ -828,7 +1151,7 @@ public final class TextCompositionEngine {
               : nativeFonts
             metric =
               actualFonts.map {
-                let font = request.protocol == 4 ? untransformedFont($0) : $0
+                let font = request.protocol >= 4 ? untransformedFont($0) : $0
                 return Double(
                   frame.firstBaseline == "cap-height"
                     ? CTFontGetCapHeight(font) : CTFontGetXHeight(font))
@@ -841,12 +1164,15 @@ public final class TextCompositionEngine {
           try require(
             baseline + Double(descent) <= frame.height + 0.000001,
             "Planned line exceeds frame height")
-        } else if baseline + Double(descent) > frame.height { break }
+        } else if baseline + Double(descent) > frame.height {
+          break
+        }
         // A full column hands this same decision to the next authored frame,
         // which can be wider. Validate width only after it can occupy this row.
         if request.mode == "explicit-lines-proof" || placement != nil {
           try require(
-            visibleWidth <= availableWidth + 0.000001, "Explicit line exceeds its indented line area")
+            visibleWidth <= availableWidth + 0.000001,
+            "Explicit line exceeds its indented line area")
         }
         var runRows: [[String: Any]] = []
         for run in CTLineGetGlyphRuns(line) as! [CTRun] {
@@ -869,7 +1195,7 @@ public final class TextCompositionEngine {
           CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
           CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
           CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
-          if request.protocol == 4 {
+          if request.protocol >= 4 {
             // Positions are in run-matrix coordinates. Advances and line caret
             // offsets already include that matrix and must not be scaled twice.
             let matrix = CTRunGetTextMatrix(run)
@@ -919,7 +1245,7 @@ public final class TextCompositionEngine {
             row["textColor"] = input.textColor ?? "#252525"
             row["leading"] = input.leading ?? 0
             row["autoLeading"] = input.autoLeading ?? 120
-            if request.protocol == 4 {
+            if request.protocol >= 4 {
               let strut = untransformedFont(font)
               let shift = (attrs[kCTBaselineOffsetAttributeName] as? NSNumber)?.doubleValue ?? 0
               row["ascent"] = Double(CTFontGetAscent(strut))
@@ -938,16 +1264,47 @@ public final class TextCompositionEngine {
         let lineBoundaries = boundaries.filter { $0 >= position && $0 <= end }
         caretBudget += lineBoundaries.count
         try require(caretBudget <= 110_000, "Caret budget exceeded")
+        var spaceCursor = 0
+        var spaceDelta = 0.0
         let carets: [[String: Any]] = lineBoundaries.map { index in
           var secondary = CGFloat.zero
-          let primary =
+          let boundary = min(index, contentEnd)
+          while spaceCursor < wordSpaceChanges.count
+            && wordSpaceChanges[spaceCursor].index < boundary
+          {
+            spaceDelta += wordSpaceChanges[spaceCursor].delta
+            spaceCursor += 1
+          }
+          var primary =
             contentEnd == position
-            ? CGFloat.zero : CTLineGetOffsetForStringIndex(line, min(index, contentEnd), &secondary)
+            ? CGFloat.zero
+            : CTLineGetOffsetForStringIndex(originalWordSpaceLine ?? line, boundary, &secondary)
+          if originalWordSpaceLine != nil {
+            // Tracking added only to a source space changes CoreText's insertion
+            // query by half its advance. Preserve the original native ligature /
+            // authored-tracking caret, then translate it by actual retained
+            // glyph-advance changes before this source boundary. One monotonic
+            // sweep covers all carets; no per-caret scan or invented target edge.
+            primary += CGFloat(spaceDelta)
+            secondary += CGFloat(spaceDelta)
+          }
+          let collapsed = collapsedShape.map { index >= $0.trailingStart } ?? false
+          if collapsed, let edge = collapsedEdge {
+            // CTLine's insertion query extrapolates half tracking past collapsed
+            // trailing spaces. The retained glyph runs instead measure every
+            // such source boundary at their actual zero-advance drawn edge.
+            primary = CGFloat(edge)
+            secondary = primary
+          }
           return [
             "index": index, "primary": Double(primary) + originX,
             "secondary": Double(secondary) + originX,
             "logicalCandidates": logicalCandidates(index, request.spans),
-            "measurement": contentEnd == position ? "empty-paragraph-origin" : "native-line",
+            "measurement": collapsed
+              ? "native-collapsed-space"
+              : contentEnd == position
+                ? "empty-paragraph-origin"
+                : originalWordSpaceLine != nil ? "native-word-space" : "native-line",
             "hitIndex": contentEnd == position
               ? position : CTLineGetStringIndexForPosition(line, CGPoint(x: primary, y: 0)),
           ]
@@ -975,11 +1332,13 @@ public final class TextCompositionEngine {
           row["inkAscent"] = Double(character.inkAscent)
           row["inkDescent"] = Double(character.inkDescent)
         }
+        if let spacing = wordSpacingRow { row["wordSpacing"] = spacing }
         output.append(row)
         position = end
         previousBaseline = baseline
       }
-      if let last = frozen.last, frozen.count > frameStart && request.mode != "planned-lines-proof" {
+      if let last = frozen.last, frozen.count > frameStart && request.mode != "planned-lines-proof"
+      {
         let remaining = max(0, frame.height - last.baseline - last.descent)
         let offset =
           frame.verticalAlign == "bottom"
@@ -1050,8 +1409,10 @@ public final class TextCompositionEngine {
       identity = "system-" + digest(bytes)
     }
     let matrix = CTFontGetMatrix(font)
-    let transform = request.protocol == 4 && !matrix.isIdentity
-      ? ":matrix:" + [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty]
+    let transform =
+      request.protocol >= 4 && !matrix.isIdentity
+      ? ":matrix:"
+        + [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty]
         .map { String(Double($0).bitPattern) }.joined(separator: ":") : ""
     return "g-"
       + digest(
@@ -1197,7 +1558,8 @@ public final class TextCompositionEngine {
       context.textMatrix = .identity
       context.setTextDrawingMode(invisible ? .invisible : .fill)
       for line in snapshot.lines where line.page == page {
-        context.textPosition = CGPoint(x: margin + line.originX, y: box.height - margin - line.baseline)
+        context.textPosition = CGPoint(
+          x: margin + line.originX, y: box.height - margin - line.baseline)
         CTLineDraw(line.line, context)
       }
       context.endPDFPage()

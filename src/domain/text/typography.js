@@ -1,3 +1,5 @@
+import { normalizeWordSpacing } from './word-spacing.js';
+
 export const TEXT_FONTS = Object.freeze({
   geist: '"Geist", sans-serif',
   sans: '"Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -54,6 +56,7 @@ export const TEXT_DEFAULTS = Object.freeze({
   leftIndent: 0,
   rightIndent: 0,
   firstLineIndent: 0,
+  wordSpacing: 'normal',
   hyphenate: false,
   keepTogether: false,
   keepWithNext: false,
@@ -101,6 +104,7 @@ export const PARAGRAPH_FIELDS = Object.freeze({
   leftIndent: 'left',
   rightIndent: 'right',
   firstLineIndent: 'first',
+  wordSpacing: 'wordspace',
   hyphenate: 'hyphens',
   keepTogether: 'keep',
   keepWithNext: 'next',
@@ -155,6 +159,13 @@ const bounds = {
 };
 
 export function validTextAttribute(name, value) {
+  if (name === 'wordspace') {
+    try {
+      return normalizeWordSpacing(value);
+    } catch {
+      return null;
+    }
+  }
   if (name === 'axes') {
     if (value === 'normal') return value;
     const entries = value.split(',');
