@@ -77,17 +77,45 @@ app
     ipcMain.handle('ivo-text-core-key', (event, key, modifiers) => {
       owned(event);
       if (
-        !['I', 'B', 'U', 'Left', 'Right', 'Up', 'Down', 'Home', 'End', 'Backspace'].includes(key) ||
+        ![
+          'I',
+          'B',
+          'U',
+          'Left',
+          'Right',
+          'Up',
+          'Down',
+          'Home',
+          'End',
+          'Backspace',
+          'Delete',
+          'Enter',
+        ].includes(key) ||
         !Array.isArray(modifiers)
       )
         throw Error('Invalid test key');
       window.webContents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers });
+      if (key === 'Enter')
+        window.webContents.sendInputEvent({ type: 'char', keyCode: '\r', modifiers });
       window.webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers });
     });
     ipcMain.handle('ivo-text-core-type', (event, text) => {
       owned(event);
       if (typeof text !== 'string' || text.length > 100) throw Error('Invalid fixture text');
       window.webContents.sendInputEvent({ type: 'char', keyCode: text });
+    });
+    ipcMain.handle('ivo-text-core-ime', async (event, stage) => {
+      owned(event);
+      const input = window.webContents.debugger;
+      if (!input.isAttached()) input.attach();
+      if (stage === 'commit') return input.sendCommand('Input.insertText', { text: '日本' });
+      const text = { start: 'に', update: 'にほ', cancel: '' }[stage];
+      if (typeof text !== 'string') throw Error('Invalid test composition stage');
+      await input.sendCommand('Input.imeSetComposition', {
+        text,
+        selectionStart: text.length,
+        selectionEnd: text.length,
+      });
     });
     ipcMain.handle('ivo-text-core-save', async (event, archive) => {
       owned(event);

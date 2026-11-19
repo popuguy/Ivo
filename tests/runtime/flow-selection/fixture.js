@@ -1,3 +1,4 @@
+import { verifyDocumentOperations } from './document-operations.js';
 import { verifyThreadedDeletion } from './threaded-deletion.js';
 import { verifyFlowSelectionBoundaries } from './boundaries.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
@@ -171,6 +172,8 @@ try {
       'IVO_TEXT_CORE_RESULT:' +
         JSON.stringify({
           ok: true,
+          documentTextOperations: true,
+          markedTextCommitCancel: true,
           crossPageDrag: true,
           reverseSelection: true,
           rangePaint: true,
@@ -393,6 +396,7 @@ try {
     editor.destroy();
     await verifyFlowSelectionBoundaries(host, window.textCoreTest);
     await verifyThreadedDeletion(host, window.textCoreTest);
+    await verifyDocumentOperations(host, window.textCoreTest);
     console.log('IVO_TEXT_CORE_RESULT:' + JSON.stringify({ phase: 'edit' }));
   }
 } catch (error) {

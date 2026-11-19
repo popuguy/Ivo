@@ -18,6 +18,8 @@ This is a rough assessment of implementation and integration across the [66 incl
 
 - [Native paragraph layout](../native-paragraph-layout.md) now implements paragraph alignment and justification endings, indents, spacing and indented default tabs in the shared glyph/caret/PDF authority, with actual edit/undo/reopen and source guards. This closes an integrated paragraph-layout dependency and advances the broad estimate from ~22% to ~24%. Native variable-area/wrap scheduling, the full justified-paragraph optimizer and device gates remain open.
 
+- [Document text operations](../text-interaction-core.md#document-text-operations) now own ordinary rich-text edits across frames, including paragraph joins, replacement and Unicode deletion. Marked-text cancellation and source/selection undo are covered in the desktop editor. This strengthens the editing foundation within the existing ~35% estimate. Structured editing, layout fidelity and physical device qualification remain open.
+
 ## Major work still driving the estimate
 
 The [frame-scheduling milestone](../native-flow-scheduling.md) fits unequal native columns with exact line metrics, one owned break/baseline plan and cooperative preparation/search. It advances the same broad estimate from ~24% to ~26%; the justification objective and reference/device gates remain incomplete.

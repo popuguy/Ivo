@@ -235,7 +235,13 @@ try {
     root.textContent === '編集中' &&
       document.querySelectorAll('.canvas-page').length === 1 &&
       document.querySelector('[data-flow-frame]').textContent === '編集中',
-    'Composition lost stable textFlow ownership during shrink',
+    'Composition lost stable textFlow ownership during shrink: ' +
+      JSON.stringify({
+        pages: document.querySelectorAll('.canvas-page').length,
+        source: root.textContent.slice(0, 120),
+        ink: document.querySelector('[data-flow-frame]').textContent.slice(0, 120),
+        projected: root.dataset.projectedStart,
+      }),
   );
   await nativeCommand('undo');
   assert(

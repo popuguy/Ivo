@@ -50,6 +50,7 @@ import {
 } from '../../domain/documents/publishing.js';
 import { installPublishingControls } from './ui/publishing-controller.js';
 import { applyNamedTextStyles } from '../../rendering/text/styles.js';
+import { applyDocumentInput } from '../../rendering/text/document-input.js';
 import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.js';
 import { wordSpacingSettings } from '../../domain/text/word-spacing.js';
 import { readImageFile } from './assets/image-import.js';
@@ -821,10 +822,10 @@ export function mountCanvasEditor(host, options) {
     publishingControls.refreshTextState();
   }
   function rebasePendingMarks() {
+    if (pendingTextPosition === null) return;
     const element = activeText(),
       current = element && captureTextSelection(element);
     if (
-      pendingTextPosition !== null &&
       current &&
       (current.anchor.index !== current.focus.index || current.focus.index !== pendingTextPosition)
     ) {
@@ -1300,11 +1301,13 @@ export function mountCanvasEditor(host, options) {
     selectionDirty = true;
     rememberTextSelection();
     requestFrame();
+    return true;
   }
-  function finishText() {
+  function finishText({ synchronized = false } = {}) {
     if (!ownsInput() || composing || restoring || applyingText) return;
     const element = activeText();
     if (
+      !synchronized &&
       element &&
       cleanHTML(sourceTextFlow(element)?.html ?? sceneObject(doc(), activeTextId)?.html) !==
         (sourceTextFlow(element) ? flowInputHTML(element) : cleanHTML(element.innerHTML))
@@ -1314,7 +1317,7 @@ export function mountCanvasEditor(host, options) {
       beginTextInput();
       syncText(element);
     }
-    if (activeText()?.classList.contains('canvas-flow-input')) {
+    if (!synchronized && activeText()?.classList.contains('canvas-flow-input')) {
       refreshFlowPreview();
       followTextFlowCaret();
     }
@@ -3224,18 +3227,54 @@ export function mountCanvasEditor(host, options) {
       }
     }
   });
-  listen(host, 'compositionstart', () => {
-    beginTextInput('insertCompositionText');
+  function finishDocumentInput(element, result) {
+    if (result === 'unchanged' || syncText(element)) finishText({ synchronized: true });
+  }
+  function inheritInputTypography(element) {
+    const selection = element.ownerDocument.getSelection();
+    if (selection.isCollapsed && selection.rangeCount)
+      inheritEmptyParagraphTypography(element, selection.getRangeAt(0), pendingMarks);
+  }
+  listen(host, 'compositionstart', (event) => {
     const element = activeText();
-    if (element) inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
+    if (!ownsInput() || !element?.contains(event.target)) return;
+    beginTextInput('insertCompositionText');
+    const selection = textViewBefore?.textSelection;
+    if (
+      sourceTextFlow(element) &&
+      selection &&
+      selection.anchor.index !== selection.focus.index &&
+      Math.min(selection.anchor.index, selection.focus.index) <
+        Number(element.dataset.projectedStart)
+    )
+      projectFlowInput(element, 0);
     composing = true;
+    inheritInputTypography(element);
   });
-  listen(host, 'compositionend', () => {
+  listen(host, 'compositionend', (event) => {
+    if (!composing) return;
     composing = false;
     const element = activeText();
-    if (element) syncText(element);
-    inputType = 'insertCompositionText';
-    finishText();
+    if (element && !event.data) {
+      // The OS can remove a selected range as it starts a candidate. Cancel
+      // returns both text and selection to where the user began the operation.
+      const flow = sourceTextFlow(element);
+      element.innerHTML = cleanHTML(flow?.html ?? sceneObject(doc(), activeTextId)?.html);
+      delete element.dataset.projectedStart;
+      applyNamedTextStyles(element, doc());
+      const bookmark = textViewBefore?.textSelection;
+      if (bookmark && document.activeElement === element)
+        restoreTextSelection(element, bookmark, { focus: false });
+      textBefore = textViewBefore = null;
+      inputType = '';
+      if (flow) followTextFlowCaret();
+      rememberTextSelection();
+      requestFrame();
+    } else if (element) {
+      syncText(element);
+      inputType = 'insertCompositionText';
+      finishText();
+    }
     for (const resolve of compositionWaiters.splice(0)) resolve();
   });
   listen(host, 'beforeinput', (event) => {
@@ -3244,7 +3283,13 @@ export function mountCanvasEditor(host, options) {
       if (element) event.preventDefault();
       return;
     }
-    if (!element || element.dataset.sceneText !== activeTextId || applyingText) return;
+    if (
+      !element ||
+      element.dataset.sceneText !== activeTextId ||
+      applyingText ||
+      event.defaultPrevented
+    )
+      return;
     if (['historyUndo', 'historyRedo'].includes(event.inputType)) {
       event.preventDefault();
       command(event.inputType === 'historyUndo' ? 'undo' : 'redo');
@@ -3260,8 +3305,24 @@ export function mountCanvasEditor(host, options) {
       void command(nativeFormat);
       return;
     }
+    if (composing || event.isComposing) return;
     rebasePendingMarks();
     beginTextInput(event.inputType);
+    if (event.inputType.startsWith('insert')) inheritInputTypography(element);
+    const handled =
+      event.cancelable &&
+      applyDocumentInput(
+        element,
+        event.inputType,
+        event.data ?? event.dataTransfer?.getData('text/plain'),
+        pendingMarks,
+        event.getTargetRanges?.(),
+      );
+    if (handled) {
+      event.preventDefault();
+      finishDocumentInput(element, handled);
+      return;
+    }
     const flow = sourceTextFlow(element);
     if (flow && revealFlowEditRange(element, event)) {
       const previousHTML = flow.html;
@@ -3279,13 +3340,11 @@ export function mountCanvasEditor(host, options) {
           followTextFlowCaret();
       });
     }
-    if (event.inputType.startsWith('insert'))
-      inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
     if (
       event.inputType === 'insertText' &&
       event.data &&
       Object.keys(pendingMarks).length &&
-      !composing
+      event.cancelable
     ) {
       event.preventDefault();
       const range = preserveRange();
@@ -3315,12 +3374,12 @@ export function mountCanvasEditor(host, options) {
     const element = event.target;
     if (element.matches('input,textarea'))
       element.dataset.editing = String(element.value !== element.dataset.focusValue);
-    if (!element.dataset.sceneText || applyingText || restoring) return;
+    if (!element.dataset.sceneText || applyingText || restoring || composing) return;
     beginTextInput(event.inputType || 'insertText');
     if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak')
-      inheritEmptyParagraphTypography(element, preserveRange(), pendingMarks);
+      inheritInputTypography(element);
     syncText(element);
-    if (!composing) finishText();
+    finishText();
   });
   listen(window, 'paste', (event) => {
     const target = event.target instanceof Element ? event.target : document.activeElement;
@@ -3477,10 +3536,16 @@ export function mountCanvasEditor(host, options) {
       if (text?.isContentEditable && text.contains(event.target)) {
         if (event.shiftKey) options.onNotify?.('Right-indent tabs are not available yet.');
         else {
+          rebasePendingMarks();
           beginTextInput('insertText');
-          document.execCommand('insertText', false, '\t');
-          syncText(text);
-          finishText();
+          inheritInputTypography(text);
+          const result = applyDocumentInput(text, 'insertText', '\t', pendingMarks);
+          if (result) finishDocumentInput(text, result);
+          else {
+            document.execCommand('insertText', false, '\t');
+            syncText(text);
+            finishText();
+          }
         }
       } else if (!typing(event.target))
         command(event.shiftKey ? 'toggle-side-panels' : 'toggle-panels');

@@ -1,5 +1,13 @@
 # Verification
 
+## Document text operations — 19 November 2026
+
+Window-independent tests exercise edits over styled runs, both selection directions, cross-paragraph joins, soft breaks, blank paragraphs and grapheme clusters split across formatting. The desktop fixtures verify that the real editor cancels the browser's default edit on the supported path. They cover repeated Backspace at a second-page boundary in all three composers, reverse replacement and selection undo, paragraph and soft returns, insertion style after Return, forward Delete and an explicit autocorrection range. Chromium's input-method events exercise a Japanese candidate update, cancellation over selected text, commit and undo. Physical input-method and mobile tests remain separate.
+
+The full validation passed 487 unit tests, 44 native tests and 17 background component groups. The editor also checks the visible baseline after typing beyond a terminal soft return. Replacing an 18-page selection through marked input shrinks the flow to one page and undo restores its source and pagination. The Mac package and synchronized iOS web assets were compared against the build output.
+
+The Paragraph Composer benchmark on the same three-page fixture recorded median dispatch-to-visible times of 59 ms for insertion and 56 ms for Backspace near the start. Last-page insertion and Backspace each took about 22 ms. The 95th percentiles near the start were 72 and 70 ms. The rapid input sequence survived save and a separate vault read. The measured medians passed the existing budgets. These are desktop compositor samples. They exclude hardware keyboard and display scanout latency.
+
 ## Backspace across threaded frames — 19 November 2026
 
 The reported continuation-frame failure reproduced in the desktop editor. At the first glyph on page two the browser proposed an empty Backspace range. The logical caret lay one structural offset beyond the fragment start, so the earlier numeric check missed the hidden paragraph return. The source, caret and displayed text all stayed put.

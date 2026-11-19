@@ -1,3 +1,4 @@
+import { blankParagraphBreak } from './insertion.js';
 import { textIndexMap } from '../../shared/dom/text-selection.js';
 import { nodeTextStyle } from './selection-style.js';
 import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
@@ -141,7 +142,9 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
       );
     } else if (node.tagName === 'BR') {
       const placeholder =
-        blockTags.has(node.parentElement.tagName) && node.parentElement.childNodes.length === 1;
+        node === node.parentElement.lastChild &&
+        blockTags.has(node.parentElement.tagName) &&
+        blankParagraphBreak(node.parentElement) === node;
       add(
         placeholder ? 'placeholder' : 'soft-break',
         points[0],

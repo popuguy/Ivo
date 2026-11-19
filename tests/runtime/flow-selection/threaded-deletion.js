@@ -101,6 +101,11 @@ export async function verifyThreadedDeletion(host, bridge, composer = 'browser',
       await editor.flush();
       await tick();
     }
+    const deletes = [];
+    const record = (event) => {
+      if (event.inputType === 'deleteContentBackward') deletes.push(event.defaultPrevented);
+    };
+    host.addEventListener('beforeinput', record);
     try {
       await settle();
       await editor.command('fit-all');
@@ -172,6 +177,10 @@ export async function verifyThreadedDeletion(host, bridge, composer = 'browser',
           assert(doc.textFlows[0].html === firstEdit, 'Redo did not restore the edited source');
         }
       }
+      assert(
+        deletes.length === 3 && deletes.every(Boolean),
+        'Deletion escaped document operation ownership',
+      );
       const edited = doc.textFlows[0].html;
       assert(
         doc.textFlows[0].frameIds.join() === (automatic ? [a.id] : [a.id, nextId]).join() &&
@@ -183,6 +192,7 @@ export async function verifyThreadedDeletion(host, bridge, composer = 'browser',
         'Untouched emphasis changed',
       );
     } finally {
+      host.removeEventListener('beforeinput', record);
       editor.destroy();
       host.replaceChildren();
     }
