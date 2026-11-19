@@ -44,6 +44,38 @@ export async function verifyTextControls(host) {
     field('textStyle').value === 'cmu-serif' && field('fontSize').value === '12',
     'Frame selection showed defaults instead of actual source typography',
   );
+  const characterMore = () => host.querySelector('[data-property-disclosure="character"]');
+  const percent = () => field('horizontalScale');
+  assert(
+    !characterMore().parentElement.open && !percent().getClientRects().length,
+    'Character scale leaked into the compact Character controls',
+  );
+  characterMore().click();
+  assert(percent().getBoundingClientRect().width > 0, 'More Character options did not open');
+  const changeScale = (delta) =>
+    percent().closest('.property-number').querySelector(`[data-property-step="${delta}"]`).click();
+  changeScale(1);
+  assert(
+    percent().value === '101' && characterMore().parentElement.open,
+    'Scale step or expanded state lost on commit',
+  );
+  changeScale(-1);
+  assert(percent().value === '100', 'Scale step down did not restore the original value');
+  characterMore().click();
+  const leading = field('leading').closest('.property-number');
+  assert(
+    leading.classList.contains('uses-auto-leading') &&
+      leading.querySelector('.auto-leading-value').textContent === '(14.4 pt)',
+    'Auto leading did not show the selected type size times the auto leading percentage',
+  );
+  const align = (value) => host.querySelector(`[data-paragraph-align="${value}"]`);
+  align('center').click();
+  assert(
+    align('center').getAttribute('aria-pressed') === 'true' && field('align').value === 'center',
+    'Paragraph buttons were not synchronized with authored paragraph alignment',
+  );
+  align('left').click();
+  const commitsBeforePreview = commits;
   const before = JSON.stringify(doc);
   host.querySelector('.canvas-type-options').click();
   const popup = host.querySelector('.type-options-popover'),
@@ -62,7 +94,7 @@ export async function verifyTextControls(host) {
     'Popup detached from its anchor or escaped the editor',
   );
   assert(
-    JSON.stringify(doc) === before && commits === 0,
+    JSON.stringify(doc) === before && commits === commitsBeforePreview,
     'Feature preview changed authored source',
   );
   const oldPaint = getComputedStyle(row).backgroundColor;

@@ -1,4 +1,5 @@
 export const PANEL_KINDS = ['properties', 'pages', 'layers', 'links'];
+export const DEFAULT_DOCK_WIDTH = 254;
 const KINDS = PANEL_KINDS;
 const number = (value, fallback, min, max) =>
   Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
@@ -6,7 +7,7 @@ export function defaultPanels() {
   return {
     version: 3,
     closed: [],
-    dock: 296,
+    dock: DEFAULT_DOCK_WIDTH,
     textFlow: null,
     groups: [
       {
@@ -68,7 +69,7 @@ export function normalizePanels(input) {
         (Array.isArray(input.closed) ? input.closed : []).filter((kind) => KINDS.includes(kind)),
       ),
     ],
-    dock: number(input.dock, 296, 0, 480),
+    dock: number(input.dock, DEFAULT_DOCK_WIDTH, 0, 480),
     textFlow: number(input.textFlow, null, 0, 10000),
     groups,
   };

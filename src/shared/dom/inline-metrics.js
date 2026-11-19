@@ -2,6 +2,9 @@ import { applyTextAttributes } from './text-attributes.js';
 const PROPERTIES = {
   size: 'font-size',
   leading: 'line-height',
+  autoleading: '--ivo-auto-leading',
+  hscale: 'transform',
+  vscale: 'transform',
   highlight: 'background-color',
   underline: 'text-decoration',
   strike: 'text-decoration',

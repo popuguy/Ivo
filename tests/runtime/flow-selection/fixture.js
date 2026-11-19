@@ -1,3 +1,4 @@
+import { verifyCharacterScale } from './character-scale.js';
 import { verifyDocumentOperations, verifyListOperations } from './document-operations.js';
 import { verifyTypeShortcuts } from './type-shortcuts.js';
 import { verifyThreadedDeletion } from './threaded-deletion.js';
@@ -501,6 +502,7 @@ try {
     await verifyThreadedDeletion(host, window.textCoreTest);
     await verifyDocumentOperations(host, window.textCoreTest);
     await verifyTypeShortcuts(host, window.textCoreTest);
+    await verifyCharacterScale(host);
     await verifyListOperations(host, window.textCoreTest);
     console.log('IVO_TEXT_CORE_RESULT:' + JSON.stringify({ phase: 'edit' }));
   }

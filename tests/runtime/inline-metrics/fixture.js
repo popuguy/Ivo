@@ -1,3 +1,4 @@
+import { textClipboardHTML } from '../../../src/features/editor/text/clipboard.js';
 import { inheritEmptyParagraphTypography } from '../../../src/rendering/text/insertion.js';
 import { createDocumentHistory } from '../../../src/domain/history/document-history.js';
 import { cleanHTML } from '../../../src/shared/html/sanitize.js';
@@ -34,6 +35,53 @@ const selectAll = (element) => {
 };
 try {
   await prepareTextFlowFonts();
+  // Older documents can carry the full sequence of overrides from repeated inspector edits.
+  const legacyScales = [
+    ...Array.from({ length: 19 }, (_, i) => ['autoleading', 119 - i]),
+    ...[99, 98, 97, 96, 95, 94, 100, 90, 100, 95, 100].map((n) => ['vscale', n]),
+    ['hscale', 90],
+    ['hscale', 100],
+  ];
+  const withLegacyScale = (text) =>
+    legacyScales.reduceRight((inner, [key, value]) => {
+      const transform = key === 'hscale' ? `scale(${value / 100}, 1)` : `scale(1, ${value / 100})`;
+      const style =
+        key === 'autoleading'
+          ? `--ivo-auto-leading:${value / 100}`
+          : `display:inline-block; transform:${transform}`;
+      return `<span data-ivo-${key}="${value}" style="${style}">${inner}</span>`;
+    }, text);
+  const paragraphs = [
+    'Heading',
+    '1. First item',
+    '2. Second item',
+    '3. Third item',
+    '4. Final item',
+  ];
+  const clipboard = {
+    getData: (type) =>
+      type === 'text/html'
+        ? paragraphs.map((text) => '<p>' + withLegacyScale(text) + '</p>').join('')
+        : '',
+  };
+  const pasted = probe(cleanHTML(textClipboardHTML(clipboard)));
+  for (const [index, paragraph] of [...pasted.querySelectorAll('p')].entries()) {
+    assert(
+      paragraph.querySelectorAll('[data-ivo-autoleading]').length === 1 &&
+        paragraph.querySelector('[data-ivo-autoleading]').dataset.ivoAutoleading === '101',
+      'Repeated auto-leading edits left stale wrappers or changed the final leading',
+    );
+    const first = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT).nextNode();
+    const range = document.createRange();
+    range.setStart(first, 0);
+    range.setEnd(first, 1);
+    assert(
+      Math.abs(range.getBoundingClientRect().left - paragraph.getBoundingClientRect().left) < 0.1,
+      'Resetting character scale left a false leading indent in pasted rich text',
+    );
+    assert(paragraph.textContent === paragraphs[index], 'Scale repair changed the pasted text');
+  }
+  pasted.remove();
   // Empty paragraph attributes win over neighboring runs; IME can use the same live caret.
   const insertion = probe(
     '<p><span data-ivo-font="cmu-serif" data-ivo-size="12" data-ivo-leading="0">Body text.</span></p><p><span data-ivo-font="sans" data-ivo-size="36"><br></span></p><p><br></p>',
@@ -238,6 +286,7 @@ try {
       JSON.stringify({
         ok: true,
         staleSizeLineBoxRepaired: true,
+        legacyPastedScaleLeftEdge: true,
         partialSelectionPreservesLargerText: true,
         explicitLeadingAndParagraphSpacingRetained: true,
         linksEmphasisUnicodeBlankParagraphs: true,

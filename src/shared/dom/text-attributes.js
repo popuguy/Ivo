@@ -86,10 +86,5 @@ export function applyTextAttributes(element) {
   if (value('optical') !== null)
     values.fontOpticalSizing = value('optical') === 'true' ? 'auto' : 'none';
   if (value('dir') === 'auto') element.dir = 'auto';
-  if (value('hscale') !== null || value('vscale') !== null) {
-    values.display = 'inline-block';
-    values.transformOrigin = 'left baseline';
-    values.transform = `scale(${Number(value('hscale') || 100) / 100},${Number(value('vscale') || 100) / 100})`;
-  }
   for (const [key, v] of Object.entries(values)) if (v !== null) style[key] = v;
 }

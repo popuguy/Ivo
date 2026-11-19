@@ -1,3 +1,5 @@
 @charset "UTF-8";
 @import './base.css';
 @import './publishing.css';
+@import './properties.css';
+@import './pages-and-layers.css';

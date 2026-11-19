@@ -1,3 +1,5 @@
+import { scaleBreakPlanner } from './scale-breaks.js';
+import { applyCharacterScale } from './character-scale.js';
 import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
 import { resolvedTextStyle } from '../../domain/documents/publishing.js';
 import { captureTextSelection, restoreTextSelection } from '../../shared/dom/text-selection.js';
@@ -39,10 +41,13 @@ export function applyTextDecorations(root, doc) {
   if (composing.has(root)) return false;
   const bookmark = captureTextSelection(root),
     plans = [];
-  let changed = false;
+  let changed = false,
+    paragraph = 0;
+  const staleJoins = new Set(root.querySelectorAll('[data-ivo-scale-join]'));
   // Native editing may split a derived run. Remove only its view wrapper; retain
   // the existing text/format nodes and restore any parent-offset selection below.
   for (const wrapper of root.querySelectorAll('span[' + marker + ']')) {
+    if (staleJoins.has(wrapper)) continue;
     if (wrapper.childNodes.length === 1 && wrapper.firstChild.nodeType === Node.TEXT_NODE) continue;
     wrapper.replaceWith(...wrapper.childNodes);
     changed = true;
@@ -59,10 +64,14 @@ export function applyTextDecorations(root, doc) {
             .filter(Boolean)
             .join(' '),
           link,
+          horizontalScale: inherited.horizontalScale,
+          verticalScale: inherited.verticalScale,
+          paragraph,
         });
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.matches('p,div,blockquote,li,h1,h2,h3,h4,h5,h6,br')) paragraph++;
     if (node.hasAttribute(marker)) {
       for (const child of node.childNodes) visit(child, inherited, link);
       return;
@@ -81,9 +90,58 @@ export function applyTextDecorations(root, doc) {
     for (const child of node.childNodes) visit(child, style, link);
   }
   visit(root, TEXT_DEFAULTS);
-  for (const { node, line, link } of plans) {
+  const hasScale = plans.some((plan) => plan.horizontalScale !== 100 || plan.verticalScale !== 100);
+  const planner = hasScale ? scaleBreakPlanner(root, plans) : null;
+  const prepared = hasScale ? [] : plans;
+  if (planner)
+    for (const plan of plans) {
+      const { node, horizontalScale, verticalScale } = plan;
+      const scaled = horizontalScale !== 100 || verticalScale !== 100;
+      const prior = node.parentElement;
+      const scope = prior.hasAttribute(marker) ? prior.parentElement : prior;
+      const words = planner.parts(plan);
+      if (words && words.length > 1) {
+        if (prior.hasAttribute(marker)) prior.replaceWith(node);
+        const fragment = document.createDocumentFragment();
+        let offset = 0;
+        for (const word of words) {
+          const part = document.createTextNode(word);
+          fragment.append(part);
+          prepared.push({
+            ...plan,
+            node: part,
+            scaled,
+            scope,
+            source: node,
+            start: offset,
+            end: offset + word.length,
+          });
+          offset += word.length;
+        }
+        node.replaceWith(fragment);
+        changed = true;
+      } else prepared.push({ ...plan, scaled, scope, source: node, start: 0, end: node.length });
+    }
+  let previous;
+  for (const plan of prepared) {
+    const { node, line, link, horizontalScale, verticalScale, scaled } = plan;
+    const boundary = planner?.boundary(previous, plan);
+    previous = plan;
+    const first = node.parentElement.hasAttribute(marker) ? node.parentElement : node;
+    if (boundary) {
+      let guard = first.previousSibling;
+      if (!guard?.hasAttribute?.('data-ivo-scale-join')) {
+        guard = document.createElement('span');
+        guard.setAttribute(marker, '');
+        guard.setAttribute('aria-hidden', 'true');
+        first.before(guard);
+        changed = true;
+      }
+      guard.dataset.ivoScaleJoin = boundary;
+      staleJoins.delete(guard);
+    }
     let wrapper = node.parentElement.hasAttribute(marker) ? node.parentElement : null;
-    if (!line) {
+    if (!line && !scaled) {
       if (wrapper) {
         wrapper.replaceWith(node);
         changed = true;
@@ -98,6 +156,8 @@ export function applyTextDecorations(root, doc) {
       wrapper.append(node);
       changed = true;
     }
+    applyCharacterScale(wrapper, horizontalScale, verticalScale);
+    wrapper.toggleAttribute('data-ivo-scale-hyphen', scaled && planner.visibleHyphen(plan));
     if (wrapper.style.textDecorationLine !== line) {
       wrapper.style.textDecorationLine = line;
       changed = true;
@@ -111,6 +171,11 @@ export function applyTextDecorations(root, doc) {
       wrapper.removeAttribute('data-ivo-decoration-link');
       changed = true;
     }
+  }
+  planner?.dispose();
+  for (const guard of staleJoins) {
+    guard.remove();
+    changed = true;
   }
   if (changed && bookmark) restoreTextSelection(root, bookmark, { focus: false });
   return changed;

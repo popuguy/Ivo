@@ -59,15 +59,18 @@ export function lift(node, offset) {
     node = node.parentNode;
   return { node: node.parentNode, offset: [...node.parentNode.childNodes].indexOf(node) };
 }
+function enclosingTextMarker(node) {
+  return (node.nodeType === Node.TEXT_NODE ? node.parentElement : node).closest?.(
+    '[data-flow-text]',
+  );
+}
 export function globalIndex(point, total) {
-  if (point.node.nodeType === Node.TEXT_NODE) {
-    const marker = point.node.parentElement.closest('[data-flow-text]');
-    if (marker) {
-      const prefix = document.createRange();
-      prefix.selectNodeContents(marker);
-      prefix.setEnd(point.node, point.offset);
-      return Number(marker.dataset.flowText) + prefix.toString().length;
-    }
+  const marker = enclosingTextMarker(point.node);
+  if (marker) {
+    const prefix = document.createRange();
+    prefix.selectNodeContents(marker);
+    prefix.setEnd(point.node, point.offset);
+    return Number(marker.dataset.flowText) + prefix.toString().length;
   }
   const next = point.node.childNodes[point.offset];
   return next
@@ -86,9 +89,9 @@ export function copyRange(range, start) {
     fragment = outer;
     context = context.parentElement;
   }
-  if (start.node.nodeType === Node.TEXT_NODE) {
-    const marker = start.node.parentElement.closest('[data-flow-text]')?.dataset.flowText,
-      first = marker !== undefined && fragment.querySelector(`[data-flow-text="${marker}"]`);
+  const origin = enclosingTextMarker(start.node)?.dataset.flowText;
+  if (origin !== undefined) {
+    const first = fragment.querySelector(`[data-flow-text="${origin}"]`);
     if (first) {
       first.dataset.flowText = globalIndex(start, 0);
       first.dataset.flowBefore = first.dataset.flowText;

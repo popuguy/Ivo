@@ -1,0 +1,570 @@
+/* Properties uses the same compact palette in a docked or a floating panel. */
+.indesign-properties {
+  container: properties / inline-size;
+  font: 11px/1.35 var(--interface-font);
+  color: var(--panel-ink);
+}
+.context-panel-group .indesign-properties .canvas-panel-heading,
+.indesign-properties .publishing-section {
+  border-bottom: 1px solid var(--panel-line);
+  margin: 0;
+}
+.context-panel-group .indesign-properties .canvas-panel-heading {
+  min-height: 34px;
+  padding: 8px 11px;
+}
+.indesign-properties .publishing-section {
+  padding: 10px 11px 8px;
+}
+.indesign-properties .publishing-section h3 {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  margin: 0 0 9px;
+}
+.context-panel-group .indesign-properties select,
+.context-panel-group .indesign-properties .canvas-field input {
+  font: 500 11px/16px var(--interface-font);
+  color: var(--panel-ink);
+  background-color: var(--panel-input);
+  border: 1px solid var(--panel-control-border);
+  border-radius: 2px;
+  height: 22px;
+  min-width: 0;
+}
+.indesign-properties select {
+  width: 100%;
+  color-scheme: dark;
+}
+.indesign-properties select:focus-visible,
+.indesign-properties input:focus-visible,
+.indesign-properties summary:focus-visible {
+  outline: 1px solid var(--panel-accent);
+  outline-offset: -1px;
+}
+.indesign-properties .property-transform-grid,
+.indesign-properties .property-metrics,
+.indesign-properties .property-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 9px;
+}
+.indesign-properties .publishing-transform {
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr);
+  gap: 9px;
+}
+.indesign-properties .transform-reference {
+  grid-template-columns: repeat(3, 7px);
+  grid-auto-rows: 7px;
+  gap: 1px;
+  justify-self: center;
+}
+.indesign-properties .transform-reference button {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--panel-control-border);
+  border-radius: 0;
+}
+.indesign-properties .transform-reference .active {
+  background: var(--panel-ink);
+}
+.property-transform-field,
+.property-metric,
+.property-transform-value,
+.property-number {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.property-transform-field {
+  gap: 3px;
+}
+.property-transform-field > span:first-child {
+  width: 12px;
+  text-align: right;
+}
+.property-transform-value,
+.property-number {
+  position: relative;
+  flex: 1;
+  height: 21px;
+  border: 1px solid var(--panel-control-border);
+  background: var(--panel-input);
+  border-radius: 2px;
+}
+.property-transform-value input,
+.property-number input {
+  padding: 0 3px;
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--panel-ink);
+  font: 500 11px/18px var(--interface-font);
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+}
+.property-transform-value input::-webkit-inner-spin-button,
+.property-number input::-webkit-inner-spin-button {
+  appearance: none;
+}
+.property-unit,
+.property-transform-value > span {
+  padding-right: 4px;
+  color: var(--panel-muted);
+  font-size: 10px;
+  pointer-events: none;
+}
+.property-number:focus-within,
+.property-transform-value:focus-within {
+  outline: 1px solid var(--panel-accent);
+}
+.property-steppers {
+  display: grid;
+  flex: 0 0 17px;
+  height: 100%;
+  grid-template-rows: 1fr 1fr;
+  border-right: 1px solid var(--panel-control-border);
+}
+.context-panel-group .property-steppers button {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  background: transparent;
+}
+.property-steppers button::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-left: 1px solid currentColor;
+  border-top: 1px solid currentColor;
+  transform: translateY(1px) rotate(45deg);
+}
+.property-steppers button:last-child::before {
+  transform: translateY(-1px) rotate(225deg);
+}
+.property-steppers button:active {
+  background: var(--panel-active);
+}
+.property-metric {
+  gap: 4px;
+}
+.property-glyph {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  flex-shrink: 0;
+}
+.property-glyph .reference-icon,
+.property-appearance-row > .reference-icon {
+  display: block;
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+}
+.property-metric .auto-leading-value {
+  display: none;
+}
+.property-metric .uses-auto-leading:not(:focus-within) .auto-leading-value {
+  display: block;
+  position: absolute;
+  left: 20px;
+  right: 1px;
+  color: var(--panel-ink);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  overflow: hidden;
+}
+.uses-auto-leading:not(:focus-within) input,
+.uses-auto-leading:not(:focus-within) .property-unit {
+  opacity: 0;
+}
+.indesign-properties .property-disclosure {
+  margin-top: 4px;
+}
+.indesign-properties summary {
+  cursor: default;
+  list-style: none;
+}
+.indesign-properties summary::-webkit-details-marker {
+  display: none;
+}
+.property-disclosure > summary {
+  margin-left: auto;
+  width: 22px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+}
+.property-disclosure > summary .reference-icon {
+  width: 15px;
+  height: 14px;
+}
+.property-disclosure > summary:hover,
+.property-disclosure[open] > summary {
+  background: var(--panel-hover);
+}
+.property-disclosed {
+  padding-top: 7px;
+}
+.property-disclosed > .property-metrics {
+  margin-bottom: 6px;
+}
+.property-disclosed > .publishing-inline-actions {
+  flex-wrap: wrap;
+  margin: 4px 0 7px;
+}
+.property-disclosed .publishing-check {
+  margin: 2px 0;
+}
+.property-disclosed .property-extra-actions {
+  display: grid;
+  gap: 3px;
+}
+.property-appearance-row {
+  display: grid;
+  grid-template-columns: 20px minmax(46px, 0.7fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+}
+.property-appearance-row > div {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.property-paint,
+.context-panel-group .indesign-properties .property-none {
+  position: relative;
+  display: block;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--panel-line);
+  border-radius: 0;
+  overflow: hidden;
+}
+.property-paint input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.property-paint input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.property-paint input::-webkit-color-swatch {
+  border: 0;
+}
+.property-paint.no-paint::after,
+.context-panel-group .indesign-properties .property-none {
+  background: linear-gradient(to bottom right, #fff 43%, #f22 45% 55%, #fff 57%);
+}
+.property-paint.no-paint::after,
+.property-paint.stroke:not(.no-paint)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.property-paint.stroke:not(.no-paint)::after {
+  inset: 4px;
+  background: var(--panel-bg);
+}
+.context-panel-group .indesign-properties .property-none {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.indesign-properties .style-kind-tabs {
+  margin-bottom: 8px;
+}
+.indesign-properties .style-kind-tabs button {
+  min-height: 21px;
+  padding: 1px 3px;
+  border: 1px solid var(--panel-control-border);
+}
+.indesign-properties .style-kind-tabs button + button {
+  border-left: 0;
+}
+.indesign-properties .style-kind-tabs button[aria-pressed='true'] {
+  color: var(--panel-accent);
+  background: var(--panel-active);
+}
+.property-style-picker,
+.property-font {
+  position: relative;
+}
+.property-style-picker > span {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  top: 5px;
+  left: 5px;
+  width: 23px;
+  height: 23px;
+  background: #fff;
+  color: #161616;
+  border-radius: 2px;
+  font:
+    14px/1 Georgia,
+    serif;
+}
+.context-panel-group .indesign-properties .property-style-picker select {
+  height: 34px;
+  padding-left: 36px;
+  font-weight: 600;
+}
+.property-style-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 5px;
+}
+.property-style-actions .publishing-action {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  width: 23px;
+  height: 20px;
+  padding: 1px 3px;
+}
+.indesign-properties .property-font .canvas-field,
+.indesign-properties .property-style-picker .canvas-field,
+.indesign-properties .property-metric .canvas-field {
+  margin: 0;
+  flex: 1;
+}
+.property-font .canvas-field > span,
+.property-style-picker .canvas-field > span,
+.property-metric .canvas-field > span {
+  display: none;
+}
+.property-font > span:first-child {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 18px;
+  pointer-events: none;
+}
+.property-font > span:first-child img {
+  width: 14px;
+  height: 14px;
+}
+.context-panel-group .property-font select {
+  padding-left: 23px;
+  color: transparent;
+}
+.context-panel-group .property-font option {
+  color: var(--panel-ink);
+  background: var(--panel-input);
+}
+.property-family-name {
+  display: block;
+  position: absolute;
+  line-height: 22px;
+  inset: 0 20px 0 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.indesign-properties [data-font-style] {
+  margin: 4px 0;
+}
+.property-paragraph-align,
+.indesign-properties .publishing-align {
+  display: flex;
+  justify-content: space-between;
+  gap: 1px;
+}
+.property-paragraph-align button,
+.indesign-properties .publishing-align button {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 24px;
+  padding: 2px;
+}
+.context-panel-group .property-paragraph-align button .reference-icon,
+.context-panel-group .indesign-properties .publishing-align button .reference-icon {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+}
+.property-paragraph-align button[aria-pressed='true'] {
+  background: var(--panel-active);
+}
+.indesign-properties .publishing-align button:nth-child(n + 4) {
+  transform: none;
+}
+.property-frame-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+}
+.property-frame-metrics .named-disclosure,
+.property-frame-metrics .named-disclosure::details-content {
+  display: contents;
+}
+.property-disclosure:not([open]) > .property-disclosed {
+  display: none;
+}
+.property-frame-metrics .property-disclosed {
+  grid-column: 1/-1;
+}
+.named-disclosure > summary,
+.property-quick-actions button,
+.property-arrange > summary,
+.property-extra-actions button {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--panel-control-border);
+  color: var(--panel-ink);
+  background: var(--panel-input);
+  border-radius: 2px;
+  min-height: 22px;
+  width: auto;
+  padding: 1px 5px;
+}
+.property-arrange {
+  margin-bottom: 5px;
+}
+.property-arrange > .publishing-inline-actions {
+  justify-content: center;
+}
+@container properties (max-width: 235px) {
+  .indesign-properties .publishing-section {
+    padding-right: 7px;
+    padding-left: 7px;
+  }
+  .indesign-properties .publishing-transform {
+    gap: 4px;
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+  .indesign-properties .property-metrics,
+  .indesign-properties .property-transform-grid {
+    column-gap: 4px;
+  }
+  .property-metric {
+    gap: 2px;
+  }
+  .property-glyph {
+    width: 15px;
+  }
+  .property-frame-metrics .property-steppers {
+    flex-basis: 12px;
+  }
+}
+.indesign-properties .publishing-transform {
+  grid-template-columns: 28px minmax(0, 1fr) 17px;
+  gap: 5px;
+}
+.context-panel-group .property-constrain {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 24px;
+  padding: 0;
+}
+.property-constrain[aria-pressed='true'] {
+  background: var(--panel-active);
+}
+.property-presets {
+  flex: 0 0 16px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-left: 1px solid var(--panel-control-border);
+  position: relative;
+}
+.property-presets::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid var(--panel-ink);
+  border-bottom: 1px solid var(--panel-ink);
+  transform: translateY(-1px) rotate(45deg);
+}
+.context-panel-group .indesign-properties .property-presets select {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+  border: 0;
+}
+.property-presets option {
+  color: var(--panel-ink);
+  background: var(--panel-input);
+}
+.property-number .auto-leading-value {
+  max-width: calc(100% - 37px);
+}
+@container properties (max-width: 235px) {
+  .indesign-properties .publishing-transform {
+    grid-template-columns: 23px minmax(0, 1fr) 16px;
+    gap: 3px;
+  }
+}
+.property-font-chevron {
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 18px;
+  border-left: 1px solid var(--panel-control-border);
+}
+.property-font-chevron .reference-icon {
+  width: 11px;
+  height: 11px;
+}
+.property-font select {
+  appearance: none;
+}
+.property-page-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.property-page-row button {
+  width: 23px;
+  height: 22px;
+  padding: 2px;
+}
+.indesign-properties .property-wide-action {
+  width: 100%;
+  padding: 2px 5px;
+  min-height: 22px;
+  border: 1px solid var(--panel-control-border);
+  color: var(--panel-ink);
+  background: var(--panel-input);
+  border-radius: 2px;
+}

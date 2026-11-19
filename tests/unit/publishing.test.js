@@ -219,6 +219,12 @@ test('numeric transform references retain their chosen fractional anchor', async
     const anchor = referencePoint(rect, i),
       resized = editReferenceRect(rect, 'w', 227.75, i);
     assert.deepEqual(referencePoint(resized, i), anchor);
+    for (const dimension of ['w', 'h']) {
+      const constrained = editReferenceRect(rect, dimension, rect[dimension] * 1.5, i, true);
+      assert.deepEqual(referencePoint(constrained, i), anchor);
+      assert.equal(constrained.w, rect.w * 1.5);
+      assert.equal(constrained.h, rect.h * 1.5);
+    }
     const moved = editReferenceRect(rect, 'x', 200.125, i);
     assert.equal(referencePoint(moved, i).x, 200.125);
   }

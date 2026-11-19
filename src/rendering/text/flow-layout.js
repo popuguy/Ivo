@@ -147,7 +147,6 @@ export function layoutDocumentTextFlows(doc, { allowPages = true, objectWrap = t
       probe.innerHTML = remaining;
       document.body.append(probe);
       applyFrameTypography(probe, effectiveTextStyle(doc, textFlow.style));
-      applyNamedTextStyles(probe, doc);
       Object.assign(probe.style, {
         position: 'fixed',
         left: '-100000px',
@@ -165,6 +164,7 @@ export function layoutDocumentTextFlows(doc, { allowPages = true, objectWrap = t
         columnCount: 'auto',
         whiteSpace: 'normal',
       });
+      applyNamedTextStyles(probe, doc);
       if (frame.compositionOptions) {
         probe.classList.add('flow-fragment');
         for (const node of probe.querySelectorAll('[data-flow-origin]')) {

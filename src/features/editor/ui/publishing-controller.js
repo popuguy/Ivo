@@ -1,3 +1,4 @@
+import { installPageLayerInteractions } from './page-layer-interactions.js';
 import { ARRANGE_COMMANDS, arrangeObjects } from '../../../domain/documents/arrange.js';
 import { legacyFontFamilies } from '../../../domain/text/font-references.js';
 import {
@@ -14,9 +15,7 @@ import {
   addLayer,
   removeLayer,
   moveToLayer,
-  reorderLayer,
   createParent,
-  applyParent,
   overrideParent,
   saveTextStyle,
 } from '../../../domain/documents/publishing.js';
@@ -80,10 +79,14 @@ export function installPublishingControls(
       );
   let popover = null,
     wordSpacingDialog = null,
-    draggedLayer = null,
     fontWork = Promise.resolve(),
     fontPending = 0,
     preparedLegacy = '';
+  const disclosureKey = 'ivo:property-disclosures:1';
+  try {
+    const saved = JSON.parse(localStorage.getItem(disclosureKey));
+    if (saved && typeof saved === 'object') state.propertyDisclosures = saved;
+  } catch {}
   function prepareLegacyFonts() {
     const signature = JSON.stringify([...legacyFontFamilies(doc())].sort());
     if (!prepareDocumentFonts || !canPrepareFonts() || signature === preparedLegacy) return;
@@ -344,7 +347,7 @@ export function installPublishingControls(
   listen(editor, 'pointerdown', (event) => {
     if (
       event.target.closest(
-        '[data-highlight-color],[data-type-feature],[data-canvas-command="word-spacing"]',
+        '[data-highlight-color],[data-type-feature],[data-canvas-command="word-spacing"],[data-property-step],[data-paragraph-align],[data-font-style],[data-property-disclosure],[data-property-presets]',
       )
     ) {
       preserveRange();
@@ -373,8 +376,22 @@ export function installPublishingControls(
     { capture: true },
   );
   listen(editor, 'click', (event) => {
+    const summary = event.target.closest('summary[data-property-disclosure]');
+    if (summary) {
+      const key = summary.dataset.propertyDisclosure;
+      (state.propertyDisclosures ||= {})[key] = !summary.parentElement.open;
+      try {
+        localStorage.setItem(disclosureKey, JSON.stringify(state.propertyDisclosures));
+      } catch {}
+      return;
+    }
     const t = event.target.closest('button');
     if (!t) return;
+    if (t.hasAttribute('data-property-constrain')) {
+      state.constrainProportions = !state.constrainProportions;
+      render();
+      return;
+    }
     if (t.dataset.styleKind) {
       state.styleKind = t.dataset.styleKind;
       render();
@@ -396,6 +413,30 @@ export function installPublishingControls(
     }
     if (!allowed()) return;
     run(() => {
+      if (t.hasAttribute('data-property-step')) {
+        const input = t.closest('.property-number').querySelector('input');
+        const old = input.value;
+        // Auto leading is represented by zero; step from the composed leading shown to the user.
+        if (input.dataset.objectProp === 'leading' && input.value === '0') {
+          const settings = textState()?.values;
+          if (settings?.fontSize)
+            input.value = String((settings.fontSize * (settings.autoLeading || 120)) / 100);
+        }
+        if (t.dataset.propertyStep === '1') input.stepUp();
+        else input.stepDown();
+        if (input.value !== old) input.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+      }
+      if (t.dataset.paragraphAlign) {
+        applyTextProperty('align', t.dataset.paragraphAlign);
+        return;
+      }
+      if (t.dataset.objectNone) {
+        mutate(() => {
+          objects()[0][t.dataset.objectNone] = 'none';
+        }, 'Object paint');
+        return;
+      }
       if (t.dataset.textWrapMode) {
         const selected = objects();
         if (
@@ -475,22 +516,36 @@ export function installPublishingControls(
         );
         return;
       }
-      if (t.hasAttribute('data-page-parent')) {
-        if (parentMode) return;
-        mutate(
-          () => applyParent(doc(), state.activePage, t.dataset.pageParent || null),
-          'Apply parent',
-        );
-        return;
-      }
-      if (t.dataset.parentEdit) {
-        onEditParent(t.dataset.parentEdit);
-      }
     });
   });
   listen(editor, 'change', (event) =>
     run(() => {
       const t = event.target;
+      if (t.hasAttribute('data-property-presets')) {
+        const input = t.closest('.property-number').querySelector('input');
+        input.value = t.value;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+      }
+      if (t.hasAttribute('data-font-style')) {
+        const option = t.selectedOptions[0];
+        if (!option) return;
+        const bold = option.dataset.bold === 'true',
+          italic = option.dataset.italic === 'true';
+        const ids = textState()?.fonts || [];
+        void fontTransaction(async () => {
+          if (option.hasAttribute('data-font-face')) {
+            const settings = resolveFont
+              ? await resolveFont(option.value)
+              : { textStyle: option.value };
+            return { ...settings, bold, italic };
+          }
+          for (const id of ids.filter((font) => font.startsWith('font-')))
+            await ensureFontVariant?.(id, bold, italic);
+          return { bold, italic };
+        });
+        return;
+      }
       if (t.dataset.textWrap) {
         const ids = objects().map((object) => object.id),
           key = t.dataset.textWrap,
@@ -528,6 +583,8 @@ export function installPublishingControls(
           value = t.type === 'number' ? Number(t.value) : t.value;
         if (t.type === 'number' && (!Number.isFinite(value) || value < 0 || value > 2000))
           throw new Error('Choose a valid frame value.');
+        if (key === 'strokeWidth' && value > 100)
+          throw new Error('Use a stroke weight between 0 and 100 pt.');
         if (key === 'columns' && (!Number.isInteger(value) || value < 1 || value > 40))
           throw new Error('Use 1–40 whole columns.');
         const candidate = { ...(objects()[0].frameOptions || {}), [key]: value },
@@ -580,54 +637,17 @@ export function installPublishingControls(
       .catch((error) => notify?.(error.message))
       .finally(() => fontPending--);
   });
-  let pressedLock = false;
-  listen(
-    editor,
-    'pointerdown',
-    (event) => {
-      pressedLock = !!event.target.closest('.layer-lock');
-    },
-    { capture: true },
-  );
-  listen(editor, 'pointerup', () => {
-    pressedLock = false;
-  });
-  listen(editor, 'pointercancel', () => {
-    pressedLock = false;
-  });
-  listen(editor, 'dragstart', (event) => {
-    if (pressedLock && event.target.closest('[data-layer-row]')) {
-      event.preventDefault();
-      return;
-    }
-    const layer = event.target.closest('[data-layer-row]');
-    if (!layer || !allowed()) return;
-    draggedLayer = layer.dataset.layerRow;
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('application/x-ivo-layer', draggedLayer);
-  });
-  listen(editor, 'dragover', (event) => {
-    const row = event.target.closest('[data-layer-row]');
-    if (row && draggedLayer) {
-      event.preventDefault();
-      row.classList.add('drag-target');
-    }
-  });
-  listen(editor, 'dragleave', (event) =>
-    event.target.closest('[data-layer-row]')?.classList.remove('drag-target'),
-  );
-  listen(editor, 'dragend', () => {
-    draggedLayer = null;
-    for (const e of editor.querySelectorAll('.drag-target')) e.classList.remove('drag-target');
-  });
-  listen(editor, 'drop', (event) => {
-    const row = event.target.closest('[data-layer-row]');
-    if (!row || !draggedLayer) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const from = draggedLayer;
-    draggedLayer = null;
-    run(() => mutate(() => reorderLayer(doc(), from, row.dataset.layerRow), 'Reorder layers'));
+  installPageLayerInteractions(editor, {
+    listen,
+    doc,
+    state,
+    objects,
+    render,
+    mutate,
+    run,
+    allowed,
+    parentMode,
+    onEditParent,
   });
   return {
     prepareLegacyFonts,
@@ -755,10 +775,14 @@ export function installPublishingControls(
         return true;
       }
       if (name === 'override-parent') {
+        const page = doc().pages.find((candidate) => candidate.id === state.activePage);
+        if (!page?.parentPageId) return true;
         mutate(() => select(overrideParent(doc(), state.activePage)), 'Override parent items');
         return true;
       }
       if (name === 'restore-parent') {
+        const page = doc().pages.find((candidate) => candidate.id === state.activePage);
+        if (!page?.parentOverrides?.length) return true;
         mutate(() => {
           delete doc().pages.find((p) => p.id === state.activePage).parentOverrides;
           doc().blocks = doc().blocks.filter(

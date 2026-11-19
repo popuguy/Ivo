@@ -185,6 +185,17 @@ try {
   host.querySelector(`[data-layer-id="${added.id}"][data-layer-toggle="locked"]`).click();
   assert(!editor.getState().selection.length, 'Locked content remained editable');
   host.querySelector(`[data-layer-id="${added.id}"][data-layer-toggle="locked"]`).click();
+  const disclosure = host.querySelector(`[data-layer-disclosure="${added.id}"]`);
+  assert(
+    disclosure.getAttribute('aria-expanded') === 'false',
+    'Layers should initially be collapsed',
+  );
+  disclosure.click();
+  assert(
+    host.querySelector(`[data-layer-disclosure="${added.id}"]`).getAttribute('aria-expanded') ===
+      'true',
+    'Layer disclosure did not expand',
+  );
   pick();
   const block = doc.blocks[0],
     objectLock = host.querySelector(`[data-object-toggle="locked"][data-object-id="${block.id}"]`),
@@ -205,6 +216,25 @@ try {
     tab = host.querySelector('[data-canvas-panel="layers"]'),
     group = tab.closest('[data-context-group]');
   tab.click();
+  const menuButton = group.querySelector('[data-panel-menu]');
+  menuButton.click();
+  assert(
+    menuButton.getAttribute('aria-expanded') === 'true' &&
+      host.querySelector('[data-workspace-action="command/layer-options"]'),
+    'Layers flyout did not expose Layer Options',
+  );
+  const menuItem = document.activeElement;
+  menuItem.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert(
+    menuButton.getAttribute('aria-expanded') === 'false' && document.activeElement === menuButton,
+    'Closing the panel menu lost keyboard focus',
+  );
+  menuButton.click();
+  menuButton.click();
+  assert(
+    !host.querySelector('.workspace-panel-menu'),
+    'Second click failed to dismiss the panel menu',
+  );
   await editor.command('toggle-panel-floating');
   group.querySelector('[data-canvas-command="close-panel-group"]').click();
   assert(group.hidden, 'Close group did not hide panels');
@@ -229,7 +259,32 @@ try {
   applyParent(doc, second.id, parent.id);
   editor.refreshExternal();
   await editor.command('tool-select');
-  host.querySelector(`[data-parent-edit="${parent.id}"]`).click();
+  const parentButton = host.querySelector(`[data-parent-edit="${parent.id}"]`);
+  const beforeParentSelection = JSON.stringify(doc);
+  parentButton.click();
+  assert(
+    JSON.stringify(doc) === beforeParentSelection && !host.querySelector('.parent-editor-overlay'),
+    'Choosing a parent row must not apply it to the current page or enter its editor',
+  );
+  const transfer = new DataTransfer();
+  const drop = (type, target) =>
+    target.dispatchEvent(
+      new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }),
+    );
+  drop('dragstart', parentButton);
+  drop('dragover', host.querySelector(`[data-select-page="${page.id}"]`));
+  drop('drop', host.querySelector(`[data-select-page="${page.id}"]`));
+  assert(page.parentPageId === parent.id, 'Dragging a parent onto a page did not apply it');
+  host
+    .querySelector('[data-page-parent=""]')
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }));
+  assert(
+    !page.parentPageId && second.parentPageId === parent.id,
+    'Option-clicking [None] changed the wrong page',
+  );
+  host
+    .querySelector(`[data-parent-edit="${parent.id}"]`)
+    .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   await tick();
   assert(host.querySelector('.parent-editor-overlay'), 'Parent definition editor did not open');
   const parentHost = host.querySelector('.parent-editor-host'),

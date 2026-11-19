@@ -109,6 +109,9 @@ void (async () => {
       'composed edit view',
     );
     await execute(`document.querySelector('[data-canvas-panel="layers"]').click()`);
+    await execute(
+      `document.querySelector('[data-layer-disclosure][aria-expanded="false"]:enabled').click()`,
+    );
     const viewport = await execute('({width:innerWidth,height:innerHeight})');
     samples = observeRenderedActions(wc, viewport);
     const rect = (selector) =>

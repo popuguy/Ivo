@@ -1,4 +1,9 @@
-import { normalizePanels, movePanel, panelPreset } from '../../../domain/workspace/panels.js';
+import {
+  normalizePanels,
+  movePanel,
+  panelPreset,
+  DEFAULT_DOCK_WIDTH,
+} from '../../../domain/workspace/panels.js';
 const KEY = 'ivo:workspace-panels:1';
 const finite = (value, fallback) => (Number.isFinite(value) ? value : fallback);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -15,7 +20,7 @@ export function panelBounds(value, size) {
 }
 export function dockWidth(value, width) {
   return clamp(
-    finite(value, 296),
+    finite(value, DEFAULT_DOCK_WIDTH),
     Math.min(200, width / 2),
     Math.max(0, Math.min(480, width - 224)),
   );
@@ -26,6 +31,9 @@ export function installWorkspacePanels(
   {
     prepare = () => {},
     allowed = () => true,
+    editing = () => true,
+    commandEnabled = () => true,
+    onCommand = () => {},
     initialState,
     presets,
     onError = () => {},
@@ -77,6 +85,7 @@ export function installWorkspacePanels(
   }
   let gesture = null,
     menu = null,
+    menuButton = null,
     selectedGroup = saved.groups[0].id;
   const size = () => ({ w: editor.clientWidth, h: editor.clientHeight });
   const drop = document.createElement('div');
@@ -105,7 +114,9 @@ export function installWorkspacePanels(
         element.dataset.contextGroup = value.id;
         element.innerHTML =
           template.querySelector('.canvas-panel-microbar').outerHTML +
-          '<nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"></nav><div class="workspace-panel-resize" tabindex="0" role="separator" aria-label="Resize context panel"></div>';
+          template.querySelector('.context-panel-header').outerHTML +
+          '<div class="workspace-panel-resize" tabindex="0" role="separator" aria-label="Resize context panel"></div>';
+        element.querySelector('.canvas-panel-tabs').replaceChildren();
         groups.set(value.id, element);
       }
       const parent = value.floating ? editor : dock;
@@ -115,7 +126,6 @@ export function installWorkspacePanels(
       element.classList.toggle('context-group-collapsed', value.collapsed);
       const rect = panelBounds(value.rect, bounds),
         tabs = element.querySelector('.canvas-panel-tabs'),
-        toggle = element.querySelector('[data-canvas-command="toggle-panel-floating"]'),
         resize = element.querySelector('.workspace-panel-resize');
       for (const [key, amount] of Object.entries({
         left: rect.x,
@@ -124,9 +134,6 @@ export function installWorkspacePanels(
         height: rect.h,
       }))
         element.style[key] = value.floating ? amount + 'px' : '';
-      toggle.setAttribute('aria-label', value.floating ? 'Dock panel' : 'Float panel');
-      toggle.dataset.tooltip = toggle.getAttribute('aria-label');
-      toggle.setAttribute('aria-pressed', String(value.floating));
       resize.setAttribute('aria-orientation', value.floating ? 'horizontal' : 'vertical');
       resize.setAttribute('aria-valuemin', '0');
       resize.setAttribute('aria-valuemax', String(Math.round(bounds.w)));
@@ -178,6 +185,8 @@ export function installWorkspacePanels(
     onChange(structuredClone(saved));
   }
   function closeMenu() {
+    menuButton?.setAttribute('aria-expanded', 'false');
+    menuButton = null;
     menu?.remove();
     menu = null;
   }
@@ -471,7 +480,18 @@ export function installWorkspacePanels(
     menu = document.createElement('div');
     menu.className = 'canvas-context-menu workspace-panel-menu';
     menu.setAttribute('role', 'menu');
+    const contentActions = {
+      pages: [
+        ['new-parent', 'Save as Parent…'],
+        ['override-parent', 'Override All Parent Page Items'],
+        ['restore-parent', 'Remove Local Overrides'],
+      ],
+      layers: [['layer-options', 'Layer Options…']],
+    };
     const actions = [
+      ...(editing()
+        ? (contentActions[kind] || []).map(([id, label]) => ['command/' + id, label])
+        : []),
       ...(kind && group.tabs.length > 1
         ? [
             ['detach', 'Float this panel'],
@@ -509,17 +529,27 @@ export function installWorkspacePanels(
       const button = document.createElement('button');
       button.role = 'menuitem';
       button.dataset.workspaceAction = action;
+      if (action.startsWith('command/')) button.disabled = !commandEnabled(action.slice(8));
       button.textContent = label;
       menu.append(button);
     }
-    const box = editor.getBoundingClientRect();
-    Object.assign(menu.style, {
-      left: clamp(event.clientX - box.left, 0, Math.max(0, box.width - 220)) + 'px',
-      top: clamp(event.clientY - box.top, 0, Math.max(0, box.height - actions.length * 28)) + 'px',
-    });
     menu.dataset.panelKind = kind || '';
     editor.append(menu);
-    menu.firstElementChild.focus({ preventScroll: true });
+    menuButton = event.target.closest('[data-panel-menu]');
+    menuButton?.setAttribute('aria-expanded', 'true');
+    const box = editor.getBoundingClientRect();
+    const anchor = menuButton?.getBoundingClientRect();
+    const { width, height } = menu.getBoundingClientRect();
+    menu.style.left =
+      clamp(
+        (anchor ? anchor.right - width : event.clientX) - box.left,
+        0,
+        Math.max(0, box.width - width),
+      ) + 'px';
+    menu.style.top =
+      clamp((anchor?.bottom ?? event.clientY) - box.top, 0, Math.max(0, box.height - height)) +
+      'px';
+    menu.querySelector('button:enabled')?.focus({ preventScroll: true });
   }
   listen(editor, 'contextmenu', (event) => {
     if (event.target.closest('.canvas-panel-microbar,[data-canvas-panel]'))
@@ -540,12 +570,21 @@ export function installWorkspacePanels(
         tab = event.target.closest('[data-canvas-panel]'),
         group = event.target.closest('[data-context-group]');
       if (group) selectedGroup = group.dataset.contextGroup;
+      if (event.target.closest('[data-panel-menu]')) {
+        if (menuButton && menuButton.contains(event.target)) closeMenu();
+        else menuAt(event, groupTarget().active);
+        return;
+      }
       if (action) {
         event.stopImmediatePropagation();
         const kind = menu?.dataset.panelKind || groupTarget().active;
         closeMenu();
         if (!allowed()) return;
         prepare();
+        if (action.startsWith('command/')) {
+          Promise.resolve(onCommand(action.slice(8))).catch(onError);
+          return;
+        }
         if (action === 'close-panel' || action === 'close-group') {
           saved.closed = [
             ...new Set([
@@ -623,7 +662,7 @@ export function installWorkspacePanels(
     { capture: true },
   );
   listen(window, 'pointerdown', (event) => {
-    if (menu && !menu.contains(event.target)) closeMenu();
+    if (menu && !menu.contains(event.target) && !menuButton?.contains(event.target)) closeMenu();
   });
   listen(editor, 'keydown', (event) => {
     const resize = event.target.closest('.workspace-panel-resize'),
@@ -636,7 +675,7 @@ export function installWorkspacePanels(
     }
     if (menu) {
       event.stopPropagation();
-      const buttons = [...menu.querySelectorAll('button')];
+      const buttons = [...menu.querySelectorAll('button:enabled')];
       if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
         event.preventDefault();
         const index = buttons.indexOf(document.activeElement);
@@ -649,8 +688,9 @@ export function installWorkspacePanels(
         ].focus();
       } else if (['Escape', 'Tab'].includes(event.key)) {
         event.preventDefault();
+        const previous = menuButton || panels.get(groupTarget().active).tab;
         closeMenu();
-        panels.get(groupTarget().active).tab.focus({ preventScroll: true });
+        previous.focus({ preventScroll: true });
       }
       return;
     }

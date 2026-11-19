@@ -1,3 +1,5 @@
+import { reflectPropertyFormatting } from './ui/publishing-properties.js';
+import { globalIndex as flowIndexAtPoint } from '../../rendering/text/flow-source.js';
 import { patchComposedFrame } from './text/composed-frame.js';
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
 import { textClipboardHTML } from './text/clipboard.js';
@@ -272,7 +274,7 @@ export function mountCanvasEditor(host, options) {
     .map(([name, label]) => control('tool-' + name, label, name))
     .join(
       '',
-    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-input-world" hidden><div class="canvas-flow-clip"><div class="rich-text canvas-text canvas-flow-input"></div></div></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div>${statusBarMarkup(control)}</div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><span class="canvas-panel-grip-label">Panels</span><button data-canvas-command="toggle-panel-floating" aria-label="Float panel" data-tooltip="Float panel">${svg('menu')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('chevron-right')}</button></div><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
+    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-input-world" hidden><div class="canvas-flow-clip"><div class="rich-text canvas-text canvas-flow-input"></div></div></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div>${statusBarMarkup(control)}</div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('panel-collapse')}</button></div><div class="context-panel-header"><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><button type="button" data-panel-menu aria-haspopup="menu" aria-expanded="false" aria-label="Panel menu" data-tooltip="Panel menu">${svg('menu')}</button></div><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
   const editor = host.firstElementChild,
     viewport = host.querySelector('.canvas-viewport'),
     world = host.querySelector('.canvas-world'),
@@ -296,6 +298,14 @@ export function mountCanvasEditor(host, options) {
     },
     allowed: () => !busy && !composing && !dialogOpen(),
     initialState: options.panelLayout,
+    onCommand: (name) => command(name),
+    commandEnabled: (name) => {
+      if (name === 'new-parent') return !options.parentMode;
+      if (name === 'override-parent') return !options.parentMode && !!page().parentPageId;
+      if (name === 'restore-parent') return !options.parentMode && !!page().parentOverrides?.length;
+      return true;
+    },
+    editing: () => options.editing,
     presets: options.panelPresets,
     onError: (error) => options.onNotify?.(error.message),
     onChange: (layout) => options.onPanelLayout?.(layout),
@@ -479,6 +489,7 @@ export function mountCanvasEditor(host, options) {
       'aria-label',
       (target.locked ? 'Unlock ' : 'Lock ') + (layer?.name || 'object'),
     );
+    button.dataset.tooltip = button.getAttribute('aria-label');
     // Nested masks and children inherit a parent's or layer's editability.
     const blocks = new Map(doc().blocks.map((item) => [item.id, item]));
     for (const node of world.querySelectorAll('[data-object]')) {
@@ -815,6 +826,7 @@ export function mountCanvasEditor(host, options) {
       }
     }
     reflectTextStyle(editor, textSummary);
+    reflectPropertyFormatting(editor, textSummary, options);
     reflectTextWrapControls(editor);
   }
   function readSelectedTextStyle() {
@@ -841,6 +853,7 @@ export function mountCanvasEditor(host, options) {
   function syncTextStyle() {
     textSummary = readSelectedTextStyle();
     reflectTextStyle(editor, textSummary);
+    reflectPropertyFormatting(editor, textSummary, options);
     publishingControls.refreshTextState();
   }
   function rebasePendingMarks() {
@@ -1165,9 +1178,10 @@ export function mountCanvasEditor(host, options) {
       const caret = document.caretRangeFromPoint?.(event.clientX, event.clientY),
         marker = caret?.startContainer.parentElement?.closest('[data-flow-text]');
       if (marker && preview?.contains(marker))
-        index =
-          Number(marker.dataset.flowText) +
-          (caret.startContainer.nodeType === Node.TEXT_NODE ? caret.startOffset : 0);
+        index = flowIndexAtPoint(
+          { node: caret.startContainer, offset: caret.startOffset },
+          Number(marker.dataset.flowText),
+        );
     }
     const pane = host.querySelector('.canvas-input-world'),
       element = pane.querySelector('.canvas-flow-input');
@@ -3118,17 +3132,25 @@ export function mountCanvasEditor(host, options) {
       if (!Number.isFinite(value)) return;
       mutate(() => {
         const rect = selectionBounds(doc(), state.selection);
-        rect[key] = ['w', 'h'].includes(key)
+        const amount = ['w', 'h'].includes(key)
           ? Math.max(0.01, Math.min(100000, value))
           : Math.max(-100000, Math.min(100000, value));
-        transformSelection(doc(), state.selection, rect, structuredClone(doc()));
+        const next = editReferenceRect(
+          rect,
+          key,
+          amount,
+          state.transformReference,
+          state.constrainProportions,
+        );
+        transformSelection(doc(), state.selection, next, structuredClone(doc()));
       });
       return;
     }
-    if (el.matches('[data-active-page]')) {
+    if (el.matches('[data-active-page],[data-property-page]')) {
       if (endTextEditing() === false) return;
       if (doc().pages.some((page) => page.id === el.value)) {
         state.activePage = el.value;
+        renderPanel();
         fit();
       }
       return;
@@ -3152,7 +3174,8 @@ export function mountCanvasEditor(host, options) {
       if (['x', 'y'].includes(prop)) value = Math.max(-100000, Math.min(100000, value));
       if (['w', 'h'].includes(prop)) value = Math.max(0.01, Math.min(100000, value));
       if (prop === 'fontSize') value = Math.max(1, Math.min(2000, value));
-      if (prop === 'strokeWidth') value = Math.max(0, Math.min(100, value));
+      if (['strokeWidth', 'opacity'].includes(prop)) value = Math.max(0, Math.min(100, value));
+      if (prop === 'rotation') value = Math.max(-36000, Math.min(36000, value));
       if (prop === 'leading') value = Math.max(0, Math.min(4000, value));
       if (prop === 'tracking') value = Math.max(-1000, Math.min(10000, value));
       if (['paragraphBefore', 'paragraphAfter'].includes(prop))
@@ -3182,6 +3205,7 @@ export function mountCanvasEditor(host, options) {
               prop,
               value,
               state.transformReference,
+              state.constrainProportions,
             ),
             structuredClone(doc()),
           );
@@ -4195,6 +4219,8 @@ export function mountCanvasEditor(host, options) {
           .join('');
         select.value = value;
       }
+      const style = editor.querySelector('[data-font-style]');
+      if (style) delete style.dataset.family;
       syncTextStyle();
       requestFrame();
     },

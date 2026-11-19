@@ -12,6 +12,21 @@
 .context-panel-group [role='tab'][hidden] {
   display: none;
 }
+.context-panel-group,
+.workspace-panel-menu,
+.context-tab-drag-preview {
+  --panel-bg: #535353;
+  --panel-tab: #424242;
+  --panel-input: #454545;
+  --panel-line: #383838;
+  --panel-control-border: #757575;
+  --panel-ink: #fafafa;
+  --panel-muted: #c9c9c9;
+  --panel-hover: #606060;
+  --panel-active: #303030;
+  --panel-accent: #58b8fa;
+  color-scheme: dark;
+}
 .context-panel-group {
   background: var(--panel-bg);
   color: var(--panel-ink);
@@ -20,54 +35,91 @@
   font-size: 12px;
 }
 .context-panel-group .canvas-panel-microbar {
-  height: 14px;
-  min-height: 14px;
-  background: var(--panel-line);
-  border-bottom: 1px solid var(--panel-line);
-  padding: 0 3px;
-  color: var(--panel-muted);
+  height: 13px;
+  min-height: 13px;
+  justify-content: space-between;
+  background: var(--panel-tab);
+  border-block: 1px solid var(--panel-line);
+  padding: 0 4px;
+}
+.context-panel-group[data-floating='false'] [data-canvas-command='close-panel-group'] {
+  visibility: hidden;
 }
 .context-panel-group .canvas-panel-microbar button {
   width: 15px;
-  height: 13px;
-  padding: 1px 2px;
+  height: 11px;
+  padding: 0 2px;
   margin: 0;
   min-height: 0;
 }
 .context-panel-group .canvas-panel-microbar .reference-icon {
   width: 10px;
   height: 10px;
-  filter: none;
 }
-.context-panel-group .canvas-panel-grip-label {
-  flex: 1;
-  font-size: 9px;
+.context-panel-header {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  height: 28px;
+  background: var(--panel-tab);
+  box-shadow: inset 0 -1px var(--panel-line);
 }
 .context-panel-group .canvas-panel-tabs {
-  min-height: 33px;
+  position: static;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 0;
   padding: 0;
-  background: var(--panel-bg);
-  border-bottom: 1px solid var(--panel-line);
-  overflow-x: auto;
+  background: none;
+  border: 0;
 }
 .context-panel-group .canvas-panel-tabs button {
   flex: 0 0 auto;
-  padding: 7px 9px;
+  height: 100%;
+  padding: 0 8px;
   min-width: 0;
-  border: 1px solid var(--panel-line);
-  border-top: 0;
-  border-bottom: 0;
+  border: 0;
+  border-inline-end: 1px solid var(--panel-line);
   border-radius: 0;
   color: var(--panel-muted);
-  background: var(--panel-bg);
+  background: transparent;
   font: 600 12px/18px var(--interface-font);
+}
+.context-panel-group .canvas-panel-tabs button:hover {
+  color: var(--panel-ink);
 }
 .context-panel-group .canvas-panel-tabs button[aria-selected='true'] {
   color: var(--panel-ink);
   background: var(--panel-bg);
   box-shadow: none;
-  border-bottom: 0;
+}
+.context-panel-header [data-panel-menu] {
+  width: 21px;
+  flex: none;
+  padding: 0 4px;
+}
+.context-panel-group [data-panel-menu] .reference-icon {
+  width: 12px;
+  height: 12px;
+}
+.context-panel-group .reference-icon {
+  filter: brightness(0) invert(0.84);
+}
+.scene-editor .workspace-panel-menu {
+  overflow-y: auto;
+  max-height: calc(100% - 8px);
+  background: var(--panel-tab);
+  border: 1px solid var(--panel-line);
+  color: var(--panel-ink);
+}
+.scene-editor .workspace-panel-menu button {
+  color: inherit;
+}
+.scene-editor .workspace-panel-menu button:is(:hover, :focus-visible) {
+  background: var(--panel-hover);
 }
 .context-panel-group .canvas-panel-content {
   padding: 0;
@@ -114,7 +166,7 @@
   min-width: 0;
 }
 .context-panel-group select {
-  color-scheme: normal;
+  color-scheme: dark;
 }
 .context-panel-group input[type='color'] {
   width: 30px;
@@ -132,7 +184,6 @@
 .context-panel-group button .reference-icon {
   width: 15px;
   height: 15px;
-  filter: none;
 }
 .context-panel-group button:disabled {
   opacity: 0.35;
@@ -677,7 +728,7 @@
   border-radius: 2px;
   font-size: 12px;
   min-width: 0;
-  color-scheme: normal;
+  color-scheme: dark;
 }
 .canvas-contextual-bar select:first-of-type {
   width: 150px;
@@ -701,6 +752,16 @@
 
 /* Decorations belong to effective text runs, so explicit false can cancel a
    frame/style/semantic ancestor without introducing typography/layout owners. */
+[data-ivo-scale-hyphen]::after {
+  content: '\2010';
+}
+[data-ivo-scale-join='line']::before {
+  content: '\a';
+  white-space: pre;
+}
+[data-ivo-scale-join='join']::before {
+  content: '\2060';
+}
 .ivo-decoration-source {
   text-decoration-line: none !important;
 }

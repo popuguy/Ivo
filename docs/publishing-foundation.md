@@ -2,6 +2,14 @@
 
 18 November 2026. This implements the first dependency-ordered portion of Paul's expanded text/layout scope. **It is not full InDesign parity.** The private reference investigation and supplied scope export remain local. This document describes Ivo's implementation, not recovered Adobe code.
 
+## Desktop panels
+
+Properties, Pages and Layers share a compact dark dock and the workspace Geist typeface. The default width is 254 points. Existing workspace widths and floating groups retain their saved geometry. Each group's flyout offers panel and layout commands.
+
+Properties → Character shows family, style, size, leading, kerning and tracking. Its **More Options** ellipsis exposes horizontal and vertical scale, baseline shift and additional character settings. The two scale values are absolute percentages. At 100%, the text returns to its original proportions. The Transform chain constrains frame proportions around the selected reference point.
+
+Pages has separate parent and document sections. Drag a parent onto a page to apply it, or double-click a parent to edit it. The Pages panel uses icon previews. Layers shows the active page's objects under expandable layer rows, with visibility, locks, stacking order and a draggable selection square.
+
 ## Working increment
 
 - Independent area frames now have in/out ports alongside the eight small resize handles. Linked ports navigate their frame chain; an unlinked out port enters threading. The existing Illustrator-style point/area conversion circle and direct, smooth frame movement remain.

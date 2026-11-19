@@ -1,5 +1,13 @@
 # Verification
 
+## Character scaling and publishing panels — 19 November 2026
+
+The clipboard regression reproduces nested horizontal and vertical scale resets around five ordinary paragraphs. Tests measure the first character against each paragraph edge, check that the original text survives, and verify that repeated auto-leading edits preserve the final value. The threaded-editor checks also measure glyph dimensions, advances, scale changes, and the width of neighboring unselected text.
+
+The publishing suite exercises Character disclosure, one-percent steps, Auto leading, proportional frame resizing around the selected reference point, panel flyout dismissal, layer disclosure and lock feedback, page sizing, and applying and editing parent pages. The three panels were inspected at 254 points wide on the Mac. Pages uses icons-only display. Facing spreads and page-content thumbnails remain open.
+
+The Mac review build is `release/2026-11-19-publishing-panels/Ivo-darwin-arm64/Ivo.app`. Validation passed 495 unit tests, 44 native tests and 17 hidden desktop groups. Archive verification matched 529 files to their build inputs and checked both native helpers.
+
 ## Point size shortcuts and new document typography — 19 November 2026
 
 A hidden new InDesign document supplied the default face, 12 pt size, 120% Auto leading and zero paragraph spacing. The installed size and leading increment was 2 pt. Its default shortcut set maps Shift–Command–comma and Shift–Command–period to decrease and increase, with Option multiplying the step by five.

@@ -8,6 +8,8 @@ This is a rough assessment of implementation and integration across the [66 incl
 
 New documents now use the reference type size, automatic leading and paragraph spacing. Keyboard formatting covers relative point sizes in mixed selections, insertion points and selected frames. These refinements keep the overall estimate at **~36%**.
 
+Repeated horizontal and vertical scale edits now use the final percentage for each selected run. Saved documents with nested scale resets regain their original left edge. These fixes and the compact publishing panels keep the estimate at **~36%**.
+
 ## Milestones reflected in this baseline
 
 - Shared canonical flow source, linked selection, typography/history corrections and portable fonts.
