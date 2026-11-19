@@ -351,7 +351,9 @@ const flowKeeps = (source) =>
     Object.fromEntries(PARAGRAPH_KEEP_FIELDS.map((key) => [key, paragraph[key]])),
   );
 const hasKeeps = (source) =>
-  source.paragraphs.some((paragraph) => paragraph.keepTogether || paragraph.keepWithNext);
+  source.paragraphs.some(
+    (paragraph) => paragraph.keepTogether || paragraph.keepWithNext || paragraph.keepWithPrevious,
+  );
 function validateResult(result, request) {
   if (
     result?.protocol !== request.protocol ||

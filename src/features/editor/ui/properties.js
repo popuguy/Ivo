@@ -128,7 +128,7 @@ export function propertiesContent({
     transformProperties(item, state, movePage),
     isText && styleProperties(item, doc, state),
     appearanceProperties(item),
-    isText && textProperties(item, fonts, systemFonts, state),
+    isText && textProperties(item, fonts, systemFonts, state, !!flow?.composition),
     alignControls(),
     showsContextualWrap(selectedObjects, selectedVertex) &&
       textWrapControls(selectedObjects, { editing, state }),

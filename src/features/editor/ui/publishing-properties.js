@@ -249,7 +249,7 @@ export function reflectPropertyFormatting(editor, summary, fontSources) {
       button.setAttribute('aria-pressed', pressed);
   }
 }
-export function textProperties(item, fonts, installed = [], state = {}) {
+export function textProperties(item, fonts, installed = [], state = {}, nativeFlow = false) {
   const faces = fontChoices(fonts, installed, item.textStyle);
   const family = faces.find(([key]) => key === item.textStyle)?.[1].split(' · ')[0] || '';
   const advanced = `<div class="property-metrics">${measure('verticalScale', item.verticalScale ?? 100, 'Vertical Scale', 'type-vertical-scale', '%', { min: 10, max: 1000 })}${measure('horizontalScale', item.horizontalScale ?? 100, 'Horizontal Scale', 'type-horizontal-scale', '%', { min: 10, max: 1000 })}${measure('baselineShift', item.baselineShift || 0, 'Baseline Shift', 'type-baseline-shift', 'pt')}</div><div class="publishing-inline-actions">${button('bold', 'Bold', 'bold')}${button('italic', 'Italic', 'italic')}${check('underline', item.underline, 'Underline')}${check('strikethrough', item.strikethrough, 'Strikethrough')}</div>${choose('language', item.language || 'en-US', languageChoices, 'Language')}${num('autoLeading', item.autoLeading || 120, 'Auto leading · %')}${field('Text fill', `<input type="color" data-object-prop="textColor" value="${item.textColor || '#252525'}">`)}<div class="property-extra-actions">${button('type-options', 'Explore more type options…')}${button('import-font', 'Add font to vault…')}${button('refresh-fonts', 'Refresh installed fonts')}</div>`;
@@ -298,6 +298,15 @@ export function textProperties(item, fonts, installed = [], state = {}) {
             check('hyphenate', item.hyphenate, 'Hyphenate') +
             check('keepTogether', item.keepTogether, 'Keep paragraph together') +
             check('keepWithNext', item.keepWithNext, 'Keep with next') +
+            (nativeFlow
+              ? '<div class="canvas-geometry">' +
+                field(
+                  'Following lines',
+                  `<input data-object-prop="keepNextLines" type="number" min="1" max="5" step="1" aria-label="Following lines" value="${item.keepNextLines ?? 1}">`,
+                ) +
+                check('keepWithPrevious', item.keepWithPrevious, 'Keep with previous') +
+                '</div>'
+              : '') +
             `<div class="canvas-geometry">${num('widows', item.widows || 2, 'Widows')}${num('orphans', item.orphans || 2, 'Orphans')}</div>` +
             choose(
               'direction',

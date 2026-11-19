@@ -1,5 +1,9 @@
 # Verification
 
+## Paragraph joins across linked frames — 19 November 2026
+
+The hidden Mac editor reflows chained headings, a whole caption, a two-line heading rule and a backward caption rule. Focused geometry tests exercise all five counts, count both sides of an illustration as a single line, cover short paragraphs and check impossible joins after later edits. Editor checks cover the Properties controls, named heading style, undo and reopening. A folder vault test preserves a previous revision while saving the new settings. PDFKit independently extracts 33 source rows across four three-page publications and verifies their page ownership, left edges and baseline spacing.
+
 ## Light publishing panels and contextual Text Wrap — 19 November 2026
 
 A hidden desktop editor checks text insertion, frame selection, a straight line, a direct-selected vertex, a graphic, a rectangle, multiple objects and no selection. It operates the wrap icons, independent and linked fractional offsets, Invert, the dedicated panel flyout and document creation defaults. Geometry tests cover inverted jumps and the distinction between an image rectangle, a clipped graphic and its container. Both local and fallback artwork were checked in the Light interface.

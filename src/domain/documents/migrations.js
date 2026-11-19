@@ -1,3 +1,5 @@
+import { CURRENT_ARCHIVE_VERSION } from './capabilities.js';
+
 /** Compatibility boundary for archives written before canonical text flows.
  * Read conversion only: supplied IDs, rich text, geometry and asset bytes stay intact.
  * The validator owns structural checks; opening a vault never rewrites old revisions.
@@ -6,7 +8,9 @@ const owns = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 export function migrateArchive(payload) {
   if (
     !payload ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(payload.schemaVersion) ||
+    !Number.isInteger(payload.schemaVersion) ||
+    payload.schemaVersion < 1 ||
+    payload.schemaVersion > CURRENT_ARCHIVE_VERSION ||
     !Array.isArray(payload.documents)
   )
     return payload;

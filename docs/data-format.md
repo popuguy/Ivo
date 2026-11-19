@@ -1,6 +1,6 @@
 # Document and vault formats
 
-Authored paragraph word spacing uses **archive 10 / canvas 9**. Authored object text wrap uses **archive 9 / canvas 8**. Explicit native text composition uses **archive 8 / canvas 7**. Authored first-baseline policies use **archive 7 / canvas 6**. Other publishing documents remain **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
+Extended paragraph keeps use **archive 11 / canvas 10**. Authored paragraph word spacing uses **archive 10 / canvas 9**. Authored object text wrap uses **archive 9 / canvas 8**. Explicit native text composition uses **archive 8 / canvas 7**. Authored first-baseline policies use **archive 7 / canvas 6**. Other publishing documents remain **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
 
 | Archive | Document capability                                                                                                |
 | ------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -98,3 +98,9 @@ Archive 10 / canvas 9 adds the atomic paragraph field `wordSpacing`, stored as a
 Frozen `tests/fixtures/legacy/archive-v9.json` was normalized with the preceding implementation. Reads keep its prior source, IDs, geometry and version; no word-spacing value or native composer is introduced. New writes preserve immutable prior object bytes and use the existing atomic manifest transaction. Copy/paste retains separate flow IDs and the explicit capability. Invalid/crossed triples reject before replacing stored content.
 
 This persisted capability is separate from internal native protocol 5 and its disposable measured word-spacing plans. UI authoring currently requires an explicitly native flow; the first admission is simple LTR ordinary spaces without effective wraps, tabs, special/nonbreaking spaces or negative tracking. No browser CSS approximation or automatic native opt-in is added. See [native paragraph word spacing](native-word-spacing.md) for layout rules and open qualification.
+
+## Counted and backward paragraph keeps
+
+Archive 11 / canvas 10 adds `keepNextLines` (integer 1–5, default 1) and `keepWithPrevious` (boolean, default false). The corresponding rich paragraph attributes are `data-ivo-nextlines` and `data-ivo-previous`. The existing `keepWithNext` flag enables the following-line count. Explicit settings and resets in paragraph source, frames, flows, named styles and parent pages require the new format. Older one-line joins retain their original format. Clearing these fields after saving retains the new format. Undoing the original edit can restore the previous document version.
+
+The frozen archive 10 fixture contains a legacy one-line join and word-spacing policy. It must open without any source or version change. Physical rows, candidate placements and violated joins remain derived data.

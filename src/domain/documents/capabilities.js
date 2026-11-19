@@ -1,6 +1,17 @@
-export const CURRENT_ARCHIVE_VERSION = 10;
-export const CURRENT_CANVAS_VERSION = 9;
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
+
+export const CURRENT_ARCHIVE_VERSION = 11;
+export const CURRENT_CANVAS_VERSION = 10;
+/** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
+export function supportedCanvas(version, minimum = 1) {
+  return (
+    Number.isInteger(version) &&
+    version !== 3 &&
+    version >= minimum &&
+    version <= CURRENT_CANVAS_VERSION
+  );
+}
+
 const oldFields = new Set([
   'textStyle',
   'fontSize',
@@ -25,7 +36,7 @@ const newAttrs = new RegExp(
 export function hasPublishingFeatures(doc) {
   return (
     !!doc.publishing ||
-    [5, 6, 7, 8, 9].includes(doc.canvasVersion) ||
+    supportedCanvas(doc.canvasVersion, 5) ||
     doc.blocks.some(
       (b) =>
         b.frameOptions ||
@@ -65,7 +76,7 @@ export function hasAdvancedTypography(document) {
 /** First-baseline policies require an explicit format gate; older readers reject archive 7. */
 export function hasFrameComposition(doc) {
   return (
-    [6, 7, 8, 9].includes(doc.canvasVersion) ||
+    supportedCanvas(doc.canvasVersion, 6) ||
     [...doc.blocks, ...(doc.publishing?.parents || []).flatMap((p) => p.blocks)].some(
       (b) =>
         b.frameOptions?.firstBaseline !== undefined ||
@@ -105,8 +116,26 @@ export function hasWordSpacing(doc) {
   const owns = (settings) =>
       settings?.wordSpacing !== undefined || settings?.textOverrides?.wordSpacing !== undefined,
     markup = (html) => /\bdata-ivo-wordspace\s*=/i.test(html || '');
+  return doc.canvasVersion === 9 || hasAuthoredParagraphSetting(doc, owns, markup);
+}
+
+export function hasExtendedKeeps(doc) {
+  const owns = (value) =>
+    value &&
+    [value, value.textOverrides].some(
+      (settings) =>
+        settings?.keepNextLines !== undefined || settings?.keepWithPrevious !== undefined,
+    );
   return (
-    doc.canvasVersion === 9 ||
+    doc.canvasVersion === 10 ||
+    hasAuthoredParagraphSetting(doc, owns, (html) =>
+      /\bdata-ivo-(?:nextlines|previous)\s*=/i.test(html || ''),
+    )
+  );
+}
+
+function hasAuthoredParagraphSetting(doc, owns, markup) {
+  return (
     [
       ...(doc.blocks || []),
       ...(doc.publishing?.parents || []).flatMap((parent) => parent.blocks || []),
@@ -119,6 +148,7 @@ export function hasWordSpacing(doc) {
 }
 
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasExtendedKeeps)) return 11;
   if (documents.some(hasWordSpacing)) return 10;
   if (documents.some(hasTextWrap)) return 9;
   if (documents.some(hasNativeTextComposition)) return 8;
@@ -135,6 +165,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasExtendedKeeps(document)) {
+    document.canvasVersion = 10;
+    return document;
+  }
   if (hasWordSpacing(document)) {
     document.canvasVersion = 9;
     return document;

@@ -209,7 +209,10 @@ export function createParagraphComposer(measure) {
           backendCalls: 0,
           reusedDecisions: 0,
         };
-      if (!frameFlow && keeps.some((keep) => keep.keepTogether || keep.keepWithNext))
+      if (
+        !frameFlow &&
+        keeps.some((keep) => keep.keepTogether || keep.keepWithNext || keep.keepWithPrevious)
+      )
         throw new UnsupportedComposition('paragraph keeps without planned physical frames');
       if (request.protocol >= 2 && request.paragraphs?.length !== paragraphs.length)
         throw Error('Native paragraph metadata does not cover its source.');

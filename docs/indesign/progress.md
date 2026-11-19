@@ -2,9 +2,11 @@
 
 Current overall engineering estimate, 19 November 2026:
 
-`[███████░░░░░░░░░░░░░] ~37%`
+`[████████░░░░░░░░░░░░] ~38%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
+
+The native composers now support keeping one to five following lines and keeping a caption with the preceding paragraph. These settings work through Properties, named paragraph styles, undo, vault storage and searchable PDF. This brings the estimate to **~38%**.
 
 Linked heading chains, following whole paragraphs and physical wrap rows now share keep placement across unequal native frames. Editor and searchable PDF regressions cover chained headings. This moves the engineering estimate from ~36% to ~37%.
 

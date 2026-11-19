@@ -342,7 +342,7 @@ export async function verifyNativeParagraphKeeps({
   async function property(name, enabled) {
     const control = host.querySelector(`[data-object-prop="${name}"]`);
     assert(
-      control?.type === 'checkbox' && !control.disabled,
+      control?.type === (typeof enabled === 'number' ? 'number' : 'checkbox') && !control.disabled,
       'Production Paragraph Properties lacks: ' + name,
     );
     for (let owner = control.parentElement; owner && owner !== host; owner = owner.parentElement)
@@ -351,7 +351,8 @@ export async function verifyNativeParagraphKeeps({
       new PointerEvent('pointerdown', { bubbles: true, pointerId: 87, button: 0 }),
     );
     control.focus();
-    control.checked = enabled;
+    if (typeof enabled === 'number') control.value = String(enabled);
+    else control.checked = enabled;
     control.dispatchEvent(new Event('change', { bubbles: true }));
     await settle();
   }
@@ -489,6 +490,97 @@ export async function verifyNativeParagraphKeeps({
     assert(source() === joinedHTML, 'Redo lost the authored heading chain');
     verifyPlan(chainRows, [[0], [1, 2, 3, 4], [5]]);
 
+    const countedRows = [
+      'Preface\u2029',
+      'Title\u2029',
+      'Body one\u2028',
+      'Body two\u2028',
+      'Body three\u2029',
+      'Tail\u2029',
+    ];
+    ownFixture(
+      'Keep two body lines with a heading',
+      '<p>Preface</p><p>Title</p><p>Body one<br>Body two<br>Body three</p><p>Tail</p>',
+    );
+    mount();
+    await settle();
+    await selectWord('Title');
+    await property('keepWithNext', true);
+    verifyPlan(countedRows, [[0, 1, 2], [3, 4, 5], []]);
+    const oneLineHTML = source();
+    assert(archiveVersion([doc]) === 8, 'A legacy one-line keep upgraded the archive');
+    await property('keepNextLines', 2);
+    verifyPlan(countedRows, [[0], [1, 2, 3, 4], [5]]);
+    assert(
+      paragraphMark(1, 'nextlines') === '2' && archiveVersion([doc]) === 11,
+      'Following lines was not authored on its paragraph',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(
+      source() === oneLineHTML && archiveVersion([doc]) === 8,
+      'Undo did not restore the previous source and archive capability',
+    );
+    await editor.command('redo');
+    await settle();
+    await save({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+    editor.destroy();
+    editor = null;
+    doc = validateImport(await load()).documents[0];
+    resetOwner();
+    mount();
+    await settle();
+    verifyPlan(countedRows, [[0], [1, 2, 3, 4], [5]]);
+    assert(
+      paragraphMark(1, 'nextlines') === '2' && !commits,
+      'Opening the counted keep altered its source',
+    );
+    await selectWord('Tail');
+    await property('keepWithPrevious', true);
+    // The last body row moves along with its caption; its first two rows still stay with Title.
+    verifyPlan(countedRows, [[0], [1, 2, 3], [4, 5]]);
+    assert(
+      paragraphMark(3, 'previous') === 'true' && paragraphMark(2, 'next') !== 'true',
+      'Keep with previous rewrote its predecessor',
+    );
+    ownFixture(
+      'Counted join inherited from a named heading style',
+      '<p data-ivo-next="false">Preface</p><p>Title</p><p data-ivo-next="false">Body one<br>Body two<br>Body three</p><p data-ivo-next="false">Tail</p>',
+    );
+    doc.publishing.paragraphStyles.push({
+      id: 'native-heading',
+      name: 'Heading',
+      basedOn: null,
+      attributes: { keepWithNext: true },
+    });
+    doc.textFlows[0].style.paragraphStyle = 'native-heading';
+    resetOwner();
+    mount();
+    await settle();
+    verifyPlan(countedRows, [[0, 1, 2], [3, 4, 5], []]);
+    const raw = source();
+    await editor.command('edit-paragraph-style');
+    const styleDialog = document.querySelector('dialog.publishing-style-dialog[open]');
+    assert(
+      styleDialog?.querySelector('[name="keepWithNext"]').value === 'true',
+      'The heading style did not reflect its existing keep',
+    );
+    const countControl = styleDialog.querySelector('[name="keepNextLines"]');
+    assert(countControl.value === '', 'An inherited count was turned into an explicit setting');
+    countControl.value = '2';
+    styleDialog.querySelector('button[type="submit"]').click();
+    await settle();
+    assert(
+      !styleDialog.open &&
+        commits === 1 &&
+        source() === raw &&
+        doc.publishing.paragraphStyles[0].attributes.keepNextLines === 2,
+      'Editing a named keep rewrote source or failed to save the definition',
+    );
+    verifyPlan(countedRows, [[0], [1, 2, 3, 4], [5]]);
+    await editor.command('undo');
+    await settle();
+    verifyPlan(countedRows, [[0, 1, 2], [3, 4, 5], []]);
     ownFixture('Native keep final row with next', nextHTML);
     mount();
     await settle();
@@ -607,6 +699,8 @@ export async function verifyNativeParagraphKeeps({
       nativeKeepAllPriorityOverNext: true,
       nativeKeepSourceTypingUndoArchive: true,
       nativeKeepPassiveOversetNoWrites: true,
+      nativeKeepCountAndPrevious: true,
+      nativeKeepNamedStyleReflow: true,
       ...(diagnosticsChecked ? { nativeKeepDerivedViolations: true } : {}),
     };
   } finally {

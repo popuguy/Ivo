@@ -262,7 +262,14 @@ export function installPublishingControls(
     const attributes =
       existing?.attributes ||
       Object.fromEntries(
-        fields.filter((key) => settings[key] !== undefined).map((key) => [key, settings[key]]),
+        fields
+          .filter(
+            (key) =>
+              settings[key] !== undefined &&
+              !(key === 'keepNextLines' && settings[key] === 1) &&
+              !(key === 'keepWithPrevious' && settings[key] === false),
+          )
+          .map((key) => [key, settings[key]]),
       );
     const spacing = wordSpacingSettings(attributes.wordSpacing ?? 'normal') || DEFAULT_WORD_SPACING,
       spacingMode =
@@ -271,6 +278,20 @@ export function installPublishingControls(
           : attributes.wordSpacing === 'normal'
             ? 'normal'
             : 'custom';
+    const keepFields =
+      kind === 'paragraph' && nativeTextFlow()
+        ? [
+            ['keepWithPrevious', 'Keep with previous', [false, true]],
+            ['keepWithNext', 'Keep with next', [false, true]],
+            ['keepNextLines', 'Following lines', [1, 2, 3, 4, 5]],
+          ]
+        : [];
+    const keepControls = keepFields
+      .map(
+        ([key, label, values]) =>
+          `<label>${label}<select name="${key}"><option value="">Inherited</option>${values.map((value) => `<option value="${value}" ${attributes[key] === value ? 'selected' : ''}>${value === true ? 'On' : value === false ? 'Off' : value}</option>`).join('')}</select></label>`,
+      )
+      .join('');
     const dialog = form(
       (edit ? 'Edit ' : 'New ') + kind + ' style',
       `<label>Name<input name="name" value="${esc(existing?.name || '')}" required maxlength="120"></label><label>Based on<select name="basedOn"><option value="">[None]</option>${definitions
@@ -281,7 +302,7 @@ export function installPublishingControls(
         )
         .join(
           '',
-        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label><label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
+        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
         kind === 'paragraph'
           ? `<label>Word spacing<select name="wordSpacingMode" data-style-word-spacing-mode>${[
               ['inherit', 'Inherited'],
@@ -312,6 +333,15 @@ export function installPublishingControls(
           if (data.get(key) === '') delete next[key];
           else next[key] = Number(data.get(key));
         if (kind === 'paragraph') {
+          for (const [key, , values] of keepFields) {
+            const selected = data.get(key);
+            if (!selected) delete next[key];
+            else {
+              const value = values.find((value) => String(value) === selected);
+              if (value === undefined) throw Error('Invalid paragraph keep option.');
+              next[key] = value;
+            }
+          }
           const mode = data.get('wordSpacingMode');
           if (mode === 'inherit') delete next.wordSpacing;
           else

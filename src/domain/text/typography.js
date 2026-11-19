@@ -60,6 +60,8 @@ export const TEXT_DEFAULTS = Object.freeze({
   hyphenate: false,
   keepTogether: false,
   keepWithNext: false,
+  keepNextLines: 1,
+  keepWithPrevious: false,
   widows: 2,
   orphans: 2,
   direction: 'ltr',
@@ -108,6 +110,8 @@ export const PARAGRAPH_FIELDS = Object.freeze({
   hyphenate: 'hyphens',
   keepTogether: 'keep',
   keepWithNext: 'next',
+  keepNextLines: 'nextlines',
+  keepWithPrevious: 'previous',
   widows: 'widows',
   orphans: 'orphans',
   direction: 'dir',
@@ -159,6 +163,7 @@ const bounds = {
 };
 
 export function validTextAttribute(name, value) {
+  if (name === 'nextlines') return /^[1-5]$/.test(value) ? String(value) : null;
   if (name === 'wordspace') {
     try {
       return normalizeWordSpacing(value);
@@ -215,6 +220,7 @@ export function validTextAttribute(name, value) {
       'hyphens',
       'keep',
       'next',
+      'previous',
       'optical',
     ].includes(name)
   )

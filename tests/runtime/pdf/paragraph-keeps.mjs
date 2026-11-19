@@ -11,13 +11,16 @@ import {
   threadFrame,
   enableNativeComposition,
 } from '../../../src/domain/documents/text-flows.js';
-import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
+import {
+  archiveVersion,
+  markTypographyVersion,
+} from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
 import { createPDFSnapshot } from '../../../src/features/export/pdf-plan.js';
 
 const near = (actual, expected, label) =>
   assert(Math.abs(actual - expected) < 0.001, `${label}: ${actual} versus ${expected}`);
-const byFrame = [
+const standardFrames = [
   [0, 1],
   [2, 3, 4, 5],
   [6, 7, 8],
@@ -68,6 +71,19 @@ const cases = [
       'T3 tail\u2029',
     ],
   },
+  {
+    name: 'count-and-previous',
+    html: '<p>PRE1</p><p data-ivo-next="true" data-ivo-nextlines="2">A1 heading</p><p>N1 first line<br>N2 second line<br>N3 third line</p><p data-ivo-previous="true">T1 attribution</p>',
+    rows: [
+      'PRE1\u2029',
+      'A1 heading\u2029',
+      'N1 first line\u2028',
+      'N2 second line\u2028',
+      'N3 third line\u2029',
+      'T1 attribution\u2029',
+    ],
+    frames: [[0], [1, 2, 3], [4, 5]],
+  },
 ];
 
 function fixture(definition) {
@@ -95,12 +111,13 @@ function fixture(definition) {
     frames.push(frame);
   }
   enableNativeComposition(doc, doc.textFlows[0], 'paragraph');
+  markTypographyVersion(doc);
   doc = validateImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] })
     .documents[0];
   return { doc, frames: frames.map((frame) => doc.blocks.find((block) => block.id === frame.id)) };
 }
 
-/** Independent forced-row/native-plan publication witnesses for All and Next1. */
+/** Independent forced-row/native-plan publication witnesses for authored paragraph keeps. */
 export async function verifyParagraphKeepsPDF({
   renderPDF,
   root,
@@ -111,7 +128,8 @@ export async function verifyParagraphKeepsPDF({
   await mkdir(output, { recursive: true });
   const publications = [];
   for (const definition of cases) {
-    const { doc, frames } = fixture(definition),
+    const byFrame = definition.frames ?? standardFrames,
+      { doc, frames } = fixture(definition),
       snapshot = createPDFSnapshot([doc], [], doc.id),
       before = JSON.stringify(snapshot),
       sourceBefore = doc.textFlows[0].html;
@@ -152,7 +170,14 @@ export async function verifyParagraphKeepsPDF({
     assert(
       request.paragraphs.every(
         (paragraph) =>
-          !['keepTogether', 'keepWithNext', 'widows', 'orphans'].some((key) => key in paragraph),
+          ![
+            'keepTogether',
+            'keepWithNext',
+            'keepNextLines',
+            'keepWithPrevious',
+            'widows',
+            'orphans',
+          ].some((key) => key in paragraph),
       ),
       'Renderer keep policy leaked into native paragraph metadata',
     );
@@ -299,7 +324,9 @@ print(String(data: try JSONSerialization.data(withJSONObject: reports, options: 
     );
     assert.deepEqual(
       publication.pages.map((page) => page.rows.length),
-      [2, 4, 3],
+      (cases.find((item) => item.name === publication.name).frames ?? standardFrames).map(
+        (rows) => rows.length,
+      ),
     );
     for (const page of publication.pages) {
       assert.equal(
@@ -327,6 +354,7 @@ print(String(data: try JSONSerialization.data(withJSONObject: reports, options: 
     paragraphKeepPDFNativeMetadataBoundary: true,
     paragraphKeepPDFIndependentASCIIAndRowGeometry: true,
     paragraphKeepPDFLinkedHeadings: true,
+    paragraphKeepPDFCountAndPrevious: true,
     paragraphKeepPDFInspectedRows: cases.reduce((total, item) => total + item.rows.length, 0),
   };
 }

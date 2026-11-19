@@ -46,6 +46,7 @@ import {
   CURRENT_ARCHIVE_VERSION,
   markTypographyVersion,
   hasWordSpacing,
+  hasExtendedKeeps,
 } from '../../domain/documents/capabilities.js';
 import {
   enablePublishing,
@@ -525,7 +526,7 @@ export function mountCanvasEditor(host, options) {
     requestFrame();
   }
   function validateNativeSources() {
-    if (hasWordSpacing(doc())) {
+    if (hasWordSpacing(doc()) || hasExtendedKeeps(doc())) {
       const legacy = [
         ...(doc().textFlows || [])
           .filter((flow) => !flow.composition)
@@ -537,7 +538,7 @@ export function mountCanvasEditor(host, options) {
           .filter((block) => ['text', 'quote'].includes(block.type) && !block.textFlowId)
           .map((block) => ({ html: block.html, settings: block })),
       ];
-      for (const owner of legacy) validateLegacyWordSpacing(owner.html, owner.settings);
+      for (const owner of legacy) validateLegacyParagraphSettings(owner.html, owner.settings);
     }
     for (const flow of doc().textFlows || [])
       if (flow.composition) {
@@ -545,10 +546,18 @@ export function mountCanvasEditor(host, options) {
         nativeFlowColumns(doc(), flow);
       }
   }
-  function validateLegacyWordSpacing(html, settings) {
+  function validateLegacyParagraphSettings(html, settings) {
     const root = document.createElement('div');
     root.innerHTML = html || '';
     const summary = summarizeTextStyle(root, doc(), effectiveTextStyle(doc(), settings));
+    if (
+      summary.values.keepWithPrevious ||
+      summary.values.keepNextLines > 1 ||
+      summary.mixed.some((key) => key === 'keepWithPrevious' || key === 'keepNextLines')
+    )
+      throw Error(
+        'Extended paragraph keeps require native composition in every text flow using this paragraph style.',
+      );
     if (summary.mixed.includes('wordSpacing') || wordSpacingSettings(summary.values.wordSpacing))
       throw Error(
         'Word spacing requires native composition in every text flow using this paragraph style.',
@@ -903,6 +912,15 @@ export function mountCanvasEditor(host, options) {
     const flow = textFlowForFrame(doc(), object());
     if (!flow || !ownsInput() || !options.editing) return;
     if (composer === 'browser') {
+      if (hasExtendedKeeps(doc()) || hasWordSpacing(doc())) {
+        try {
+          validateLegacyParagraphSettings(flow.html, flow.style);
+        } catch (error) {
+          options.onNotify?.(error.message);
+          renderPanel();
+          return;
+        }
+      }
       mutate(() => {
         delete flow.composition;
       }, 'Change text composer');
@@ -1280,13 +1298,17 @@ export function mountCanvasEditor(host, options) {
         { ...textFlow, html: canonical },
         options.assets?.() || options.fonts?.() || [],
       );
-    } else if (hasWordSpacing(doc()) || /\bdata-ivo-wordspace\s*=/i.test(canonical))
-      validateLegacyWordSpacing(canonical, textFlow?.style || item);
+    } else if (
+      hasWordSpacing(doc()) ||
+      hasExtendedKeeps(doc()) ||
+      /\bdata-ivo-(?:wordspace|nextlines|previous)\s*=/i.test(canonical)
+    )
+      validateLegacyParagraphSettings(canonical, textFlow?.style || item);
     if (element?.classList.contains('canvas-flow-input') && !textFlow?.composition)
       delete element.dataset.projectedStart;
     if (textFlow) textFlow.html = canonical;
     else if (item) item.html = canonical;
-    if (hasWordSpacing(doc())) markTypographyVersion(doc());
+    if (hasWordSpacing(doc()) || hasExtendedKeeps(doc())) markTypographyVersion(doc());
   }
   function activeText() {
     return activeTextId
@@ -1580,19 +1602,22 @@ export function mountCanvasEditor(host, options) {
   }
   function applyTextProperty(field, value, { commit = true, adjust } = {}) {
     const flow = textFlowForFrame(doc(), object());
-    const wordSpacing =
-      field === 'wordSpacing'
-        ? value
-        : field === 'paragraphStyle'
-          ? effectiveTextStyle(doc(), { paragraphStyle: value }).wordSpacing
-          : 'normal';
-    if (wordSpacingSettings(wordSpacing) && !flow?.composition) {
-      const error = Error(
-        'Choose native text composition for this text flow before applying word spacing.',
-      );
-      if (!commit) throw error;
-      options.onNotify?.(error.message);
-      return false;
+    if (!flow?.composition) {
+      const settings =
+        field === 'paragraphStyle'
+          ? effectiveTextStyle(doc(), { paragraphStyle: value })
+          : { [field]: value };
+      let message;
+      if (settings.keepWithPrevious || settings.keepNextLines > 1)
+        message =
+          'Choose native composition for this text flow before applying extended paragraph keeps.';
+      if (wordSpacingSettings(settings.wordSpacing ?? 'normal'))
+        message = 'Choose native text composition for this text flow before applying word spacing.';
+      if (message) {
+        if (!commit) throw Error(message);
+        options.onNotify?.(message);
+        return false;
+      }
     }
     if (!flow?.composition && !flowPlan.status.get(flow?.id)?.wrapped)
       return applyTextPropertyValue(field, value, { commit, adjust });

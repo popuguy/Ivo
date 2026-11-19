@@ -12,10 +12,19 @@ function tailStart(lines) {
   return index;
 }
 
-function firstRowEnd(lines) {
+function joinedRowCount(previous, current) {
+  return previous?.keepWithNext ? (previous.keepNextLines ?? 1) : current.keepWithPrevious ? 1 : 0;
+}
+
+// Count source rows, including blanks. All fragments of the last requested row
+// belong to the join, even when an illustration splits the row into pieces.
+function prefixLastFragment(lines, count) {
   let index = 0;
-  while (lines[index + 1]?.continuesRow) index++;
-  return lines[index].end;
+  while (index + 1 < lines.length) {
+    if (!lines[index + 1].continuesRow && --count === 0) break;
+    index++;
+  }
+  return index;
 }
 
 /** Resolve joins against the following paragraph's actual placement, including
@@ -97,10 +106,12 @@ export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount
     const rows = prefix.length ? [...prefix, ...current.plan.lines] : current.plan.lines;
     prefix = [];
     const previous = plans[index - 1];
+    const required = joinedRowCount(paragraphs[index - 1]?.keep, paragraph.keep);
+    const joinEnd = required ? prefixLastFragment(rows, required) : 0;
     if (
       previous &&
-      paragraphs[index - 1].keep.keepWithNext &&
-      previous.lines.at(-1).frame !== rows[0].frame &&
+      required &&
+      previous.lines.at(-1).frame !== rows[joinEnd].frame &&
       !previous.brokenJoin
     ) {
       const frame = previous.lines.at(-1).frame;
@@ -111,13 +122,14 @@ export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount
       for (;;) {
         const prior = plans[first];
         row = paragraphs[first].keep.keepTogether ? 0 : tailStart(prior.lines);
+        const incomingCount = joinedRowCount(paragraphs[first - 1]?.keep, paragraphs[first].keep);
         if (
-          row ||
           first === 0 ||
+          !incomingCount ||
           prior.lines[0].frame !== frame ||
-          !paragraphs[first - 1].keep.keepWithNext ||
           plans[first - 1].brokenJoin ||
-          plans[first - 1].lines.at(-1).frame !== frame
+          plans[first - 1].lines.at(-1).frame !== frame ||
+          row > prefixLastFragment(prior.lines, incomingCount)
         )
           break;
         first--;
@@ -135,20 +147,42 @@ export async function scheduleParagraphKeeps(paragraphs, { fit, actualFrameCount
         continue;
       }
       previous.brokenJoin = true;
-      previous.violations.push(
-        violation(
-          index - 1,
-          'keepWithNext',
-          frame,
-          paragraphs[index - 1].start + previous.lines[tailStart(previous.lines)].start,
-          paragraph.start + firstRowEnd(rows),
-          paragraphs[index - 1].keep.keepTogether ? 'all-priority' : 'empty-column-capacity',
-        ),
-      );
     }
     plans.push({ lines: rows, violations: current.violations, brokenJoin: false });
     cursor = current.plan.cursor;
     index++;
+  }
+  // Replaying a later suffix may retain the earlier rows of its paragraph.
+  // Report each broken incoming or outgoing join from its final placement.
+  for (let index = 1; index < plans.length; index++) {
+    const previous = plans[index - 1],
+      current = plans[index];
+    const preceding = paragraphs[index - 1],
+      paragraph = paragraphs[index];
+    const count = joinedRowCount(preceding.keep, paragraph.keep);
+    if (!count) continue;
+    const frame = previous.lines.at(-1).frame;
+    const last = current.lines[prefixLastFragment(current.lines, count)];
+    if (last.frame === frame) continue;
+    const start = preceding.start + previous.lines[tailStart(previous.lines)].start;
+    const reason = preceding.keep.keepTogether ? 'all-priority' : 'empty-column-capacity';
+    if (preceding.keep.keepWithNext)
+      previous.violations.push(
+        violation(index - 1, 'keepWithNext', frame, start, paragraph.start + last.end, reason),
+      );
+    if (paragraph.keep.keepWithPrevious && current.lines[0].frame !== frame) {
+      const first = current.lines[prefixLastFragment(current.lines, 1)];
+      current.violations.push(
+        violation(
+          index,
+          'keepWithPrevious',
+          first.frame,
+          start,
+          paragraph.start + first.end,
+          reason,
+        ),
+      );
+    }
   }
   return {
     lines: plans.flatMap(({ lines }, index) =>

@@ -9,6 +9,9 @@ import {
   hasNativeTextComposition,
   hasTextWrap,
   hasWordSpacing,
+  hasExtendedKeeps,
+  CURRENT_ARCHIVE_VERSION,
+  supportedCanvas,
 } from './capabilities.js';
 import {
   normalizeTextWrap,
@@ -204,6 +207,10 @@ function typography(input, out, label) {
     if (input[key] === undefined) continue;
     const valid = validTextAttribute(attr, String(input[key]));
     if (valid === null) fail(`${label}.${key} has an invalid typography value`);
+    if (key === 'keepNextLines' && !Number.isInteger(input[key]))
+      fail(`${label}.${key} must be an integer`);
+    if (key === 'keepWithPrevious' && typeof input[key] !== 'boolean')
+      fail(`${label}.${key} must be boolean`);
     out[key] =
       typeof input[key] === 'number'
         ? Number(valid)
@@ -220,7 +227,11 @@ export function validateImport(payload) {
 function validateArchive(payload, parentTemplate) {
   record(payload, 'archive');
   payload = migrateArchive(payload);
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(payload.schemaVersion))
+  if (
+    !Number.isSafeInteger(payload.schemaVersion) ||
+    payload.schemaVersion < 1 ||
+    payload.schemaVersion > CURRENT_ARCHIVE_VERSION
+  )
     fail('unsupported schema version');
   if (!Array.isArray(payload.documents) || payload.documents.length > LIMITS.documents)
     fail(`documents must contain at most ${LIMITS.documents} entries`);
@@ -282,31 +293,30 @@ function validateArchive(payload, parentTemplate) {
     record(doc, label);
     const documentId = id(doc.id, `${label}.id`);
     const paged = doc.canvasVersion !== undefined;
-    if (
-      paged &&
-      (![1, 2, 4, 5, 6, 7, 8, 9].includes(doc.canvasVersion) || payload.schemaVersion < 2)
-    )
+    if (paged && (!supportedCanvas(doc.canvasVersion) || payload.schemaVersion < 2))
       fail(
         `${label} requires page-scene archive schema 2 or later with a supported canvas version`,
       );
     if (paged && doc.canvasVersion === 4 && payload.schemaVersion < 5)
       fail(`${label} requires text flow archive schema 5`);
-    if (
-      (doc.publishing || [5, 6, 7, 8, 9].includes(doc.canvasVersion)) &&
-      payload.schemaVersion < 6
-    )
+    if ((doc.publishing || supportedCanvas(doc.canvasVersion, 5)) && payload.schemaVersion < 6)
       fail(`${label} requires publishing archive schema 6`);
-    if (doc.publishing && ![5, 6, 7, 8, 9].includes(doc.canvasVersion))
+    if (doc.publishing && !supportedCanvas(doc.canvasVersion, 5))
       fail(`${label} requires publishing canvas version 5`);
     if (paged && doc.canvasVersion === 6 && payload.schemaVersion < 7)
       fail(`${label} requires frame-composition archive schema 7`);
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
-    if (hasWordSpacing(doc) && (doc.canvasVersion !== 9 || payload.schemaVersion < 10))
+    if (hasExtendedKeeps(doc) && (doc.canvasVersion !== 10 || payload.schemaVersion < 11))
+      fail(`${label} requires paragraph keep archive 11 / canvas 10`);
+    if (
+      hasWordSpacing(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 9) || payload.schemaVersion < 10)
+    )
       fail(`${label} word spacing requires archive 10 / canvas 9`);
     if (paged && doc.canvasVersion === 8 && payload.schemaVersion < 9)
       fail(`${label} requires text-wrap archive schema 9`);
-    if (hasTextWrap(doc) && (![8, 9].includes(doc.canvasVersion) || payload.schemaVersion < 9))
+    if (hasTextWrap(doc) && (!supportedCanvas(doc.canvasVersion, 8) || payload.schemaVersion < 9))
       fail(`${label} text wrap requires archive 9 / canvas 8`);
     if (paged && doc.canvasVersion === 2 && payload.schemaVersion < 3)
       fail(`${label} requires typography archive schema 3`);
@@ -415,7 +425,7 @@ function validateArchive(payload, parentTemplate) {
       if (paged) {
         if (!pageIds.has(block.pageId)) fail(`${key}.pageId is unknown`);
         normalized.pageId = block.pageId;
-        if ([5, 6, 7, 8, 9].includes(doc.canvasVersion)) {
+        if (supportedCanvas(doc.canvasVersion, 5)) {
           if (block.layerId !== undefined)
             normalized.layerId = string(block.layerId, `${key}.layerId`, 120);
           if (block.parentOriginId !== undefined)
@@ -473,7 +483,7 @@ function validateArchive(payload, parentTemplate) {
               'top',
             );
             if (f.firstBaseline !== undefined || f.minimumFirstBaseline !== undefined) {
-              if (![6, 7, 8, 9].includes(doc.canvasVersion) || payload.schemaVersion < 7)
+              if (!supportedCanvas(doc.canvasVersion, 6) || payload.schemaVersion < 7)
                 fail(`${key} first-baseline policies require archive 7 / canvas 6`);
               normalized.frameOptions.firstBaseline = enumeration(
                 f.firstBaseline,
@@ -505,7 +515,7 @@ function validateArchive(payload, parentTemplate) {
           fail(`${key} requires publishing canvas version 5`);
         if (block.textFlowId !== undefined) {
           if (
-            ![4, 5, 6, 7, 8, 9].includes(doc.canvasVersion) ||
+            !supportedCanvas(doc.canvasVersion, 4) ||
             typeof block.textFlowId !== 'string' ||
             !ID_PATTERN.test(block.textFlowId) ||
             !['text', 'quote'].includes(block.type) ||
@@ -753,7 +763,7 @@ function validateArchive(payload, parentTemplate) {
     }
     if (doc.textFlows !== undefined) {
       if (
-        ![4, 5, 6, 7, 8, 9].includes(doc.canvasVersion) ||
+        !supportedCanvas(doc.canvasVersion, 4) ||
         payload.schemaVersion < 5 ||
         !Array.isArray(doc.textFlows) ||
         doc.textFlows.length > 1000
@@ -767,7 +777,7 @@ function validateArchive(payload, parentTemplate) {
         record(textFlow, key);
         let composition;
         if (textFlow.composition !== undefined) {
-          if (payload.schemaVersion < 8 || ![7, 8, 9].includes(doc.canvasVersion))
+          if (payload.schemaVersion < 8 || !supportedCanvas(doc.canvasVersion, 7))
             fail(`${key} native composition requires archive 8 / canvas 7`);
           const value = record(textFlow.composition, `${key}.composition`);
           if (
@@ -888,17 +898,17 @@ function validateArchive(payload, parentTemplate) {
         }
     if (
       hasPublishingFeatures(doc) &&
-      (payload.schemaVersion < 6 || ![5, 6, 7, 8, 9].includes(doc.canvasVersion))
+      (payload.schemaVersion < 6 || !supportedCanvas(doc.canvasVersion, 5))
     )
       fail(`${label} requires archive 6 / canvas 5 for publishing features`);
     if (
       hasFrameComposition(doc) &&
-      (payload.schemaVersion < 7 || ![6, 7, 8, 9].includes(doc.canvasVersion))
+      (payload.schemaVersion < 7 || !supportedCanvas(doc.canvasVersion, 6))
     )
       fail(`${label} requires archive 7 / canvas 6 for frame composition`);
     if (
       hasNativeTextComposition(doc) &&
-      (payload.schemaVersion < 8 || ![7, 8, 9].includes(doc.canvasVersion))
+      (payload.schemaVersion < 8 || !supportedCanvas(doc.canvasVersion, 7))
     )
       fail(`${label} requires archive 8 / canvas 7 for native text composition`);
     if (doc.extensions !== undefined)

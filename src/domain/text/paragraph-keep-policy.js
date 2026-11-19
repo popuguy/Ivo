@@ -1,7 +1,11 @@
-export const PARAGRAPH_KEEP_FIELDS = Object.freeze(['keepTogether', 'keepWithNext']);
+export const PARAGRAPH_KEEP_FIELDS = Object.freeze([
+  'keepTogether',
+  'keepWithNext',
+  'keepWithPrevious',
+  'keepNextLines',
+]);
 
-/** Renderer-owned All/Next1 policy. Default widow/orphan counts do not activate
- * partial keeps. No native shaping fields or saved layout are introduced here. */
+/** Normalize only placement rules. These never enter the native glyph-shaping request. */
 export function normalizeParagraphKeeps(input, count) {
   if (!Number.isSafeInteger(count) || count < 1 || count > 10000)
     throw Error('Invalid paragraph keep policy count.');
@@ -18,10 +22,19 @@ export function normalizeParagraphKeeps(input, count) {
     )
       throw Error('Invalid paragraph keep policy fields.');
     const policy = {};
-    for (const key of PARAGRAPH_KEEP_FIELDS) {
+    for (const key of ['keepTogether', 'keepWithNext', 'keepWithPrevious']) {
       if (value[key] !== undefined && typeof value[key] !== 'boolean')
         throw Error('Invalid paragraph keep policy: ' + key + '.');
-      policy[key] = value[key] ?? false;
+      if (key !== 'keepWithPrevious' || value[key]) policy[key] = value[key] ?? false;
+    }
+    if (value.keepNextLines !== undefined) {
+      if (
+        !Number.isInteger(value.keepNextLines) ||
+        value.keepNextLines < 1 ||
+        value.keepNextLines > 5
+      )
+        throw Error('Invalid paragraph keep policy: following line count.');
+      if (value.keepNextLines > 1) policy.keepNextLines = value.keepNextLines;
     }
     return Object.freeze(policy);
   });

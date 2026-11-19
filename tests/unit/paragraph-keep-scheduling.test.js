@@ -559,3 +559,121 @@ test('a keep moves both fragments of the last physical wrap row and recomposes t
   ]);
   assert.deepEqual(kept.keepViolations, []);
 });
+
+test('counted joins carry one through five physical body rows and clamp to a shorter paragraph', async () => {
+  const req = request('PRE\u2029Heading\u2029A\u2028B\u2028C\u2028D\u2028E\u2029Tail');
+  const columns = [column(100, 45), column(140, 120)];
+  for (let count = 1; count <= 5; count++) {
+    const result = await createParagraphComposer(backend().measure).compose(req, columns, {
+      paragraphKeeps: [{}, { keepWithNext: true, keepNextLines: count }, {}, {}],
+    });
+    assert.equal(result.placements[1].frame, count === 1 ? 0 : 1);
+    assert.deepEqual(result.keepViolations, []);
+  }
+  const shorter = await createParagraphComposer(backend().measure).compose(
+    request('A\u2029B\u2029C'),
+    [column(100, 31)],
+    {
+      paragraphKeeps: [{ keepWithNext: true, keepNextLines: 5 }, {}, {}],
+    },
+  );
+  assert.deepEqual(
+    shorter.placements.map((line) => line.frame),
+    [0, 0, 1],
+  );
+  assert.deepEqual(shorter.keepViolations, []);
+});
+
+test('moving a later join carries an earlier counted prefix only when the two overlap', async () => {
+  const req = request('PRE\u2029H\u2029A\u2028B\u2029C');
+  const cols = [column(100, 60), column(160, 80)];
+  for (const count of [1, 2]) {
+    const result = await createParagraphComposer(backend().measure).compose(req, cols, {
+      paragraphKeeps: [
+        {},
+        { keepWithNext: true, keepNextLines: count },
+        {},
+        { keepWithPrevious: true },
+      ],
+    });
+    assert.deepEqual(
+      result.placements.map((row) => row.frame),
+      count === 1 ? [0, 0, 0, 1, 1] : [0, 1, 1, 1, 1],
+    );
+    assert.deepEqual(result.keepViolations, []);
+  }
+});
+
+test('an impossible previous join is reported on its owning paragraph; first-paragraph previous is dormant', async () => {
+  const result = await createParagraphComposer(backend().measure).compose(
+    request('A\u2029B'),
+    [column(120, 16)],
+    {
+      paragraphKeeps: [{ keepWithPrevious: true }, { keepWithPrevious: true }],
+    },
+  );
+  assert.deepEqual(
+    result.placements.map((row) => row.frame),
+    [0, 1],
+  );
+  assert.deepEqual(
+    result.keepViolations.map((v) => [v.kind, v.paragraphIndex, v.future]),
+    [['keepWithPrevious', 1, true]],
+  );
+});
+
+test('two sides of an illustration count as one of the following physical lines', async () => {
+  const bounds = { left: 40, right: 80, top: 34, bottom: 45 };
+  const obstacle = {
+    mode: 'bounds',
+    side: 'both',
+    bounds,
+    polygons: [
+      [
+        { x: 40, y: 34 },
+        { x: 80, y: 34 },
+        { x: 80, y: 45 },
+        { x: 40, y: 45 },
+      ],
+    ],
+  };
+  const req = request('PRE\u2029Heading\u2029one two mid end\u2028after');
+  const columns = [{ ...column(120, 45), obstacles: [obstacle] }, column(120, 90)];
+  const compose = createParagraphComposer(backend().measure);
+  const base = await compose.compose(req, columns);
+  assert.deepEqual(
+    base.placements.map((r) => [r.frame, r.left]),
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 80],
+      [1, 0],
+    ],
+  );
+  const kept = await compose.compose(req, columns, {
+    paragraphKeeps: [{}, { keepWithNext: true, keepNextLines: 2 }, {}],
+  });
+  assert.deepEqual(
+    kept.placements.map((r) => r.frame),
+    [0, 1, 1, 1],
+  );
+  assert.deepEqual(kept.keepViolations, []);
+});
+
+test('a later tail reflow preserves a genuinely broken incoming previous join', async () => {
+  const req = request('A\u2029B\u2028C\u2028D\u2029E');
+  const result = await createParagraphComposer(backend().measure).compose(
+    req,
+    [column(110, 16), column(110, 45), column(110, 60)],
+    { paragraphKeeps: [{}, { keepWithPrevious: true, keepWithNext: true }, {}] },
+  );
+  assert.deepEqual(
+    result.placements.map((r) => r.frame),
+    [0, 1, 1, 2, 2],
+  );
+  assert.deepEqual(
+    result.keepViolations.map((v) => [v.paragraphIndex, v.kind, v.frame]),
+    [[1, 'keepWithPrevious', 1]],
+  );
+});
