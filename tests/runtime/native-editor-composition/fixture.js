@@ -26,6 +26,8 @@ import { verifyUnequalParagraphFlow } from './unequal-paragraph-flow.js';
 import { verifyNativeWrappedFlow } from './native-wrapped-flow.js';
 import { verifyNativeCharacterProjection } from './character-projection.js';
 import { verifyNativeCharacterEditing } from './native-character-editing.js';
+import { verifyNativeParagraphKeeps } from './native-paragraph-keeps.js';
+import { verifyParagraphKeepProjection } from './paragraph-keep-projection.js';
 const assert = (value, message) => {
     if (!value) throw Error(message);
   },
@@ -39,6 +41,7 @@ try {
   await document.fonts.ready;
   const paragraphProjection = verifyParagraphProjection();
   const characterProjection = verifyNativeCharacterProjection();
+  const keepProjection = verifyParagraphKeepProjection();
   const host = document.querySelector('#host'),
     notices = [],
     mouseTrace = [],
@@ -71,6 +74,7 @@ try {
     unequalParagraphFlow = {},
     nativeWrappedFlow = {},
     nativeCharacterEditing = {},
+    nativeParagraphKeeps = {},
     held = null,
     history = createDocumentHistory();
   const native = {
@@ -615,6 +619,16 @@ try {
       load: window.nativeEditorTest.load,
       capture: () => window.nativeEditorTest.capture('native-character-layout'),
     });
+    nativeParagraphKeeps = await verifyNativeParagraphKeeps({
+      host,
+      compose: native.compose,
+      insert: window.nativeEditorTest.insert,
+      save: window.nativeEditorTest.save,
+      load: window.nativeEditorTest.load,
+      capture: () => window.nativeEditorTest.capture('native-paragraph-keeps'),
+      readKeepViolations: ({ editor, document }) =>
+        editor.getTextFlowStatus(document.textFlows[0].id)?.keepViolations || [],
+    });
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
       x: 30,
@@ -900,10 +914,12 @@ try {
       sourceProjection: true,
       ...paragraphProjection,
       ...characterProjection,
+      ...keepProjection,
       ...paragraphEditing,
       ...unequalParagraphFlow,
       ...nativeWrappedFlow,
       ...nativeCharacterEditing,
+      ...nativeParagraphKeeps,
       realNativeBridge: true,
       composerPreflight: true,
       vectorInk: true,

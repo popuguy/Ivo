@@ -1,8 +1,9 @@
 import { chooseParagraphBreaks } from '../../domain/text/paragraph-breaks.js';
 import { UnsupportedComposition } from './composition-source.js';
 import { paragraphLayout, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
-import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
-import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-flow.js';
+
+import { fitFrameParagraphs } from './paragraph-frame-scheduler.js';
+import { normalizeParagraphKeeps } from '../../domain/text/paragraph-keep-policy.js';
 
 const MAX_POINTS = 1024,
   MAX_ALTERNATIVES = 100000,
@@ -93,104 +94,6 @@ function paragraphIdentity(request, paragraph) {
   });
 }
 
-const frameShape = (column) => ({
-  width: column.width,
-  height: column.height,
-  firstBaseline: column.firstBaseline || 'ascent',
-  minimumFirstBaseline: column.minimumFirstBaseline || 0,
-  verticalAlign: column.verticalAlign || 'top',
-  ...(column.obstacles ? { obstacles: column.obstacles } : {}),
-});
-
-async function fitFrameParagraphs(paragraphs, actualColumns, work, rememberDecision, mode) {
-  const columns = actualColumns.map(frameShape);
-  const wrapped = columns.some((column) => column.obstacles?.length);
-  while (columns.length < 128) columns.push({ ...columns.at(-1), obstacles: [] });
-  const columnKey = JSON.stringify(actualColumns.map(frameShape)),
-    lines = [];
-  let cursor = { frame: 0, baseline: null },
-    previousAfter = 0,
-    states = 0,
-    candidates = 0,
-    policy;
-  for (const paragraph of paragraphs) {
-    const key =
-        'flow:' + JSON.stringify([mode, columnKey, paragraph.layout, cursor, previousAfter]),
-      entry = paragraph.entry;
-    let chosen = entry.decisions.get(key);
-    if (chosen) work.reusedDecisions++;
-    else {
-      const steps = (wrapped ? wrappedParagraphFlowSteps : paragraphFlowSteps)({
-        start: 0,
-        end: paragraph.text.length,
-        opportunities: paragraph.opportunities,
-        measurements: entry.measurements,
-        columns,
-        layout: paragraph.layout,
-        cursor,
-        previousAfter,
-        mode,
-        maxStates: MAX_STATES - states,
-        maxCandidates: MAX_DECISIONS - candidates,
-      });
-      let step = steps.next();
-      while (!step.done) {
-        // Pure fitting yields bounded work so camera/input tasks can run.
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        step = steps.next();
-      }
-      chosen = step.value;
-      if (chosen.status !== 'fit')
-        throw new UnsupportedComposition('paragraph frame fitting (' + chosen.reason + ')');
-      rememberDecision(entry, key, chosen);
-    }
-    states += chosen.states;
-    candidates += chosen.candidates;
-    if (
-      states > MAX_STATES ||
-      candidates > MAX_DECISIONS ||
-      lines.length + chosen.lines.length > MAX_LINES
-    )
-      throw new UnsupportedComposition('paragraph fitting (flow decision budget)');
-    lines.push(
-      ...chosen.lines.map((line) => ({
-        ...line,
-        start: line.start + paragraph.start,
-        end: line.end + paragraph.start,
-      })),
-    );
-    cursor = chosen.cursor;
-    previousAfter = paragraph.layout.paragraphAfter;
-    policy = mode === 'single-line' ? 'native-fragment-greedy-v1' : chosen.policy;
-  }
-  // Vertical alignment changes final presentation, never break decisions.
-  for (const [index, column] of columns.entries()) {
-    const own = lines.filter((line) => line.frame === index);
-    if (!own.length) continue;
-    const last = own.at(-1),
-      remaining = Math.max(0, column.height - last.baseline - last.descent),
-      offset =
-        column.verticalAlign === 'bottom'
-          ? remaining
-          : column.verticalAlign === 'center'
-            ? remaining / 2
-            : 0;
-    if (offset) for (const line of own) line.baseline += offset;
-  }
-  return {
-    breaks: lines.map((line) => line.end),
-    placements: lines.map(({ end, frame, baseline, left, width }) => ({
-      end,
-      frame,
-      baseline,
-      left,
-      width,
-    })),
-    policy,
-    work: { ...work, states, candidates },
-  };
-}
-
 /**
  * Per-backend bounded LRU of paragraph-local measurements, never saved content.
  * Missing alternatives are batched using the real whole-source request. We do
@@ -244,8 +147,22 @@ export function createParagraphComposer(measure) {
     return entry;
   };
   return {
-    async compose(request, columns, { mode = 'paragraph' } = {}) {
+    async compose(request, columns, { mode = 'paragraph', paragraphKeeps, limits = {} } = {}) {
       if (!['paragraph', 'single-line'].includes(mode)) throw Error('Invalid native fitting mode.');
+      if (!limits || typeof limits !== 'object' || Array.isArray(limits))
+        throw Error('Invalid paragraph work limits.');
+      const maxStates = limits.states ?? MAX_STATES,
+        maxCandidates = limits.candidates ?? MAX_DECISIONS;
+      if (
+        Object.keys(limits).some((key) => !['states', 'candidates'].includes(key)) ||
+        !Number.isSafeInteger(maxStates) ||
+        maxStates < 1 ||
+        maxStates > MAX_STATES ||
+        !Number.isSafeInteger(maxCandidates) ||
+        maxCandidates < 1 ||
+        maxCandidates > MAX_DECISIONS
+      )
+        throw Error('Invalid paragraph work limits.');
       const width = columns[0]?.width,
         frameFlow = request.protocol >= 3;
       if (
@@ -264,6 +181,9 @@ export function createParagraphComposer(measure) {
       )
         throw new UnsupportedComposition('paragraph composition across unequal column widths');
       const paragraphs = validateParagraphSource(request.text),
+        keeps = normalizeParagraphKeeps(paragraphKeeps, paragraphs.length, {
+          wrapped: columns.some((column) => column.obstacles?.length),
+        }),
         missing = new Map(),
         work = {
           paragraphs: paragraphs.length,
@@ -274,9 +194,12 @@ export function createParagraphComposer(measure) {
           backendCalls: 0,
           reusedDecisions: 0,
         };
+      if (!frameFlow && keeps.some((keep) => keep.keepTogether || keep.keepWithNext))
+        throw new UnsupportedComposition('paragraph keeps without planned physical frames');
       if (request.protocol >= 2 && request.paragraphs?.length !== paragraphs.length)
         throw Error('Native paragraph metadata does not cover its source.');
       for (const [index, paragraph] of paragraphs.entries()) {
+        paragraph.keep = keeps[index];
         const authored = request.paragraphs?.[index];
         if (
           request.protocol >= 2 &&
@@ -387,7 +310,10 @@ export function createParagraphComposer(measure) {
         for (const paragraph of group.paragraphs) paragraph.entry = entry;
       }
       if (frameFlow) {
-        const result = await fitFrameParagraphs(paragraphs, columns, work, rememberDecision, mode);
+        const result = await fitFrameParagraphs(paragraphs, columns, work, rememberDecision, mode, {
+          states: maxStates,
+          candidates: maxCandidates,
+        });
         return { ...result, work: { ...result.work, cacheEntries: cache.size, cacheBytes: bytes } };
       }
       const breaks = [];
@@ -395,7 +321,7 @@ export function createParagraphComposer(measure) {
         candidates = 0,
         policy;
       for (const paragraph of paragraphs) {
-        if (states >= MAX_STATES || candidates >= MAX_DECISIONS)
+        if (states >= maxStates || candidates >= maxCandidates)
           throw new UnsupportedComposition('paragraph fitting (flow decision budget)');
         const entry = paragraph.entry;
         const decisionKey = JSON.stringify([paragraph.firstWidth, paragraph.restWidth]);
@@ -413,8 +339,8 @@ export function createParagraphComposer(measure) {
               { length: Math.min(MAX_LINES - breaks.length, paragraph.opportunities.length - 1) },
               (_, index) => (index === 0 ? paragraph.firstWidth : paragraph.restWidth),
             ),
-            maxStates: MAX_STATES - states,
-            maxCandidates: MAX_DECISIONS - candidates,
+            maxStates: maxStates - states,
+            maxCandidates: maxCandidates - candidates,
           });
           if (result.status !== 'fit')
             throw new UnsupportedComposition('paragraph fitting (' + result.reason + ')');
@@ -430,7 +356,7 @@ export function createParagraphComposer(measure) {
         }
         states += chosen.states;
         candidates += chosen.candidates;
-        if (states > MAX_STATES || candidates > MAX_DECISIONS)
+        if (states > maxStates || candidates > maxCandidates)
           throw new UnsupportedComposition('paragraph fitting (flow decision budget)');
         policy = chosen.policy;
         breaks.push(...chosen.breaks.map((end) => end + paragraph.start));

@@ -1,5 +1,7 @@
 # Ivo implementation backlog
 
+[Native paragraph keeps](native-paragraph-keeps.md) now schedules All and Next1 through editor/PDF, source-safe undo/reopen and actual/future columns. Impossible constraints retain their flags and report derived violations. Partial activation/counts, chains, Next-to-All, wrap combinations, previous/start rules, grids and structured text remain open. The unchanged 66-capability estimate is ~33%.
+
 [Native character shaping](native-character-shaping.md) integrates baseline shift, horizontal/vertical scale and exact-face `dlig/smcp/onum/tnum/zero/frac/ordn/salt` with source-preserving editing, native geometry and PDF. Advanced wrapped characters, off-frame ink, wider language/font shaping and PDFKit ligature search encoding remain open. Paragraph keep scheduling is the next bounded dependency. The unchanged 66-capability engineering estimate is ~31%.
 
 Updated 18 November 2026. This is the ordered working list for Paul's requested features. New review notes enter here; they do not require an immediate detour or a complete design document. Build a usable increment and verify it on isolated data. Paul has explicitly authorized continuing through this list without waiting for a review after every step; his next large check-in comes after the backlog work. The application remains a linked-document editor for Mac, iPhone and iPad, with professional composition and a mandatory interactive knowledge graph.

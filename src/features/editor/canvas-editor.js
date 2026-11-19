@@ -3879,6 +3879,10 @@ export function mountCanvasEditor(host, options) {
     },
     getPanelLayout: () => workspacePanels.getState(),
     setPanelLayout: (layout) => workspacePanels.restore(layout),
+    getTextFlowStatus(id) {
+      const status = flowPlan.status.get(id);
+      return status ? structuredClone(status) : null;
+    },
     addFiles,
     captureView,
     restoreView,

@@ -1,5 +1,17 @@
 # Verification
 
+## Native paragraph keeps — 19 November 2026
+
+The [keep milestone](native-paragraph-keeps.md) passes **415 unit tests**, standard format/lint/architecture/build checks, and **17 sequential background component groups**. The actual-editor group also passes a focused hidden run with 130 native requests and an inspected capture. The Swift implementation/transport are unchanged from the preceding milestone's 34 passing native tests; keep metadata is deliberately absent from every native shaping request.
+
+Fifteen focused scheduler cases cover whole-paragraph handoff, top spacing, unequal-width recomposition, final-row Next1, narrow moved suffixes, blank paragraphs, local relaxation, All priority, actual/future overset, following-source/font/spacing changes, cold/warm policy changes and cumulative probe/retry budgets. Four paired oversized-All/Next cases retain independently observed placement and authored flags. Source projection tests retain named styles, sparse resets, literal paragraph marks and source HTML; conflicting inline policy and unqualified partial counts reject. Driver tests cover both protocol 3 and 4, synchronous chain/wrap admission, and adding/trimming only eight owned automatic continuations without touching the authored page/frame.
+
+Actual Properties changes target only the selected paragraph and make one authored history entry. Trusted typing, undo/redo and a cold archive reopen preserve source, exact glyph/placement geometry and frame data. Impossible keeps retain their flags and yield separate derived diagnostics; passive 18-row source retains 12 actual rows and overset without pages, source or history writes. An obsolete unsupported-All fixture was updated to continue checking unsupported partial keeps.
+
+Two frozen production publications exercise All and Next1 through three unequal frames on three pages. Native source boundaries and independently specified 2/4/3 row ownership/baselines remain exact. PDFKit recovers all 18 specified ASCII rows in page order with 40-point left edges, 20-point row spacing and consistent first baselines. The initial new Swift inspector boxed CGFloat as Any and then forced a Double cast; explicit conversion fixes the inspector, and its independent replay plus the complete final background PDF run pass. Original output/source snapshots remain unchanged.
+
+Native wrapping/keep chains/Next-to-All, partial activation and counts, previous/start rules, grids and structured content remain open. Saved formats and default composers are unchanged. The same 66-capability engineering estimate advances to **~33%**. Private evidence remains under parent `work/native-flow-scheduling-2026-11-18/`; no personal vault, clipboard or global setting changes. A consolidated review package follows the remaining work in this pass.
+
 ## Native character shaping — 19 November 2026
 
 The [character milestone](native-character-shaping.md) passes **393 unit tests**, all **34 native tests**, standard format/lint/architecture/build checks, both desktop preloads and **17 sequential background component groups**. These runs compile the current production protocol-4 worker; the preceding milestone's frozen worker override is absent. The actual-editor group also passes a separate hidden capture run with 111 native requests, and its character fixture was visually inspected.

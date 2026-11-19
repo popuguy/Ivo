@@ -172,7 +172,7 @@ export function verifyParagraphProjection() {
     '<p data-ivo-left="12"><span data-ivo-left="0">Conflicting reset</span></p>',
     '<span data-ivo-pstyle="paragraph-derived">Inline-only named paragraph</span>',
     '<p data-ivo-hyphens="true">Unsupported hyphenation</p>',
-    '<p data-ivo-keep="true">Unsupported keep</p>',
+    '<p data-ivo-orphans="3">Unsupported partial keep</p>',
     '<p data-ivo-dir="rtl">Unsupported direction</p>',
   ]) {
     let failed = false;

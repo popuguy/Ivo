@@ -3,6 +3,7 @@ import { nodeTextStyle } from './selection-style.js';
 import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
 import { safeURL } from '../../shared/html/sanitize.js';
 import { PARAGRAPH_LAYOUT_FIELDS } from '../../domain/text/paragraph-layout.js';
+import { PARAGRAPH_KEEP_FIELDS } from '../../domain/text/paragraph-keep-policy.js';
 import {
   NATIVE_CHARACTER_STYLE_FIELDS,
   nativeCharacterStyle,
@@ -11,7 +12,7 @@ import {
 
 const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE']),
   supportedTags = new Set(['P', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'A', 'BR']),
-  paragraphFields = PARAGRAPH_LAYOUT_FIELDS,
+  paragraphFields = [...PARAGRAPH_LAYOUT_FIELDS, ...PARAGRAPH_KEEP_FIELDS],
   supportedFields = new Set([
     'textStyle',
     'fontSize',

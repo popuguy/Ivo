@@ -15,6 +15,10 @@ import { escapeHTML } from '../../shared/html/sanitize.js';
 import { documentHasObjectWrap } from './object-wrap-layout.js';
 import { nativeWrapColumns, validateNativeWrapping } from './native-wrap-columns.js';
 import { PARAGRAPH_LAYOUT_FIELDS, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
+import {
+  PARAGRAPH_KEEP_FIELDS,
+  normalizeParagraphKeeps,
+} from '../../domain/text/paragraph-keep-policy.js';
 
 const sessions = new WeakMap(),
   requestSessions = new WeakMap(),
@@ -312,7 +316,7 @@ export function nativeSourceBoundary(source, index) {
   if (!Number.isFinite(found)) throw Error('Native layout lost a canonical source boundary.');
   return found;
 }
-async function decideParagraph(request, columns, compose, mode) {
+async function decideParagraph(request, columns, compose, mode, paragraphKeeps) {
   let composer = paragraphSessions.get(compose);
   if (!composer) {
     // Measurements have their own validated paragraph cache. Keeping raw batch
@@ -321,8 +325,15 @@ async function decideParagraph(request, columns, compose, mode) {
     composer = createParagraphComposer(compose);
     paragraphSessions.set(compose, composer);
   }
-  return composer.compose(request, columns, { mode });
+  return composer.compose(request, columns, { mode, paragraphKeeps });
 }
+
+const flowKeeps = (source) =>
+  source.paragraphs.map((paragraph) =>
+    Object.fromEntries(PARAGRAPH_KEEP_FIELDS.map((key) => [key, paragraph[key]])),
+  );
+const hasKeeps = (source) =>
+  source.paragraphs.some((paragraph) => paragraph.keepTogether || paragraph.keepWithNext);
 function validateResult(result, request) {
   if (
     result?.protocol !== request.protocol ||
@@ -479,7 +490,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   const source = compositionSource(root, { id: flow.id, doc, settings, fontFor: fonts.fontFor });
   const columns = compositionColumns(doc, flow),
     wrapped = columns.some((column) => column.obstacles?.length),
-    planned = flow.composition?.composer === 'paragraph' || wrapped,
+    planned = flow.composition?.composer === 'paragraph' || wrapped || hasKeeps(source),
     limit = planned ? 10000 : 100000;
   if (
     source.text.length > limit ||
@@ -490,6 +501,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
   if (planned) validateParagraphSource(source.text);
+  normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length, { wrapped });
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
   for (const paragraph of source.paragraphs) {
@@ -569,17 +581,13 @@ export async function composeNativeTextFlows(
     const fonts = fontResolver(assets),
       source = projectNativeFlow(projection, flow, fonts, { deferUnavailable: true }),
       initial = compositionColumns(projection, flow),
-      wrapped = initial.some((column) => column.obstacles?.length);
+      wrapped = initial.some((column) => column.obstacles?.length),
+      planned = flow.composition.composer === 'paragraph' || wrapped || hasKeeps(source);
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
     const request = {
-        protocol:
-          source.protocol === 4
-            ? 4
-            : flow.composition.composer === 'paragraph' || wrapped
-              ? 3
-              : source.protocol,
+        protocol: source.protocol === 4 ? 4 : planned ? 3 : source.protocol,
         id: source.id,
         sourceHTML: source.sourceHTML,
         sourceDigest: await sha(new TextEncoder().encode(source.sourceHTML)),
@@ -622,15 +630,15 @@ export async function composeNativeTextFlows(
         allowFallback: false,
         includeVectors: true,
       },
-      decision =
-        flow.composition.composer === 'paragraph' || wrapped
-          ? await decideParagraph(
-              { ...request, frames: transportFrames(initial) },
-              initial,
-              compose,
-              flow.composition.composer,
-            )
-          : null;
+      decision = planned
+        ? await decideParagraph(
+            { ...request, frames: transportFrames(initial) },
+            initial,
+            compose,
+            flow.composition.composer,
+            flowKeeps(source),
+          )
+        : null;
     let result, columns;
     for (let attempt = 0; attempt <= 128; attempt++) {
       columns = compositionColumns(projection, flow);
@@ -700,6 +708,14 @@ export async function composeNativeTextFlows(
       policy: decision?.policy || 'native-single-line',
       ...(wrapped ? { wrapped: true } : {}),
       ...(decision ? { paragraphWork: decision.work } : {}),
+      ...(decision?.keepViolations?.length
+        ? {
+            keepViolations: decision.keepViolations.map((violation) => ({
+              ...violation,
+              future: violation.frame >= columns.length,
+            })),
+          }
+        : {}),
       token: result.token,
       diagnostics: result.diagnostics || [],
     });

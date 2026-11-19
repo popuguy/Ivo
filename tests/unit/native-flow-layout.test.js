@@ -701,3 +701,97 @@ test('vault resources preserve exact chosen face bytes/companions and reject for
     /immutable identity/,
   );
 });
+
+test('renderer-owned All policy forces planned Single-line geometry without native keep fields', async () => {
+  const doc = fixture({ text: 'A\u2028B\u2028C\u2029', width: 60, height: 40 }),
+    native = port();
+  doc.textFlows[0].style.keepTogether = true;
+  const before = structuredClone(doc),
+    result = await composeNativeTextFlows(doc, { ...native, allowPages: false }),
+    final = native.calls.findLast((request) => request.mode === 'planned-lines-proof');
+  assert.equal(final.protocol, 3);
+  assert.equal(result.status.get('flow-a').overset, true);
+  assert(
+    result.status
+      .get('flow-a')
+      .keepViolations.some((v) => v.kind === 'keepTogether' && v.frame === 0 && v.future === false),
+  );
+  for (const request of native.calls) {
+    assert(!('paragraphKeeps' in request));
+    for (const value of [...request.paragraphs, ...request.runs]) {
+      assert(!('keepTogether' in value));
+      assert(!('keepWithNext' in value));
+    }
+  }
+  assert.deepEqual(doc, before);
+  const source = result.compositions[0].source;
+  assert(source.paragraphs[0].keepTogether);
+  assert.equal(source.protocol, 2, 'Source paragraph policy must not force character protocol4');
+  doc.textFlows[0].style.baselineShift = 3;
+  const transformed = await composeNativeTextFlows(doc, { ...native, allowPages: false });
+  assert.equal(native.calls.at(-1).protocol, 4);
+  assert.equal(native.calls.at(-1).mode, 'planned-lines-proof');
+  assert(transformed.status.get('flow-a').keepViolations.length > 0);
+  delete doc.textFlows[0].style.baselineShift;
+  doc.textFlows[0].style.keepTogether = false;
+  await composeNativeTextFlows(doc, { ...native, allowPages: false });
+  assert.equal(native.calls.at(-1).protocol, 2);
+  assert.equal(native.calls.at(-1).mode, 'greedy-geometry-proof');
+});
+
+test('native keep source gates reject chains and wrap before backend calls or writes', async () => {
+  const chained = fixture({ text: 'A\u2029B\u2029' }),
+    native = port();
+  chained.textFlows[0].style.keepWithNext = true;
+  const before = structuredClone(chained);
+  assert.throws(() => validateNativeFlowSource(chained, chained.textFlows[0]), /chains/);
+  await assert.rejects(composeNativeTextFlows(chained, native), /chains/);
+  assert.deepEqual(chained, before);
+  const wrapped = fixture({ text: 'A\u2028B\u2029', width: 100, height: 100 });
+  wrapped.textFlows[0].style.keepTogether = true;
+  wrapped.blocks.push({
+    id: 'obstacle',
+    type: 'image',
+    pageId: 'page-a',
+    x: 25,
+    y: 35,
+    w: 20,
+    h: 20,
+    textWrap: normalizeTextWrap({ mode: 'bounds' }),
+  });
+  const wrappedBefore = structuredClone(wrapped);
+  assert.throws(() => validateNativeFlowSource(wrapped, wrapped.textFlows[0]), /object wrapping/);
+  await assert.rejects(composeNativeTextFlows(wrapped, native), /object wrapping/);
+  assert.deepEqual(wrapped, wrappedBefore);
+  assert.equal(native.calls.length, 0);
+});
+
+test('native kept source creates and trims only its owned automatic continuations', async () => {
+  const text = Array.from({ length: 18 }, (_, index) => 'A' + index).join('\u2028'),
+    doc = fixture({ text, composer: 'paragraph', automaticPages: true, width: 100, height: 40 }),
+    native = port(),
+    authoredPage = structuredClone(doc.pages[0]),
+    authoredFrame = structuredClone(doc.blocks[0]);
+  doc.textFlows[0].style.keepTogether = true;
+  const expanded = await composeNativeTextFlows(doc, native);
+  assert.equal(expanded.changed, true);
+  assert.equal(expanded.status.get('flow-a').overset, false);
+  assert.equal(doc.pages.length, 9);
+  assert.equal(doc.textFlows[0].autoPages.length, 8);
+  assert.equal(doc.textFlows[0].html, text);
+  assert.equal(doc.textFlows[0].style.keepTogether, true);
+  assert.deepEqual(doc.pages[0], authoredPage);
+  assert.deepEqual(doc.blocks[0], authoredFrame);
+  assert(expanded.status.get('flow-a').keepViolations.every((value) => value.future === false));
+  doc.textFlows[0].html = 'Short';
+  const shortened = await composeNativeTextFlows(doc, native);
+  assert.equal(shortened.changed, true);
+  assert.equal(doc.pages.length, 1);
+  assert.equal(doc.blocks.length, 1);
+  assert.equal(doc.textFlows[0].autoPages.length, 0);
+  assert.equal(doc.textFlows[0].html, 'Short');
+  assert.equal(doc.textFlows[0].style.keepTogether, true);
+  assert.deepEqual(shortened.status.get('flow-a').keepViolations || [], []);
+  assert.deepEqual(doc.pages[0], authoredPage);
+  assert.deepEqual(doc.blocks[0], authoredFrame);
+});
