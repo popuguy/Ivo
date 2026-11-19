@@ -1,3 +1,8 @@
+import {
+  prepareBackgroundTest,
+  testWindowOptions,
+  focusTestWindow,
+} from '../helpers/background.mjs';
 import { app, BrowserWindow, protocol, net, ipcMain } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
@@ -9,6 +14,7 @@ import { installTextCompositionBridge } from '../../../desktop/text-composition-
 import { selectWithMouse } from '../helpers/text-mouse.mjs';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-native-editor-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
@@ -62,8 +68,7 @@ app
         return writeFile(path.join(profile, 'archive.json'), JSON.stringify(value));
       if (action === 'load')
         return JSON.parse(await readFile(path.join(profile, 'archive.json'), 'utf8'));
-      window.focus();
-      window.webContents.focus();
+      focusTestWindow(window);
       if (action === 'select') return selectWithMouse(window.webContents, value);
       if (action === 'insert' && typeof value === 'string' && value.length < 20000)
         return window.webContents.insertText(value);
@@ -151,17 +156,19 @@ app
       throw Error('Unknown test action');
     });
     async function open(phase) {
-      window = new BrowserWindow({
-        show: true,
-        width: 1400,
-        height: 1050,
-        webPreferences: {
-          preload: path.join(root, 'tests/runtime/native-editor-composition/preload.cjs'),
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: true,
-        },
-      });
+      window = new BrowserWindow(
+        testWindowOptions({
+          show: true,
+          width: 1400,
+          height: 1050,
+          webPreferences: {
+            preload: path.join(root, 'tests/runtime/native-editor-composition/preload.cjs'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        }),
+      );
       window.webContents.on('console-message', (event) => {
         if (!event.message?.startsWith('IVO_NATIVE_EDITOR_RESULT:')) return;
         const result = JSON.parse(event.message.slice('IVO_NATIVE_EDITOR_RESULT:'.length));
@@ -176,8 +183,7 @@ app
         'ivo-native-editor-test://app/tests/runtime/native-editor-composition/fixture.html?phase=' +
           phase,
       );
-      window.focus();
-      window.webContents.focus();
+      focusTestWindow(window);
     }
     await open('edit');
   })

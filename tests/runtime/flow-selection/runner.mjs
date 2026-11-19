@@ -1,3 +1,4 @@
+import { prepareBackgroundTest, testWindowOptions } from '../helpers/background.mjs';
 import { app, BrowserWindow, protocol, net, ipcMain } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
@@ -6,6 +7,7 @@ import path from 'node:path';
 import { selectWithMouse } from '../helpers/text-mouse.mjs';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-text-core-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
@@ -96,17 +98,19 @@ app
       return JSON.parse(await readFile(path.join(profile, 'archive.json'), 'utf8'));
     });
     async function open(phase) {
-      window = new BrowserWindow({
-        show: false,
-        width: 1400,
-        height: 1100,
-        webPreferences: {
-          preload: path.join(root, 'tests/runtime/flow-selection/preload.cjs'),
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: true,
-        },
-      });
+      window = new BrowserWindow(
+        testWindowOptions({
+          show: false,
+          width: 1400,
+          height: 1100,
+          webPreferences: {
+            preload: path.join(root, 'tests/runtime/flow-selection/preload.cjs'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        }),
+      );
       window.webContents.on('console-message', async (event) => {
         if (!event.message?.startsWith('IVO_TEXT_CORE_RESULT:')) return;
         const result = JSON.parse(event.message.slice('IVO_TEXT_CORE_RESULT:'.length));

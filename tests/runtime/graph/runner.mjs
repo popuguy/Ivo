@@ -1,3 +1,4 @@
+import { prepareBackgroundTest, testWindowOptions } from '../helpers/background.mjs';
 import { app, BrowserWindow, protocol, net } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -6,6 +7,7 @@ import path from 'node:path';
 
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const profile = await mkdtemp(path.join(tmpdir(), 'ivo-graph-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
@@ -21,17 +23,19 @@ app
       if (!target.startsWith(root + path.sep)) return new Response('Forbidden', { status: 403 });
       return net.fetch(pathToFileURL(target).href);
     });
-    const window = new BrowserWindow({
-      show: false,
-      width: 1100,
-      height: 700,
-      webPreferences: {
-        backgroundThrottling: false,
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-      },
-    });
+    const window = new BrowserWindow(
+      testWindowOptions({
+        show: false,
+        width: 1100,
+        height: 700,
+        webPreferences: {
+          backgroundThrottling: false,
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+        },
+      }),
+    );
     let finished = false;
     const finish = async (code, result) => {
       if (finished) return;

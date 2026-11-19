@@ -1,3 +1,8 @@
+import {
+  prepareBackgroundTest,
+  testWindowOptions,
+  focusTestWindow,
+} from '../helpers/background.mjs';
 import { app, BrowserWindow, protocol, net, ipcMain } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
@@ -9,6 +14,7 @@ import { createTextComposition } from '../../../desktop/text-composition.mjs';
 import { inspectFont } from '../../../src/domain/text/fonts.js';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-native-input-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
@@ -41,17 +47,19 @@ app
       if (!target.startsWith(root + path.sep)) return new Response('Forbidden', { status: 403 });
       return net.fetch(pathToFileURL(target).href);
     });
-    const window = new BrowserWindow({
-      show: true,
-      width: 1100,
-      height: 850,
-      webPreferences: {
-        preload: path.join(root, 'tests/runtime/native-composition-geometry/preload.cjs'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
+    const window = new BrowserWindow(
+      testWindowOptions({
+        show: true,
+        width: 1100,
+        height: 850,
+        webPreferences: {
+          preload: path.join(root, 'tests/runtime/native-composition-geometry/preload.cjs'),
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+        },
+      }),
+    );
     let settled = false;
     const timer = setTimeout(
       () => void finish(1, { error: 'Native input geometry timeout' }),
@@ -89,8 +97,7 @@ app
           (p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite),
         )
       ) {
-        window.focus();
-        window.webContents.focus();
+        focusTestWindow(window);
         const [from, to] = [value.from, value.to];
         window.webContents.sendInputEvent({
           type: 'mouseMove',
@@ -135,8 +142,7 @@ app
     await window.loadURL(
       'ivo-native-input://app/tests/runtime/native-composition-geometry/fixture.html',
     );
-    window.focus();
-    window.webContents.focus();
+    focusTestWindow(window);
   })
   .catch((error) => {
     console.error(error);

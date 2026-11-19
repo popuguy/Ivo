@@ -1,3 +1,4 @@
+import { prepareBackgroundTest, testWindowOptions } from '../helpers/background.mjs';
 import { app, BrowserWindow, protocol, net } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
@@ -6,6 +7,7 @@ import path from 'node:path';
 const density = Number(process.env.IVO_TEST_SCALE || 2);
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-render-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
@@ -24,18 +26,20 @@ app
     });
     // Offscreen paint emits submitted compositor frames. capturePage after a RAF can
     // still return the previous frame and cannot establish which new frame was first.
-    const window = new BrowserWindow({
-      show: false,
-      width: 1200 * density,
-      height: 850 * density,
-      webPreferences: {
-        zoomFactor: density,
-        offscreen: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
+    const window = new BrowserWindow(
+      testWindowOptions({
+        show: false,
+        width: 1200 * density,
+        height: 850 * density,
+        webPreferences: {
+          zoomFactor: density,
+          offscreen: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+        },
+      }),
+    );
     window.webContents.setFrameRate(60);
     let settled = false,
       pending = null,

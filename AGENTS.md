@@ -2,6 +2,10 @@
 
 Read [the current state](docs/development/STATE.md) and [Contributing](CONTRIBUTING.md) before making changes. Preserve personal vaults, authored content, original media and unrelated working-tree changes.
 
+## Keep the laptop usable during development
+
+User preference, 18 November 2026: run development and app checks in the background whenever possible. Prefer command-line/native workers and qualified hidden/offscreen editor tests. Do not launch review builds or bring apps/browser tabs forward merely to show progress. Give a heads-up before necessary foreground checks that use native window focus, the pointer, menus or the system clipboard; those remain authorized when required. Background component checks are not equivalent to physical input, native window/clipboard or device qualification. Preserve global settings and personal app sessions.
+
 ## Git throughout the project
 
 User direction, 17 November 2026: keep Ivo under active Git version control for the remainder of the project.

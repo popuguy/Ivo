@@ -37,13 +37,38 @@ const runtime = [
   'startup',
   'build',
 ];
-const commands = process.argv.includes('--runtime')
-  ? runtime.map((name) => 'test:' + name)
-  : ['format:check', 'lint', 'check:architecture', 'test', 'build'];
+// These component runners support hidden offscreen windows and renderer input.
+// Native focus, menus, the clipboard and physical-device checks remain separate.
+const backgroundRuntime = [
+  'graph',
+  'viewport',
+  'render',
+  'publishing',
+  'flow-selection',
+  'frame-composition',
+  'inline-metrics',
+  'browser-storage',
+  'text-flows',
+  'native-composition-geometry',
+  'native-editor-composition',
+];
+const background = process.argv.includes('--background-runtime');
+const commands = background
+  ? backgroundRuntime.map((name) => 'test:' + name)
+  : process.argv.includes('--runtime')
+    ? runtime.map((name) => 'test:' + name)
+    : ['format:check', 'lint', 'check:architecture', 'test', 'build'];
+if (background)
+  console.log(
+    'Background component checks only; native foreground and device checks are separate.',
+  );
 for (const name of commands) {
   console.log(`\nChecking ${name}`);
   const code = await new Promise((resolve, reject) => {
-    const child = spawn('npm', ['run', name], { stdio: 'inherit' });
+    const child = spawn('npm', ['run', name], {
+      stdio: 'inherit',
+      env: background ? { ...process.env, IVO_TEST_BACKGROUND: '1' } : process.env,
+    });
     child.on('error', reject);
     child.on('exit', resolve);
   });
