@@ -18,6 +18,7 @@ User direction, 17 November 2026: keep Ivo under active Git version control for 
 - Commit completed, verified work in coherent milestones during each implementation pass. Do not let completed features accumulate uncommitted between chats. Honor an explicit request to leave work uncommitted.
 - Review the staged diff and run checks appropriate to the change before committing. Stage only the intended files, including required source, tests, configuration and documentation.
 - Keep the existing GitHub origin in sync at completed milestones using ordinary pushes. Preserve remote work; never force-push or rewrite published history without an explicit request.
+- Before integrating completed features, check the GitHub results for the exact commit, including the full desktop runtime suite. Bring the verified commit into `main` and confirm the checks on `main`.
 - Keep personal vaults, credentials, extracted proprietary reference assets/code, generated artwork, dependencies and release/build output outside Git. The licensed public reference assets and their notices belong in the repository.
 - Report the commit and validation at handoff, including any remaining uncommitted or unpushed work. Recovery archives supplement Git; they do not replace commits.
 

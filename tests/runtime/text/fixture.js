@@ -95,6 +95,7 @@ try {
   await wait(() => document.querySelector('.canvas-world'));
   await document.fonts.ready;
   await nativeCommand('toggle-edit');
+  await nativeCommand('show-panel-properties');
   await tick();
   const surface = () => document.querySelector(`[data-scene-text="${text.id}"]`),
     viewport = () => document.querySelector('.canvas-viewport');
@@ -152,6 +153,7 @@ try {
   const originalNode = el,
     field = document.querySelector('[data-object-prop="fontSize"]');
   field.focus();
+  assert(document.activeElement === field, 'The visible font size field must own input');
   await nativeCommand('select-all');
   document.execCommand('insertText', false, '28');
   assert(field.value === '28', 'Native Select All did not replace the inspector number');

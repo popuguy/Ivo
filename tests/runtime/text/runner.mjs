@@ -23,7 +23,7 @@ app
     const window = new BrowserWindow(
       testWindowOptions({
         show: false,
-        width: 1200,
+        width: 1024,
         height: 850,
         webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
       }),
