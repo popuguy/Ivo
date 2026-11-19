@@ -28,6 +28,8 @@ The [native character milestone](../native-character-shaping.md) adds exact-face
 
 The [native keep milestone](../native-paragraph-keeps.md) connects All/Next1 to measured unequal-column reflow, local relaxation, source/history and publication. It advances the same estimate from ~31% to ~33%; partial/count/chain/start policies, wrapping interactions and the complete reference/device gates remain open.
 
+The [native PDF encoding correction](../native-pdf-encoding.md) improves eligible PDFKit source copying/search without repainting, with explicit original-byte fallback for ambiguous literal/ASCII cases. This is a correction within the existing composition/publication foundation; the overall estimate remains ~33%.
+
 1. Complete paragraph composition: custom/decimal/right-indent tabs and leaders, justification constraints, hyphenation, keeps, grids and native wraps.
 2. Complete shaping/source maps: fallback capture, full OpenType/variable/language support, bidi/complex scripts/CJK and deterministic cross-device behavior.
 3. Structured text and layout: tables, lists/numbering, anchored objects, paths, notes, fields and the page/parent scheduler.

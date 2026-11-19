@@ -411,12 +411,7 @@ for item in expected {
   var row: [String: Any] = ["word": word, "advancedInk": sample(advancedRaster, box), "controlInk": sample(controlRaster, box)]
   let sourceRange = (advancedText as NSString).range(of: word)
   row["sourceFound"] = sourceRange.location != NSNotFound
-  // One specifically measured Ivo encoding/reader gap; never normalize arbitrary Unicode.
-  let readerWord = word == "office" ? "oﬃce" : word
-  let range = (advancedText as NSString).range(of: readerWord)
-  row["readerWord"] = readerWord
-  row["readerWordFound"] = range.location != NSNotFound
-  row["knownOfficeLigatureDifference"] = word == "office" && sourceRange.location == NSNotFound && range.location != NSNotFound
+  let range = sourceRange
   if range.location != NSNotFound, let selection = advanced.selection(for: NSRange(location: range.location, length: 1)) {
     let bounds = selection.bounds(for: advanced)
     let left = value(advancedPlan, "left")
@@ -431,6 +426,8 @@ for item in expected {
 let report: [String: Any] = ["source": source, "advancedText": advancedText, "controlText": controlText,
   "advancedSourceExact": withoutLayoutWhitespace(advancedText) == withoutLayoutWhitespace(source),
   "controlSourceExact": withoutLayoutWhitespace(controlText) == withoutLayoutWhitespace(source),
+  "advancedOfficeSearches": advancedDocument.findString("office", withOptions: .literal).count,
+  "controlOfficeSearches": controlDocument.findString("office", withOptions: .literal).count,
   "advancedBitmapBottomUp": advancedRaster.bottomUp, "controlBitmapBottomUp": controlRaster.bottomUp,
   "words": rows]
 print(String(data: try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]), encoding: .utf8)!)
@@ -459,7 +456,7 @@ print(String(data: try JSONSerialization.data(withJSONObject: report, options: [
       control: await inlineLigatureReplacement(controlPDF.bytes),
     },
     poppler = await inspectPoppler(advancedPath, controlPath, plan.source, output),
-    expectedPDFKit = layoutText(plan.source).replace('office', 'o\uFB03ce');
+    expectedPDFKit = layoutText(plan.source);
   await writeFile(
     path.join(output, 'native-character-actual-text.json'),
     JSON.stringify(actualText, null, 2),
@@ -477,15 +474,23 @@ print(String(data: try JSONSerialization.data(withJSONObject: report, options: [
   assert.equal(
     layoutText(inspection.controlText),
     expectedPDFKit,
-    'PDFKit changed source beyond the specifically qualified office/U+FB03 Ivo compatibility gap: ' +
-      inspection.controlText,
+    'PDFKit changed the exact control source after native encoding: ' + inspection.controlText,
   );
   assert.equal(
     layoutText(inspection.advancedText),
     expectedPDFKit,
-    'Advanced PDFKit changed case/digits/source beyond the qualified office/U+FB03 Ivo compatibility gap: ' +
+    'Advanced PDFKit changed exact case/digits/source after native encoding: ' +
       inspection.advancedText,
   );
+  assert.equal(inspection.advancedOfficeSearches, 1);
+  assert.equal(inspection.controlOfficeSearches, 1);
+  for (const pdf of [advancedPDF, controlPDF])
+    assert(
+      pdf.manifest.nativeTextEncoding?.some(
+        (entry) => entry.changed && entry.supported && entry.substitutions > 0,
+      ),
+      'Production PDF did not report its actual native source-encoding improvement',
+    );
   if (poppler.available) {
     assert.equal(
       poppler.controlSourceExact,
@@ -500,24 +505,11 @@ print(String(data: try JSONSerialization.data(withJSONObject: report, options: [
   }
   assert.equal(inspection.words.length, targets.length);
   for (const word of inspection.words) {
-    if (word.word === 'office') {
-      assert.equal(
-        word.sourceFound,
-        false,
-        'Review the recorded PDFKit office compatibility gap if this reader now recovers ASCII.',
-      );
-      assert.equal(
-        word.knownOfficeLigatureDifference,
-        true,
-        'PDFKit office changed beyond the known specific U+FB03 extraction gap.',
-      );
-      assert.equal(word.readerWordFound, true);
-    } else
-      assert.equal(
-        word.sourceFound,
-        true,
-        'PDFKit changed original character source word: ' + word.word,
-      );
+    assert.equal(
+      word.sourceFound,
+      true,
+      'PDFKit changed original character source word: ' + word.word,
+    );
     assert.equal(
       word.caretXMatches,
       true,
@@ -585,9 +577,8 @@ print(String(data: try JSONSerialization.data(withJSONObject: report, options: [
     characterPDFSnapshotUnchanged: true,
     characterPDFSingleRetainedPlan: true,
     characterPDFDecorations: true,
-    characterPDFPDFKitOtherCaseDigitsSourceExact: true,
-    characterPDFPDFKitOfficeCompatibility:
-      'Ivo encoding limitation: office extracts as o+U+FB03+ce despite correct inline ActualText',
+    characterPDFPDFKitSourceExact: true,
+    characterPDFPDFKitOfficeSearch: true,
     characterPDFInlineLigatureActualText: true,
     characterPDFPoppler: poppler.available
       ? { available: true, version: poppler.version, exactSource: true }

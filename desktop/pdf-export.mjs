@@ -62,7 +62,14 @@ export async function finalizePDF(bytes, manifest, { composedLayers = [] } = {})
     }
     page.node.addAnnot(pdf.context.register(pdf.context.obj(annotation)));
   }
-  if (composedLayers.length) await embedComposedTextLayers(pdf, composedLayers);
+  if (composedLayers.length) {
+    const composed = await embedComposedTextLayers(pdf, composedLayers);
+    manifest.nativeTextEncoding = composed.textEncoding;
+    if (composed.textEncoding.some((encoding) => !encoding.supported))
+      manifest.warnings.push(
+        'Some native text retains its original PDF encoding. Copying or searching ligatures may differ between PDF readers.',
+      );
+  }
   pdf.setTitle(manifest.title);
   pdf.setCreator('Ivo');
   pdf.setProducer('Ivo');

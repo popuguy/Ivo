@@ -66,7 +66,13 @@ test('composed PDF layers retain their embedded text resources and explicit affi
   ];
   const input = structuredClone(layers),
     result = await embedComposedTextLayers(destination, layers);
-  assert.deepEqual(result, { layers: 1, placements: 2, drawnPlacements: 2, emptyPlacements: 0 });
+  assert.deepEqual(result, {
+    layers: 1,
+    placements: 2,
+    drawnPlacements: 2,
+    emptyPlacements: 0,
+    textEncoding: [{ layerIndex: 0, changed: false, supported: true, substitutions: 0 }],
+  });
   assert.deepEqual(bytes, original);
   assert.deepEqual(layers, input);
   assert.match(pageOperators(destination.getPage(0)), /0 1\.25 -0\.75 0 350\.5 100\.25 cm/);
@@ -136,6 +142,7 @@ test('blank native source pages add no content, and no requested layers is a no-
     placements: 0,
     drawnPlacements: 0,
     emptyPlacements: 0,
+    textEncoding: [],
   });
   assert.deepEqual(await destination.save({ useObjectStreams: false }), before);
   const result = await embedComposedTextLayers(destination, [
@@ -147,4 +154,47 @@ test('blank native source pages add no content, and no requested layers is a no-
   assert.equal(result.emptyPlacements, 1);
   assert.equal(result.drawnPlacements, 0);
   assert.deepEqual(await destination.save({ useObjectStreams: false }), before);
+});
+
+test('unsupported native encoding retains its original content and reports compatibility separately', async () => {
+  const source = await PDFDocument.load(await sourcePDF()),
+    fonts = source.getPage(0).node.Resources().lookup(PDFName.of('Font')),
+    font = source.context.lookup(fonts.values()[0]),
+    originalMap = 'An explicitly unsupported owned-test ToUnicode grammar';
+  font.set(
+    PDFName.of('ToUnicode'),
+    source.context.register(source.context.flateStream(originalMap)),
+  );
+  const bytes = await source.save(),
+    original = bytes.slice(),
+    destination = await PDFDocument.create();
+  destination.addPage([612, 792]);
+  const result = await embedComposedTextLayers(destination, [
+    {
+      bytes,
+      placements: [{ sourcePageIndex: 0, destinationPageIndex: 0, matrix: [1, 0, 0, 1, 20, 30] }],
+    },
+  ]);
+  assert.deepEqual(bytes, original);
+  assert.equal(result.drawnPlacements, 1);
+  assert.equal(result.textEncoding[0].supported, false);
+  assert.equal(result.textEncoding[0].changed, false);
+  assert.equal(result.textEncoding[0].substitutions, 0);
+  assert.match(result.textEncoding[0].reason, /unsupported font mapping/i);
+  const saved = await PDFDocument.load(await destination.save()),
+    fontsAfter = [...saved.context.enumerateIndirectObjects()]
+      .map(([, object]) => object)
+      .filter((object) => object.dict?.get(PDFName.of('Subtype'))?.toString() === '/Form');
+  assert(
+    fontsAfter.some((form) =>
+      new TextDecoder().decode(decodePDFRawStream(form).decode()).includes('Tj'),
+    ),
+  );
+  assert(
+    [...saved.context.enumerateIndirectObjects()].some(
+      ([, object]) =>
+        object instanceof PDFRawStream &&
+        new TextDecoder().decode(decodePDFRawStream(object).decode()) === originalMap,
+    ),
+  );
 });

@@ -9,6 +9,7 @@ import {
   clip,
   endPath,
 } from 'pdf-lib';
+import { improveNativePDFEncoding } from './native-pdf-encoding.mjs';
 
 const MAX_LAYERS = 256,
   MAX_PLACEMENTS = 4096,
@@ -60,7 +61,8 @@ function placement(value, destinationCount) {
 
 /**
  * Append trusted native *invisible* text PDFs to an existing frozen export.
- * CT font resources, text operators and Unicode maps are copied, never reshaped.
+ * CT font programs and paint operators are copied, never reshaped. Eligible
+ * Unicode mappings use the exact existing ActualText for reader compatibility.
  * The source worker must have rendered with text drawing mode invisible; this
  * validates placement, not arbitrary PDF content or the worker's rendering mode.
  *
@@ -88,7 +90,10 @@ export async function embedComposedTextLayers(pdf, layers) {
     placementCount += layer.placements.length;
     if (placementCount > MAX_PLACEMENTS) fail('too many placements.');
     const placements = layer.placements.map((value) => placement(value, destinationPages.length));
-    const source = await PDFDocument.load(layer.bytes, { updateMetadata: false });
+    // Production layers come only from requester-owned frozen worker tokens.
+    // This conservative stage must never become an imported-PDF repair route.
+    const encoding = await improveNativePDFEncoding(layer.bytes),
+      source = await PDFDocument.load(encoding.bytes, { updateMetadata: false });
     if (source.getPageCount() > 256) fail('too many native source pages.');
     const pages = source.getPages();
     for (const value of placements) {
@@ -111,7 +116,7 @@ export async function embedComposedTextLayers(pdf, layers) {
       )
         fail('source must have an unrotated zero-origin frame box.');
     }
-    prepared.push({ source, pages, placements });
+    prepared.push({ source, pages, placements, encoding });
   }
   let drawnPlacements = 0,
     emptyPlacements = 0;
@@ -151,5 +156,20 @@ export async function embedComposedTextLayers(pdf, layers) {
       drawnPlacements++;
     }
   }
-  return { layers: layers.length, placements: placementCount, drawnPlacements, emptyPlacements };
+  return {
+    layers: layers.length,
+    placements: placementCount,
+    drawnPlacements,
+    emptyPlacements,
+    textEncoding: prepared.map(({ encoding }, layerIndex) => ({
+      layerIndex,
+      changed: encoding.changed,
+      supported: encoding.supported,
+      substitutions: encoding.audit.reduce(
+        (count, row) => count + (row.status === 'patched' ? row.updates.length : 0),
+        0,
+      ),
+      ...(encoding.reason ? { reason: encoding.reason.slice(0, 240) } : {}),
+    })),
+  };
 }
