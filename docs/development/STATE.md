@@ -22,6 +22,8 @@ The integrated native path now includes:
 
 Native protocols 2/3/4/5 are internal transport versions, not persisted document versions. Default runs retain earlier protocol identity; planned frame placement uses 3, advanced characters use 4, and explicit paragraph word spacing uses 5. The shared Apple source is included by the iOS project, but Mac headless checks do not qualify iPhone/iPad or physical IME behavior.
 
+Current priority: the [responsiveness investigation](../backlog.md#current-priority-editing-responsiveness--19-november-2026) confirms whole-page work on lock toggles and whole-flow native geometry latency during typing. Complete a focused interaction/invalidation/incremental-rendering pass before expanding text features. Preserve exact composition/source/history/persistence contracts and the working camera. Hidden-window measurements establish a bottleneck, not native display parity; add latency budgets alongside correctness checks.
+
 Next composition dependencies: authored letter/glyph justification constraints and hyphenation, the full paragraph objective, mixed-metric/advanced native wrap rows, partial/count/chain/start keeps, grids, custom/decimal/right-indent tabs and leaders, fallback capture and variable/language/complex-script/CJK shaping. Then complete tables/lists, anchored/typed content, paths, notes/fields, editorial/publication systems and accessible interchange. Keep the dependency order and acceptance gates in the programme; do not wait for user fixtures to deliver the features needed to make them.
 
 ## Input, objects and workspace
