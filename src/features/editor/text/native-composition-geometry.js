@@ -1,7 +1,8 @@
 /** Native composition coordinates and source maps are disposable view data. */
 const finite = (n) => Number.isFinite(n);
 const sourceIndexes = new WeakMap(),
-  caretIndexes = new WeakMap();
+  caretIndexes = new WeakMap(),
+  rowIndexes = new WeakMap();
 function lowerBound(values, value) {
   let low = 0,
     high = values.length;
@@ -65,6 +66,27 @@ function caretChoices(native, at) {
 function data(column) {
   const native = column.native;
   return native && Array.isArray(native.lines) && Array.isArray(native.spans) ? native : null;
+}
+/** Wrap fragments retain independent native lines but share one navigable physical row. */
+function physicalRows(native) {
+  let index = rowIndexes.get(native);
+  if (!index || index.lines !== native.lines) {
+    const rows = [];
+    for (const [lineIndex, line] of native.lines.entries()) {
+      const previous = rows.at(-1),
+        top = line.baseline - line.ascent,
+        bottom = line.baseline + line.descent;
+      if (previous && Math.abs(previous.baseline - line.baseline) <= 1e-6) {
+        previous.fragments.push({ line, lineIndex });
+        previous.y = Math.min(previous.y, top);
+        previous.bottom = Math.max(previous.bottom, bottom);
+      } else
+        rows.push({ baseline: line.baseline, y: top, bottom, fragments: [{ line, lineIndex }] });
+    }
+    index = { lines: native.lines, rows };
+    rowIndexes.set(native, index);
+  }
+  return index.rows;
 }
 const bounds = (column) => ({
   start: column.sourceStart ?? column.start,
@@ -189,22 +211,26 @@ export function hitNativeColumn(column, point, { coordinateSpace = 'screen' } = 
     if (!ctm) return null;
     local = new DOMPoint(point.x, point.y).matrixTransform(ctm.inverse());
   } else if (coordinateSpace !== 'column') throw new TypeError('Unknown native coordinate space.');
-  const distance = (line) =>
-      Math.max(line.baseline - line.ascent - local.y, 0, local.y - line.baseline - line.descent),
-    line = [...native.lines].sort((a, b) => distance(a) - distance(b))[0],
-    lineIndex = native.lines.indexOf(line);
+  const distance = (row) => Math.max(row.y - local.y, 0, local.y - row.bottom),
+    row = physicalRows(native).reduce(
+      (best, candidate) => (!best || distance(candidate) < distance(best) ? candidate : best),
+      null,
+    );
   let best;
-  for (const caret of line.carets || [])
-    for (const name of ['primary', 'secondary']) {
-      if (caret.index > (line.contentEnd ?? line.end)) continue;
-      const range = candidates(caret),
-        x = caret[name];
-      if (!range || !finite(x)) continue;
-      const d = Math.abs(x - local.x);
-      if (!best || d < best.distance) best = { caret, range, side: name, distance: d };
-    }
+  for (const { line, lineIndex } of row.fragments)
+    for (const caret of line.carets || [])
+      for (const name of ['primary', 'secondary']) {
+        if (caret.index > (line.contentEnd ?? line.end)) continue;
+        const range = candidates(caret),
+          x = caret[name];
+        if (!range || !finite(x)) continue;
+        const d = Math.abs(x - local.x);
+        if (!best || d < best.distance)
+          best = { line, lineIndex, caret, range, side: name, distance: d };
+      }
   if (!best) return null;
-  const affinity =
+  const { line, lineIndex } = best,
+    affinity =
       line.contentEnd === line.start || best.caret.index === line.start
         ? 'forward'
         : best.caret.index >= (line.contentEnd ?? line.end)
@@ -233,50 +259,52 @@ export function nativeCaretLines(columns) {
       limitations.add('native-column-unavailable');
       continue;
     }
-    for (const [lineIndex, line] of native.lines.entries()) {
+    for (const row of physicalRows(native)) {
       const stops = [];
-      for (const caret of line.carets || []) {
-        const range = candidates(caret);
-        if (!range) continue;
-        if (caret.index > (line.contentEnd ?? line.end)) continue;
-        const affinity =
-            line.contentEnd === line.start || caret.index === line.start
-              ? 'forward'
-              : caret.index >= (line.contentEnd ?? line.end)
-                ? 'backward'
-                : 'forward',
-          aliases = [{ index: canonicalCaret(native, line, caret, affinity), affinity }];
-        const offsets = [{ side: 'primary', x: caret.primary }];
-        if (finite(caret.secondary) && Math.abs(caret.secondary - caret.primary) > 1e-6)
-          offsets.push({ side: 'secondary', x: caret.secondary });
-        for (const point of aliases)
-          for (const offset of offsets)
-            if (point.index >= own.start && point.index <= own.end && finite(offset.x)) {
-              stops.push({
-                frameId: column.frameId,
-                ...point,
-                ...lineRect(line, offset.x),
-                nativeIndex: caret.index,
-                nativeCaretHint: { lineIndex, side: offset.side },
-                measurement: caret.measurement,
-              });
-            }
+      for (const { line, lineIndex } of row.fragments) {
+        for (const caret of line.carets || []) {
+          const range = candidates(caret);
+          if (!range) continue;
+          if (caret.index > (line.contentEnd ?? line.end)) continue;
+          const affinity =
+              line.contentEnd === line.start || caret.index === line.start
+                ? 'forward'
+                : caret.index >= (line.contentEnd ?? line.end)
+                  ? 'backward'
+                  : 'forward',
+            aliases = [{ index: canonicalCaret(native, line, caret, affinity), affinity }];
+          const offsets = [{ side: 'primary', x: caret.primary }];
+          if (finite(caret.secondary) && Math.abs(caret.secondary - caret.primary) > 1e-6)
+            offsets.push({ side: 'secondary', x: caret.secondary });
+          for (const point of aliases)
+            for (const offset of offsets)
+              if (point.index >= own.start && point.index <= own.end && finite(offset.x)) {
+                stops.push({
+                  frameId: column.frameId,
+                  ...point,
+                  ...lineRect(line, offset.x),
+                  nativeIndex: caret.index,
+                  nativeCaretHint: { lineIndex, side: offset.side },
+                  measurement: caret.measurement,
+                });
+              }
+        }
+        if (line.runs?.some((run) => run.rtl)) limitations.add('mixed-bidi-affinity');
       }
       if (!stops.length) continue;
-      if (line.runs?.some((run) => run.rtl)) limitations.add('mixed-bidi-affinity');
       stops.sort((a, b) => a.x - b.x || a.index - b.index);
       measuredStops += stops.length;
       lines.push({
         frameId: column.frameId,
         column: column.column ?? column.index ?? 0,
         columnOrder,
-        lineOrder: lineIndex,
+        lineOrder: row.fragments[0].lineIndex,
         sourceStart: own.start,
         sourceEnd: own.end,
         start: Math.min(...stops.map((s) => s.index)),
         end: Math.max(...stops.map((s) => s.index)),
-        y: line.baseline - line.ascent,
-        height: line.ascent + line.descent,
+        y: row.y,
+        height: row.bottom - row.y,
         stops,
       });
     }

@@ -74,6 +74,13 @@ public final class TextCompositionEngine {
     let rightIndent: Double
     let firstLineIndent: Double
   }
+  struct Placement: Decodable {
+    let end: Int
+    let frame: Int
+    let baseline: Double
+    let left: Double
+    let width: Double
+  }
   struct Request: Decodable {
     let `protocol`: Int
     let mode: String
@@ -91,6 +98,7 @@ public final class TextCompositionEngine {
     let breaks: [Int]?
     let includeVectors: Bool?
     let paragraphs: [Paragraph]?
+    let placements: [Placement]?
   }
   struct FrozenLine {
     let page: Int
@@ -116,13 +124,22 @@ public final class TextCompositionEngine {
   func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
     try require(
-      [1, 2].contains(request.protocol)
-        && ["greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof"].contains(
+      [1, 2, 3].contains(request.protocol)
+        && ["greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof", "planned-lines-proof"].contains(
           request.mode),
       "Unsupported composition protocol or policy")
     try require(
-      request.protocol == 2 || request.paragraphs == nil,
+      request.protocol >= 2 || request.paragraphs == nil,
       "Paragraph layout requires composition protocol 2")
+    try require(
+      request.mode != "planned-lines-proof" || request.protocol == 3,
+      "Planned lines require composition protocol 3")
+    try require(
+      request.protocol != 3 || ["measure-lines-proof", "planned-lines-proof"].contains(request.mode),
+      "Composition protocol 3 requires measured or planned lines")
+    try require(
+      request.placements == nil || (request.protocol == 3 && request.mode == "planned-lines-proof"),
+      "Placements require the planned-lines policy")
     try require(!request.id.isEmpty && request.id.utf8.count <= 120, "Invalid source identity")
     try require(
       length > 0 && length <= 100_000 && request.logicalLength >= 0
@@ -153,7 +170,7 @@ public final class TextCompositionEngine {
     var logical = 0
     var native = 0
     let string = request.text as NSString
-    if request.protocol == 2 {
+    if request.protocol >= 2 {
       guard let paragraphs = request.paragraphs else { throw fail("Missing paragraph layout") }
       try require(!paragraphs.isEmpty && paragraphs.count <= 10_000, "Invalid paragraph layout")
       var paragraphStart = 0
@@ -178,7 +195,11 @@ public final class TextCompositionEngine {
           !value.dropLast().contains("\u{2029}")
             && (paragraph.end == length || value.last == "\u{2029}"),
           "Paragraph layout crosses or omits a source paragraph boundary")
-        for frame in request.frames {
+        try require(
+          paragraph.leftIndent >= 0 && paragraph.rightIndent >= 0
+            && paragraph.leftIndent + paragraph.firstLineIndent >= 0,
+          "Paragraph indents leave no valid line area")
+        for frame in request.frames where request.protocol == 2 {
           let width = frame.width - paragraph.leftIndent - paragraph.rightIndent
           try require(
             paragraph.leftIndent >= 0 && paragraph.rightIndent >= 0
@@ -318,7 +339,8 @@ public final class TextCompositionEngine {
         for candidate in candidates {
           try require(
             candidate.offset == nil
-              || (request.protocol == 2 && finite(candidate.offset!, -4000, 4000)),
+              || (request.protocol == 2 && finite(candidate.offset!, -4000, 4000))
+              || (request.protocol == 3 && finite(candidate.offset!, 0, 14400)),
             "Invalid line-alternative origin")
           try require(
             candidate.start >= 0 && candidate.end > candidate.start && candidate.end <= length
@@ -330,7 +352,7 @@ public final class TextCompositionEngine {
             !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }
             ), "Line alternative crosses a forced break")
         }
-      } else {
+      } else if request.mode == "explicit-lines-proof" {
         guard let breaks = request.breaks else { throw fail("Missing explicit line decisions") }
         try require(
           !breaks.isEmpty && breaks.count <= 2048 && breaks.last == length,
@@ -345,6 +367,61 @@ public final class TextCompositionEngine {
             !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }
             ), "Explicit line crosses a forced break")
           previous = end
+        }
+      } else {
+        guard let placements = request.placements else { throw fail("Missing planned lines") }
+        try require(
+          !placements.isEmpty && placements.count <= 2048 && placements.last?.end == length,
+          "Planned lines do not cover source")
+        var previousEnd = 0
+        var previous: Placement? = nil
+        var paragraphIndex = 0
+        for placement in placements {
+          try require(
+            placement.end > previousEnd && placement.end <= length
+              && boundaries.contains(placement.end), "Invalid planned source boundary")
+          try require(
+            placement.frame >= 0 && placement.frame < 128
+              && finite(placement.baseline, 0, 14400)
+              && finite(placement.left, 0, 14400) && finite(placement.width, 1, 14400),
+            "Invalid planned line geometry")
+          let value = string.substring(
+            with: NSRange(location: previousEnd, length: placement.end - previousEnd))
+          try require(
+            !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }),
+            "Planned line crosses a forced break")
+          while paragraphIndex + 1 < request.paragraphs!.count
+            && previousEnd >= request.paragraphs![paragraphIndex].end
+          { paragraphIndex += 1 }
+          let paragraph = request.paragraphs![paragraphIndex]
+          try require(placement.end <= paragraph.end, "Planned line crosses a paragraph")
+          if placement.frame < request.frames.count {
+            let frame = request.frames[placement.frame]
+            let indent = paragraph.leftIndent
+              + (previousEnd == paragraph.start ? paragraph.firstLineIndent : 0)
+            try require(
+              placement.left + 0.000001 >= indent
+                && placement.left + placement.width <= frame.width - paragraph.rightIndent + 0.000001
+                && placement.baseline <= frame.height,
+              "Planned line lies outside its frame or paragraph area")
+          }
+          if let prior = previous {
+            try require(placement.frame >= prior.frame, "Planned frame order goes backwards")
+            if placement.frame == prior.frame {
+              try require(placement.baseline + 0.000001 >= prior.baseline,
+                "Planned baseline order goes backwards")
+              if abs(placement.baseline - prior.baseline) <= 0.000001 {
+                try require(
+                  placement.left + 0.000001 >= prior.left + prior.width,
+                  "Planned row segments overlap or go backwards")
+                let last = string.character(at: previousEnd - 1)
+                try require(![10, 13, 0x2028, 0x2029].contains(Int(last)),
+                  "Planned forced break continues on the same row")
+              }
+            }
+          }
+          previousEnd = placement.end
+          previous = placement
         }
       }
     }
@@ -484,17 +561,25 @@ public final class TextCompositionEngine {
       let frameStart = frozen.count
       while position < textLength {
         try require(output.count < 4096, "Composed line budget exceeded")
+        let placement = request.mode == "planned-lines-proof" ? request.placements![output.count] : nil
+        if let placement = placement {
+          if placement.frame > page { break }
+          try require(placement.frame == page, "Planned frame does not match its source cursor")
+        }
         while let paragraphs = request.paragraphs,
           paragraphIndex + 1 < paragraphs.count && position >= paragraphs[paragraphIndex].end
         { paragraphIndex += 1 }
         let paragraph = request.paragraphs?[paragraphIndex]
         let paragraphFirstLine = paragraph?.start == position
-        let indent =
+        let paragraphIndent =
           (paragraph?.leftIndent ?? 0)
           + (paragraphFirstLine ? paragraph?.firstLineIndent ?? 0 : 0)
-        let availableWidth = frame.width - indent - (paragraph?.rightIndent ?? 0)
+        let indent = placement?.left ?? paragraphIndent
+        let availableWidth = placement?.width
+          ?? (frame.width - paragraphIndent - (paragraph?.rightIndent ?? 0))
         var count =
-          request.mode == "explicit-lines-proof"
+          placement != nil ? placement!.end - position
+          : request.mode == "explicit-lines-proof"
           ? request.breaks!.first(where: { $0 > position })! - position
           : CTTypesetterSuggestLineBreakWithOffset(typesetter, position, availableWidth, indent)
         if count <= 0 {
@@ -548,7 +633,9 @@ public final class TextCompositionEngine {
             ($0.leading ?? 0) > 0 ? $0.leading! : $0.size * ($0.autoLeading ?? 120) / 100
           }.max() ?? 14.4
         let baseline: Double
-        if let previous = previousBaseline {
+        if let placement = placement {
+          baseline = placement.baseline
+        } else if let previous = previousBaseline {
           let previousAfter =
             paragraphFirstLine && paragraphIndex > 0
             ? request.paragraphs![paragraphIndex - 1].paragraphAfter : 0
@@ -579,10 +666,14 @@ public final class TextCompositionEngine {
           }
           baseline = max(frame.minimumFirstBaseline ?? 0, metric)
         }
-        if baseline + Double(descent) > frame.height { break }
+        if placement != nil {
+          try require(
+            baseline + Double(descent) <= frame.height + 0.000001,
+            "Planned line exceeds frame height")
+        } else if baseline + Double(descent) > frame.height { break }
         // A full column hands this same decision to the next authored frame,
         // which can be wider. Validate width only after it can occupy this row.
-        if request.mode == "explicit-lines-proof" {
+        if request.mode == "explicit-lines-proof" || placement != nil {
           try require(
             visibleWidth <= availableWidth + 0.000001, "Explicit line exceeds its indented line area")
         }
@@ -683,17 +774,18 @@ public final class TextCompositionEngine {
           "sourceRanges": logicalRanges(position, end, request.spans), "runs": runRows,
           "carets": carets,
         ]
-        if request.protocol == 2 {
+        if request.protocol >= 2 {
           row["originX"] = originX
           row["availableWidth"] = availableWidth
           row["paragraphStart"] = paragraph!.start
           row["paragraphEnd"] = paragraph!.end
         }
+        if placement != nil { row["placementIndex"] = output.count }
         output.append(row)
         position = end
         previousBaseline = baseline
       }
-      if let last = frozen.last, frozen.count > frameStart {
+      if let last = frozen.last, frozen.count > frameStart && request.mode != "planned-lines-proof" {
         let remaining = max(0, frame.height - last.baseline - last.descent)
         let offset =
           frame.verticalAlign == "bottom"

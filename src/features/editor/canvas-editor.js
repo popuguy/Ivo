@@ -1203,9 +1203,11 @@ export function mountCanvasEditor(host, options) {
     const element = activeText();
     if (
       element &&
-      (sourceTextFlow(element)?.html ?? sceneObject(doc(), activeTextId)?.html) !==
+      cleanHTML(sourceTextFlow(element)?.html ?? sceneObject(doc(), activeTextId)?.html) !==
         (sourceTextFlow(element) ? flowInputHTML(element) : cleanHTML(element.innerHTML))
     ) {
+      // Loading/painting allowlisted typography can normalize attribute order
+      // and project equivalent CSS. That alone is not an authored text edit.
       beginTextInput();
       syncText(element);
     }

@@ -22,6 +22,7 @@ import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
 import { verifyParagraphProjection } from './paragraph-projection.js';
 import { verifyNativeParagraphEditing } from './paragraph-editing.js';
+import { verifyUnequalParagraphFlow } from './unequal-paragraph-flow.js';
 const assert = (value, message) => {
     if (!value) throw Error(message);
   },
@@ -63,6 +64,7 @@ try {
     changes = 0,
     writable = true,
     paragraphEditing = {},
+    unequalParagraphFlow = {},
     held = null,
     history = createDocumentHistory();
   const native = {
@@ -335,19 +337,29 @@ try {
     threadFrame(doc, a.id, b.id);
     mount();
     await tick();
-    const beforeRejected = JSON.stringify(doc);
+    const beforeParagraphHTML = flow.html,
+      beforeParagraphFrames = JSON.stringify(doc.blocks),
+      beforeParagraphPages = JSON.stringify(doc.pages);
     await choose('paragraph');
     assert(
-      !doc.textFlows[0].composition && JSON.stringify(doc) === beforeRejected,
-      'Rejected native preflight changed source/capability',
+      doc.textFlows[0].composition?.composer === 'paragraph' &&
+        latest(a.id).request.protocol === 3 &&
+        latest(a.id).request.mode === 'planned-lines-proof',
+      'Unequal-width paragraph opt-in did not use native planned composition',
     );
     assert(
-      notices.some((n) => n.includes('unequal column widths')),
-      'Unsupported paragraph geometry was not explained',
+      flow.html === beforeParagraphHTML &&
+        JSON.stringify(doc.blocks) === beforeParagraphFrames &&
+        JSON.stringify(doc.pages) === beforeParagraphPages,
+      'Unequal-width paragraph opt-in changed authored source or geometry',
     );
-    notices.length = 0;
+    assert(!notices.length, 'Supported unequal paragraph geometry was rejected');
+    // The remainder retains its original single-line input/history baseline.
+    calls.length = measurements.length = 0;
     await choose('single-line');
     assert(flow.composition?.composer === 'single-line', 'UI did not opt into native composer');
+    history = createDocumentHistory();
+    changes = commits = 0;
     await editor.command('fit-all');
     await editor.command('document-text');
     await settle();
@@ -570,6 +582,14 @@ try {
       compose: native.compose,
       insert: window.nativeEditorTest.insert,
       capture: window.nativeEditorTest.capture,
+    });
+    unequalParagraphFlow = await verifyUnequalParagraphFlow({
+      host,
+      compose: native.compose,
+      insert: window.nativeEditorTest.insert,
+      drag: window.nativeEditorTest.drag,
+      save: window.nativeEditorTest.save,
+      load: window.nativeEditorTest.load,
     });
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
@@ -856,6 +876,7 @@ try {
       sourceProjection: true,
       ...paragraphProjection,
       ...paragraphEditing,
+      ...unequalParagraphFlow,
       realNativeBridge: true,
       composerPreflight: true,
       vectorInk: true,

@@ -2,7 +2,7 @@
 
 Current overall engineering estimate, 18 November 2026:
 
-`[█████░░░░░░░░░░░░░░░] ~24%`
+`[█████░░░░░░░░░░░░░░░] ~26%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
 
@@ -20,7 +20,9 @@ This is a rough assessment of implementation and integration across the [66 incl
 
 ## Major work still driving the estimate
 
-1. Complete paragraph composition: alignment/spacing, custom/decimal/right-indent tabs and leaders, justification, hyphenation, keeps, grids, wraps and unequal columns.
+The [frame-scheduling milestone](../native-flow-scheduling.md) fits unequal native columns with exact line metrics, one owned break/baseline plan and cooperative preparation/search. It advances the same broad estimate from ~24% to ~26%; the justification objective and reference/device gates remain incomplete.
+
+1. Complete paragraph composition: custom/decimal/right-indent tabs and leaders, justification constraints, hyphenation, keeps, grids and native wraps.
 2. Complete shaping/source maps: fallback capture, full OpenType/variable/language support, bidi/complex scripts/CJK and deterministic cross-device behavior.
 3. Structured text and layout: tables, lists/numbering, anchored objects, paths, notes, fields and the page/parent scheduler.
 4. Editorial and publication systems, including scoped search/proofing, references, generated matter and accessible reading order.

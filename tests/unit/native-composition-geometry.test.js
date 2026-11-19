@@ -187,3 +187,162 @@ test('adjacent source style spans remain one native selection across a grapheme 
     [{ x: 0, width: 10 }],
   );
 });
+
+function wrappedFixture() {
+  const fragment = (start, end, left, baseline, ascent = 8, descent = 2) => ({
+    start,
+    end,
+    contentEnd: end,
+    baseline,
+    ascent,
+    descent,
+    carets: Array.from({ length: end - start + 1 }, (_, at) =>
+      caret(start + at, left + at * 10, start + at),
+    ),
+    runs: [
+      {
+        start,
+        end,
+        rtl: false,
+        glyphs: Array.from({ length: end - start }, (_, at) => ({
+          index: start + at,
+          end: start + at + 1,
+          position: [left + at * 10, 0],
+          advance: [10, 0],
+        })),
+      },
+    ],
+  });
+  const second = fragment(3, 6, 100, 12, 10, 4);
+  second.carets[1].secondary = 115;
+  return {
+    frameId: 'wrapped',
+    column: 1,
+    start: 0,
+    end: 12,
+    native: {
+      spans: [{ kind: 'text', start: 0, end: 12, logicalStart: 0, logicalEnd: 12 }],
+      lines: [fragment(0, 3, 0, 12), second, fragment(6, 9, 0, 28), fragment(9, 12, 0, 44)],
+    },
+  };
+}
+
+test('wrapped native row hits choose the closest fragment across gaps and preserve fragment affinity', () => {
+  const column = wrappedFixture(),
+    before = structuredClone(column),
+    hit = (x, y = 8) => hitNativeColumn(column, { x, y }, { coordinateSpace: 'column' });
+  const second = hit(128, 3);
+  assert.equal(second.index, 6);
+  assert.equal(second.affinity, 'backward');
+  assert.deepEqual(second.nativeCaretHint, { lineIndex: 1, side: 'primary' });
+  const leftGap = hit(40),
+    rightGap = hit(90);
+  assert.equal(leftGap.index, 3);
+  assert.equal(leftGap.affinity, 'backward');
+  assert.equal(leftGap.nativeCaretHint.lineIndex, 0);
+  assert.equal(rightGap.index, 3);
+  assert.equal(rightGap.affinity, 'forward');
+  assert.equal(rightGap.nativeCaretHint.lineIndex, 1);
+  assert.equal(nativeCaretRect(column, leftGap, { hint: leftGap.nativeCaretHint }).x, 30);
+  assert.equal(nativeCaretRect(column, rightGap, { hint: rightGap.nativeCaretHint }).x, 100);
+  const secondary = hit(114.8),
+    secondaryRect = nativeCaretRect(column, secondary, { hint: secondary.nativeCaretHint });
+  assert.equal(secondary.index, 4);
+  assert.deepEqual(secondary.nativeCaretHint, { lineIndex: 1, side: 'secondary' });
+  assert.equal(secondaryRect.x, 115);
+  assert.equal(secondaryRect.y, 2);
+  assert.equal(secondaryRect.height, 14);
+  assert.equal(hit(10, 25).index, 7, 'A different baseline must remain a different physical row');
+  assert.deepEqual(column, before, 'Hit testing changed source or native geometry');
+});
+
+test('wrapped native navigation exposes one Home/End and Up/Down row across all fragments', () => {
+  const column = wrappedFixture(),
+    geometry = nativeCaretLines([column]),
+    first = geometry.lines[0];
+  assert.equal(geometry.lines.length, 3);
+  assert.deepEqual(
+    geometry.lines.map((line) => line.lineOrder),
+    [0, 2, 3],
+  );
+  assert.deepEqual([first.start, first.end, first.sourceStart, first.sourceEnd], [0, 6, 0, 12]);
+  assert.deepEqual([first.y, first.height], [2, 14]);
+  assert.deepEqual(
+    first.stops.map((stop) => stop.x),
+    [0, 10, 20, 30, 100, 110, 115, 120, 130],
+  );
+  assert.equal(geometry.measuredStops, 17);
+  assert.deepEqual(first.stops[0].nativeCaretHint, { lineIndex: 0, side: 'primary' });
+  assert.deepEqual(first.stops.at(-1).nativeCaretHint, { lineIndex: 1, side: 'primary' });
+  const rowAtSecondFragment = geometry.lines.find((line) =>
+    line.stops.some((stop) => stop.index === 4 && stop.nativeCaretHint.lineIndex === 1),
+  );
+  assert.equal(
+    rowAtSecondFragment.stops[0].index,
+    0,
+    'Home must reach the start of the physical row',
+  );
+  assert.equal(
+    rowAtSecondFragment.stops.at(-1).index,
+    6,
+    'End must reach the end of the physical row',
+  );
+  assert.equal(
+    geometry.lines[1].start,
+    6,
+    'Down must advance to the next baseline, not the next fragment',
+  );
+  assert.equal(
+    geometry.lines[0].end,
+    6,
+    'Up from the next baseline must return to the complete wrapped row',
+  );
+  assert.deepEqual(
+    first.stops
+      .filter((stop) => stop.index === 3)
+      .map(({ affinity, nativeCaretHint }) => ({ affinity, nativeCaretHint })),
+    [
+      { affinity: 'backward', nativeCaretHint: { lineIndex: 0, side: 'primary' } },
+      { affinity: 'forward', nativeCaretHint: { lineIndex: 1, side: 'primary' } },
+    ],
+  );
+});
+
+test('wrapped row selection paints each original fragment without filling the excluded gap', () => {
+  const column = wrappedFixture(),
+    before = structuredClone(column),
+    paint = nativeSelectionRects(column, { start: 2, end: 5 });
+  assert.deepEqual(paint.limitations, []);
+  assert.deepEqual(
+    paint.rects.map(({ x, y, width, height, lineIndex, nativeStart, nativeEnd }) => ({
+      x,
+      y,
+      width,
+      height,
+      lineIndex,
+      nativeStart,
+      nativeEnd,
+    })),
+    [
+      { x: 20, y: 4, width: 10, height: 10, lineIndex: 0, nativeStart: 2, nativeEnd: 3 },
+      { x: 100, y: 2, width: 20, height: 14, lineIndex: 1, nativeStart: 3, nativeEnd: 5 },
+    ],
+  );
+  assert.equal(nativeCaretRect(column, { index: 3, affinity: 'backward' }).x, 30);
+  assert.equal(nativeCaretRect(column, { index: 3, affinity: 'forward' }).x, 100);
+  assert.deepEqual(column, before);
+});
+
+test('equal native baselines never merge rows from different physical columns', () => {
+  const left = wrappedFixture(),
+    right = wrappedFixture();
+  right.frameId = 'another-frame';
+  right.column = 2;
+  const geometry = nativeCaretLines([left, right]);
+  assert.equal(geometry.lines.length, 6);
+  assert.deepEqual(
+    geometry.lines.map((line) => line.columnOrder),
+    [0, 0, 0, 1, 1, 1],
+  );
+  assert.equal(geometry.lines[3].frameId, 'another-frame');
+});

@@ -50,24 +50,23 @@ function composeRequest(compose, request) {
   trim();
   entry.promise = Promise.resolve()
     .then(() => compose(request))
-    .then(
-      (result) => {
-        if (cache.entries.get(key) === entry) {
-          const cost = JSON.stringify(result).length * 2;
-          entry.cost += cost;
-          cache.bytes += cost;
-          trim();
-        }
-        return result;
-      },
-      (error) => {
-        if (cache.entries.get(key) === entry) {
-          cache.entries.delete(key);
-          cache.bytes -= entry.cost;
-        }
-        throw error;
-      },
-    );
+    .then((result) => {
+      validateResult(result, request);
+      if (cache.entries.get(key) === entry) {
+        const cost = JSON.stringify(result).length * 2;
+        entry.cost += cost;
+        cache.bytes += cost;
+        trim();
+      }
+      return result;
+    })
+    .catch((error) => {
+      if (cache.entries.get(key) === entry) {
+        cache.entries.delete(key);
+        cache.bytes -= entry.cost;
+      }
+      throw error;
+    });
   return entry.promise;
 }
 function base64(bytes) {
@@ -269,7 +268,7 @@ function validateResult(result, request) {
     throw Error('The native text result does not match its source.');
   const frames = new Map(request.frames.map((f) => [f.id, f]));
   let end = 0;
-  for (const line of result.layout.lines) {
+  for (const [lineIndex, line] of result.layout.lines.entries()) {
     if (
       !frames.has(line.frame) ||
       line.start !== end ||
@@ -278,13 +277,16 @@ function validateResult(result, request) {
       line.end > request.text.length
     )
       throw Error('Native text lines lost their ordered source or frame identity.');
-    if (request.protocol === 2) {
+    if (request.protocol >= 2) {
       const paragraph = request.paragraphs.find((p) => p.start <= line.start && p.end > line.start),
-        area = paragraphLineArea(
-          paragraph,
-          frames.get(line.frame).width,
-          line.start === paragraph.start,
-        );
+        placement = request.placements?.[line.placementIndex],
+        area =
+          placement ||
+          paragraphLineArea(
+            paragraph,
+            frames.get(line.frame).width,
+            line.start === paragraph.start,
+          );
       if (
         !Number.isFinite(line.originX) ||
         Math.abs(line.originX) > 100000 ||
@@ -295,11 +297,25 @@ function validateResult(result, request) {
         Math.abs(line.availableWidth - area.width) > 0.000001
       )
         throw Error('Native paragraph geometry disagrees with its authored layout.');
+      if (
+        request.protocol === 3 &&
+        (line.placementIndex !== lineIndex ||
+          !placement ||
+          placement.end !== line.end ||
+          request.frames[placement.frame]?.id !== line.frame ||
+          Math.abs(placement.baseline - line.baseline) > 0.000001)
+      )
+        throw Error('Native text did not retain the owned frame placement plan.');
     }
     end = line.end;
   }
   if (end !== result.layout.coveredLength)
     throw Error('Native text coverage disagrees with its lines.');
+  if (request.protocol === 3) {
+    const visible = request.placements.filter((line) => line.frame < request.frames.length);
+    if (visible.length !== result.layout.lines.length || end !== (visible.at(-1)?.end ?? 0))
+      throw Error('Native text did not retain the complete visible frame placement plan.');
+  }
 }
 function fragmentsFor(source, result, columns, flow, fragments, prefix) {
   let nativeEnd = 0,
@@ -388,21 +404,28 @@ function projectNativeFlow(doc, flow, fonts) {
     throw new UnsupportedComposition('optical kerning');
   const columns = nativeFlowColumns(doc, flow);
   for (const paragraph of source.paragraphs) {
-    for (const column of columns) {
-      paragraphLineArea(paragraph, column.width, true);
-      paragraphLineArea(paragraph, column.width);
-    }
+    const fits = (column) => {
+      try {
+        paragraphLineArea(paragraph, column.width, true);
+        paragraphLineArea(paragraph, column.width);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (flow.composition?.composer === 'paragraph') {
+      if (!columns.some(fits)) throw Error('Paragraph indents leave no valid frame width.');
+    } else
+      for (const column of columns) {
+        paragraphLineArea(paragraph, column.width, true);
+        paragraphLineArea(paragraph, column.width);
+      }
     if (
       source.text.slice(paragraph.start, paragraph.end).includes('\t') &&
       !['left', 'start'].includes(paragraph.align)
     )
       throw new UnsupportedComposition('tabs combined with non-left paragraph alignment');
   }
-  if (
-    flow.composition?.composer === 'paragraph' &&
-    columns.some((column) => Math.abs(column.width - columns[0].width) > 0.000001)
-  )
-    throw new UnsupportedComposition('paragraph composition across unequal column widths');
   return source;
 }
 
@@ -456,7 +479,7 @@ export async function composeNativeTextFlows(
       source = projectNativeFlow(projection, flow, fonts);
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
     const request = {
-        protocol: source.protocol,
+        protocol: flow.composition.composer === 'paragraph' ? 3 : source.protocol,
         id: source.id,
         sourceHTML: source.sourceHTML,
         sourceDigest: await sha(new TextEncoder().encode(source.sourceHTML)),
@@ -512,8 +535,16 @@ export async function composeNativeTextFlows(
       const input = {
         ...request,
         frames: transportFrames(columns),
-        mode: decision ? 'explicit-lines-proof' : 'greedy-geometry-proof',
-        ...(decision ? { breaks: decision.breaks } : {}),
+        mode: decision?.placements
+          ? 'planned-lines-proof'
+          : decision
+            ? 'explicit-lines-proof'
+            : 'greedy-geometry-proof',
+        ...(decision?.placements
+          ? { placements: decision.placements }
+          : decision
+            ? { breaks: decision.breaks }
+            : {}),
       };
       result = await composeRequest(compose, input);
       validateResult(result, input);

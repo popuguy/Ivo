@@ -313,3 +313,137 @@ test('whole-flow admission budgets remain in effect for repeated and already mea
     /flow decision budget/,
   );
 });
+
+function frameBackend(transform = (result) => result) {
+  return backend((result, query) => {
+    for (const row of result.measurements) {
+      const large = query.text.slice(row.start, row.end).includes('LARGE');
+      Object.assign(row, {
+        ascent: large ? 18 : 8,
+        descent: large ? 4 : 2,
+        advance: large ? 24 : 12,
+        capHeight: large ? 13 : 6,
+        xHeight: large ? 9 : 4,
+        leading: 0,
+      });
+    }
+    return transform(result, query);
+  });
+}
+const flowRequest = (text, styles) => ({ ...paragraphRequest(text, styles), protocol: 3 });
+test('frame fitting carries exact measured heights through unequal columns and independent paragraphs', async () => {
+  const service = frameBackend(),
+    composer = createParagraphComposer(service.measure),
+    req = flowRequest('aaa bbb LARGE ccc ddd eee\u2029Next paragraph.\u2029', [
+      { leftIndent: 1, firstLineIndent: 2, paragraphAfter: 4 },
+      { paragraphBefore: 3 },
+    ]),
+    frames = [
+      { width: 14, height: 26 },
+      { width: 24, height: 80, firstBaseline: 'cap-height', minimumFirstBaseline: 10 },
+    ],
+    before = structuredClone(req),
+    result = await composer.compose(req, frames);
+  assert.deepEqual(req, before);
+  assert.equal(result.placements.at(-1).end, req.text.length);
+  assert(result.placements.some((line) => line.frame === 1));
+  let start = 0;
+  for (const line of result.placements) {
+    const text = req.text.slice(start, line.end),
+      large = text.includes('LARGE');
+    assert(text.trimEnd().length <= line.width);
+    assert(line.baseline + (large ? 4 : 2) <= frames[line.frame].height);
+    start = line.end;
+  }
+  const warm = await composer.compose(req, frames);
+  assert.deepEqual(warm.placements, result.placements);
+  assert.equal(warm.work.backendCalls, 0);
+  assert.equal(warm.work.reusedDecisions, 2);
+  const narrower = structuredClone(frames);
+  narrower[1].width = 18;
+  narrower[1].height = 70;
+  const changed = await composer.compose(req, narrower);
+  assert.equal(changed.work.backendCalls, 0);
+  assert.deepEqual(
+    changed.placements,
+    (await createParagraphComposer(frameBackend().measure).compose(req, narrower)).placements,
+  );
+});
+
+test('frame planning skips indented unusable columns and retains future overset without changing the actual frames', async () => {
+  const service = frameBackend(),
+    composer = createParagraphComposer(service.measure),
+    req = flowRequest('aaa bbb ccc ddd eee fff\u2029', [{ leftIndent: 8 }]),
+    frames = [
+      { width: 6, height: 30 },
+      { width: 14, height: 12 },
+    ],
+    before = structuredClone(frames),
+    result = await composer.compose(req, frames);
+  assert.equal(result.placements[0].frame, 1);
+  assert(result.placements.at(-1).frame >= frames.length);
+  assert.deepEqual(frames, before);
+  req.paragraphs[0].leftIndent = 15;
+  const calls = service.calls.length;
+  await assert.rejects(composer.compose(req, frames), /outside all/);
+  assert.equal(service.calls.length, calls);
+});
+
+test('final center/bottom alignment translates owned baselines once and cannot poison cached top alignment', async () => {
+  const composer = createParagraphComposer(frameBackend().measure),
+    req = flowRequest('short\u2029'),
+    frames = [{ width: 20, height: 100 }],
+    top = await composer.compose(req, frames);
+  for (const [verticalAlign, expected] of [
+    ['center', 53],
+    ['bottom', 98],
+  ]) {
+    const result = await composer.compose(req, [{ ...frames[0], verticalAlign }]);
+    assert.equal(result.placements[0].baseline, expected);
+    assert.equal(result.work.backendCalls, 0);
+  }
+  assert.deepEqual((await composer.compose(req, frames)).placements, top.placements);
+  assert.equal(top.placements[0].baseline, 8);
+});
+
+test('invalid exact metric batches are atomic and retryable', async () => {
+  for (const corrupt of [
+    (r) => {
+      delete r.measurements[0].ascent;
+    },
+    (r) => {
+      r.measurements[0].advance = 0;
+    },
+    (r) => {
+      r.measurements[0].descent = NaN;
+    },
+  ]) {
+    let invalid = true;
+    const service = frameBackend((result) => {
+        if (invalid) corrupt(result);
+        return result;
+      }),
+      composer = createParagraphComposer(service.measure),
+      req = flowRequest('one two three\u2029'),
+      frames = [{ width: 10, height: 40 }];
+    await assert.rejects(composer.compose(req, frames), /valid line metrics/);
+    invalid = false;
+    const result = await composer.compose(req, frames);
+    assert.equal(result.work.reusedParagraphs, 0);
+    assert.equal(result.placements.at(-1).end, req.text.length);
+  }
+});
+
+test('frame planner yields to pending input tasks during preparation and exact fitting', async () => {
+  const composer = createParagraphComposer(frameBackend().measure),
+    req = flowRequest('word '.repeat(120) + '\u2029');
+  let tasks = 0;
+  const timer = setInterval(() => tasks++, 0);
+  try {
+    const result = await composer.compose(req, [{ width: 50, height: 300 }]);
+    assert(result.placements.length > 1);
+    assert(tasks > 2, 'Bounded work must allow scheduled input/camera tasks to run');
+  } finally {
+    clearInterval(timer);
+  }
+});

@@ -12,6 +12,7 @@ import {
 } from '../../../src/domain/documents/publishing.js';
 import {
   startTextFlow,
+  threadFrame,
   enableNativeComposition,
 } from '../../../src/domain/documents/text-flows.js';
 import { app, ipcMain, nativeImage } from 'electron';
@@ -26,6 +27,7 @@ import { installTextCompositionBridge } from '../../../desktop/text-composition-
 import { createTextComposition } from '../../../desktop/text-composition.mjs';
 import { buildNativeText } from '../../../scripts/build-native-text.mjs';
 let compositionBridge;
+const nativeCompositions = [];
 const renderPDF = (snapshot, options) =>
   renderNativePDF(snapshot, {
     ...options,
@@ -56,7 +58,18 @@ app
     compositionBridge = installTextCompositionBridge({
       ipcMain,
       authorize: pdfRendererOwner,
-      createService: async () => createTextComposition(await buildNativeText()),
+      createService: async () => {
+        const service = createTextComposition(await buildNativeText());
+        return {
+          compose: async (request) => {
+            const result = await service.compose(request);
+            nativeCompositions.push({ request, result });
+            return result;
+          },
+          pdf: service.pdf,
+          close: service.close,
+        };
+      },
     });
     await mkdir(output, { recursive: true });
     const a = createSceneDocument('PDF typography'),
@@ -382,6 +395,220 @@ app
       path.join(output, 'native-source.json'),
       JSON.stringify(nativeSnapshot, null, 2),
     );
+    const unequalDoc = createSceneDocument('Unequal native paragraph PDF', {
+        width: 420,
+        height: 360,
+      }),
+      paragraphWords = Array.from(
+        { length: 80 },
+        (_, index) => 'word' + String(index).padStart(3, '0'),
+      ),
+      paragraphHTML =
+        '<p data-ivo-left="12" data-ivo-right="8" data-ivo-first="6" data-ivo-after="5"><span data-ivo-size="22" data-ivo-leading="28">' +
+        paragraphWords[0] +
+        '</span> <em>' +
+        paragraphWords[1] +
+        '</em> ' +
+        paragraphWords.slice(2, 30).join(' ') +
+        '</p>' +
+        '<p data-ivo-align="center" data-ivo-left="18" data-ivo-right="10" data-ivo-before="8" data-ivo-after="6">' +
+        paragraphWords.slice(30, 55).join(' ') +
+        '</p>' +
+        '<p data-ivo-align="right" data-ivo-left="10" data-ivo-right="12" data-ivo-before="7">' +
+        paragraphWords.slice(55).join(' ') +
+        '</p>',
+      unequalFirst = insertObject(unequalDoc, 'text', {
+        x: 42,
+        y: 52,
+        w: 156,
+        h: 112,
+        textStyle: 'cmu-serif',
+        fontSize: 16,
+        leading: 20,
+        frameOptions: { firstBaseline: 'fixed', minimumFirstBaseline: 40, verticalAlign: 'top' },
+        html: paragraphHTML,
+      }),
+      unequalFlow = startTextFlow(unequalDoc, unequalFirst.id, { automaticPages: false }),
+      unequalSecondPage = addPage(unequalDoc, unequalDoc.pages[0].id),
+      unequalSecond = insertObject(unequalDoc, 'text', {
+        pageId: unequalSecondPage.id,
+        x: 55,
+        y: 45,
+        w: 244,
+        h: 142,
+        frameOptions: { firstBaseline: 'ascent', verticalAlign: 'center' },
+      }),
+      unequalThirdPage = addPage(unequalDoc, unequalSecondPage.id),
+      unequalThird = insertObject(unequalDoc, 'text', {
+        pageId: unequalThirdPage.id,
+        x: 38,
+        y: 40,
+        w: 356,
+        h: 280,
+        frameOptions: { firstBaseline: 'ascent', verticalAlign: 'bottom' },
+      });
+    Object.assign(unequalSecondPage, { width: 600, height: 420 });
+    Object.assign(unequalThirdPage, { width: 480, height: 400 });
+    threadFrame(unequalDoc, unequalFirst.id, unequalSecond.id);
+    threadFrame(unequalDoc, unequalSecond.id, unequalThird.id);
+    enableNativeComposition(unequalDoc, unequalFlow, 'paragraph');
+    const unequalFrames = [unequalFirst, unequalSecond, unequalThird],
+      unequalSnapshot = createPDFSnapshot([unequalDoc], [], unequalDoc.id),
+      unequalBefore = JSON.stringify(unequalSnapshot),
+      unequalPDF = await renderPDF(unequalSnapshot, {
+        project: root,
+        onRendered: async (window) => {
+          const result = await window.webContents.executeJavaScript(`({
+            frames:document.querySelectorAll('svg[data-composed-text]').length,
+            browserInk:document.querySelectorAll('[data-flow-frame] [data-flow-text]').length,
+            glyphs:document.querySelectorAll('svg[data-composed-text] use').length
+          })`);
+          assert.equal(result.frames, 3, 'Unequal PDF did not paint all three native frames');
+          assert.equal(result.browserInk, 0, 'Unequal PDF painted duplicate browser ink');
+          assert(result.glyphs > 300, 'Unequal PDF did not paint actual vector glyphs');
+        },
+      });
+    assert.equal(
+      JSON.stringify(unequalSnapshot),
+      unequalBefore,
+      'Unequal paragraph PDF changed authored source or frame geometry',
+    );
+    assert.deepEqual(unequalPDF.manifest.warnings, []);
+    assert.equal(unequalPDF.manifest.composedText.length, 1);
+    const unequalLayer = unequalPDF.manifest.composedText[0],
+      unequalComposition = nativeCompositions.findLast(
+        ({ result }) => result.token === unequalLayer.token,
+      );
+    assert(unequalComposition, 'Unequal PDF has no matching actual native request');
+    const { request: unequalRequest, result: unequalResult } = unequalComposition;
+    assert.equal(unequalRequest.protocol, 3);
+    assert.equal(unequalRequest.mode, 'planned-lines-proof');
+    assert.deepEqual(
+      unequalRequest.frames.map((frame) => frame.width),
+      [156, 244, 356],
+    );
+    assert.equal(
+      unequalResult.layout.coveredLength,
+      unequalRequest.text.length,
+      'Unequal PDF is unexpectedly overset',
+    );
+    assert.equal(unequalLayer.placements.length, 3, 'Frozen PDF lost unequal frame placements');
+    assert.deepEqual(
+      unequalLayer.placements.map((placement) => placement.destinationPageIndex),
+      [0, 1, 2],
+    );
+    assert.deepEqual(
+      unequalLayer.placements.map((placement) => placement.sourcePageIndex),
+      [0, 1, 2],
+    );
+    assert.equal(unequalResult.layout.lines.length, unequalRequest.placements.length);
+    const unequalParsed = await PDFDocument.load(unequalPDF.bytes);
+    assert.deepEqual(
+      unequalParsed.getPages().map((page) => page.getSize()),
+      [
+        { width: 420, height: 360 },
+        { width: 600, height: 420 },
+        { width: 480, height: 400 },
+      ],
+    );
+    const expectedParagraphLines = unequalResult.layout.lines.map((line, index) => {
+      const placement = unequalRequest.placements[index],
+        frame = unequalFrames[placement.frame];
+      assert.equal(line.placementIndex, index);
+      assert.equal(line.frame, unequalRequest.frames[placement.frame].id);
+      assert.equal(line.end, placement.end);
+      assert(Math.abs(line.baseline - placement.baseline) < 0.001);
+      return {
+        page: placement.frame,
+        baseline: frame.y + line.baseline,
+        ascent: line.ascent,
+        descent: line.descent,
+        words: [
+          ...unequalRequest.text.slice(line.start, line.contentEnd).matchAll(/word[0-9]{3}/g),
+        ].map((match) => {
+          const caret = line.carets.find((item) => item.index === line.start + match.index);
+          assert(caret, 'Unequal PDF source word has no native caret');
+          return { text: match[0], left: frame.x + caret.primary };
+        }),
+      };
+    });
+    assert.deepEqual([...new Set(expectedParagraphLines.map((line) => line.page))], [0, 1, 2]);
+    assert.equal(expectedParagraphLines.flatMap((line) => line.words).length, 80);
+    await writeFile(path.join(output, 'native-unequal-paragraph.pdf'), unequalPDF.bytes);
+    await writeFile(
+      path.join(output, 'native-unequal-paragraph-source.json'),
+      JSON.stringify(unequalSnapshot, null, 2),
+    );
+    await writeFile(
+      path.join(output, 'native-unequal-paragraph-plan.json'),
+      JSON.stringify(
+        {
+          protocol: unequalRequest.protocol,
+          mode: unequalRequest.mode,
+          text: unequalRequest.text,
+          frames: unequalRequest.frames,
+          placements: unequalRequest.placements,
+          expectedLines: expectedParagraphLines,
+        },
+        null,
+        2,
+      ),
+    );
+    // PDFKit reads final printed bytes independently of renderer DOM or SVG geometry.
+    const paragraphInspector = path.join(profile, 'inspect-native-unequal-paragraph.swift');
+    await writeFile(
+      paragraphInspector,
+      `import Foundation
+import PDFKit
+let input = CommandLine.arguments[1]
+let plan = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2]))) as! [String: Any]
+let lines = plan["expectedLines"] as! [[String: Any]]
+guard let document = PDFDocument(url: URL(fileURLWithPath: input)), document.pageCount == 3 else { fatalError("Unequal paragraph PDF is not a readable three-page document") }
+let expression = try NSRegularExpression(pattern: "word[0-9]{3}")
+var words: [String] = []
+var locations: [String: (PDFPage, NSRange)] = [:]
+for index in 0..<document.pageCount {
+  let page = document.page(at: index)!, text = page.string ?? ""
+  for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+    let word = (text as NSString).substring(with: match.range)
+    words.append(word)
+    precondition(locations[word] == nil, "Printed PDF repeats a source word")
+    locations[word] = (page, match.range)
+  }
+}
+precondition(words == (0..<80).map { String(format: "word%03d", $0) }, "Printed unequal PDF lost, duplicated or reordered source words")
+var checked = 0
+for line in lines {
+  let pageIndex = line["page"] as! Int, baseline = line["baseline"] as! Double, ascent = line["ascent"] as! Double
+  let expectedWords = line["words"] as! [[String: Any]]
+  var rowTops: [Double] = []
+  for expected in expectedWords {
+    let word = expected["text"] as! String, left = expected["left"] as! Double
+    guard let (page, range) = locations[word] else { fatalError("Printed word is not selectable") }
+    precondition(document.index(for: page) == pageIndex, "Printed word moved to the wrong unequal frame page")
+    let first = page.selection(for: NSRange(location: range.location, length: 1))!.bounds(for: page)
+    let top = page.bounds(for: .mediaBox).height - first.maxY
+    precondition(abs(first.minX - left) < 0.05, "Printed word left edge disagrees with native caret placement")
+    precondition(top < baseline + 0.1 && top > baseline - ascent - 1, "Printed line does not occupy its planned baseline band")
+    if word != "word000" && word != "word001" { rowTops.append(top) }
+    checked += 1
+  }
+  if let first = rowTops.first { precondition(rowTops.allSatisfy { abs($0 - first) < 0.05 }, "Printed words on one native line disagree vertically") }
+}
+let summary: [String: Any] = ["unequalParagraphPDFWords":80, "independentLineGeometry":true, "checkedWords":checked]
+let summaryData = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
+print(String(data: summaryData, encoding: .utf8)!)
+`,
+    );
+    const inspectedParagraph = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      paragraphInspector,
+      path.join(output, 'native-unequal-paragraph.pdf'),
+      path.join(output, 'native-unequal-paragraph-plan.json'),
+    ]);
+    const unequalParagraphPDFInspection = JSON.parse(inspectedParagraph.stdout);
     const wrapDoc = createSceneDocument('Object wrap PDF', { width: 500, height: 500 }),
       wrapSource = Array.from({ length: 100 }, (_, i) => 'word' + String(i).padStart(3, '0')).join(
         ' ',
@@ -498,6 +725,8 @@ app
           publishingFontsParentsLayersHighlights: true,
           nativeRotatedScaledMaskedItalicText: true,
           nativeParagraphLayout: true,
+          nativeUnequalParagraphPlacements: true,
+          unequalParagraphPDFInspection,
           nativeFontNames: [...nativeFonts],
           wrappedTextSourceAndExclusion: true,
           clippedGraphicWrapping: true,

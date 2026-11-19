@@ -9,9 +9,11 @@ import { PDFDocument } from 'pdf-lib';
 import { buildNativeText } from '../../../scripts/build-native-text.mjs';
 import { createTextComposition } from '../../../desktop/text-composition.mjs';
 import { installTextCompositionBridge } from '../../../desktop/text-composition-bridge.mjs';
+import { prepareBackgroundTest, testWindowOptions } from '../helpers/background.mjs';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url)),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-native-bridge-'));
+prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 let bridge;
@@ -41,16 +43,18 @@ app.whenReady().then(async () => {
       },
     });
     for (const preload of ['preload.cjs', 'pdf-preload.cjs']) {
-      const window = new BrowserWindow({
-        show: false,
-        webPreferences: {
-          preload: path.join(root, 'desktop', preload),
-          contextIsolation: true,
-          sandbox: true,
-          nodeIntegration: false,
-          partition: 'native-bridge-' + crypto.randomUUID(),
-        },
-      });
+      const window = new BrowserWindow(
+        testWindowOptions({
+          show: false,
+          webPreferences: {
+            preload: path.join(root, 'desktop', preload),
+            contextIsolation: true,
+            sandbox: true,
+            nodeIntegration: false,
+            partition: 'native-bridge-' + crypto.randomUUID(),
+          },
+        }),
+      );
       const url = pathToFileURL(
         path.join(root, 'tests/runtime/text-composition-bridge/fixture.html'),
       ).href;
@@ -127,6 +131,49 @@ app.whenReady().then(async () => {
         ').then(() => "allowed",error => error.message)',
     );
     assert.match(invalid, /byte-only/);
+    const planned = {
+      ...request,
+      protocol: 3,
+      mode: 'planned-lines-proof',
+      paragraphs: [
+        {
+          start: 0,
+          end: text.length,
+          align: 'right',
+          leftIndent: 10,
+          rightIndent: 10,
+          firstLineIndent: 0,
+          paragraphBefore: 0,
+          paragraphAfter: 0,
+        },
+      ],
+      placements: [{ end: text.length, frame: 0, baseline: 20, left: 10, width: 180 }],
+    };
+    for (const window of windows) {
+      const result = await window.webContents.executeJavaScript(
+        'ivoTextComposition.compose(' + JSON.stringify(planned) + ')',
+      );
+      assert.equal(result.protocol, 3);
+      assert.equal(result.layout.lines[0].placementIndex, 0);
+      assert.equal(result.layout.lines[0].baseline, 20);
+      assert.equal(result.layout.lines[0].availableWidth, 180);
+      assert(result.layout.lines[0].originX > 10);
+      const invalid = await window.webContents.executeJavaScript(
+        'ivoTextComposition.compose(' +
+          JSON.stringify({
+            ...planned,
+            placements: [{ ...planned.placements[0], outputPath: '/forbidden' }],
+          }) +
+          ').then(() => "allowed", error => error.message)',
+      );
+      assert.match(invalid, /byte-only/);
+      const downgrade = await window.webContents.executeJavaScript(
+        'ivoTextComposition.compose(' +
+          JSON.stringify({ ...planned, protocol: 2 }) +
+          ').then(() => "allowed", error => error.message)',
+      );
+      assert.match(downgrade, /protocol/);
+    }
     console.log(
       JSON.stringify({
         ok: true,
@@ -135,6 +182,7 @@ app.whenReady().then(async () => {
         ownedTokens: true,
         noPaths: true,
         exactNativePDF: true,
+        exactPlannedTransport: true,
       }),
     );
   } catch (error) {

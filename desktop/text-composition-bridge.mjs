@@ -12,6 +12,7 @@ const fields = {
     'spans',
     'runs',
     'paragraphs',
+    'placements',
     'resources',
     'frames',
     'allowFallback',
@@ -45,6 +46,7 @@ const fields = {
     'rightIndent',
     'firstLineIndent',
   ],
+  placement: ['end', 'frame', 'baseline', 'left', 'width'],
 };
 const plain = (value) =>
   value &&
@@ -59,9 +61,12 @@ function record(value, allowed) {
 export function validateCompositionRequest(request) {
   record(request, fields.request);
   if (
-    ![1, 2].includes(request.protocol) ||
+    ![1, 2, 3].includes(request.protocol) ||
     (request.protocol === 1 && request.paragraphs !== undefined) ||
-    (request.protocol === 2 && !Array.isArray(request.paragraphs))
+    (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
+    (request.protocol < 3 && request.placements !== undefined) ||
+    (request.mode === 'planned-lines-proof' &&
+      (request.protocol !== 3 || !Array.isArray(request.placements)))
   )
     throw Error('Invalid text composition paragraph protocol.');
   const arrays = [
@@ -70,6 +75,7 @@ export function validateCompositionRequest(request) {
     ['resources', 16, 'resource'],
     ['frames', 128, 'frame'],
     ['paragraphs', 10000, 'paragraph'],
+    ['placements', 2048, 'placement'],
     ['candidates', 4096, 'candidate'],
     ['breaks', 2048, null],
   ];
@@ -85,7 +91,8 @@ export function validateCompositionRequest(request) {
   for (const [key, value] of Object.entries(request)) if (!arrayFields.has(key)) atom(value);
   for (const [name, maximum, shape] of arrays) {
     const value = request[name];
-    if (value === undefined && ['candidates', 'breaks', 'paragraphs'].includes(name)) continue;
+    if (value === undefined && ['candidates', 'breaks', 'paragraphs', 'placements'].includes(name))
+      continue;
     if (!Array.isArray(value) || value.length > maximum)
       throw Error('Invalid text composition ' + name + '.');
     for (const row of value) {

@@ -1,6 +1,7 @@
 import { chooseParagraphBreaks } from '../../domain/text/paragraph-breaks.js';
 import { UnsupportedComposition } from './composition-source.js';
 import { paragraphLayout, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
+import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
 
 const MAX_POINTS = 1024,
   MAX_ALTERNATIVES = 100000,
@@ -77,6 +78,7 @@ function paragraphIdentity(request, paragraph) {
   // Exact face identity and every transported shaping attribute do.
   return JSON.stringify({
     protocol: request.protocol,
+    frameMetrics: request.protocol >= 3,
     allowFallback: request.allowFallback,
     text: paragraph.text,
     ...(paragraph.text.includes('\t')
@@ -90,6 +92,100 @@ function paragraphIdentity(request, paragraph) {
   });
 }
 
+const frameShape = (column) => ({
+  width: column.width,
+  height: column.height,
+  firstBaseline: column.firstBaseline || 'ascent',
+  minimumFirstBaseline: column.minimumFirstBaseline || 0,
+  verticalAlign: column.verticalAlign || 'top',
+});
+
+async function fitFrameParagraphs(paragraphs, actualColumns, work, rememberDecision) {
+  const columns = actualColumns.map(frameShape);
+  while (columns.length < 128) columns.push({ ...columns.at(-1) });
+  const columnKey = JSON.stringify(actualColumns.map(frameShape)),
+    lines = [];
+  let cursor = { frame: 0, baseline: null },
+    previousAfter = 0,
+    states = 0,
+    candidates = 0,
+    policy;
+  for (const paragraph of paragraphs) {
+    const key = 'flow:' + JSON.stringify([columnKey, paragraph.layout, cursor, previousAfter]),
+      entry = paragraph.entry;
+    let chosen = entry.decisions.get(key);
+    if (chosen) work.reusedDecisions++;
+    else {
+      const steps = paragraphFlowSteps({
+        start: 0,
+        end: paragraph.text.length,
+        opportunities: paragraph.opportunities,
+        measurements: entry.measurements,
+        columns,
+        layout: paragraph.layout,
+        cursor,
+        previousAfter,
+        maxStates: MAX_STATES - states,
+        maxCandidates: MAX_DECISIONS - candidates,
+      });
+      let step = steps.next();
+      while (!step.done) {
+        // Pure fitting yields bounded work so camera/input tasks can run.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        step = steps.next();
+      }
+      chosen = step.value;
+      if (chosen.status !== 'fit')
+        throw new UnsupportedComposition('paragraph frame fitting (' + chosen.reason + ')');
+      rememberDecision(entry, key, chosen);
+    }
+    states += chosen.states;
+    candidates += chosen.candidates;
+    if (
+      states > MAX_STATES ||
+      candidates > MAX_DECISIONS ||
+      lines.length + chosen.lines.length > MAX_LINES
+    )
+      throw new UnsupportedComposition('paragraph fitting (flow decision budget)');
+    lines.push(
+      ...chosen.lines.map((line) => ({
+        ...line,
+        start: line.start + paragraph.start,
+        end: line.end + paragraph.start,
+      })),
+    );
+    cursor = chosen.cursor;
+    previousAfter = paragraph.layout.paragraphAfter;
+    policy = chosen.policy;
+  }
+  // Vertical alignment changes final presentation, never break decisions.
+  for (const [index, column] of columns.entries()) {
+    const own = lines.filter((line) => line.frame === index);
+    if (!own.length) continue;
+    const last = own.at(-1),
+      remaining = Math.max(0, column.height - last.baseline - last.descent),
+      offset =
+        column.verticalAlign === 'bottom'
+          ? remaining
+          : column.verticalAlign === 'center'
+            ? remaining / 2
+            : 0;
+    if (offset) for (const line of own) line.baseline += offset;
+  }
+  return {
+    breaks: lines.map((line) => line.end),
+    placements: lines.map(({ end, frame, baseline, left, width }) => ({
+      end,
+      frame,
+      baseline,
+      left,
+      width,
+    })),
+    policy,
+    work: { ...work, states, candidates },
+  };
+}
+
 /**
  * Per-backend bounded LRU of paragraph-local measurements, never saved content.
  * Missing alternatives are batched using the real whole-source request. We do
@@ -98,34 +194,66 @@ function paragraphIdentity(request, paragraph) {
 export function createParagraphComposer(measure) {
   const cache = new Map();
   let bytes = 0;
+  const trim = () => {
+    while (cache.size > CACHE_ENTRIES || bytes > CACHE_BYTES) {
+      const [oldest, value] = cache.entries().next().value;
+      cache.delete(oldest);
+      bytes -= value.bytes;
+    }
+  };
+  const rememberDecision = (entry, key, value) => {
+    const retained = cache.get(entry.key) === entry,
+      prior = entry.decisions.get(key),
+      cost = key.length * 2 + JSON.stringify(value).length * 2;
+    if (prior) {
+      entry.bytes -= prior.cacheBytes;
+      if (retained) bytes -= prior.cacheBytes;
+    }
+    entry.decisions.delete(key);
+    entry.decisions.set(key, { ...value, cacheBytes: cost });
+    entry.bytes += cost;
+    if (retained) bytes += cost;
+    while (entry.decisions.size > 4) {
+      const [oldest, removed] = entry.decisions.entries().next().value;
+      entry.decisions.delete(oldest);
+      entry.bytes -= removed.cacheBytes;
+      if (retained) bytes -= removed.cacheBytes;
+    }
+    trim();
+  };
   const remember = (key, measurements) => {
     if (cache.has(key)) {
       bytes -= cache.get(key).bytes;
       cache.delete(key);
     }
     const entry = {
+      key,
       measurements,
       decisions: new Map(),
-      bytes: key.length * 2 + measurements.length * 48,
+      bytes:
+        key.length * 2 + measurements.length * (measurements[0]?.ascent === undefined ? 48 : 112),
     };
     cache.set(key, entry);
     bytes += entry.bytes;
-    while (cache.size > CACHE_ENTRIES || bytes > CACHE_BYTES) {
-      const [oldest, value] = cache.entries().next().value;
-      cache.delete(oldest);
-      bytes -= value.bytes;
-    }
+    trim();
     return entry;
   };
   return {
     async compose(request, columns) {
-      const width = columns[0]?.width;
+      const width = columns[0]?.width,
+        frameFlow = request.protocol >= 3;
       if (
         !Number.isFinite(width) ||
+        columns.length > 128 ||
         width < 0.001 ||
         width > 100000 ||
         columns.some(
-          (column) => !Number.isFinite(column.width) || Math.abs(column.width - width) > 0.000001,
+          (column) =>
+            !Number.isFinite(column.width) ||
+            column.width < 1 ||
+            (frameFlow
+              ? !Number.isFinite(column.height) || column.height < 1
+              : Math.abs(column.width - width) > 0.000001),
         )
       )
         throw new UnsupportedComposition('paragraph composition across unequal column widths');
@@ -140,19 +268,34 @@ export function createParagraphComposer(measure) {
           backendCalls: 0,
           reusedDecisions: 0,
         };
-      if (request.protocol === 2 && request.paragraphs?.length !== paragraphs.length)
+      if (request.protocol >= 2 && request.paragraphs?.length !== paragraphs.length)
         throw Error('Native paragraph metadata does not cover its source.');
       for (const [index, paragraph] of paragraphs.entries()) {
         const authored = request.paragraphs?.[index];
         if (
-          request.protocol === 2 &&
+          request.protocol >= 2 &&
           (authored.start !== paragraph.start ||
             authored.end !== paragraph.start + paragraph.text.length)
         )
           throw Error('Native paragraph metadata does not match its source.');
         paragraph.layout = paragraphLayout(authored);
-        paragraph.firstWidth = paragraphLineArea(paragraph.layout, width, true).width;
-        paragraph.restWidth = paragraphLineArea(paragraph.layout, width).width;
+        if (
+          frameFlow &&
+          !columns.some((column) => {
+            try {
+              paragraphLineArea(paragraph.layout, column.width, true);
+              paragraphLineArea(paragraph.layout, column.width);
+              return true;
+            } catch {
+              return false;
+            }
+          })
+        )
+          throw new UnsupportedComposition('paragraph indents outside all available frames');
+        if (!frameFlow) {
+          paragraph.firstWidth = paragraphLineArea(paragraph.layout, width, true).width;
+          paragraph.restWidth = paragraphLineArea(paragraph.layout, width).width;
+        }
         const key = paragraphIdentity(request, paragraph),
           prior = cache.get(key);
         if (prior) {
@@ -181,7 +324,7 @@ export function createParagraphComposer(measure) {
           candidates = batch.map(({ group, candidate }) => ({
             start: candidate.start + group.paragraphs[0].start,
             end: candidate.end + group.paragraphs[0].start,
-            ...(request.protocol === 2 && group.paragraphs[0].text.includes('\t')
+            ...(request.protocol >= 2 && group.paragraphs[0].text.includes('\t')
               ? {
                   offset:
                     group.paragraphs[0].layout.leftIndent +
@@ -213,7 +356,20 @@ export function createParagraphComposer(measure) {
             measurement.width > 1000000
           )
             throw Error('Native paragraph measurement does not match its requested alternative.');
-          group.measurements.push({ ...candidate, width: measurement.width });
+          const metrics = {};
+          if (frameFlow) {
+            for (const key of ['ascent', 'descent', 'advance', 'capHeight', 'xHeight', 'leading']) {
+              if (
+                !Number.isFinite(measurement[key]) ||
+                measurement[key] < 0 ||
+                measurement[key] > 100000 ||
+                (key === 'advance' && measurement[key] === 0)
+              )
+                throw Error('Native paragraph measurement lacks valid line metrics.');
+              metrics[key] = measurement[key];
+            }
+          }
+          group.measurements.push({ ...candidate, width: measurement.width, ...metrics });
         }
         work.backendCalls++;
         work.measuredCandidates += batch.length;
@@ -223,6 +379,10 @@ export function createParagraphComposer(measure) {
       for (const group of missing.values()) {
         const entry = remember(group.key, group.measurements);
         for (const paragraph of group.paragraphs) paragraph.entry = entry;
+      }
+      if (frameFlow) {
+        const result = await fitFrameParagraphs(paragraphs, columns, work, rememberDecision);
+        return { ...result, work: { ...result.work, cacheEntries: cache.size, cacheBytes: bytes } };
       }
       const breaks = [];
       let states = 0,
@@ -260,8 +420,7 @@ export function createParagraphComposer(measure) {
           };
           // Four exact widths per paragraph; decisions retain only source ends.
           // Their storage is bounded separately (64 * 4 * 1023 ends at most).
-          entry.decisions.set(decisionKey, chosen);
-          if (entry.decisions.size > 4) entry.decisions.delete(entry.decisions.keys().next().value);
+          rememberDecision(entry, decisionKey, chosen);
         }
         states += chosen.states;
         candidates += chosen.candidates;

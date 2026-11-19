@@ -102,41 +102,61 @@ function port() {
         measurements: request.candidates.map((part) => ({
           ...part,
           width: request.text.slice(part.start, part.end).trim().length * 5,
+          ascent: 15,
+          descent: 4,
+          advance: 20,
+          capHeight: 11,
+          xHeight: 8,
+          leading: 0,
         })),
       };
     let start = 0;
     const lines = [];
-    for (const frame of request.frames)
-      for (let row = 0; row < Math.floor(frame.height / 20) && start < request.text.length; row++) {
-        const paragraph = request.paragraphs.find((p) => p.start <= start && p.end > start),
-          originX =
-            paragraph.leftIndent + (start === paragraph.start ? paragraph.firstLineIndent : 0),
-          availableWidth = frame.width - originX - paragraph.rightIndent,
-          end =
-            request.breaks?.find((end) => end > start) ??
-            Math.min(paragraph.end, start + Math.floor(availableWidth / 5)),
-          contentEnd = /[\u2028\u2029]/.test(request.text[end - 1]) ? end - 1 : end;
-        lines.push({
-          frame: frame.id,
-          start,
-          end,
-          contentEnd,
-          originX,
-          availableWidth,
-          paragraphStart: paragraph.start,
-          paragraphEnd: paragraph.end,
-          baseline: 15 + row * 20,
-          ascent: 15,
-          descent: 4,
-          leading: 0,
-          advance: 20,
-          width: (contentEnd - start) * 5,
-          visibleWidth: request.text.slice(start, contentEnd).trim().length * 5,
-          carets: [],
-          runs: [],
-        });
-        start = end;
-      }
+    const rows = request.placements
+      ? request.placements
+          .filter((p) => p.frame < request.frames.length)
+          .map((p, placementIndex) => ({ ...p, placementIndex, frame: request.frames[p.frame] }))
+      : request.frames.flatMap((frame) =>
+          Array.from({ length: Math.floor(frame.height / 20) }, (_, row) => ({
+            frame,
+            baseline: 15 + row * 20,
+          })),
+        );
+    for (const row of rows) {
+      if (start >= request.text.length) break;
+      const frame = row.frame;
+      const paragraph = request.paragraphs.find((p) => p.start <= start && p.end > start),
+        originX =
+          row.left ??
+          paragraph.leftIndent + (start === paragraph.start ? paragraph.firstLineIndent : 0),
+        availableWidth = row.width ?? frame.width - originX - paragraph.rightIndent,
+        end =
+          row.end ??
+          request.breaks?.find((end) => end > start) ??
+          Math.min(paragraph.end, start + Math.floor(availableWidth / 5)),
+        contentEnd = /[\u2028\u2029]/.test(request.text[end - 1]) ? end - 1 : end;
+      lines.push({
+        frame: frame.id,
+        start,
+        end,
+        contentEnd,
+        originX,
+        availableWidth,
+        paragraphStart: paragraph.start,
+        paragraphEnd: paragraph.end,
+        baseline: row.baseline,
+        ...(row.placementIndex !== undefined ? { placementIndex: row.placementIndex } : {}),
+        ascent: 15,
+        descent: 4,
+        leading: 0,
+        advance: 20,
+        width: (contentEnd - start) * 5,
+        visibleWidth: request.text.slice(start, contentEnd).trim().length * 5,
+        carets: [],
+        runs: [],
+      });
+      start = end;
+    }
     return {
       protocol: request.protocol,
       sourceDigest: request.sourceDigest,
@@ -357,7 +377,7 @@ test('allowPages=false reports overset; empty and spaces retain native paragraph
   assert.equal(spaces.compositions[0].source.text, '   \u2029');
   assert.equal(spaces.fragments.get('frame-a').end, 3);
 });
-test('paragraph mode measures actual alternatives then renders explicit owned decisions, with no greedy fallback', async () => {
+test('paragraph mode measures actual alternatives then renders exact owned frame placements, including unequal widths', async () => {
   const doc = fixture({
       composer: 'paragraph',
       text: 'one two three four five six',
@@ -368,25 +388,26 @@ test('paragraph mode measures actual alternatives then renders explicit owned de
   const plan = await composeNativeTextFlows(doc, native);
   assert.deepEqual(
     native.calls.map((r) => r.mode),
-    ['measure-lines-proof', 'explicit-lines-proof'],
+    ['measure-lines-proof', 'planned-lines-proof'],
   );
   const measured = native.calls[0],
     rendered = native.calls[1];
-  assert.equal(rendered.breaks.at(-1), rendered.text.length);
+  assert.equal(rendered.protocol, 3);
+  assert.equal(rendered.placements.at(-1).end, rendered.text.length);
   assert.ok(
-    rendered.breaks.every((end) => measured.candidates.some((candidate) => candidate.end === end)),
+    rendered.placements.every(({ end }) =>
+      measured.candidates.some((candidate) => candidate.end === end),
+    ),
   );
   assert.equal(plan.status.get('flow-a').policy, 'ragged-right-quadratic-v1');
   assert.equal(plan.status.get('flow-a').overset, false);
   const before = structuredClone(doc);
   doc.blocks.push({ ...doc.blocks[0], id: 'frame-b', w: 100 });
   doc.textFlows[0].frameIds.push('frame-b');
-  await assert.rejects(composeNativeTextFlows(doc, native), /unequal column widths/);
-  assert.equal(
-    native.calls.length,
-    2,
-    'Unsupported paragraph geometry must not fall back to greedy',
-  );
+  const unequal = await composeNativeTextFlows(doc, native);
+  assert.equal(unequal.status.get('flow-a').overset, false);
+  assert.equal(native.calls.at(-1).mode, 'planned-lines-proof');
+  assert.equal(native.calls.filter((r) => r.mode === 'measure-lines-proof').length, 1);
   assert.equal(doc.textFlows[0].html, before.textFlows[0].html);
 });
 test('a malformed paragraph batch can retry the same source without retaining a corrupt response', async () => {
@@ -413,6 +434,41 @@ test('a malformed paragraph batch can retry the same source without retaining a 
   const retry = await composeNativeTextFlows(doc, native);
   assert.equal(retry.status.get('flow-a').overset, false);
   assert.equal(native.calls.filter((query) => query.mode === 'measure-lines-proof').length, 2);
+});
+test('malformed planned output is evicted and cannot partially publish automatic pages', async () => {
+  for (const corrupt of [
+    (r) => {
+      r.layout.lines[0].placementIndex++;
+    },
+    (r) => {
+      r.layout.lines[0].baseline++;
+    },
+    (r) => {
+      r.layout.lines[0].availableWidth++;
+    },
+    (r) => {
+      r.layout.lines.pop();
+      r.layout.coveredLength = r.layout.lines.at(-1)?.end ?? 0;
+    },
+  ]) {
+    const doc = fixture({ composer: 'paragraph', automaticPages: true, width: 60, height: 40 }),
+      before = structuredClone(doc),
+      native = port(),
+      originalCompose = native.compose;
+    let invalid = true;
+    native.compose = async (request) => {
+      const result = await originalCompose(request);
+      if (request.mode === 'planned-lines-proof' && invalid) corrupt(result);
+      return result;
+    };
+    await assert.rejects(composeNativeTextFlows(doc, native), /placement plan|paragraph geometry/);
+    assert.deepEqual(doc, before);
+    invalid = false;
+    const retry = await composeNativeTextFlows(doc, native);
+    assert.equal(retry.status.get('flow-a').overset, false);
+    assert(doc.pages.length > 1);
+    assert.equal(doc.textFlows[0].html, before.textFlows[0].html);
+  }
 });
 test('source boundary mapping partitions virtual marks without duplicating the next paragraph', () => {
   const source = {
