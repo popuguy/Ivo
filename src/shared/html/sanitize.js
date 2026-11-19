@@ -38,6 +38,11 @@ const DROP = new Set([
   'INPUT',
   'BUTTON',
   'TEXTAREA',
+  'HEAD',
+  'TITLE',
+  'META',
+  'BASE',
+  'LINK',
 ]);
 export const escapeHTML = (value) =>
   String(value ?? '').replace(
@@ -56,14 +61,21 @@ export function safeURL(value) {
   }
 }
 export function cleanHTML(value) {
-  const source = new DOMParser().parseFromString(String(value || ''), 'text/html');
+  // This input is a fragment, including clipboard selections beginning with a
+  // space. A document parser discards whitespace before its implicit <body>.
+  // Template parsing keeps those source characters and remains inert until the
+  // allowlisted copy below has removed executable/resource-bearing markup.
+  const source = document.createElement('template');
+  source.innerHTML = String(value || '');
   function clean(node) {
     if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
     if (node.nodeType !== Node.ELEMENT_NODE || DROP.has(node.tagName))
       return document.createTextNode('');
     if (
       !TAGS.has(node.tagName) ||
-      (node.tagName === 'SPAN' && node.hasAttribute('data-ivo-decoration-run'))
+      (node.tagName === 'SPAN' &&
+        (node.hasAttribute('data-ivo-decoration-run') ||
+          node.hasAttribute('data-ivo-clipboard-whitespace')))
     ) {
       const frag = document.createDocumentFragment();
       node.childNodes.forEach((c) => frag.append(clean(c)));
@@ -106,7 +118,7 @@ export function cleanHTML(value) {
     return out;
   }
   const host = document.createElement('div');
-  source.body.childNodes.forEach((n) => host.append(clean(n)));
+  source.content.childNodes.forEach((n) => host.append(clean(n)));
   normalizeInlineMetrics(host);
   return host.innerHTML;
 }

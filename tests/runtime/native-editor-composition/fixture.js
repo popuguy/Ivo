@@ -789,6 +789,57 @@ try {
       'Native blank-paragraph insertion reverted to the frame default font size',
     );
     assert(commits === 1, 'Entering a native blank paragraph added an extra authored edit');
+    const beforePaste = doc.textFlows[0].html,
+      transfer = new DataTransfer(),
+      pasteRange = document.createRange();
+    transfer.setData('text/html', ' <em>Native</em>');
+    transfer.setData('text/plain', ' Native');
+    pasteRange.selectNodeContents(input());
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(pasteRange);
+    input().dispatchEvent(
+      new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: transfer,
+      }),
+    );
+    await settle();
+    const pasted = latest(blank.id),
+      nativeLine = pasted.result.layout.lines[0];
+    assert(
+      pasted.request.text.startsWith(' Native'),
+      'Native paste lost its literal leading space',
+    );
+    assert(
+      nativeLine.carets.find((c) => c.index === 1).primary >
+        nativeLine.carets.find((c) => c.index === 0).primary,
+      'Native leading space did not advance the painted caret',
+    );
+    assert(
+      nativeWordFont('Native').every((font) => /Italic/.test(font)),
+      'Native rich paste lost its exact italic font',
+    );
+    const pastedSource = doc.textFlows[0].html,
+      reopenedPaste = validateImport(
+        JSON.parse(
+          JSON.stringify({
+            schemaVersion: archiveVersion([doc]),
+            documents: [doc],
+            assets: [],
+          }),
+        ),
+      ).documents[0];
+    assert(
+      reopenedPaste.textFlows[0].html === pastedSource,
+      'Native paste changed after archive reopen',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(doc.textFlows[0].html === beforePaste, 'Native paste did not undo in one step');
+    await editor.command('redo');
+    await settle();
+    assert(doc.textFlows[0].html === pastedSource, 'Native paste redo lost source spacing');
     editor.destroy();
     report({
       ok: true,
@@ -801,6 +852,7 @@ try {
       activeEditorWordAndParagraphSelection: true,
       wordGranularityDrag: true,
       styledBlankParagraphInsertion: true,
+      nativeRichClipboardWhitespace: true,
       trustedTyping: true,
       partialItalic: true,
       serializeReopen: true,

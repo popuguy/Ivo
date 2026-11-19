@@ -20,6 +20,14 @@ Native inline formatting that can be represented safely becomes validated source
 
 The regression reported on 18 November is part of this milestone: select part of a flow, use the actual Command-I path, deselect, then save and reopen in a fresh renderer. Tests compare effective regular/italic runs, untouched source outside the range, preview versus editing and undo. Earlier preview-only corrections were insufficient evidence for this native shortcut route.
 
+## Clipboard whitespace
+
+Text selections are HTML fragments, not whole web documents. Sanitization uses inert fragment parsing so an initial ASCII space/tab/newline is retained instead of being discarded before an implicit HTML body. Head metadata, executable content and resource-bearing markup remain excluded. Rich/plain paste receives a temporary whitespace-preserving insertion context; that wrapper and its CSS are removed from canonical serialization. Plain CRLF/CR becomes one explicit line break.
+
+The existing disposable tab projection now also paints significant leading/trailing and repeated spaces, including across inline formatting and soft breaks. It leaves ordinary paragraphs and formatting indentation between blocks under their existing rules, restores prior CSS when significant whitespace is removed, and does not replace source spaces with nonbreaking spaces. This changes no saved schema or existing vault bytes on open. The browser's retained editing engine can still introduce its own nonbreaking space around a mid-paragraph insertion; broader clipboard normalization/fidelity remains part of the text programme.
+
+The regression first reproduces actual character loss in sanitization, then separately reproduces rich-paste loss and invisible saved spacing. Ordinary and linked editor cases check exact boundary characters, rich emphasis, whitespace-only paste, tabs/line endings, mid-paragraph insertion, fresh source paint, archive round trips and atomic undo/redo. A real native-bridge case checks the literal leading source space, nonzero native caret advance, exact italic glyph face and source/history round trips. Synthetic transfer events exercise the production insertion path without altering the system clipboard; physical Mac/mobile clipboard qualification remains separate.
+
 ## Verification and limits
 
 `test:flow-selection` uses trusted Electron pointer and keyboard input on synthetic linked frames. It checks forward/backward cross-page selection, exact painted-range text, copy/delete/undo, measured keyboard movement, paragraph/blank-line boundaries, cancellation, insertion inheritance and saved-document reopening. The text runtime also covers native formatting normalization, derived decoration paint and camera-independent caret geometry. Domain tests cover Unicode boundaries and cached navigation equivalence. Native Type-menu and document-clipboard fixtures exercise production IPC with isolated vaults and restore clipboard contents.

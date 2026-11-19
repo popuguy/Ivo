@@ -1,5 +1,13 @@
 # Verification
 
+## Clipboard whitespace — 18 November 2026
+
+The [clipboard correction](text-interaction-core.md#clipboard-whitespace) passes the standard format/lint/architecture/build checks with **286 unit tests**, plus all **15 sequential background component groups**. The added ordinary/linked-editor cases reproduce and check fragment-leading character preservation, rich/plain and whitespace-only paste, exact boundary spaces, CRLF/CR normalization, tabs, fresh canonical paint, metadata/resource filtering, archive round trips and atomic undo/redo. A separate native actual-editor case verifies a literal leading source space, positive native caret advance, exact italic glyph face and source/history round trips through the production composition bridge/worker.
+
+The input checks use synthetic clipboard transfers and actual Chromium insertion without replacing the user's system clipboard. Background mode asserts hidden/offscreen windows and prohibits native activation. Physical Mac/mobile clipboard and input qualification remain separate. No persisted format, personal vault or global setting changes. Evidence is under parent `work/text-clipboard-whitespace-2026-11-18/`. This small correction leaves the full text-parity engineering estimate at approximately 20%.
+
+The new Mac package is `release/2026-11-18-clipboard-whitespace/Ivo-darwin-arm64/Ivo.app`, left closed. Byte comparison matches all **131 shared source files**, **16 desktop source files**, **204 generated web files**, both unpacked native helpers and **204 synchronized iOS web files**. `ios:prepare` passes; the installed Command Line Tools still lack the iPhoneOS SDK, so no native mobile build/device check is claimed.
+
 ## Native editing controls — 18 November 2026
 
 [Native controls](native-editing-controls.md) implement literal half-inch tabs, contextual panel Tab behavior, stable sibling arrangement/shortcuts, menu-owned Smart Guides and the narrow page/zoom strip. Four new domain cases cover sibling runs, container/layer/page boundaries, clipping parents, unavailable objects and command declarations. A native Core Text case verifies 36/72-point tab caret positions and same-plan PDF output. The actual editor preserves italic insertion, source, undo, property-field traversal and page navigation; the application fixture checks reading/editing Tab routing and settled whole-frame menu targets. The old caret-camera fixture is corrected to use the production paint matrix rather than retired CSS layout zoom.

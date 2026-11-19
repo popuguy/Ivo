@@ -12,6 +12,7 @@ This is a rough assessment of implementation and integration across the [66 incl
 - Native glyph/caret/source geometry, on-page editing, automatic continuation and same-line searchable PDF as an explicit preview.
 - Independent paragraph decisions and unchanged-paragraph measurement/decision reuse.
 - Contextual Tab behavior, ordinary half-inch text tabs, native arrangement commands, menu-owned Smart Guides and compact page/zoom navigation. These improve daily use and the command/input foundation; they do not complete paragraph tab composition or reference parity.
+- Literal leading-space preservation through rich/plain clipboard insertion, saved paint and linked/native source/history. This is an input correction within the current foundation; it does not move the rounded overall estimate.
 
 ## Major work still driving the estimate
 

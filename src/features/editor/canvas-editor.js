@@ -1,4 +1,5 @@
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
+import { textClipboardHTML } from './text/clipboard.js';
 import { statusBarMarkup } from './ui/status-bar.js';
 import { handleFieldTab } from '../../shared/ui/keyboard-fields.js';
 import { caretInterval } from '../../domain/text/flow-selection.js';
@@ -3170,14 +3171,7 @@ export function mountCanvasEditor(host, options) {
     if (text && options.editing) {
       event.preventDefault();
       beginTextInput('insertFromPaste');
-      document.execCommand(
-        'insertHTML',
-        false,
-        cleanHTML(
-          event.clipboardData.getData('text/html') ||
-            esc(event.clipboardData.getData('text/plain')).replace(/\n/g, '<br>'),
-        ),
-      );
+      document.execCommand('insertHTML', false, textClipboardHTML(event.clipboardData));
       publishingControls.prepareLegacyFonts();
     }
   });

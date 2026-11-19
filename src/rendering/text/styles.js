@@ -8,7 +8,7 @@ import {
 } from '../../domain/text/typography.js';
 import { applyTextAttributes } from '../../shared/dom/text-attributes.js';
 import { nodeTextStyle } from './selection-style.js';
-import { applyDefaultTabs } from './tabs.js';
+import { applyTextWhitespace } from './whitespace.js';
 const owned = new WeakMap(),
   featuresOwned = new WeakSet();
 
@@ -61,5 +61,5 @@ export function applyNamedTextStyles(root, doc) {
   };
   visit(root, TEXT_DEFAULTS);
   applyTextDecorations(root, doc);
-  applyDefaultTabs(root);
+  applyTextWhitespace(root);
 }

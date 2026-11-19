@@ -1,6 +1,7 @@
 import { verifyFlowCaretGeometry } from './flow-geometry.js';
 import { verifyTextDecorations } from './decorations.js';
 import { verifyNativeTextFormatting } from './native-format.js';
+import { verifyClipboardWhitespace } from './clipboard-whitespace.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import {
   captureTextSelection,
@@ -21,6 +22,7 @@ const wait = async (predicate) => {
   throw new Error('Timed out waiting for application state');
 };
 try {
+  await verifyClipboardWhitespace();
   verifyNativeTextFormatting();
   await verifyTextDecorations();
   await verifyFlowCaretGeometry();
@@ -490,6 +492,7 @@ try {
         structuralOwnership: true,
         serializedTransitions: true,
         sanitizedTypography: true,
+        clipboardWhitespace: true,
         fuzzySwitcher: true,
         mruToggle: true,
         quickCreation: true,
