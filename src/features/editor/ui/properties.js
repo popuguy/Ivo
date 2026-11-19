@@ -2,7 +2,7 @@ import { effectiveTextStyle } from '../../../domain/documents/publishing.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
 import { textFlowForFrame } from '../../../domain/documents/text-flows.js';
-import { textWrapProperties, textWrapPreferences } from './text-wrap-properties.js';
+import { textWrapControls, showsContextualWrap } from './text-wrap-properties.js';
 import { layersContent, pagesContent } from './pages-and-layers.js';
 import {
   transformProperties,
@@ -22,6 +22,7 @@ export function propertiesContent({
   documents,
   state,
   selectedObjects,
+  selectedVertex,
   selectionRect,
   activePage,
   editing,
@@ -45,6 +46,13 @@ export function propertiesContent({
         }
       : null,
     disabled = editing ? '' : 'disabled';
+  if (state.panel === 'text-wrap')
+    return textWrapControls(selectedObjects, {
+      state,
+      editing: editing && (!!selectedObjects.length || !parentMode),
+      dedicated: true,
+      defaults: doc.extensions?.ivoTextWrapDefaults,
+    });
   if (state.panel === 'layers') return layersContent(doc, state, selectedObjects, editing);
   if (state.panel === 'pages') return pagesContent(doc, activePage, editing, { parentMode, state });
   if (state.panel === 'links') {
@@ -71,7 +79,7 @@ export function propertiesContent({
     );
   }
   if (selectedObjects.length > 1) {
-    return `<div class="indesign-properties"><div class="canvas-panel-heading">${selectedObjects.length} Objects</div><fieldset ${disabled}>${transformProperties(selectionRect, state, '', true)}${alignControls()}${arrangeControls()}${textWrapProperties(selectedObjects, { editing })}</fieldset></div>`;
+    return `<div class="indesign-properties"><div class="canvas-panel-heading">${selectedObjects.length} Objects</div><fieldset ${disabled}>${transformProperties(selectionRect, state, '', true)}${alignControls()}${arrangeControls()}</fieldset></div>`;
   }
   if (!item) {
     const dimensions = ['width', 'height']
@@ -89,7 +97,7 @@ export function propertiesContent({
         `<div class="property-transform-grid">${dimensions}</div>`,
     )}${section('Page', `<div class="property-page-row">${pageSelect}${parentMode ? '' : pageAction('add-page', 'Create new page', 'panel-new', editing && doc.pages.length < 128) + pageAction('delete-page', 'Delete selected page', 'panel-trash', editing && doc.pages.length > 1)}</div><button class="property-wide-action" data-canvas-command="show-pages">Edit Page</button>`)}
     ${section('Quick Actions', `<button class="property-wide-action" data-canvas-command="image" ${disabled}>Import File</button>`)}
-    ${textWrapPreferences(doc, { editing })}</div>`;
+    </div>`;
   }
   const composer =
     flow && (nativeComposition || flow.composition)
@@ -122,13 +130,14 @@ export function propertiesContent({
     appearanceProperties(item),
     isText && textProperties(item, fonts, systemFonts, state),
     alignControls(),
+    showsContextualWrap(selectedObjects, selectedVertex) &&
+      textWrapControls(selectedObjects, { editing, state }),
     isText && frameProperties(item, state),
     section(
       'Quick Actions',
       arrangeControls(false) +
         '<div class="property-quick-actions"><button data-canvas-command="duplicate">Duplicate</button><button class="danger" data-canvas-command="delete">Delete</button></div>',
     ),
-    textWrapProperties(selectedObjects, { editing }),
     isText && section('Text Highlight', highlightControls(item.highlight)),
     flowProperties,
     item.type === 'polygon' &&

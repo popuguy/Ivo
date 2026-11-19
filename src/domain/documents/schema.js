@@ -12,6 +12,7 @@ import {
 } from './capabilities.js';
 import {
   normalizeTextWrap,
+  normalizeTextWrapDefaults,
   normalizeTextWrapPreferences,
   activeTextWrapPages,
 } from './text-wrap.js';
@@ -902,6 +903,15 @@ function validateArchive(payload, parentTemplate) {
       fail(`${label} requires archive 8 / canvas 7 for native text composition`);
     if (doc.extensions !== undefined)
       normalized.extensions = extensions(doc.extensions, `${label}.extensions`);
+    if (normalized.extensions?.ivoTextWrapDefaults !== undefined) {
+      try {
+        normalized.extensions.ivoTextWrapDefaults = normalizeTextWrapDefaults(
+          normalized.extensions.ivoTextWrapDefaults,
+        );
+      } catch (error) {
+        fail(`${label}.extensions.ivoTextWrapDefaults: ${error.message}`);
+      }
+    }
     if (!parentTemplate && hasTextWrap(normalized)) {
       const wrappedPages = activeTextWrapPages(normalized);
       if (

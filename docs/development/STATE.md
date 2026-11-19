@@ -4,7 +4,7 @@ Updated 19 November 2026. This file describes current contracts; the [verificati
 
 Ivo is a linked-document editor for Mac, iPhone and iPad: precise, independently sized pages, rich text and positioned objects, an interactive knowledge graph, and portable vaults. The interface uses Geist, a pale neutral palette and professional document language. New documents use Minion Pro Regular at 12 pt with 120% automatic leading and zero paragraph spacing. CMU Serif is the offline fallback when the preferred face is unavailable. Preserve the smooth Illustrator-like frame movement and camera while extending the InDesign-based text system. Google Drive/other cloud replicas, physical mobile qualification and scans/OCR remain programme work.
 
-The [publishing panels](../publishing-foundation.md#desktop-panels) use a compact dark dock. Properties → Character → More Options contains the horizontal and vertical character scales.
+The [publishing panels](../publishing-foundation.md#desktop-panels) use the InDesign Light palette. A single shape or graphic exposes Text Wrap in Properties. Window → Text Wrap opens the dedicated panel for other selections or new-object defaults. Properties → Character → More Options contains the horizontal and vertical character scales.
 
 A signed iPhone build opens a local vault on first launch. The [iPhone startup check](../verification.md#iphone-startup-and-local-storage) covers the native bridge and a simulator document round trip. Physical typing, touch editing and iPad testing remain open.
 

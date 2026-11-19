@@ -16,6 +16,7 @@ import {
 import {
   normalizeTextWrap,
   normalizeTextWrapPreferences,
+  setTextWrapDefaults,
   setTextWrap,
   setIgnoreTextWrap,
   setTextWrapPreferences,
@@ -88,6 +89,29 @@ function fixture(points = rectangle) {
 const band = (top = 40, bottom = 50) => ({ left: 0, right: 300, top, bottom });
 const segments = (doc, frame, value = band()) =>
   availableWrapSegments(textWrapObstacles(doc, frame), value);
+
+test('document wrap defaults apply to newly inserted objects and survive a vault round trip', () => {
+  const { doc, frame, object } = fixture();
+  const page = doc.pages[0].id;
+  setTextWrapDefaults(doc, { mode: 'bounds', offsets: { top: 4.5 }, side: 'left' });
+  assert.equal(object.textWrap, undefined);
+  assert.equal(frame.textFlowId, undefined);
+  const created = insertObject(doc, 'polygon', page);
+  assert.equal(created.textWrap.offsets.top, 4.5);
+  assert.ok(frame.textFlowId);
+  setTextWrap(doc, [created.id], { offsets: { top: 2 } });
+  assert.equal(doc.extensions.ivoTextWrapDefaults.offsets.top, 4.5);
+  const reopened = validateImport({
+    schemaVersion: archiveVersion([doc]),
+    documents: [doc],
+    assets: [],
+  }).documents[0];
+  assert.equal(insertObject(reopened, 'text', page).textWrap.side, 'left');
+  setTextWrapDefaults(reopened, { mode: 'none' });
+  assert.equal(insertObject(reopened, 'rule', page).textWrap.offsets.top, 4.5);
+  setTextWrapDefaults(reopened, { mode: 'jump', invert: true });
+  assert.ok(insertObject(reopened, 'rule', page).textWrap.invert);
+});
 
 function rectangleObstacle(left, top, right, bottom, extra = {}) {
   return {
@@ -270,7 +294,7 @@ test('text-wrap options are typed, mode-specific and reject unimplemented contou
     { version: 2 },
   ])
     assert.throws(() => normalizeTextWrap(input));
-  assert.throws(() => normalizeTextWrap({ mode: 'contour', offsets: { left: 2 } }), /uniform/);
+  assert.equal(normalizeTextWrap({ mode: 'contour', offsets: { left: 2 } }).offsets.left, 2);
   assert.equal(normalizeTextWrap({ mode: 'contour', offsets: offsets(-2.25) }).offsets.left, -2.25);
   assert.throws(() => normalizeTextWrapPreferences({ onlyBelow: 'false' }));
   assert.throws(() => normalizeTextWrapPreferences({ firstPageSide: null }));
@@ -289,7 +313,11 @@ test('wrap commands validate all selected objects before mutation and preserve s
   assert.ok(isSceneDocument(doc));
   assert.equal(doc.textFlows[0].html, before.blocks[0].html);
   assert.equal(frame.html, '');
-  assert.throws(() => setTextWrap(doc, [object.id], { mode: 'contour' }), /uniform/);
+  setTextWrap(doc, [object.id], { mode: 'contour' });
+  assert.deepEqual(segments(doc, frame), [
+    { left: 0, right: 35.75 },
+    { left: 138, right: 300 },
+  ]);
   setTextWrap(doc, [object.id], { mode: 'none' });
   markTypographyVersion(doc);
   assert.equal(doc.canvasVersion, 8);
@@ -503,6 +531,47 @@ test('side, inverse, spine and largest choices leave deterministic legal segment
   setTextWrap(doc, [object.id], { invert: true });
   assert.deepEqual(segments(doc, frame), [{ left: 40, right: 140 }]);
   assert.deepEqual(segments(doc, frame, band(0, 10)), []);
+});
+
+test('inverted jump modes preserve the column break and reverse offset expansion', () => {
+  for (const mode of ['jump', 'next-column']) {
+    const { doc, frame, object } = fixture();
+    setTextWrap(doc, [object.id], { mode, offsets: offsets(8) });
+    const normal = textWrapObstacles(doc, frame)[0];
+    assert.deepEqual(normal.bounds, { left: 32, right: 148, top: 22, bottom: 138 });
+    setTextWrap(doc, [object.id], { invert: true, offsets: offsets(-8) });
+    const inverse = textWrapObstacles(doc, frame)[0];
+    assert.deepEqual(inverse.bounds, { left: 48, right: 132, top: 38, bottom: 122 });
+    assert.deepEqual(textWrapBand([normal], band(124, 134)).segments, []);
+    assert.deepEqual(textWrapBand([inverse], band(124, 134)).segments, [{ left: 0, right: 300 }]);
+    assert.equal(textWrapBand([inverse], band(50, 60)).nextColumn, mode === 'next-column');
+  }
+});
+
+test('placed image contour choices distinguish image bounds, clipped content and container', () => {
+  const { doc, frame, object: mask } = fixture();
+  const image = insertObject(doc, 'image', mask.pageId, {
+    parentId: mask.id,
+    x: -20,
+    y: 5,
+    w: 60,
+    h: 60,
+  });
+  setTextWrap(doc, [image.id], { mode: 'contour' });
+  const bounds = () => textWrapObstacles(doc, frame)[0].bounds;
+  assert.deepEqual(bounds(), { left: 40, right: 80, top: 35, bottom: 95 });
+  setTextWrap(doc, [image.id], { contour: { source: 'bounding-box' } });
+  assert.deepEqual(bounds(), { left: 20, right: 80, top: 35, bottom: 95 });
+  setTextWrap(doc, [image.id], { contour: { source: 'graphic-frame' } });
+  assert.deepEqual(bounds(), { left: 40, right: 140, top: 30, bottom: 130 });
+  assert.equal(
+    validateImport({
+      schemaVersion: archiveVersion([doc]),
+      documents: [doc],
+      assets: [],
+    }).documents[0].blocks.at(-1).textWrap.contour.source,
+    'graphic-frame',
+  );
 });
 
 test('jump and next-column signal only overlapping bands and frame ignore wins', () => {
@@ -845,8 +914,11 @@ test('commands and archive validation share unsupported cross-field contour rule
       patch: { mode: 'contour' },
       error: /stroke expansion/,
     },
-    { change: () => {}, patch: { mode: 'jump', invert: true }, error: /Inverted jump/ },
-    { change: () => {}, patch: { mode: 'next-column', invert: true }, error: /Inverted jump/ },
+    {
+      change: (object) => object.points.pop(),
+      patch: { mode: 'contour', offsets: { top: 4, left: 3 } },
+      error: /uniform/,
+    },
   ];
   for (const { change, patch, error } of unsupported) {
     const { doc, frame, object } = fixture();

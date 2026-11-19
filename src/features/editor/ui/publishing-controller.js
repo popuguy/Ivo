@@ -1,9 +1,13 @@
+import { uniformWrapOffset } from '../../../domain/geometry/wrap-contour.js';
+import { PANEL_KINDS } from '../../../domain/workspace/panels.js';
 import { installPageLayerInteractions } from './page-layer-interactions.js';
 import { ARRANGE_COMMANDS, arrangeObjects } from '../../../domain/documents/arrange.js';
 import { legacyFontFamilies } from '../../../domain/text/font-references.js';
 import {
   normalizeTextWrap,
   setTextWrap,
+  setTextWrapDefaults,
+  normalizeTextWrapPreferences,
   setIgnoreTextWrap,
   setTextWrapPreferences,
   setLayerIgnoreWrap,
@@ -87,6 +91,33 @@ export function installPublishingControls(
     const saved = JSON.parse(localStorage.getItem(disclosureKey));
     if (saved && typeof saved === 'object') state.propertyDisclosures = saved;
   } catch {}
+  function saveDisclosure(key, value) {
+    (state.propertyDisclosures ||= {})[key] = value;
+    try {
+      localStorage.setItem(disclosureKey, JSON.stringify(state.propertyDisclosures));
+    } catch {}
+  }
+  const uniformOffsets = (value) => ({ top: value, right: value, bottom: value, left: value });
+  function editWrap(label, patchFor, control) {
+    const selected = objects();
+    if (!selected.length && (parentMode || !control.closest('.wrap-panel'))) return;
+    const targets = selected.length ? selected : [null];
+    const changes = targets
+      .map((object) => {
+        const current = normalizeTextWrap(
+          object ? object.textWrap : doc().extensions?.ivoTextWrapDefaults,
+        );
+        return { object, patch: patchFor(current, object) };
+      })
+      .filter(({ patch }) => patch);
+    if (!changes.length) return;
+    mutate(() => {
+      for (const { object, patch } of changes) {
+        if (object) setTextWrap(doc(), [object.id], patch);
+        else setTextWrapDefaults(doc(), patch);
+      }
+    }, label);
+  }
   function prepareLegacyFonts() {
     const signature = JSON.stringify([...legacyFontFamilies(doc())].sort());
     if (!prepareDocumentFonts || !canPrepareFonts() || signature === preparedLegacy) return;
@@ -378,15 +409,17 @@ export function installPublishingControls(
   listen(editor, 'click', (event) => {
     const summary = event.target.closest('summary[data-property-disclosure]');
     if (summary) {
-      const key = summary.dataset.propertyDisclosure;
-      (state.propertyDisclosures ||= {})[key] = !summary.parentElement.open;
-      try {
-        localStorage.setItem(disclosureKey, JSON.stringify(state.propertyDisclosures));
-      } catch {}
+      saveDisclosure(summary.dataset.propertyDisclosure, !summary.parentElement.open);
       return;
     }
     const t = event.target.closest('button');
     if (!t) return;
+    if (t.hasAttribute('data-wrap-more')) {
+      saveDisclosure('wrap', !state.propertyDisclosures?.wrap);
+      render();
+      editor.querySelector('[data-wrap-more]')?.focus({ preventScroll: true });
+      return;
+    }
     if (t.hasAttribute('data-property-constrain')) {
       state.constrainProportions = !state.constrainProportions;
       render();
@@ -422,7 +455,15 @@ export function installPublishingControls(
           if (settings?.fontSize)
             input.value = String((settings.fontSize * (settings.autoLeading || 120)) / 100);
         }
-        if (t.dataset.propertyStep === '1') input.stepUp();
+        if (input.step === 'any') {
+          const next = Number(input.value) + Number(t.dataset.propertyStep);
+          input.value = String(
+            Math.max(
+              input.min ? Number(input.min) : -Infinity,
+              Math.min(input.max ? Number(input.max) : Infinity, next),
+            ),
+          );
+        } else if (t.dataset.propertyStep === '1') input.stepUp();
         else input.stepDown();
         if (input.value !== old) input.dispatchEvent(new Event('change', { bubbles: true }));
         return;
@@ -437,32 +478,35 @@ export function installPublishingControls(
         }, 'Object paint');
         return;
       }
+      if (t.hasAttribute('data-wrap-link')) {
+        state.wrapOffsetsLinked = t.getAttribute('aria-pressed') !== 'true';
+        if (state.wrapOffsetsLinked)
+          editWrap(
+            'Link text wrap offsets',
+            (current) =>
+              Object.values(current.offsets).every((value) => value === current.offsets.top)
+                ? null
+                : { offsets: uniformOffsets(current.offsets.top) },
+            t,
+          );
+        render();
+        return;
+      }
       if (t.dataset.textWrapMode) {
-        const selected = objects();
-        if (
-          !selected.length ||
-          selected.every(
-            (object) => normalizeTextWrap(object.textWrap).mode === t.dataset.textWrapMode,
-          )
-        )
-          return;
-        const ids = selected.map((object) => object.id);
-        mutate(() => {
-          const mode = t.dataset.textWrapMode;
-          if (mode === 'contour' || mode === 'next-column') {
-            for (const object of selected) {
-              const current = normalizeTextWrap(object.textWrap),
-                offsets = Object.fromEntries(
-                  ['top', 'right', 'bottom', 'left'].map((side) => [side, current.offsets.top]),
-                );
-              setTextWrap(doc(), [object.id], {
-                mode,
-                offsets,
-                ...(mode === 'next-column' ? { invert: false } : {}),
-              });
-            }
-          } else setTextWrap(doc(), ids, { mode, ...(mode === 'jump' ? { invert: false } : {}) });
-        }, 'Text wrap mode');
+        const mode = t.dataset.textWrapMode;
+        editWrap(
+          'Text wrap mode',
+          (current, object) => {
+            if (current.mode === mode) return null;
+            return {
+              mode,
+              ...(uniformWrapOffset(object, mode) && {
+                offsets: uniformOffsets(current.offsets.top),
+              }),
+            };
+          },
+          t,
+        );
         return;
       }
       if (t.dataset.highlightColor) {
@@ -546,23 +590,47 @@ export function installPublishingControls(
         });
         return;
       }
+      if (t.hasAttribute('data-wrap-contour')) {
+        editWrap('Contour type', () => ({ contour: { source: t.value } }), t);
+        return;
+      }
       if (t.dataset.textWrap) {
-        const ids = objects().map((object) => object.id),
-          key = t.dataset.textWrap,
+        const key = t.dataset.textWrap,
           value = t.type === 'checkbox' ? t.checked : t.value;
-        mutate(() => setTextWrap(doc(), ids, { [key]: value }), 'Text wrap options');
+        editWrap(
+          'Text wrap options',
+          (current) => {
+            if (current[key] === value) return null;
+            // Stored offsets describe geometry. Invert keeps the displayed distances and flips their direction.
+            if (key === 'invert')
+              return {
+                invert: value,
+                offsets: Object.fromEntries(
+                  Object.entries(current.offsets).map(([side, distance]) => [side, -distance || 0]),
+                ),
+              };
+            return { [key]: value };
+          },
+          t,
+        );
         return;
       }
       if (t.dataset.textWrapOffset) {
         if (!t.value.trim()) throw new Error('Enter a text wrap offset.');
         const value = Number(t.value),
-          key = t.dataset.textWrapOffset,
-          ids = objects().map((object) => object.id),
-          offsets =
-            key === 'all'
-              ? Object.fromEntries(['top', 'right', 'bottom', 'left'].map((side) => [side, value]))
-              : { [key]: value };
-        mutate(() => setTextWrap(doc(), ids, { offsets }), 'Text wrap offset');
+          key = t.dataset.textWrapOffset;
+        editWrap(
+          'Text wrap offset',
+          (current, object) => {
+            const link = t.closest('.wrap-controls')?.querySelector('[data-wrap-link]');
+            const uniform =
+              link?.getAttribute('aria-pressed') === 'true' ||
+              uniformWrapOffset(object, current.mode);
+            const distance = current.invert ? -value : value;
+            return { offsets: uniform ? uniformOffsets(distance) : { [key]: distance } };
+          },
+          t,
+        );
         return;
       }
       if (t.hasAttribute('data-ignore-text-wrap')) {
@@ -692,9 +760,29 @@ export function installPublishingControls(
       popover?.refresh();
     },
     command(name, { anchor } = {}) {
+      if (name === 'toggle-wrap-options') {
+        saveDisclosure('wrapPanel', state.propertyDisclosures?.wrapPanel === false);
+        render();
+        return true;
+      }
+      if (name === 'wrap-preferences' && allowed()) {
+        const prefs = normalizeTextWrapPreferences(doc().textWrapPreferences);
+        form(
+          'Composition',
+          '<label><input type="checkbox" name="onlyBelow" ' +
+            (prefs.onlyBelow ? 'checked' : '') +
+            '> Text Wrap Only Affects Text Beneath</label>',
+          (data) => {
+            const onlyBelow = data.has('onlyBelow');
+            if (onlyBelow !== prefs.onlyBelow)
+              mutate(() => setTextWrapPreferences(doc(), { onlyBelow }), 'Composition preferences');
+          },
+        );
+        return true;
+      }
       if (name.startsWith('show-panel-')) {
         const kind = name.slice(11);
-        if (['properties', 'pages', 'layers', 'links'].includes(kind)) {
+        if (PANEL_KINDS.includes(kind)) {
           state.panel = kind;
           showPanel(kind);
           render();

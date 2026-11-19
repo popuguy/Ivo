@@ -1,3 +1,4 @@
+import { verifyLightPalette } from './light-palette.js';
 import { verifyTextControls } from './text-controls.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import {
@@ -30,6 +31,7 @@ try {
       w: 420,
       h: 260,
       textStyle: 'cmu-serif',
+      textColor: '#344e6b',
       fontSize: 16,
       html: '<p>Precision in proportion.</p><p>Text, geometry and materials work together.</p>',
     });
@@ -95,6 +97,7 @@ try {
   );
   typeOptionsControl.click();
   assert(host.querySelector('.type-options-popover'), 'OpenType popover did not open');
+  verifyLightPalette(host, assert);
   const liga = host.querySelector('[data-type-feature="smallCaps"]');
   liga.checked = true;
   liga.dispatchEvent(new Event('change', { bubbles: true }));

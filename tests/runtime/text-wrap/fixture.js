@@ -25,6 +25,7 @@ import {
 } from '../../../src/shared/dom/text-selection.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
 import { validateNativeFlowSource } from '../../../src/rendering/text/native-flow-layout.js';
+import { verifyWrapPanels } from './panels.js';
 import { verifyWrappedNavigation } from './navigation.js';
 import { verifyAdditionalComposition } from './additional-composition.js';
 import { verifyClippedGraphics } from './clipped-graphics.js';
@@ -230,6 +231,7 @@ try {
       ...saved.reviewFences,
     });
   } else {
+    await verifyWrapPanels(host, assert, tick);
     const clippedGraphics = verifyClippedGraphics({ verifyCoverage, paintFrame });
     const additionalComposition = verifyAdditionalComposition({
       verifyCoverage,

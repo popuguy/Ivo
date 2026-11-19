@@ -11,7 +11,7 @@ import {
 import { createInstalledFontLibrary } from '../features/editor/assets/installed-fonts.js';
 import { prepareVaultFonts } from '../rendering/text/fonts.js';
 import { dialogMarkup, installDialogDismissal } from '../shared/ui/dialog.js';
-import { normalizePanels } from '../domain/workspace/panels.js';
+import { normalizePanels, PANEL_LABELS } from '../domain/workspace/panels.js';
 import { presentStartup, afterStartupPaint } from './startup.js';
 import { createLibraryOperations } from './library-operations.js';
 import { planLibraryChange, remapFolder } from '../domain/documents/library-commands.js';
@@ -1876,9 +1876,14 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
                     label: 'Show/Hide Panels',
                     enabled: canvasMenu.canvasView,
                   },
-                  ...['properties', 'pages', 'layers', 'links'].map((kind) => ({
+                  {
+                    id: 'wrap-preferences',
+                    label: 'Composition Preferences…',
+                    enabled: canvasMenu.canvasView && editing,
+                  },
+                  ...Object.entries(PANEL_LABELS).map(([kind, label]) => ({
                     id: 'show-panel-' + kind,
-                    label: kind[0].toUpperCase() + kind.slice(1),
+                    label,
                   })),
                 ],
               },
@@ -1929,6 +1934,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       Object.hasOwn(ARRANGE_COMMANDS, choice) ||
       choice === 'toggle-smart-guides' ||
       choice === 'toggle-panels' ||
+      choice === 'wrap-preferences' ||
       choice.startsWith('show-panel-')
     ) {
       if (workspace.active !== id) return;
@@ -2525,7 +2531,13 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       return;
     const key = event.key.toLowerCase(),
       modifier = event.metaKey || event.ctrlKey;
-    if (modifier && ['n', 't', 'w'].includes(key)) {
+    if (modifier && event.altKey && !event.shiftKey && (event.code === 'KeyW' || key === 'w')) {
+      event.preventDefault();
+      event.stopPropagation();
+      canvasHandle?.command('show-panel-text-wrap');
+      return;
+    }
+    if (modifier && !event.altKey && ['n', 't', 'w'].includes(key)) {
       event.preventDefault();
       event.stopPropagation();
       runAction(

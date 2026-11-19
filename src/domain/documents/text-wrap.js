@@ -48,26 +48,22 @@ export function normalizeTextWrap(input = {}) {
       throw new TypeError('Text-wrap offsets must be finite points between -2000 and 2000.');
     offsets[name] = value;
   }
-  if (
-    ['contour', 'next-column'].includes(mode) &&
-    sides.some((name) => offsets[name] !== offsets.top)
-  )
-    throw new TypeError('Contour and next-column text wrap use one uniform offset.');
   const contour = ownRecord(
     input.contour === undefined ? {} : input.contour,
     ['source'],
     'text-wrap contour',
   );
-  if ((contour.source === undefined ? 'frame' : contour.source) !== 'frame')
+  const source = contour.source === undefined ? 'frame' : contour.source;
+  if (!['frame', 'bounding-box', 'graphic-frame'].includes(source))
     throw new TypeError(
-      'This version supports frame contours; image alpha, clipping paths and subject contours are not yet available.',
+      'Choose a supported contour source. Image alpha, edge detection and embedded paths are not yet available.',
     );
   return {
     mode,
     offsets,
     side,
     invert: boolean(input.invert, false, 'Invert text wrap'),
-    contour: { source: 'frame' },
+    contour: { source },
   };
 }
 
@@ -143,20 +139,46 @@ function selected(document, ids, textOnly = false) {
   });
 }
 
-/** Validate every target before touching the document; the caller owns one history transaction. */
-export function setTextWrap(document, ids, patch) {
+function updatedWrap(current, patch) {
   ownRecord(patch, ['mode', 'offsets', 'side', 'invert', 'contour'], 'text wrap');
   if ('offsets' in patch) ownRecord(patch.offsets, sides, 'text-wrap offsets');
   if ('contour' in patch) ownRecord(patch.contour, ['source'], 'text-wrap contour');
+  const previous = normalizeTextWrap(current);
+  return normalizeTextWrap({
+    ...previous,
+    ...patch,
+    offsets: { ...previous.offsets, ...patch.offsets },
+    contour: { ...previous.contour, ...patch.contour },
+  });
+}
+
+export function normalizeTextWrapDefaults(input) {
+  const wrap = normalizeTextWrap(input);
+  if (wrap.contour.source !== 'frame')
+    throw new Error('Creation defaults use the object frame contour.');
+  if (
+    wrap.mode === 'contour' &&
+    Object.values(wrap.offsets).some((value) => value !== wrap.offsets.top)
+  )
+    throw new Error('Creation defaults for shape contours require uniform offsets.');
+
+  return wrap;
+}
+
+// Document-level creation defaults travel with the vault. Existing objects retain their own settings.
+export function setTextWrapDefaults(document, patch) {
+  const value = normalizeTextWrapDefaults(
+    updatedWrap(document.extensions?.ivoTextWrapDefaults, patch),
+  );
+  enableTextWrap(document);
+  document.extensions = { ...document.extensions, ivoTextWrapDefaults: value };
+}
+
+/** Validate every target before touching the document; the caller owns one history transaction. */
+export function setTextWrap(document, ids, patch) {
   const targets = selected(document, ids),
     values = targets.map((object) => {
-      const previous = normalizeTextWrap(object.textWrap);
-      const next = normalizeTextWrap({
-        ...previous,
-        ...patch,
-        offsets: { ...previous.offsets, ...patch.offsets },
-        contour: { ...previous.contour, ...patch.contour },
-      });
+      const next = updatedWrap(object.textWrap, patch);
       textWrapObjectPath(object, next);
       return next;
     });

@@ -1,3 +1,5 @@
+import { ensureTextWrapFlows } from './text-wrap.js';
+import { textWrapObjectPath } from '../geometry/wrap-contour.js';
 import { removeTextFlowFrames, duplicateTextFlows } from './text-flows.js';
 /** Page/object domain commands. All scene lengths are points; viewport state is separate. */
 import { uid, createDocument, createBlock } from './model.js';
@@ -123,10 +125,13 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
   if (parent && (parent.type !== 'polygon' || parent.pageId !== pageId))
     throw new Error('Draw inside requires a polygon on this page.');
   const defaults = ['text', 'quote'].includes(type) && basicParagraph(document);
+  const wrap = document.extensions?.ivoTextWrapDefaults;
   const object = makeObject(type, pageId, {
+    ...(wrap && { textWrap: structuredClone(wrap) }),
     ...(defaults && { ...defaults.attributes, paragraphStyle: defaults.id }),
     ...overrides,
   });
+  if (wrap && object.textWrap) textWrapObjectPath(object, object.textWrap);
   if (defaults && object.paragraphStyle === defaults.id) {
     for (const key of Object.keys(defaults.attributes))
       if (key in overrides && overrides[key] !== defaults.attributes[key])
@@ -149,6 +154,7 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
     object.h = overrides.h ?? parent.h;
   }
   document.blocks.push(object);
+  if (wrap && object.textWrap?.mode !== 'none') ensureTextWrapFlows(document);
   return object;
 }
 /** Resize a container and its local descendants as one transform. */

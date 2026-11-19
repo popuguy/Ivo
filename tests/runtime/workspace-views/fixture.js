@@ -144,6 +144,30 @@ try {
     view(second.id) === betaNode && view(first.id) === alphaNode,
     'Stacked activation replaced views',
   );
+  for (const keys of [
+    { metaKey: true, key: '∑' },
+    { ctrlKey: true, key: 'w' },
+  ]) {
+    const count = document.querySelectorAll('[data-tab-id]').length;
+    alphaNode.querySelector('.canvas-viewport').dispatchEvent(
+      new KeyboardEvent('keydown', {
+        ...keys,
+        code: 'KeyW',
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await wait(
+      () => alphaNode.querySelector('[data-canvas-panel="text-wrap"]').ariaSelected === 'true',
+      'Text Wrap shortcut',
+    );
+    assert(
+      document.querySelectorAll('[data-tab-id]').length === count,
+      'Text Wrap shortcut closed a document tab',
+    );
+    await panelMenu(alphaNode.querySelector('[data-canvas-panel="text-wrap"]'), 'close-panel');
+  }
   await context(tab(first.id), 'linked-backlinks');
   await wait(() => document.querySelector('.linked-backlinks'), 'Linked backlinks');
   assert(
@@ -218,7 +242,7 @@ try {
     owner.querySelectorAll('[data-context-group]').length === 2,
     'Named panel preset did not restore',
   );
-  owner.querySelector('[data-canvas-command="toggle-properties"]').click();
+  await nativeCommand('show-panel-properties');
   await tick();
   if (new URL(location.href).searchParams.has('capture')) {
     console.log('IVO_WORKSPACE_VIEWS_PANELS');

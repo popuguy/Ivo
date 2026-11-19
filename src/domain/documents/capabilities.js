@@ -88,6 +88,7 @@ export function hasTextWrap(doc) {
     layers = Array.isArray(doc.publishing?.layers) ? doc.publishing.layers : [];
   return (
     doc.canvasVersion === 8 ||
+    doc.extensions?.ivoTextWrapDefaults !== undefined ||
     doc.textWrapPreferences !== undefined ||
     [
       ...blocks,

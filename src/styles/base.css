@@ -2058,7 +2058,7 @@ dialog .dialog-close {
   min-width: 0;
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 224px;
-  background: #eceef0;
+  background: #dcdcdc;
   overflow: hidden;
 }
 .canvas-tools {

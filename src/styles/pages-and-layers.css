@@ -75,7 +75,7 @@
   grid-template-columns: 23px 24px 25px minmax(0, 1fr) 21px 26px;
   align-items: stretch;
   min-height: 23px;
-  border-bottom: 1px solid #606060;
+  border-bottom: 1px solid var(--panel-line);
 }
 .layer-entry > button,
 .layer-pencil {
@@ -84,7 +84,7 @@
   justify-items: center;
 }
 .layer-entry > button:nth-child(-n + 2) {
-  border-right: 1px solid #606060;
+  border-right: 1px solid var(--panel-line);
   background: var(--panel-bg);
 }
 .layer-entry > button > .reference-icon,
@@ -117,7 +117,7 @@
 }
 .layer-group.active > .layer-entry,
 .object-entry[aria-selected='true'] {
-  background: #4f6a84;
+  background: var(--panel-row-selected);
 }
 .layer-group.active .layer-caption {
   font-weight: 600;
@@ -183,7 +183,7 @@
   text-align: left;
 }
 .parent-entry[aria-pressed='true'] {
-  background: var(--panel-active);
+  background: var(--panel-row-selected);
 }
 .parent-entry .page-sheet {
   zoom: 0.52;
@@ -228,7 +228,8 @@
   outline: 1px solid var(--panel-accent);
 }
 .page-thumbnails > [aria-pressed='true'] .page-number {
-  background: var(--panel-active);
+  background: var(--panel-page-selected);
+  color: #fff;
 }
 .page-thumbnails .inventory-drop .page-sheet {
   outline: 2px solid #151515;

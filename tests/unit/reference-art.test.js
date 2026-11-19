@@ -70,6 +70,17 @@ test('public build can supply every current control from exact licensed Obsidian
     'panel-lock',
     'panel-pen',
     'unlink',
+    'wrap-none',
+    'wrap-box',
+    'wrap-shape',
+    'wrap-jump',
+    'wrap-next',
+    'wrap-offset-top',
+    'wrap-offset-bottom',
+    'wrap-offset-left',
+    'wrap-offset-right',
+    'wrap-link',
+    'wrap-unlink',
   ]) {
     assert.equal(art.icons[name].source, 'Obsidian/Lucide');
     const svg = Buffer.from(art.icons[name].url.split(',')[1], 'base64').toString();

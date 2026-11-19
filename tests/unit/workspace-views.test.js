@@ -98,7 +98,8 @@ test('context panel moves partition tabs and remove empty groups, including repe
   assert.equal(again.groups.find((group) => group.tabs.includes('pages')).floating, false);
   const joined = movePanel(again, 'pages', again.groups[0].id, 1);
   assert.equal(joined.groups.length, 1);
-  assert.deepEqual(joined.groups[0].tabs, ['properties', 'pages', 'layers', 'links']);
+  assert.deepEqual(joined.groups[0].tabs, ['properties', 'pages', 'layers', 'links', 'text-wrap']);
+  assert.deepEqual(joined.closed, ['text-wrap']);
 });
 test('legacy panels migrate and malformed groups cannot duplicate, omit or inject panels', () => {
   const migrated = normalizePanels({ floating: true, dock: 310, textFlow: 200, rect: { x: 20 } });
@@ -115,7 +116,11 @@ test('legacy panels migrate and malformed groups cannot duplicate, omit or injec
     'links',
     'pages',
     'properties',
+    'text-wrap',
   ]);
+  assert.deepEqual(migrated.closed, ['text-wrap']);
+  const open = normalizePanels({ ...repaired, closed: [] });
+  assert.deepEqual(normalizePanels(open).closed, []);
   assert.equal(new Set(repaired.groups.map((group) => group.id)).size, repaired.groups.length);
   assert.ok(repaired.groups.every((group) => group.tabs.includes(group.active) && !group.source));
 });

@@ -34,7 +34,6 @@
 }
 .indesign-properties select {
   width: 100%;
-  color-scheme: dark;
 }
 .indesign-properties select:focus-visible,
 .indesign-properties input:focus-visible,

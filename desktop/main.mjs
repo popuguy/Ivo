@@ -1,5 +1,6 @@
 import { ARRANGE_COMMANDS } from '../src/domain/documents/arrange.js';
 import { editorMenuState } from '../src/domain/workspace/editor-commands.js';
+import { PANEL_LABELS } from '../src/domain/workspace/panels.js';
 import { WORKSPACE_FEATURES } from '../src/domain/workspace/features.js';
 import { configureTextInput } from './text-input-policy.mjs';
 import {
@@ -1295,12 +1296,19 @@ function installMenu() {
   const record = activeRecord(),
     nativeFields = record?.nativeDialogOpen,
     hasVault = !!record?.vault;
+  const compositionPreferences = {
+    label: 'Preferences',
+    submenu: [
+      { label: 'Composition…', enabled: hasVault, click: () => sendCommand('wrap-preferences') },
+    ],
+  };
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
         label: 'Ivo',
         submenu: [
           { role: 'about' },
+          ...(process.platform === 'darwin' ? [compositionPreferences] : []),
           { type: 'separator' },
           { role: 'hide' },
           { role: 'hideOthers' },
@@ -1357,6 +1365,7 @@ function installMenu() {
       {
         label: 'Edit',
         submenu: [
+          ...(process.platform !== 'darwin' ? [compositionPreferences, { type: 'separator' }] : []),
           ...(nativeFields
             ? [
                 { role: 'undo', accelerator: 'CmdOrCtrl+Z' },
@@ -1468,10 +1477,11 @@ function installMenu() {
       {
         label: 'Window',
         submenu: [
-          ...['Properties', 'Pages', 'Layers', 'Links'].map((label) => ({
+          ...Object.entries(PANEL_LABELS).map(([kind, label]) => ({
             label,
             enabled: hasVault,
-            click: () => sendCommand('show-panel-' + label.toLowerCase()),
+            ...(kind === 'text-wrap' && { accelerator: 'CmdOrCtrl+Alt+W' }),
+            click: () => sendCommand('show-panel-' + kind),
           })),
           {
             label: 'Contextual Text Bar',

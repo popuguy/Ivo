@@ -119,10 +119,10 @@ test('wrap9 canonical source and options survive fresh folder-engine reopen with
   const invalid = structuredClone(loaded);
   invalid.blocks.find((block) => block.id === object.id).textWrap = {
     ...object.textWrap,
-    mode: 'jump',
-    invert: true,
+    mode: 'contour',
+    contour: { source: 'unknown' },
   };
-  await assert.rejects(reopened.saveDocument(invalid), /Inverted jump/);
+  await assert.rejects(reopened.saveDocument(invalid), /contour source/);
   assert.equal(
     await fs.readFile(manifestFile, 'utf8'),
     committedManifestBytes,

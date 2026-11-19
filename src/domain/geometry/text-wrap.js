@@ -128,7 +128,10 @@ export function textWrapObstacles(document, frame, { column } = {}) {
       object.type === 'image'
         ? chain.slice(1).filter((ancestor) => ancestor.type === 'polygon' && ancestor.clip)
         : [];
-    if (masks.length) {
+    if (
+      masks.length &&
+      !(options.mode === 'contour' && options.contour.source === 'bounding-box')
+    ) {
       // Graphic wrap is independent of the parent frame's own wrap settings,
       // but invisible image content cannot contribute an exclusion rectangle.
       const values =
@@ -146,9 +149,12 @@ export function textWrapObstacles(document, frame, { column } = {}) {
           }),
         );
       });
+      // A graphic's own bounds, the visible clipped graphic, and its container
+      // can be different when an image is cropped or smaller than the frame.
+      const useContainer = options.mode === 'contour' && options.contour.source === 'graphic-frame';
       const polygons = clippedTextWrapPath(
-        rectangle(0, 0, object.w, object.h).map(toWorld),
-        clips,
+        useContainer ? clips[0] : rectangle(0, 0, object.w, object.h).map(toWorld),
+        useContainer ? clips.slice(1) : clips,
         values[0] + stroke,
       ).map((polygon) => polygon.map(toFrame));
       if (polygons.length || options.invert)
@@ -173,9 +179,9 @@ export function textWrapObstacles(document, frame, { column } = {}) {
       const bounds = extent(rectangle(0, 0, object.w, object.h).map(toWorld));
       const offsets = options.offsets;
       polygon = rectangle(
-        bounds.left - (options.mode === 'jump' ? 0 : offsets.left) - stroke,
+        bounds.left - offsets.left - stroke,
         bounds.top - offsets.top - stroke,
-        bounds.right + (options.mode === 'jump' ? 0 : offsets.right) + stroke,
+        bounds.right + offsets.right + stroke,
         bounds.bottom + offsets.bottom + stroke,
       );
     }

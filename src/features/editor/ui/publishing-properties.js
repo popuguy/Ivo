@@ -54,7 +54,7 @@ const metric = (art, input, label) =>
   `<div class="property-metric"><span class="property-glyph" data-tooltip="${esc(label)}" aria-hidden="true">${icon(art)}</span>${input}</div>`;
 const measure = (prop, value, label, art, unit = '', options) =>
   metric(art, unitNumber('object-prop', prop, value, label, unit, options), label);
-function moreOptions(key, label, content, state, buttonLabel = '') {
+export function moreOptions(key, label, content, state, buttonLabel = '') {
   const expanded = !!state.propertyDisclosures?.[key];
   return `<details class="property-disclosure ${buttonLabel ? 'named-disclosure' : ''}" ${expanded ? 'open' : ''}><summary data-property-disclosure="${key}" aria-label="${esc(label)}" data-tooltip="${esc(label)}">${buttonLabel || icon('dots')}</summary><div class="property-disclosed">${content}</div></details>`;
 }
@@ -351,7 +351,8 @@ export function frameProperties(item, state = {}) {
           'Minimum first baseline · pt',
           'minimumFirstBaseline',
           f.minimumFirstBaseline || 0,
-        ),
+        ) +
+        `<label class="publishing-check"><input type="checkbox" data-ignore-text-wrap ${item.ignoreTextWrap ? 'checked' : ''}>Ignore Text Wrap</label>`,
       state,
       'Options',
     )}</div>`,

@@ -274,11 +274,41 @@ export function clippedTextWrapPath(points, masks, distance = 0) {
   return expanded.length ? [expanded] : [];
 }
 
+/** A rectangle in local frame coordinates retains independent offsets when rotated on the page. */
+export function rectangularWrapFrame(object) {
+  if (!object || object.frameOptions?.corner > 0) return false;
+  if (object.type !== 'polygon') return !['image', 'pdf'].includes(object.type);
+  const points = object.points;
+  return (
+    points?.length === 4 &&
+    points.every((point, i) => {
+      const next = points[(i + 1) % 4];
+      return (
+        [0, 1].includes(point.x) &&
+        [0, 1].includes(point.y) &&
+        (point.x === next.x) !== (point.y === next.y)
+      );
+    }) &&
+    new Set(points.map(({ x, y }) => x + ',' + y)).size === 4
+  );
+}
+
+export function uniformWrapOffset(object, mode) {
+  return (
+    (mode === 'contour' && !rectangularWrapFrame(object)) ||
+    (object?.type === 'image' && !!object.parentId)
+  );
+}
+
 /** Shared cross-field proof used before commands, import/storage and layout.
  * Options are already normalized. Returned points stay in object-local units. */
 export function textWrapObjectPath(object, options) {
-  if (options.invert && ['jump', 'next-column'].includes(options.mode))
-    throw new Error('Inverted jump and next-column text wrap are not yet supported.');
+  if (
+    options.contour?.source &&
+    options.contour.source !== 'frame' &&
+    !['image', 'pdf'].includes(object.type)
+  )
+    throw new Error('Choose a placed graphic before setting a graphic contour type.');
   const stroke =
     object.type === 'polygon'
       ? object.stroke === 'none'
@@ -301,6 +331,26 @@ export function textWrapObjectPath(object, options) {
           { x: object.w, y: object.h },
           { x: 0, y: object.h },
         ];
+  const { top, right, bottom, left } = options.offsets;
+  if (![right, bottom, left].every((value) => value === top)) {
+    if (!rectangularWrapFrame(object)) throw new Error('This contour requires uniform offsets.');
+    const x1 = -left - stroke,
+      y1 = -top - stroke,
+      x2 = object.w + right + stroke,
+      y2 = object.h + bottom + stroke;
+    return {
+      points:
+        x2 > x1 && y2 > y1
+          ? [
+              { x: x1, y: y1 },
+              { x: x2, y: y1 },
+              { x: x2, y: y2 },
+              { x: x1, y: y2 },
+            ]
+          : [],
+      stroke,
+    };
+  }
   const output = offsetConvex(points, options.offsets.top + stroke);
   triangulateTextWrapContour(output);
   return { points: output, stroke };

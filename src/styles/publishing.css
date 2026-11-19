@@ -1,31 +1,31 @@
-.scene-editor {
-  --panel-bg: var(--workspace-chrome-background, var(--shell));
-  --panel-line: var(--workspace-border, var(--line));
-  --panel-input: var(--workspace-content-background, var(--paper));
-  --panel-ink: var(--ink);
-  --panel-muted: var(--workspace-muted, var(--muted));
-  --panel-hover: var(--workspace-control-hover, #e9e9ec);
-  --panel-active: var(--workspace-control-active, #e1e2e6);
-}
-/* Context panels follow the compact desktop reference; workspace chrome stays independent. */
-.scene-editor .context-panel-group[hidden],
-.context-panel-group [role='tab'][hidden] {
-  display: none;
+/* Interface colors belong to editor chrome. Artboards, text runs and layer colors
+   remain owned by the document. Dialogs are portaled outside the scene editor. */
+.scene-editor,
+.publishing-style-dialog {
+  --panel-bg: #f0f0f0;
+  --panel-tab: #e6e6e6;
+  --panel-input: #fff;
+  --panel-line: #dcdcdc;
+  --panel-control-border: #bdbdbd;
+  --panel-ink: #000;
+  --panel-muted: #636363;
+  --panel-hover: #e0e0e0;
+  --panel-active: #bdbdbd;
+  --panel-accent: #1473e6;
+  --panel-row-selected: #b6d2ef;
+  --panel-page-selected: #0f64d2;
 }
 .context-panel-group,
 .workspace-panel-menu,
-.context-tab-drag-preview {
-  --panel-bg: #535353;
-  --panel-tab: #424242;
-  --panel-input: #454545;
-  --panel-line: #383838;
-  --panel-control-border: #757575;
-  --panel-ink: #fafafa;
-  --panel-muted: #c9c9c9;
-  --panel-hover: #606060;
-  --panel-active: #303030;
-  --panel-accent: #58b8fa;
-  color-scheme: dark;
+.context-tab-drag-preview,
+.canvas-contextual-bar,
+.type-options-popover,
+.publishing-style-dialog {
+  color-scheme: light;
+}
+.scene-editor .context-panel-group[hidden],
+.context-panel-group [role='tab'][hidden] {
+  display: none;
 }
 .context-panel-group {
   background: var(--panel-bg);
@@ -105,8 +105,10 @@
   width: 12px;
   height: 12px;
 }
-.context-panel-group .reference-icon {
-  filter: brightness(0) invert(0.84);
+/* Native Light resources carry their own ink, opacity and secondary details. */
+:is(.context-panel-group, .canvas-contextual-bar)
+  .reference-icon[data-icon-source='Obsidian/Lucide'] {
+  filter: brightness(0) invert(0.43);
 }
 .scene-editor .workspace-panel-menu {
   overflow-y: auto;
@@ -164,9 +166,6 @@
   background: var(--panel-input);
   padding: 2px 5px;
   min-width: 0;
-}
-.context-panel-group select {
-  color-scheme: dark;
 }
 .context-panel-group input[type='color'] {
   width: 30px;
@@ -265,35 +264,6 @@
   font-size: 11px;
 }
 .publishing-check input {
-  margin: 0;
-}
-.text-wrap-modes {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 3px;
-  margin: 0 0 10px;
-}
-.context-panel-group .text-wrap-modes button {
-  min-width: 0;
-  min-height: 25px;
-  padding: 3px 2px;
-  border: 1px solid var(--panel-line);
-  background: transparent;
-  color: var(--panel-muted);
-  font: 11px/17px var(--interface-font);
-  cursor: default;
-}
-.context-panel-group .text-wrap-modes button[aria-pressed='true'] {
-  background: var(--panel-active);
-  color: var(--panel-ink);
-  border-color: var(--panel-muted);
-}
-.text-wrap-mixed {
-  color: var(--panel-muted);
-  font-size: 10px;
-  margin: 0 0 7px;
-}
-.publishing-check .text-wrap-mixed {
   margin: 0;
 }
 .publishing-more {
@@ -634,6 +604,9 @@
 }
 .publishing-style-dialog {
   min-width: min(440px, 90vw);
+  background: var(--panel-bg);
+  color: var(--panel-ink);
+  border-color: var(--panel-control-border);
 }
 .publishing-style-dialog label {
   display: flex;
@@ -728,7 +701,6 @@
   border-radius: 2px;
   font-size: 12px;
   min-width: 0;
-  color-scheme: dark;
 }
 .canvas-contextual-bar select:first-of-type {
   width: 150px;

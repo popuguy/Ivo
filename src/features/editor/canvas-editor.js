@@ -1,3 +1,4 @@
+import { PANEL_LABELS } from '../../domain/workspace/panels.js';
 import { reflectPropertyFormatting } from './ui/publishing-properties.js';
 import { globalIndex as flowIndexAtPoint } from '../../rendering/text/flow-source.js';
 import { patchComposedFrame } from './text/composed-frame.js';
@@ -274,7 +275,16 @@ export function mountCanvasEditor(host, options) {
     .map(([name, label]) => control('tool-' + name, label, name))
     .join(
       '',
-    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-input-world" hidden><div class="canvas-flow-clip"><div class="rich-text canvas-text canvas-flow-input"></div></div></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div>${statusBarMarkup(control)}</div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('panel-collapse')}</button></div><div class="context-panel-header"><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels"><button role="tab" data-canvas-panel="properties" data-tooltip="Properties">Properties</button><button role="tab" data-canvas-panel="pages" data-tooltip="Pages">Pages</button><button role="tab" data-canvas-panel="layers" data-tooltip="Layers">Layers</button><button role="tab" data-canvas-panel="links" data-tooltip="Links">Links</button></nav><button type="button" data-panel-menu aria-haspopup="menu" aria-expanded="false" aria-label="Panel menu" data-tooltip="Panel menu">${svg('menu')}</button></div><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
+    )}<span class="tool-divider"></span>${control('image', 'Place image', 'image')}${control('inside', 'Draw inside', 'inside')}</nav><div class="canvas-center"><div class="canvas-viewport" tabindex="0" role="region" aria-label="Page workspace"><div class="canvas-world"></div><div class="canvas-input-world" hidden><div class="canvas-flow-clip"><div class="rich-text canvas-text canvas-flow-input"></div></div></div><div class="canvas-guides" aria-hidden="true"></div><div class="canvas-selection"></div><svg class="canvas-draft" aria-hidden="true"></svg><div class="canvas-marquee" hidden aria-hidden="true"></div></div>${statusBarMarkup(control)}</div><aside class="canvas-properties" aria-label="Pages and properties"><div class="canvas-panel-microbar" data-tooltip="Drag to float or dock panels. Double-click to toggle."><button data-canvas-command="close-panel-group" aria-label="Close panel group" data-tooltip="Close tab group">${svg('close')}</button><button data-canvas-command="collapse-properties" aria-label="Collapse panel" data-tooltip="Collapse panel">${svg('panel-collapse')}</button></div><div class="context-panel-header"><nav class="canvas-panel-tabs" role="tablist" aria-label="Context panels">${Object.entries(
+    PANEL_LABELS,
+  )
+    .map(
+      ([kind, label]) =>
+        `<button role="tab" data-canvas-panel="${kind}" data-tooltip="${label}">${label}</button>`,
+    )
+    .join(
+      '',
+    )}</nav><button type="button" data-panel-menu aria-haspopup="menu" aria-expanded="false" aria-label="Panel menu" data-tooltip="Panel menu">${svg('menu')}</button></div><div class="canvas-panel-content"></div></aside><input class="canvas-font-input" type="file" accept=".ttf,.otf" multiple hidden><input class="canvas-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden></div>`;
   const editor = host.firstElementChild,
     viewport = host.querySelector('.canvas-viewport'),
     world = host.querySelector('.canvas-world'),
@@ -299,6 +309,7 @@ export function mountCanvasEditor(host, options) {
     allowed: () => !busy && !composing && !dialogOpen(),
     initialState: options.panelLayout,
     onCommand: (name) => command(name),
+    wrapOptionsShown: () => state.propertyDisclosures?.wrapPanel !== false,
     commandEnabled: (name) => {
       if (name === 'new-parent') return !options.parentMode;
       if (name === 'override-parent') return !options.parentMode && !!page().parentPageId;
@@ -314,10 +325,14 @@ export function mountCanvasEditor(host, options) {
     },
     onRender: () => renderPanel(),
   });
+  let selectedVertex = null;
   function setSelectionState(ids) {
     const values = typeof ids === 'string' ? [ids] : ids || [];
     const next = selectionRoots(doc(), values).map((item) => item.id);
-    if (next.join('|') !== state.selection.join('|')) selectionDirty = true;
+    if (next.join('|') !== state.selection.join('|')) {
+      selectionDirty = true;
+      selectedVertex = null;
+    }
     state.selection = next;
     state.selected = next.at(-1) || null;
     options.onViewChange?.();
@@ -398,7 +413,10 @@ export function mountCanvasEditor(host, options) {
     finishGesture();
     endTextEditing();
     draft = null;
+    const hadVertex = !!selectedVertex;
+    selectedVertex = null;
     state.tool = name;
+    if (hadVertex) renderPanel();
     editor.dataset.tool = name;
     renderTools();
     renderSelection(true);
@@ -804,11 +822,17 @@ export function mountCanvasEditor(host, options) {
         .filter(({ content }) => !visibleOnly || !content.hidden),
       index = panelEntries.some(({ kind }) => kind === 'links') ? options.index?.() : undefined;
     for (const { kind, content } of panelEntries) {
+      if (kind === 'text-wrap' && content.hidden) {
+        content.replaceChildren();
+        panelHTML.delete(content);
+        continue;
+      }
       const html = propertiesContent({
         document: doc(),
         documents: options.documents,
         state: { ...state, panel: kind },
         selectedObjects,
+        selectedVertex,
         selectionRect: selectionBounds(doc(), state.selection),
         activePage: page(),
         editing: options.editing,
@@ -1436,6 +1460,7 @@ export function mountCanvasEditor(host, options) {
     rememberTextSelection();
   }
   function restoreView(view = {}, { focus = true } = {}) {
+    selectedVertex = null;
     restoring = true;
     hideFlowInput();
     textBefore = null;
@@ -2158,6 +2183,10 @@ export function mountCanvasEditor(host, options) {
     }
     const vertex = event.target.closest('[data-vertex]'),
       resize = event.target.closest('[data-resize]');
+    if (selectedVertex !== (vertex?.dataset.vertex || null)) {
+      selectedVertex = vertex?.dataset.vertex || null;
+      renderPanel();
+    }
     if (vertex || resize) {
       const items = objects();
       if (!items.length || (vertex && items.length !== 1)) return;

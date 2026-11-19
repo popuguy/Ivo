@@ -1,4 +1,5 @@
 import {
+  PANEL_LABELS,
   normalizePanels,
   movePanel,
   panelPreset,
@@ -34,6 +35,7 @@ export function installWorkspacePanels(
     editing = () => true,
     commandEnabled = () => true,
     onCommand = () => {},
+    wrapOptionsShown = () => false,
     initialState,
     presets,
     onError = () => {},
@@ -152,8 +154,8 @@ export function installWorkspacePanels(
         item.tab.hidden = saved.closed.includes(kind);
         item.tab.setAttribute('aria-selected', String(active));
         item.tab.tabIndex = active ? 0 : -1;
-        item.content.hidden = !active;
-        item.content.style.display = active ? '' : 'none';
+        item.content.hidden = !active || item.tab.hidden || element.hidden;
+        item.content.style.display = item.content.hidden ? 'none' : '';
       }
     }
     for (const [id, element] of groups)
@@ -195,7 +197,7 @@ export function installWorkspacePanels(
   }
   function select(kind) {
     const group = groupFor(kind);
-    if (!group) return;
+    if (!group || saved.closed.includes(kind)) return;
     if (selectedGroup === group.id && group.active === kind) return;
     selectedGroup = group.id;
     group.active = kind;
@@ -489,6 +491,9 @@ export function installWorkspacePanels(
       layers: [['layer-options', 'Layer Options…']],
     };
     const actions = [
+      ...(kind === 'text-wrap'
+        ? [['command/toggle-wrap-options', wrapOptionsShown() ? 'Hide Options' : 'Show Options']]
+        : []),
       ...(editing()
         ? (contentActions[kind] || []).map(([id, label]) => ['command/' + id, label])
         : []),
@@ -498,18 +503,19 @@ export function installWorkspacePanels(
             ['dock-panel', 'Dock this panel separately'],
           ]
         : []),
-      ['close-panel', 'Close ' + (kind || group.active)],
+      ['close-panel', 'Close ' + PANEL_LABELS[kind || group.active]],
       ['close-group', 'Close tab group'],
-      ...saved.closed.map((member) => [
-        'show/' + member,
-        'Show ' + member[0].toUpperCase() + member.slice(1),
-      ]),
+      ...saved.closed.map((member) => ['show/' + member, 'Show ' + PANEL_LABELS[member]]),
       ['float', group.floating ? 'Dock group' : 'Float group'],
       ...saved.groups
         .filter((value) => value.id !== group.id)
         .map((value) => [
           'join/' + value.id,
-          'Group with ' + value.tabs.map((tab) => tab[0].toUpperCase() + tab.slice(1)).join(', '),
+          'Group with ' +
+            value.tabs
+              .filter((tab) => !saved.closed.includes(tab))
+              .map((tab) => PANEL_LABELS[tab])
+              .join(', '),
         ]),
       ['compact', 'Preset: Compact'],
       ['layout', 'Preset: Layout'],
@@ -593,7 +599,9 @@ export function installWorkspacePanels(
             ]),
           ];
           apply();
+          onSelect(groupTarget().active);
           store();
+          onRender();
           return;
         }
         if (action.startsWith('show/')) {
@@ -601,6 +609,7 @@ export function installWorkspacePanels(
           saved.closed = saved.closed.filter((k) => k !== name);
           groupFor(name).collapsed = false;
           select(name);
+          apply();
           store();
           onRender();
           return;
@@ -700,15 +709,15 @@ export function installWorkspacePanels(
       event.stopPropagation();
       prepare();
       const group = groupFor(tab.dataset.canvasPanel),
-        index = group.tabs.indexOf(tab.dataset.canvasPanel),
+        openTabs = group.tabs.filter((kind) => !saved.closed.includes(kind)),
+        index = openTabs.indexOf(tab.dataset.canvasPanel),
         next =
-          group.tabs[
+          openTabs[
             event.key === 'Home'
               ? 0
               : event.key === 'End'
-                ? group.tabs.length - 1
-                : (index + (event.key === 'ArrowLeft' ? -1 : 1) + group.tabs.length) %
-                  group.tabs.length
+                ? openTabs.length - 1
+                : (index + (event.key === 'ArrowLeft' ? -1 : 1) + openTabs.length) % openTabs.length
           ];
       select(next);
       store();
@@ -757,8 +766,8 @@ export function installWorkspacePanels(
   });
   const observer = new ResizeObserver(apply);
   observer.observe(editor);
-  onSelect(saved.groups[0].active);
   apply();
+  onSelect(saved.groups[0].active);
   return {
     entries: () => [...panels].map(([kind, { content }]) => ({ kind, content })),
     select,
@@ -770,11 +779,14 @@ export function installWorkspacePanels(
       store();
     },
     show(kind) {
-      saved.closed = kind ? saved.closed.filter((k) => k !== kind) : [];
+      if (kind) saved.closed = saved.closed.filter((k) => k !== kind);
+      else if (saved.closed.length === panels.size)
+        saved.closed = saved.closed.filter((k) => k !== 'properties');
       if (kind) select(kind);
       for (const group of saved.groups) group.collapsed = false;
       editor.classList.add('show-properties');
       apply();
+      if (kind) panels.get(kind)?.tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       store();
       onRender();
     },

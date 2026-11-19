@@ -1,4 +1,11 @@
-export const PANEL_KINDS = ['properties', 'pages', 'layers', 'links'];
+export const PANEL_LABELS = Object.freeze({
+  properties: 'Properties',
+  pages: 'Pages',
+  layers: 'Layers',
+  links: 'Links',
+  'text-wrap': 'Text Wrap',
+});
+export const PANEL_KINDS = Object.keys(PANEL_LABELS);
 export const DEFAULT_DOCK_WIDTH = 254;
 const KINDS = PANEL_KINDS;
 const number = (value, fallback, min, max) =>
@@ -6,7 +13,7 @@ const number = (value, fallback, min, max) =>
 export function defaultPanels() {
   return {
     version: 3,
-    closed: [],
+    closed: ['text-wrap'],
     dock: DEFAULT_DOCK_WIDTH,
     textFlow: null,
     groups: [
@@ -26,7 +33,14 @@ export function normalizePanels(input) {
   if (!input || typeof input !== 'object') return defaultPanels();
   const legacy = !Array.isArray(input.groups),
     raw = legacy
-      ? [{ ...input, id: 'context-main', tabs: KINDS, active: 'properties' }]
+      ? [
+          {
+            ...input,
+            id: 'context-main',
+            tabs: KINDS.filter((kind) => kind !== 'text-wrap'),
+            active: 'properties',
+          },
+        ]
       : input.groups;
   const used = new Set(),
     ids = new Set(),
@@ -66,7 +80,10 @@ export function normalizePanels(input) {
     version: 3,
     closed: [
       ...new Set(
-        (Array.isArray(input.closed) ? input.closed : []).filter((kind) => KINDS.includes(kind)),
+        [
+          ...(Array.isArray(input.closed) ? input.closed : []),
+          ...(!used.has('text-wrap') ? ['text-wrap'] : []),
+        ].filter((kind) => KINDS.includes(kind)),
       ),
     ],
     dock: number(input.dock, DEFAULT_DOCK_WIDTH, 0, 480),

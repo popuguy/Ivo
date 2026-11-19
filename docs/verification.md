@@ -1,5 +1,11 @@
 # Verification
 
+## Light publishing panels and contextual Text Wrap — 19 November 2026
+
+A hidden desktop editor checks text insertion, frame selection, a straight line, a direct-selected vertex, a graphic, a rectangle, multiple objects and no selection. It operates the wrap icons, independent and linked fractional offsets, Invert, the dedicated panel flyout and document creation defaults. Geometry tests cover inverted jumps and the distinction between an image rectangle, a clipped graphic and its container. Both local and fallback artwork were checked in the Light interface.
+
+The Apple Silicon review build is `release/2026-11-19-light-text-wrap/Ivo-darwin-arm64/Ivo.app`. Verification passed 498 unit tests, 44 native tests and 17 background desktop groups. A separate hidden workspace test exercised both shortcut combinations and panel reopening. The package matched 547 source, asset and build files plus both executable native helpers.
+
 ## Character scaling and publishing panels — 19 November 2026
 
 The clipboard regression reproduces nested horizontal and vertical scale resets around five ordinary paragraphs. Tests measure the first character against each paragraph edge, check that the original text survives, and verify that repeated auto-leading edits preserve the final value. The threaded-editor checks also measure glyph dimensions, advances, scale changes, and the width of neighboring unselected text.

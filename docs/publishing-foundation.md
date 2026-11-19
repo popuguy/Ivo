@@ -4,7 +4,7 @@
 
 ## Desktop panels
 
-Properties, Pages and Layers share a compact dark dock and the workspace Geist typeface. The default width is 254 points. Existing workspace widths and floating groups retain their saved geometry. Each group's flyout offers panel and layout commands.
+Properties, Pages and Layers share a compact Light dock and the workspace Geist typeface. The default width is 254 points. Existing workspace widths and floating groups retain their saved geometry. Each group's flyout offers panel and layout commands. Window → Text Wrap opens an additional dockable panel. Its flyout controls the visibility of Wrap Options and Contour Options.
 
 Properties → Character shows family, style, size, leading, kerning and tracking. Its **More Options** ellipsis exposes horizontal and vertical scale, baseline shift and additional character settings. The two scale values are absolute percentages. At 100%, the text returns to its original proportions. The Transform chain constrains frame proportions around the selected reference point.
 
