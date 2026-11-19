@@ -9,6 +9,7 @@ import { effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
 import { escapeHTML } from '../../shared/html/sanitize.js';
 import { documentHasObjectWrap, flowHasObjectWrap } from './object-wrap-layout.js';
+import { PARAGRAPH_LAYOUT_FIELDS, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
 
 const sessions = new WeakMap(),
   requestSessions = new WeakMap(),
@@ -257,6 +258,7 @@ async function decideParagraph(request, columns, compose) {
 }
 function validateResult(result, request) {
   if (
+    result?.protocol !== request.protocol ||
     result?.sourceDigest !== request.sourceDigest ||
     !Array.isArray(result.layout?.lines) ||
     !Number.isSafeInteger(result.layout.coveredLength) ||
@@ -265,7 +267,7 @@ function validateResult(result, request) {
     result.layout.textLength !== request.text.length
   )
     throw Error('The native text result does not match its source.');
-  const frames = new Set(request.frames.map((f) => f.id));
+  const frames = new Map(request.frames.map((f) => [f.id, f]));
   let end = 0;
   for (const line of result.layout.lines) {
     if (
@@ -276,6 +278,24 @@ function validateResult(result, request) {
       line.end > request.text.length
     )
       throw Error('Native text lines lost their ordered source or frame identity.');
+    if (request.protocol === 2) {
+      const paragraph = request.paragraphs.find((p) => p.start <= line.start && p.end > line.start),
+        area = paragraphLineArea(
+          paragraph,
+          frames.get(line.frame).width,
+          line.start === paragraph.start,
+        );
+      if (
+        !Number.isFinite(line.originX) ||
+        Math.abs(line.originX) > 100000 ||
+        line.paragraphStart !== paragraph.start ||
+        line.paragraphEnd !== paragraph.end ||
+        line.end > paragraph.end ||
+        !Number.isFinite(line.availableWidth) ||
+        Math.abs(line.availableWidth - area.width) > 0.000001
+      )
+        throw Error('Native paragraph geometry disagrees with its authored layout.');
+    }
     end = line.end;
   }
   if (end !== result.layout.coveredLength)
@@ -359,12 +379,30 @@ function projectNativeFlow(doc, flow, fonts) {
     source.text.length > limit ||
     source.spans.length > 30000 ||
     source.runs.length > 10000 ||
+    source.paragraphs.length > 10000 ||
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
   if (flow.composition?.composer === 'paragraph') validateParagraphSource(source.text);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
+  const columns = nativeFlowColumns(doc, flow);
+  for (const paragraph of source.paragraphs) {
+    for (const column of columns) {
+      paragraphLineArea(paragraph, column.width, true);
+      paragraphLineArea(paragraph, column.width);
+    }
+    if (
+      source.text.slice(paragraph.start, paragraph.end).includes('\t') &&
+      !['left', 'start'].includes(paragraph.align)
+    )
+      throw new UnsupportedComposition('tabs combined with non-left paragraph alignment');
+  }
+  if (
+    flow.composition?.composer === 'paragraph' &&
+    columns.some((column) => Math.abs(column.width - columns[0].width) > 0.000001)
+  )
+    throw new UnsupportedComposition('paragraph composition across unequal column widths');
   return source;
 }
 
@@ -418,7 +456,7 @@ export async function composeNativeTextFlows(
       source = projectNativeFlow(projection, flow, fonts);
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
     const request = {
-        protocol: 1,
+        protocol: source.protocol,
         id: source.id,
         sourceHTML: source.sourceHTML,
         sourceDigest: await sha(new TextEncoder().encode(source.sourceHTML)),
@@ -450,6 +488,11 @@ export async function composeNativeTextFlows(
             textColor,
           }),
         ),
+        paragraphs: source.paragraphs.map(({ start, end, ...metadata }) => ({
+          start,
+          end,
+          ...Object.fromEntries(PARAGRAPH_LAYOUT_FIELDS.map((key) => [key, metadata[key]])),
+        })),
         resources: await fonts.resources(),
         allowFallback: false,
         includeVectors: true,

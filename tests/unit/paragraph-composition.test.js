@@ -39,6 +39,79 @@ function backend(transform = (result) => result) {
   };
 }
 
+function paragraphRequest(text, styles = []) {
+  const req = request(text, { protocol: 2 }),
+    parts = validateParagraphSource(text);
+  req.paragraphs = parts.map((p, index) => ({
+    start: p.start,
+    end: p.start + p.text.length,
+    align: 'left',
+    paragraphBefore: 0,
+    paragraphAfter: 0,
+    leftIndent: 0,
+    rightIndent: 0,
+    firstLineIndent: 0,
+    ...styles[index],
+  }));
+  return req;
+}
+
+test('paragraph indents fit distinct first/rest widths while spacing and alignment reuse shaping', async () => {
+  const service = backend(),
+    composer = createParagraphComposer(service.measure),
+    req = paragraphRequest('aaaa bbbb cccc dddd\u2029', [
+      { leftIndent: 2, rightIndent: 1, firstLineIndent: 4 },
+    ]),
+    before = JSON.stringify(req),
+    result = await composer.compose(req, columns(14));
+  let start = 0;
+  for (const [index, end] of result.breaks.entries()) {
+    assert(req.text.slice(start, end).trimEnd().length <= (index === 0 ? 7 : 11));
+    start = end;
+  }
+  assert.equal(start, req.text.length);
+  assert.equal(JSON.stringify(req), before);
+  const changed = structuredClone(req);
+  Object.assign(changed.paragraphs[0], { align: 'right', paragraphBefore: 7, paragraphAfter: 11 });
+  const aligned = await composer.compose(changed, columns(14));
+  assert.equal(aligned.work.backendCalls, 0);
+  assert.deepEqual(aligned.breaks, result.breaks);
+  changed.paragraphs[0].firstLineIndent = -2;
+  const hanging = await composer.compose(changed, columns(14));
+  assert.equal(hanging.work.backendCalls, 0);
+  assert.notDeepEqual(hanging.breaks, result.breaks);
+  assert.deepEqual(
+    hanging.breaks,
+    (await createParagraphComposer(backend().measure).compose(changed, columns(14))).breaks,
+  );
+  const bad = structuredClone(req);
+  bad.paragraphs[0].leftIndent = 100;
+  const calls = service.calls.length;
+  await assert.rejects(composer.compose(bad, columns(14)), /text width/);
+  assert.equal(service.calls.length, calls, 'Invalid areas must reject before native requests');
+  bad.paragraphs[0].start = 1;
+  await assert.rejects(composer.compose(bad, columns(14)), /metadata/);
+});
+
+test('tab-containing paragraphs measure at exact frame-relative indent origins and cannot alias caches', async () => {
+  const service = backend(),
+    composer = createParagraphComposer(service.measure),
+    req = paragraphRequest('A\tB\u2029A\tB\u2029', [
+      { leftIndent: 18, firstLineIndent: 9 },
+      { leftIndent: 10, firstLineIndent: 5 },
+    ]);
+  const result = await composer.compose(req, columns(100));
+  assert.equal(result.work.measuredParagraphs, 2);
+  assert.equal(result.work.deduplicatedParagraphs, 0);
+  const candidates = service.calls.flatMap((call) => call.candidates);
+  assert(candidates.some((c) => c.start === 0 && c.offset === 27));
+  assert(candidates.some((c) => c.start === 4 && c.offset === 15));
+  assert(candidates.some((c) => c.start === 2 && c.offset === 18));
+  const moved = structuredClone(req);
+  moved.paragraphs[0].leftIndent++;
+  assert.equal((await composer.compose(moved, columns(100))).work.measuredParagraphs, 1);
+});
+
 test('paragraph endings have independent decisions; soft breaks and blank paragraphs retain source', async () => {
   const source = 'aaa bb cc ddddd\u2029aaa bb cc ddddd\u2029\u2029a\u2028b\r\nc',
     service = backend(),

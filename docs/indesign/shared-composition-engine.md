@@ -1,6 +1,6 @@
 # Shared native composition engine
 
-The original geometry proof now calls the same `TextCompositionEngine` used by the persistent desktop worker. The Swift module accepts bounded source maps, explicit font bytes and frame geometry; it cannot open files or write a vault. Native input remains a separate application responsibility. This is an implementation milestone toward the text programme, not a claim of InDesign parity.
+The original geometry proof now calls the same `TextCompositionEngine` used by the persistent desktop worker. The Swift module accepts bounded source maps, explicit font bytes and frame geometry; it cannot open files or write a vault. Native input remains a separate application responsibility. [Paragraph protocol 2](../native-paragraph-layout.md) adds source-owned paragraph policy and aligned line origins; legacy protocol 1 keeps its default geometry. Neither protocol is a second saved document format. This is an implementation milestone toward the text programme, not a claim of InDesign parity.
 
 `desktop/text-composition.mjs` owns one byte-only JSONL worker, registration of immutable font resources, deadlines, shutdown, and recovery. Subsequent calls may omit already registered font bytes. A cached composition token identifies retained immutable lines; a lost worker can rehydrate a retained request and must verify its geometry before exporting the token again. Caches and transport envelopes have explicit budgets.
 

@@ -20,6 +20,8 @@ import {
 } from '../../../src/shared/dom/text-selection.js';
 import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
+import { verifyParagraphProjection } from './paragraph-projection.js';
+import { verifyNativeParagraphEditing } from './paragraph-editing.js';
 const assert = (value, message) => {
     if (!value) throw Error(message);
   },
@@ -31,6 +33,7 @@ window.addEventListener('unhandledrejection', (event) =>
 );
 try {
   await document.fonts.ready;
+  const paragraphProjection = verifyParagraphProjection();
   const host = document.querySelector('#host'),
     notices = [],
     mouseTrace = [],
@@ -59,6 +62,7 @@ try {
     commits = 0,
     changes = 0,
     writable = true,
+    paragraphEditing = {},
     held = null,
     history = createDocumentHistory();
   const native = {
@@ -561,6 +565,12 @@ try {
     report({ phase: 'edit' });
   }
   if (phase === 'reopen') {
+    paragraphEditing = await verifyNativeParagraphEditing({
+      host,
+      compose: native.compose,
+      insert: window.nativeEditorTest.insert,
+      capture: window.nativeEditorTest.capture,
+    });
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
       x: 30,
@@ -844,6 +854,8 @@ try {
     report({
       ok: true,
       sourceProjection: true,
+      ...paragraphProjection,
+      ...paragraphEditing,
       realNativeBridge: true,
       composerPreflight: true,
       vectorInk: true,

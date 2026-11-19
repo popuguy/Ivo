@@ -62,6 +62,17 @@ public final class TextCompositionEngine {
   struct Candidate: Decodable {
     let start: Int
     let end: Int
+    let offset: Double?
+  }
+  struct Paragraph: Decodable {
+    let start: Int
+    let end: Int
+    let align: String
+    let paragraphBefore: Double
+    let paragraphAfter: Double
+    let leftIndent: Double
+    let rightIndent: Double
+    let firstLineIndent: Double
   }
   struct Request: Decodable {
     let `protocol`: Int
@@ -79,6 +90,7 @@ public final class TextCompositionEngine {
     let candidates: [Candidate]?
     let breaks: [Int]?
     let includeVectors: Bool?
+    let paragraphs: [Paragraph]?
   }
   struct FrozenLine {
     let page: Int
@@ -88,6 +100,7 @@ public final class TextCompositionEngine {
     let ascent: Double
     let descent: Double
     let line: CTLine
+    let originX: Double
   }
   func fail(_ message: String) -> NSError {
     NSError(domain: "Ivo.TextComposition", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
@@ -103,10 +116,13 @@ public final class TextCompositionEngine {
   func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
     try require(
-      request.protocol == 1
+      [1, 2].contains(request.protocol)
         && ["greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof"].contains(
           request.mode),
       "Unsupported composition protocol or policy")
+    try require(
+      request.protocol == 2 || request.paragraphs == nil,
+      "Paragraph layout requires composition protocol 2")
     try require(!request.id.isEmpty && request.id.utf8.count <= 120, "Invalid source identity")
     try require(
       length > 0 && length <= 100_000 && request.logicalLength >= 0
@@ -137,6 +153,43 @@ public final class TextCompositionEngine {
     var logical = 0
     var native = 0
     let string = request.text as NSString
+    if request.protocol == 2 {
+      guard let paragraphs = request.paragraphs else { throw fail("Missing paragraph layout") }
+      try require(!paragraphs.isEmpty && paragraphs.count <= 10_000, "Invalid paragraph layout")
+      var paragraphStart = 0
+      for paragraph in paragraphs {
+        try require(
+          paragraph.start == paragraphStart && paragraph.end > paragraph.start
+            && paragraph.end <= length, "Discontinuous paragraph layout")
+        try require(
+          ["left", "center", "right", "justify", "justify-center", "justify-right", "justify-all",
+            "start", "end"].contains(paragraph.align), "Unsupported paragraph alignment")
+        try require(
+          finite(paragraph.paragraphBefore, 0, 2000) && finite(paragraph.paragraphAfter, 0, 2000)
+            && finite(paragraph.leftIndent, -2000, 2000)
+            && finite(paragraph.rightIndent, -2000, 2000)
+            && finite(paragraph.firstLineIndent, -2000, 2000), "Invalid paragraph geometry")
+        let value = string.substring(
+          with: NSRange(location: paragraph.start, length: paragraph.end - paragraph.start))
+        try require(
+          !value.contains("\t") || ["left", "start"].contains(paragraph.align),
+          "Aligned native tab paragraphs require a qualified tab policy")
+        try require(
+          !value.dropLast().contains("\u{2029}")
+            && (paragraph.end == length || value.last == "\u{2029}"),
+          "Paragraph layout crosses or omits a source paragraph boundary")
+        for frame in request.frames {
+          let width = frame.width - paragraph.leftIndent - paragraph.rightIndent
+          try require(
+            paragraph.leftIndent >= 0 && paragraph.rightIndent >= 0
+              && paragraph.leftIndent + paragraph.firstLineIndent >= 0
+              && finite(width, 1, 18400) && finite(width - paragraph.firstLineIndent, 1, 20400),
+            "Paragraph indents leave no valid line area")
+        }
+        paragraphStart = paragraph.end
+      }
+      try require(paragraphStart == length, "Paragraph layout does not cover source")
+    }
     for span in request.spans {
       try require(
         span.logicalStart == logical && span.start == native && span.logicalEnd >= logical
@@ -264,6 +317,10 @@ public final class TextCompositionEngine {
           !candidates.isEmpty && candidates.count <= 4096, "Line-alternative budget exceeded")
         for candidate in candidates {
           try require(
+            candidate.offset == nil
+              || (request.protocol == 2 && finite(candidate.offset!, -4000, 4000)),
+            "Invalid line-alternative origin")
+          try require(
             candidate.start >= 0 && candidate.end > candidate.start && candidate.end <= length
               && boundaries.contains(candidate.start) && boundaries.contains(candidate.end),
             "Invalid line alternative or grapheme boundary")
@@ -368,8 +425,9 @@ public final class TextCompositionEngine {
       { end -= 1 }
       let line =
         end > candidate.start
-        ? CTTypesetterCreateLine(
-          typesetter, CFRange(location: candidate.start, length: end - candidate.start))
+        ? CTTypesetterCreateLineWithOffset(
+          typesetter, CFRange(location: candidate.start, length: end - candidate.start),
+          candidate.offset ?? 0)
         : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
       try validateFallback(line, request: request)
       var ascent = CGFloat.zero
@@ -420,15 +478,25 @@ public final class TextCompositionEngine {
     var output: [[String: Any]] = []
     var diagnostics = Set<String>()
     let known = Set(request.resources.map { $0.postscript })
+    var paragraphIndex = 0
     for (page, frame) in request.frames.enumerated() {
       var previousBaseline: Double? = nil
       let frameStart = frozen.count
       while position < textLength {
         try require(output.count < 4096, "Composed line budget exceeded")
+        while let paragraphs = request.paragraphs,
+          paragraphIndex + 1 < paragraphs.count && position >= paragraphs[paragraphIndex].end
+        { paragraphIndex += 1 }
+        let paragraph = request.paragraphs?[paragraphIndex]
+        let paragraphFirstLine = paragraph?.start == position
+        let indent =
+          (paragraph?.leftIndent ?? 0)
+          + (paragraphFirstLine ? paragraph?.firstLineIndent ?? 0 : 0)
+        let availableWidth = frame.width - indent - (paragraph?.rightIndent ?? 0)
         var count =
           request.mode == "explicit-lines-proof"
           ? request.breaks!.first(where: { $0 > position })! - position
-          : CTTypesetterSuggestLineBreak(typesetter, position, frame.width)
+          : CTTypesetterSuggestLineBreakWithOffset(typesetter, position, availableWidth, indent)
         if count <= 0 {
           count = (boundaries.first(where: { $0 > position }) ?? textLength) - position
           diagnostics.insert("unbreakable-cluster-overflow")
@@ -439,16 +507,33 @@ public final class TextCompositionEngine {
         while contentEnd > position
           && [10, 13, 0x2028].contains(Int(nativeString.character(at: contentEnd - 1)))
         { contentEnd -= 1 }
-        let line =
+        var line =
           contentEnd > position
-          ? CTTypesetterCreateLine(
-            typesetter, CFRange(location: position, length: contentEnd - position))
+          ? CTTypesetterCreateLineWithOffset(
+            typesetter, CFRange(location: position, length: contentEnd - position), indent)
           : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
         var ascent = CGFloat.zero
         var descent = CGFloat.zero
         var leading = CGFloat.zero
-        let width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
-        let visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
+        var width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+        var visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
+        let paragraphLastLine = paragraph.map { end >= $0.end } ?? false
+        let alignment = paragraph?.align ?? "left"
+        let justified = alignment.hasPrefix("justify")
+          && (!paragraphLastLine || alignment == "justify-all")
+        if justified && visibleWidth > 0 && visibleWidth < availableWidth,
+          let expanded = CTLineCreateJustifiedLine(line, 1, availableWidth)
+        {
+          line = expanded
+          width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+          visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
+        }
+        let flush: CGFloat =
+          alignment == "center" || (alignment == "justify-center" && paragraphLastLine)
+          ? 0.5
+          : alignment == "right" || alignment == "end"
+            || (alignment == "justify-right" && paragraphLastLine) ? 1 : 0
+        let originX = indent + CTLineGetPenOffsetForFlush(line, flush, availableWidth)
         if contentEnd == position,
           let blank = request.runs.first(where: { $0.start <= position && $0.end > position })
         {
@@ -464,7 +549,12 @@ public final class TextCompositionEngine {
           }.max() ?? 14.4
         let baseline: Double
         if let previous = previousBaseline {
-          baseline = previous + advance
+          let previousAfter =
+            paragraphFirstLine && paragraphIndex > 0
+            ? request.paragraphs![paragraphIndex - 1].paragraphAfter : 0
+          baseline =
+            previous + advance + previousAfter
+            + (paragraphFirstLine ? paragraph?.paragraphBefore ?? 0 : 0)
         } else {
           let metric: Double
           switch frame.firstBaseline ?? "ascent" {
@@ -490,8 +580,11 @@ public final class TextCompositionEngine {
           baseline = max(frame.minimumFirstBaseline ?? 0, metric)
         }
         if baseline + Double(descent) > frame.height { break }
+        // A full column hands this same decision to the next authored frame,
+        // which can be wider. Validate width only after it can occupy this row.
         if request.mode == "explicit-lines-proof" {
-          try require(visibleWidth <= frame.width + 0.000001, "Explicit line exceeds frame width")
+          try require(
+            visibleWidth <= availableWidth + 0.000001, "Explicit line exceeds its indented line area")
         }
         var runRows: [[String: Any]] = []
         for run in CTLineGetGlyphRuns(line) as! [CTRun] {
@@ -520,7 +613,7 @@ public final class TextCompositionEngine {
             let b = edges.first(where: { $0 > a }) ?? source.location + source.length
             var row: [String: Any] = [
               "glyph": Int(glyphs[i]), "index": a, "end": b,
-              "position": [Double(positions[i].x), Double(positions[i].y)],
+              "position": [Double(positions[i].x) + originX, Double(positions[i].y)],
               "advance": [Double(advances[i].width), Double(advances[i].height)],
               "sourceRanges": logicalRanges(a, b, request.spans),
             ]
@@ -570,7 +663,8 @@ public final class TextCompositionEngine {
             contentEnd == position
             ? CGFloat.zero : CTLineGetOffsetForStringIndex(line, min(index, contentEnd), &secondary)
           return [
-            "index": index, "primary": Double(primary), "secondary": Double(secondary),
+            "index": index, "primary": Double(primary) + originX,
+            "secondary": Double(secondary) + originX,
             "logicalCandidates": logicalCandidates(index, request.spans),
             "measurement": contentEnd == position ? "empty-paragraph-origin" : "native-line",
             "hitIndex": contentEnd == position
@@ -580,15 +674,22 @@ public final class TextCompositionEngine {
         frozen.append(
           FrozenLine(
             page: page, start: position, end: end, baseline: baseline, ascent: Double(ascent),
-            descent: Double(descent), line: line))
-        output.append([
+            descent: Double(descent), line: line, originX: originX))
+        var row: [String: Any] = [
           "frame": frame.id, "page": page, "start": position, "end": end, "contentEnd": contentEnd,
           "baseline": baseline, "ascent": Double(ascent), "descent": Double(descent),
           "leading": Double(leading), "width": width, "visibleWidth": visibleWidth,
           "advance": advance,
           "sourceRanges": logicalRanges(position, end, request.spans), "runs": runRows,
           "carets": carets,
-        ])
+        ]
+        if request.protocol == 2 {
+          row["originX"] = originX
+          row["availableWidth"] = availableWidth
+          row["paragraphStart"] = paragraph!.start
+          row["paragraphEnd"] = paragraph!.end
+        }
+        output.append(row)
         position = end
         previousBaseline = baseline
       }
@@ -734,7 +835,7 @@ public final class TextCompositionEngine {
       return output
     }
     var result: [String: Any] = [
-      "protocol": 1, "mode": request.mode, "requestDigest": digest(input),
+      "protocol": request.protocol, "mode": request.mode, "requestDigest": digest(input),
       "sourceDigest": request.sourceDigest,
       "os": ProcessInfo.processInfo.operatingSystemVersionString, "backend": "CoreText-system",
       "resources": request.resources.map {
@@ -806,7 +907,7 @@ public final class TextCompositionEngine {
       context.textMatrix = .identity
       context.setTextDrawingMode(invisible ? .invisible : .fill)
       for line in snapshot.lines where line.page == page {
-        context.textPosition = CGPoint(x: margin, y: box.height - margin - line.baseline)
+        context.textPosition = CGPoint(x: margin + line.originX, y: box.height - margin - line.baseline)
         CTLineDraw(line.line, context)
       }
       context.endPDFPage()

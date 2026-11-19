@@ -2,9 +2,11 @@ import { textIndexMap } from '../../shared/dom/text-selection.js';
 import { nodeTextStyle } from './selection-style.js';
 import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
 import { safeURL } from '../../shared/html/sanitize.js';
+import { PARAGRAPH_LAYOUT_FIELDS } from '../../domain/text/paragraph-layout.js';
 
 const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE']),
   supportedTags = new Set(['P', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'A', 'BR']),
+  paragraphFields = PARAGRAPH_LAYOUT_FIELDS,
   supportedFields = new Set([
     'textStyle',
     'fontSize',
@@ -21,6 +23,7 @@ const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
     'highlight',
     'characterStyle',
     'paragraphStyle',
+    ...paragraphFields,
   ]),
   labels = {
     align: 'paragraph alignment',
@@ -72,6 +75,16 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
     for (const [key, value] of Object.entries(style))
       if (!supportedFields.has(key) && value !== TEXT_DEFAULTS[key])
         throw new UnsupportedComposition(key);
+    // Paragraph marks, including generated implicit marks, own these settings.
+    // Inline character formatting must not silently create another paragraph or
+    // discard a conflicting paragraph property when it becomes native text.
+    if (kind !== 'whitespace' && node !== root && !blockTags.has(node.tagName)) {
+      let owner = node.parentElement;
+      while (owner !== root && !blockTags.has(owner.tagName)) owner = owner.parentElement;
+      const paragraphStyle = styleAt(owner);
+      if (paragraphFields.some((key) => style[key] !== paragraphStyle[key]))
+        throw new UnsupportedComposition('paragraph properties on inline text');
+    }
     const anchor = node.closest?.('a'),
       target = anchor?.getAttribute('data-doc-id'),
       url = safeURL(anchor?.getAttribute('href'));
@@ -215,21 +228,26 @@ export function compositionSource(root, { id, doc, settings, fontFor } = {}) {
       else runs.push(run);
       if (token.link) links.push({ start, end: text.length, ...token.link });
     }
-    if (token.kind === 'paragraph') {
+    // Literal Unicode paragraph separators retain their original text/source
+    // spans while creating the same paragraph policy boundary as an HTML mark.
+    for (const match of token.text.matchAll(/\u2029/g)) {
+      const end = start + match.index + 1;
       paragraphs.push({
         start: paragraphStart,
-        end: text.length,
-        contentEnd: start,
-        logicalEnd: token.logicalEnd,
+        end,
+        contentEnd: end - 1,
+        logicalEnd:
+          token.kind === 'paragraph' ? token.logicalEnd : token.logicalStart + match.index + 1,
+        ...Object.fromEntries(paragraphFields.map((key) => [key, token.style[key]])),
       });
-      paragraphStart = text.length;
+      paragraphStart = end;
     }
     logical = token.logicalEnd;
   }
   if (logical !== logicalLength || root.innerHTML !== sourceHTML)
     throw Error('Text composition changed its source.');
   return {
-    protocol: 1,
+    protocol: 2,
     id,
     mode: 'greedy-geometry-proof',
     sourceHTML,

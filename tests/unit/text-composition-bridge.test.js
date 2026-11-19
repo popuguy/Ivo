@@ -22,6 +22,29 @@ const request = () => ({
   frames: [],
   allowFallback: false,
 });
+
+test('paragraph transport is versioned and accepts only bounded byte-only paragraph fields', () => {
+  const paragraph = {
+      start: 0,
+      end: 4,
+      align: 'right',
+      paragraphBefore: 7,
+      paragraphAfter: 11,
+      leftIndent: 18,
+      rightIndent: 12,
+      firstLineIndent: -9,
+    },
+    input = { ...request(), protocol: 2, paragraphs: [paragraph] };
+  assert.equal(validateCompositionRequest(input), input);
+  for (const value of [
+    { ...input, protocol: 1 },
+    { ...request(), protocol: 2 },
+    { ...input, paragraphs: [{ ...paragraph, path: '/source.html' }] },
+    { ...input, paragraphs: [{ ...paragraph, align: { value: 'right' } }] },
+    { ...input, paragraphs: Array(10001).fill(paragraph) },
+  ])
+    assert.throws(() => validateCompositionRequest(value), /Invalid/);
+});
 function fixture({ compose } = {}) {
   let handler,
     closes = 0,

@@ -324,7 +324,7 @@ app
       textScale: { x: 1.1, y: 0.9 },
       textStyle: 'cmu-serif',
       fontSize: 16,
-      html: '<p>Native <em>italic affinity</em> and regular.</p><p><a href="https://example.com/native">Native link</a></p>',
+      html: '<p data-ivo-align="right" data-ivo-left="18" data-ivo-right="12" data-ivo-first="9" data-ivo-after="11">Native <em>italic affinity</em> and regular.</p><p data-ivo-align="center" data-ivo-before="7"><a href="https://example.com/native">Native link</a></p>',
     });
     enableNativeComposition(
       nativeDoc,
@@ -337,11 +337,15 @@ app
       project: root,
       onRendered: async (window) => {
         const details = await window.webContents.executeJavaScript(
-          `({svgs:document.querySelectorAll('svg[data-composed-text]').length,paths:document.querySelectorAll('svg[data-composed-text] path').length})`,
+          `({svgs:document.querySelectorAll('svg[data-composed-text]').length,paths:document.querySelectorAll('svg[data-composed-text] path').length,firstGlyph:document.querySelector('svg[data-composed-text] use')?.getAttribute('transform')})`,
         );
         assert(
           details.svgs > 0 && details.paths > 5,
           'Native flow did not paint actual glyph paths',
+        );
+        assert(
+          Number(details.firstGlyph.match(/translate\(([-\d.]+)/)[1]) > 18,
+          'Frozen PDF renderer dropped native paragraph alignment/indent positioning',
         );
       },
     });
@@ -493,6 +497,7 @@ app
           flowSnapshotUnchanged: true,
           publishingFontsParentsLayersHighlights: true,
           nativeRotatedScaledMaskedItalicText: true,
+          nativeParagraphLayout: true,
           nativeFontNames: [...nativeFonts],
           wrappedTextSourceAndExclusion: true,
           clippedGraphicWrapping: true,

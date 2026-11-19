@@ -1,5 +1,6 @@
 import { chooseParagraphBreaks } from '../../domain/text/paragraph-breaks.js';
 import { UnsupportedComposition } from './composition-source.js';
+import { paragraphLayout, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
 
 const MAX_POINTS = 1024,
   MAX_ALTERNATIVES = 100000,
@@ -78,6 +79,9 @@ function paragraphIdentity(request, paragraph) {
     protocol: request.protocol,
     allowFallback: request.allowFallback,
     text: paragraph.text,
+    ...(paragraph.text.includes('\t')
+      ? { tabOrigins: [paragraph.layout.leftIndent, paragraph.layout.firstLineIndent] }
+      : {}),
     runs,
     resources: request.resources
       .filter((resource) => fonts.has(resource.id))
@@ -136,7 +140,19 @@ export function createParagraphComposer(measure) {
           backendCalls: 0,
           reusedDecisions: 0,
         };
-      for (const paragraph of paragraphs) {
+      if (request.protocol === 2 && request.paragraphs?.length !== paragraphs.length)
+        throw Error('Native paragraph metadata does not cover its source.');
+      for (const [index, paragraph] of paragraphs.entries()) {
+        const authored = request.paragraphs?.[index];
+        if (
+          request.protocol === 2 &&
+          (authored.start !== paragraph.start ||
+            authored.end !== paragraph.start + paragraph.text.length)
+        )
+          throw Error('Native paragraph metadata does not match its source.');
+        paragraph.layout = paragraphLayout(authored);
+        paragraph.firstWidth = paragraphLineArea(paragraph.layout, width, true).width;
+        paragraph.restWidth = paragraphLineArea(paragraph.layout, width).width;
         const key = paragraphIdentity(request, paragraph),
           prior = cache.get(key);
         if (prior) {
@@ -165,6 +181,13 @@ export function createParagraphComposer(measure) {
           candidates = batch.map(({ group, candidate }) => ({
             start: candidate.start + group.paragraphs[0].start,
             end: candidate.end + group.paragraphs[0].start,
+            ...(request.protocol === 2 && group.paragraphs[0].text.includes('\t')
+              ? {
+                  offset:
+                    group.paragraphs[0].layout.leftIndent +
+                    (candidate.start === 0 ? group.paragraphs[0].layout.firstLineIndent : 0),
+                }
+              : {}),
           })),
           result = await measure({
             ...request,
@@ -209,17 +232,21 @@ export function createParagraphComposer(measure) {
         if (states >= MAX_STATES || candidates >= MAX_DECISIONS)
           throw new UnsupportedComposition('paragraph fitting (flow decision budget)');
         const entry = paragraph.entry;
-        let chosen = entry.decisions.get(width);
+        const decisionKey = JSON.stringify([paragraph.firstWidth, paragraph.restWidth]);
+        let chosen = entry.decisions.get(decisionKey);
         if (chosen) work.reusedDecisions++;
         else {
           const result = chooseParagraphBreaks({
             start: 0,
             end: paragraph.text.length,
             opportunities: paragraph.opportunities,
-            measurements: entry.measurements.filter((line) => line.width <= width),
-            lineWidths: Array(
-              Math.min(MAX_LINES - breaks.length, paragraph.opportunities.length - 1),
-            ).fill(width),
+            measurements: entry.measurements.filter(
+              (line) => line.width <= Math.max(paragraph.firstWidth, paragraph.restWidth),
+            ),
+            lineWidths: Array.from(
+              { length: Math.min(MAX_LINES - breaks.length, paragraph.opportunities.length - 1) },
+              (_, index) => (index === 0 ? paragraph.firstWidth : paragraph.restWidth),
+            ),
             maxStates: MAX_STATES - states,
             maxCandidates: MAX_DECISIONS - candidates,
           });
@@ -233,7 +260,7 @@ export function createParagraphComposer(measure) {
           };
           // Four exact widths per paragraph; decisions retain only source ends.
           // Their storage is bounded separately (64 * 4 * 1023 ends at most).
-          entry.decisions.set(width, chosen);
+          entry.decisions.set(decisionKey, chosen);
           if (entry.decisions.size > 4) entry.decisions.delete(entry.decisions.keys().next().value);
         }
         states += chosen.states;

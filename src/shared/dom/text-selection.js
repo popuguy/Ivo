@@ -239,5 +239,20 @@ export function textParagraphRanges(element) {
     if (range.end > range.start) result.push(range);
     start = range.end;
   }
-  return result.length ? result : [{ start: 0, end, contentStart: 0, contentEnd: end }];
+  const authored = result.length ? result : [{ start: 0, end, contentStart: 0, contentEnd: end }],
+    separators = map.segments.flatMap((part) =>
+      [...part.node.data.matchAll(/\u2029/g)].map((match) => part.start + match.index),
+    );
+  return authored.flatMap((range) => {
+    const split = [];
+    let start = range.start,
+      contentStart = range.contentStart;
+    for (const separator of separators) {
+      if (separator < range.contentStart || separator >= range.contentEnd) continue;
+      split.push({ start, end: separator + 1, contentStart, contentEnd: separator });
+      start = contentStart = separator + 1;
+    }
+    split.push({ start, end: range.end, contentStart, contentEnd: range.contentEnd });
+    return split;
+  });
 }

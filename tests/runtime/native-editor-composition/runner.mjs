@@ -5,7 +5,7 @@ import {
 } from '../helpers/background.mjs';
 import { app, BrowserWindow, protocol, net, ipcMain } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildNativeText } from '../../../scripts/build-native-text.mjs';
@@ -64,6 +64,17 @@ app
     }
     ipcMain.handle('ivo-native-editor-test', async (event, action, value) => {
       if (event.sender !== window.webContents) throw Error('Invalid test owner');
+      if (action === 'capture') {
+        const directory = process.env.IVO_TEST_CAPTURE_DIRECTORY;
+        if (!directory) return false;
+        if (!path.isAbsolute(directory)) throw Error('Use an absolute test capture directory');
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          path.join(directory, 'paragraph-layout.png'),
+          (await window.webContents.capturePage()).toPNG(),
+        );
+        return true;
+      }
       if (action === 'save')
         return writeFile(path.join(profile, 'archive.json'), JSON.stringify(value));
       if (action === 'load')

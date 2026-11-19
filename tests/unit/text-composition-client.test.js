@@ -23,6 +23,30 @@ const result = (req) => ({
   vectors: [],
   diagnostics: [],
 });
+
+test('paragraph protocol results must match the requested version, including worker recovery', async (t) => {
+  let downgrade = false;
+  const factory = workerFactory((message, worker) => {
+    const req = JSON.parse(message.payload);
+    worker.reply({
+      id: message.id,
+      ok: true,
+      result: {
+        ...result(req),
+        protocol: downgrade ? 1 : req.protocol,
+        requestDigest: createHash('sha256').update(message.payload).digest('hex'),
+      },
+    });
+  });
+  const service = createTextComposition('/native/helper', factory),
+    req = { ...request(), protocol: 2, paragraphs: [] };
+  t.after(() => service.close());
+  assert.equal((await service.compose(req)).protocol, 2);
+  factory.workers[0].kill();
+  assert.equal((await service.compose(req)).protocol, 2);
+  downgrade = true;
+  await assert.rejects(service.compose(req), /identity mismatch/);
+});
 function workerFactory(handle) {
   const workers = [];
   const spawn = () => {

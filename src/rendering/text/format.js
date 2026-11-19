@@ -168,9 +168,26 @@ export function formatRange(element, range, field, value) {
   return range;
 }
 
-export function formatParagraphs(element, range, field, value) {
+export function formatParagraphs(
+  element,
+  range,
+  field,
+  value,
+  { requireStructuralParagraphs = false } = {},
+) {
   const attr = PARAGRAPH_FIELDS[field];
   if (!attr) return false;
+  if (requireStructuralParagraphs) {
+    const leaves = [...element.querySelectorAll('p,div,li,h2,h3,h4,blockquote')].filter(
+      (node) => !node.querySelector('p,div,li,h2,h3,h4,blockquote'),
+    );
+    if (
+      (leaves.length ? leaves : [element]).some(
+        (node) => node.textContent.includes('\u2029') && range.intersectsNode(node),
+      )
+    )
+      throw Error('Formatting a paragraph inside literal Unicode separators is not yet supported.');
+  }
   if (range.collapsed) {
     let node =
       range.startContainer.nodeType === Node.ELEMENT_NODE

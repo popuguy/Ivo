@@ -2,7 +2,7 @@
 
 Current overall engineering estimate, 18 November 2026:
 
-`[████░░░░░░░░░░░░░░░░] ~22%`
+`[█████░░░░░░░░░░░░░░░] ~24%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
 
@@ -15,6 +15,8 @@ This is a rough assessment of implementation and integration across the [66 incl
 - Literal leading-space preservation through rich/plain clipboard insertion, saved paint and linked/native source/history. This is an input correction within the current foundation; it does not move the rounded overall estimate.
 - [Object wrapping](../object-text-wrap.md) now excludes boxes/polygon contours in actual layout, on-page input, continuation and selectable PDF, with source/history protection. This closes a fixture-enabling geometry/input dependency and advances the broad estimate from ~20% to ~22%. Image/path contours, native wrap composition and full reference/device qualification remain open; no complete wrap capability is certified.
 - The disposable-layout follow-up corrects masked graphic contour ownership, clip-before-offset projection, whole-word contour flow and two mask-domain rotation operations. These fix the existing foundation and leave the rounded estimate at ~22%; advanced wrap and physical transform qualification remain open.
+
+- [Native paragraph layout](../native-paragraph-layout.md) now implements paragraph alignment and justification endings, indents, spacing and indented default tabs in the shared glyph/caret/PDF authority, with actual edit/undo/reopen and source guards. This closes an integrated paragraph-layout dependency and advances the broad estimate from ~22% to ~24%. Native variable-area/wrap scheduling, the full justified-paragraph optimizer and device gates remain open.
 
 ## Major work still driving the estimate
 

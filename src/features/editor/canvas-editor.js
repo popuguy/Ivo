@@ -1531,7 +1531,9 @@ export function mountCanvasEditor(host, options) {
       activeTextId === item.id &&
       range &&
       PARAGRAPH_FIELDS[field] &&
-      formatParagraphs(element, range, field, value)
+      formatParagraphs(element, range, field, value, {
+        requireStructuralParagraphs: !!textFlow?.composition,
+      })
     ) {
       writeText(item, element.innerHTML, element);
       savedTextSelection = { id: item.id, bookmark: bookmarkForRange(element, range) };

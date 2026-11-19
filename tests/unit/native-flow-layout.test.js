@@ -108,15 +108,23 @@ function port() {
     const lines = [];
     for (const frame of request.frames)
       for (let row = 0; row < Math.floor(frame.height / 20) && start < request.text.length; row++) {
-        const end =
+        const paragraph = request.paragraphs.find((p) => p.start <= start && p.end > start),
+          originX =
+            paragraph.leftIndent + (start === paragraph.start ? paragraph.firstLineIndent : 0),
+          availableWidth = frame.width - originX - paragraph.rightIndent,
+          end =
             request.breaks?.find((end) => end > start) ??
-            Math.min(request.text.length, start + Math.floor(frame.width / 5)),
+            Math.min(paragraph.end, start + Math.floor(availableWidth / 5)),
           contentEnd = /[\u2028\u2029]/.test(request.text[end - 1]) ? end - 1 : end;
         lines.push({
           frame: frame.id,
           start,
           end,
           contentEnd,
+          originX,
+          availableWidth,
+          paragraphStart: paragraph.start,
+          paragraphEnd: paragraph.end,
           baseline: 15 + row * 20,
           ascent: 15,
           descent: 4,
@@ -130,7 +138,7 @@ function port() {
         start = end;
       }
     return {
-      protocol: 1,
+      protocol: request.protocol,
       sourceDigest: request.sourceDigest,
       requestDigest: createHash('sha256').update(JSON.stringify(request)).digest('hex'),
       token: 'ct1-fixture',
@@ -158,7 +166,11 @@ test('native driver preserves authored source/objects, returns SVG and canonical
   assert.equal(fragment.end, 24);
   const request = native.calls[0];
   assert.equal(request.allowFallback, false);
-  assert.ok(!Object.hasOwn(request, 'paragraphs') && !Object.hasOwn(request, 'links'));
+  assert.equal(request.protocol, 2);
+  assert.equal(request.paragraphs.length, 1);
+  assert.ok(!Object.hasOwn(request, 'links'));
+  assert.ok(!Object.hasOwn(request.paragraphs[0], 'contentEnd'));
+  assert.ok(!Object.hasOwn(request.paragraphs[0], 'logicalEnd'));
   assert.equal(request.resources[0].postscript, 'CMUSerif-Roman');
   assert.equal(
     request.resources[0].digest,
@@ -211,6 +223,64 @@ test('synchronous native source guard checks effective styles and exact faces wi
 test('native source budgets reject an unsupported edit synchronously before source persistence', () => {
   const doc = fixture({ text: 'word '.repeat(2100), composer: 'paragraph' });
   assert.throws(() => validateNativeFlowSource(doc, doc.textFlows[0]), /source\/font budget/);
+  const marks = fixture({ text: '\u2029'.repeat(10001) });
+  assert.throws(() => validateNativeFlowSource(marks, marks.textFlows[0]), /source\/font budget/);
+});
+test('native paragraph source guards admit real paragraph styles and reject impossible areas before IO', () => {
+  const doc = fixture({ text: 'Paragraph policy', width: 200 }),
+    style = doc.textFlows[0].style;
+  Object.assign(style, {
+    align: 'justify-right',
+    leftIndent: 18,
+    rightIndent: 12,
+    firstLineIndent: -9,
+    paragraphBefore: 7,
+    paragraphAfter: 11,
+  });
+  const before = structuredClone(doc),
+    source = validateNativeFlowSource(doc, doc.textFlows[0]);
+  assert.equal(source.paragraphs[0].align, 'justify-right');
+  assert.equal(source.paragraphs[0].firstLineIndent, -9);
+  assert.deepEqual(doc, before);
+  style.leftIndent = 250;
+  assert.throws(() => validateNativeFlowSource(doc, doc.textFlows[0]), /text width/);
+  style.leftIndent = 18;
+  doc.textFlows[0].html = 'A\tB';
+  assert.throws(() => validateNativeFlowSource(doc, doc.textFlows[0]), /tabs combined/);
+});
+test('mismatched paragraph geometry rejects the full result without derived page mutations', async () => {
+  for (const corrupt of [
+    (r) => {
+      r.protocol = 1;
+    },
+    (r) => {
+      r.layout.lines[0].originX = NaN;
+    },
+    (r) => {
+      r.layout.lines[0].availableWidth = 1;
+    },
+    (r) => {
+      r.layout.lines[0].paragraphStart = 1;
+    },
+    (r) => {
+      r.layout.lines[0].end = r.layout.lines[0].paragraphEnd + 1;
+    },
+  ]) {
+    const doc = fixture({ automaticPages: true, text: 'A\u2029Second paragraph source' }),
+      before = structuredClone(doc),
+      native = port();
+    await assert.rejects(
+      composeNativeTextFlows(doc, {
+        compose: async (request) => {
+          const result = await native.compose(request);
+          corrupt(result);
+          return result;
+        },
+      }),
+      /match its source|paragraph geometry/,
+    );
+    assert.deepEqual(doc, before);
+  }
 });
 test('columns convert insets/gutters/text scale once and forward baseline policy', () => {
   const doc = fixture({ width: 260, height: 140 }),
@@ -374,9 +444,9 @@ test('explicit unsupported versions/styles and stale native results reject witho
   const before = structuredClone(doc);
   await assert.rejects(composeNativeTextFlows(doc, native), /fixture native failure/);
   assert.deepEqual(doc, before);
-  doc.textFlows[0].style.align = 'center';
-  await assert.rejects(composeNativeTextFlows(doc, port()), /paragraph alignment/);
-  delete doc.textFlows[0].style.align;
+  doc.textFlows[0].style.baselineShift = 3;
+  await assert.rejects(composeNativeTextFlows(doc, port()), /baseline shift/);
+  delete doc.textFlows[0].style.baselineShift;
   doc.textFlows[0].composition.version = 2;
   await assert.rejects(composeNativeTextFlows(doc, port()), /composition version/);
   doc.textFlows[0].composition.version = 1;
