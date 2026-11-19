@@ -205,6 +205,17 @@ export function textIndexAt(map, node, offset) {
 }
 
 /** Authored paragraphs include their structural marks; BR remains inside its paragraph. */
+export function logicalText(root) {
+  const map = textIndexMap(root),
+    length = [...map.boundaries.values()].reduce(
+      (length, points) => Math.max(length, points.at(-1) || 0),
+      0,
+    ),
+    chars = Array(length).fill('\n');
+  for (const segment of map.segments)
+    for (let i = 0; i < segment.node.length; i++) chars[segment.start + i] = segment.node.data[i];
+  return chars.join('');
+}
 export function textParagraphRanges(element) {
   const map = textPositions(element),
     ranges = [];

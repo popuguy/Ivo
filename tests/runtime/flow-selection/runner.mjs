@@ -85,6 +85,8 @@ app
           'Right',
           'Up',
           'Down',
+          'PageUp',
+          'PageDown',
           'Home',
           'End',
           'Backspace',

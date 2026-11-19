@@ -139,17 +139,23 @@ export async function verifyWrappedNavigation({ host, getDocument, layout, frame
   );
   caret(input, start);
   await tick();
-  await window.wrapTest.key('Home');
+  const lineEdge = (end, extend = false) => {
+    const mac = /Mac/.test(navigator.platform);
+    const modifiers = mac ? ['meta'] : [];
+    if (extend) modifiers.push('shift');
+    return window.wrapTest.key(mac ? (end ? 'Right' : 'Left') : end ? 'End' : 'Home', modifiers);
+  };
+  await lineEdge(false);
   await tick();
   assert(
     captureTextSelection(input)?.focus.index === left.start,
-    'Home did not reach the whole wrapped row start',
+    'Line-start command did not reach the whole wrapped row start',
   );
-  await window.wrapTest.key('End');
+  await lineEdge(true);
   await tick();
   assert(
     captureTextSelection(input)?.focus.index === right.end,
-    'End stopped at the left fragment instead of the whole wrapped row end: ' +
+    'Line-end command stopped at the left fragment instead of the whole wrapped row end: ' +
       JSON.stringify({ actual: captureTextSelection(input), expected: right.end }),
   );
   const retainedCaret = window.getSelection().getRangeAt(0).getBoundingClientRect(),
@@ -208,7 +214,7 @@ export async function verifyWrappedNavigation({ host, getDocument, layout, frame
       preview: rectValue(paintedCaret(previewPart, right.start, 1)),
     },
   };
-  await window.wrapTest.key('Home', ['shift']);
+  await lineEdge(false, true);
   await tick();
   const extended = captureTextSelection(input);
   assert(

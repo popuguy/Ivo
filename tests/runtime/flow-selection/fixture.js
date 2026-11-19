@@ -1,4 +1,4 @@
-import { verifyDocumentOperations } from './document-operations.js';
+import { verifyDocumentOperations, verifyListOperations } from './document-operations.js';
 import { verifyThreadedDeletion } from './threaded-deletion.js';
 import { verifyFlowSelectionBoundaries } from './boundaries.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
@@ -173,6 +173,8 @@ try {
         JSON.stringify({
           ok: true,
           documentTextOperations: true,
+          desktopTextShortcuts: true,
+          flatListEditing: true,
           markedTextCommitCancel: true,
           crossPageDrag: true,
           reverseSelection: true,
@@ -309,6 +311,106 @@ try {
       editor.getState().activeTextId === a.id,
       'Up did not return to the preceding linked frame',
     );
+    // A page step selects through the linked composition. The same physical
+    // Apple keys without Shift only move the viewport.
+    if (/Mac/.test(navigator.platform)) {
+      for (let i = 0; i < 4; i++) await editor.command('zoom-in');
+      await tick();
+      const keys = window.textCoreTest.key;
+      const before = captureTextSelection(freshInput);
+      await keys('Home');
+      await tick();
+      const top = editor.getState().camera;
+      await keys('PageDown');
+      await tick();
+      const down = editor.getState().camera;
+      await keys('End');
+      await tick();
+      const bottom = editor.getState().camera;
+      await keys('PageUp');
+      await tick();
+      const up = editor.getState().camera;
+      assert(
+        top.y > down.y &&
+          down.y >= bottom.y &&
+          up.y > bottom.y &&
+          top.zoom === up.zoom &&
+          captureTextSelection(freshInput).focus.index === before.focus.index &&
+          getSelection().isCollapsed,
+        'Compact keyboard scrolling changed the caret, direction or zoom: ' +
+          JSON.stringify([top, down, bottom, up]),
+      );
+      await editor.command('fit-all');
+      await tick();
+    }
+    const origin = captureTextSelection(freshInput);
+    await window.textCoreTest.key('PageDown', ['shift']);
+    await tick();
+    const paged = captureTextSelection(freshInput);
+    assert(
+      paged.anchor.index === origin.anchor.index && paged.focus.index > origin.focus.index,
+      'Shift–PageDown did not extend through the composed lines',
+    );
+    await window.textCoreTest.key('PageUp', ['shift']);
+    await tick();
+    assert(
+      captureTextSelection(freshInput).anchor.index === origin.anchor.index &&
+        captureTextSelection(freshInput).focus.index < paged.focus.index,
+      'Reverse page selection lost its starting point',
+    );
+    // Exercise the Windows renderer policy through this same mounted editor.
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' });
+    try {
+      const word = textIndexMap(freshInput).segments.find((s) =>
+        s.node.data.includes('Alpha bravo'),
+      );
+      const at = word.node.data.indexOf('Alpha');
+      getSelection().collapse(word.node, at);
+      await tick();
+      await window.textCoreTest.key('Right', ['control', 'shift']);
+      await tick();
+      const moved = captureTextSelection(freshInput);
+      assert(
+        moved.anchor.index === word.start + at && moved.focus.index === word.start + at + 6,
+        'Windows Ctrl–Shift–Right did not include the space up to the next word',
+      );
+      await window.textCoreTest.key('End', ['control', 'shift']);
+      await tick();
+      const afterEnd = captureTextSelection(freshInput);
+      assert(
+        afterEnd.anchor.index === moved.anchor.index &&
+          afterEnd.focus.index === textIndexMap(freshInput).boundaries.get(freshInput).at(-1),
+        'Windows Ctrl–Shift–End failed to select through the final paragraph',
+      );
+      await window.textCoreTest.key('Home', ['control']);
+      await tick();
+      assert(
+        captureTextSelection(freshInput).focus.index === 0 && getSelection().isCollapsed,
+        'Windows Ctrl–Home failed to reach the start of a selected flow',
+      );
+      for (const [key, offset] of [
+        ['Delete', 0],
+        ['Backspace', 6],
+      ]) {
+        const input = host.querySelector('.canvas-flow-input');
+        const hit = textIndexMap(input).segments.find((s) =>
+          s.node.data.includes('Alpha bravo'),
+        ).node;
+        getSelection().collapse(hit, hit.data.indexOf('Alpha') + offset);
+        const original = doc.textFlows[0].html;
+        await window.textCoreTest.key(key, ['control']);
+        await tick();
+        assert(
+          doc.textFlows[0].html === original.replace('Alpha bravo', 'bravo'),
+          'Windows Ctrl–' + key + ' failed to delete one word',
+        );
+        await editor.command('undo');
+        await tick();
+        assert(doc.textFlows[0].html === original, 'Undo lost source after Windows word deletion');
+      }
+    } finally {
+      delete navigator.platform;
+    }
     // Collapse/enter at the first frame, select a single word and invoke the real keyboard event.
     await editor.command('tool-select');
     await editor.command('document-text');
@@ -397,6 +499,7 @@ try {
     await verifyFlowSelectionBoundaries(host, window.textCoreTest);
     await verifyThreadedDeletion(host, window.textCoreTest);
     await verifyDocumentOperations(host, window.textCoreTest);
+    await verifyListOperations(host, window.textCoreTest);
     console.log('IVO_TEXT_CORE_RESULT:' + JSON.stringify({ phase: 'edit' }));
   }
 } catch (error) {

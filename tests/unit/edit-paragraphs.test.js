@@ -92,3 +92,36 @@ test('paragraph and soft breaks distinguish layout, preserving paragraph and ins
   assert.deepEqual(soft.replacement[0].runs.at(-1), { break: true, style: 'link' });
   assert.deepEqual(soft.caret, pos(0, 11));
 });
+test('directional word deletion matches word, punctuation, space, and return boundaries', () => {
+  for (const [marked, backward, expected] of [
+    ['One two| three', true, 'One three'],
+    ['One t|wo three', true, 'One wo three'],
+    ['One |two three', true, 'two three'],
+    ['One |two three', false, 'One three'],
+    ['One t|wo three', false, 'One tthree'],
+    ['One two| three', false, 'One twothree'],
+    ['one|   two', true, '   two'],
+    ['one,  |two-three!', true, 'onetwo-three!'],
+    ['one|,  two-three!', false, 'onetwo-three!'],
+    ['a\t|\tb', true, 'a\tb'],
+    ['a|\t\tb', false, 'a\tb'],
+    ['ab|...!? cd', false, 'abcd'],
+    ['A|👩🏽‍💻 B', false, 'AB'],
+    ['A\n|B', true, 'AB'],
+    ['A|\nB', false, 'AB'],
+    ['hello|', false, 'hello'],
+    ['|hello', true, 'hello'],
+  ]) {
+    const original = marked.replace('|', '');
+    const source = [para('p', run(original, 'regular'))];
+    const caret = pos(0, marked.indexOf('|'));
+    const edit = editParagraphs(source, caret, caret, {
+      type: backward ? 'deleteWordBackward' : 'deleteWordForward',
+    });
+    assert.equal(
+      edit ? edit.replacement[0].runs.map((r) => r.text).join('') : original,
+      expected,
+      marked,
+    );
+  }
+});

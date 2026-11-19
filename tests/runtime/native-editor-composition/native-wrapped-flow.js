@@ -324,17 +324,17 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
       captureTextSelection(input())?.focus.index === start,
       'Native wrap Up did not restore the physical-row caret',
     );
-    await key('Home');
+    await key('Left', ['meta']);
     await tick();
     assert(
       captureTextSelection(input())?.focus.index === logical(left.start),
-      'Home did not reach the beginning of the whole wrapped row',
+      'Command–Left did not reach the beginning of the whole wrapped row',
     );
-    await key('End');
+    await key('Right', ['meta']);
     await tick();
     assert(
       captureTextSelection(input())?.focus.index === logical(right.contentEnd),
-      'End stopped at the first native wrap fragment',
+      'Command–Right stopped at the first native wrap fragment',
     );
     const gap = hitNativeColumn(
       column(),

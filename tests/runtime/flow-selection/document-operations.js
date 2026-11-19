@@ -69,6 +69,40 @@ export async function verifyDocumentOperations(host, bridge) {
   try {
     await editor.command('document-text');
     await tick();
+    if (/Mac/.test(navigator.platform)) {
+      await caret(leaf('blue'), 2);
+      await bridge.key('Left', ['meta']);
+      await tick();
+      const lineStart = getSelection().getRangeAt(0).cloneRange();
+      lineStart.setEnd(leaf('blue'), 4);
+      assert(
+        lineStart.toString() === 'Plain blue',
+        'Command–Left stopped at a word instead of the beginning of the line',
+      );
+      await bridge.key('Right', ['meta', 'shift']);
+      await tick();
+      assert(
+        getSelection().toString() === 'Plain blue',
+        'Command–Shift–Right missed the end of the standalone line',
+      );
+      await caret(leaf('Second'), 0);
+      await bridge.key('Delete', ['meta']);
+      await tick();
+      assert(
+        source() === '<p>Plain <em>blue</em></p><p><strong>tail</strong></p>',
+        'Forward word deletion lost following styled text: ' + source(),
+      );
+      await editor.command('undo');
+      await tick();
+      assert(source() === original, 'Undo of forward word deletion changed other styles');
+      await caret(leaf('Second'), 3);
+      await bridge.key('End', ['shift']);
+      await tick();
+      assert(
+        getSelection().getRangeAt(0).toString() === 'ond tail',
+        'Shift–Fn–Right did not select to end',
+      );
+    }
     await caret(leaf('Second'), 3, leaf('blue'), 2);
     await action(() => bridge.type('X'), 'insertText');
     assert(
@@ -186,6 +220,81 @@ export async function verifyDocumentOperations(host, bridge) {
         root().textContent.endsWith('QZ') &&
         ink(leaf('Z')).top > previousLine.top + previousLine.height / 2,
       'Typing after a terminal soft return did not paint on the next line: ' + source(),
+    );
+  } finally {
+    host.removeEventListener('beforeinput', watch);
+    editor.destroy();
+    host.replaceChildren();
+  }
+}
+
+export async function verifyListOperations(host, bridge) {
+  const doc = createSceneDocument('List editing');
+  const list = insertObject(doc, 'text', doc.pages[0].id, {
+    html: '<ol><li><em>red blue</em></li><li>tail</li></ol>',
+    x: 20,
+    y: 20,
+    w: 350,
+    h: 180,
+  });
+  const editor = mountCanvasEditor(host, {
+    getDocument: () => doc,
+    documents: [doc],
+    source: (s) => s,
+    editing: true,
+    initialState: { tool: 'text', selection: [list.id] },
+    sessionId: 'list-operations',
+    onCommit: () => {},
+    onChange: () => {},
+  });
+  const root = () => host.querySelector('[data-scene-text][contenteditable="true"]');
+  const owned = [];
+  const watch = (e) => owned.push(e.defaultPrevented);
+  host.addEventListener('beforeinput', watch);
+  try {
+    await editor.command('document-text');
+    await tick();
+    const em = root().querySelector('em').firstChild;
+    getSelection().collapse(em, 4);
+    await bridge.key('Enter');
+    await tick();
+    assert(
+      root().querySelectorAll('ol > li').length === 3 &&
+        root().querySelectorAll('li em')[1]?.textContent === 'blue',
+      'List split lost numbering or emphasis: ' + list.html,
+    );
+    await bridge.type('Z');
+    await tick();
+    assert(
+      root().querySelectorAll('li em')[1]?.textContent === 'Zblue',
+      'Typing lost list styling',
+    );
+    await bridge.key('Backspace');
+    await tick();
+    await bridge.key('Backspace');
+    await tick();
+    assert(
+      root().querySelectorAll('li').length === 2 &&
+        root().querySelector('li').textContent === 'red blue',
+      'Sibling list join failed',
+    );
+    const tail = root().querySelector('li:last-child').firstChild;
+    getSelection().collapse(tail, tail.length);
+    await bridge.key('Enter');
+    await tick();
+    await bridge.key('Enter');
+    await tick();
+    await bridge.type('X');
+    await tick();
+    assert(
+      root().lastElementChild.tagName === 'P' &&
+        root().lastElementChild.textContent === 'X' &&
+        root().querySelectorAll('li').length === 2,
+      'Empty item did not exit the list: ' + list.html,
+    );
+    assert(
+      owned.length >= 7 && owned.every(Boolean),
+      'List edits escaped document operation ownership',
     );
   } finally {
     host.removeEventListener('beforeinput', watch);

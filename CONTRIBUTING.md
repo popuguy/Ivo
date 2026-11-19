@@ -64,6 +64,8 @@ Run `npm run test:responsiveness` in an idle Mac desktop session. It opens a nor
 
 Served builds retain debuggable ESM files. esbuild produces the standalone app and its worker; do not add a hand-maintained module list or rewrite import syntax. The offline cache is generated from the shipped source/assets with a content digest. Add normal imports and assets; no manual cache list update is needed.
 
+For Illustrator and InDesign controls, use the installed English label verbatim and the original vector or raster when available in a local review build. Keep the source and public fallback identifiable so visual comparisons test the intended control.
+
 `src/shared/ui/reference-art-data.js` is generated and ignored. `scripts/reference-art.mjs` uses licensed Obsidian/Lucide assets for reproducible public builds and can use locally retained Illustrator artwork. Keep license notices and do not commit proprietary extracted code/artwork. See `docs/asset-attribution.md`.
 
 ## Keep the project pleasant to change

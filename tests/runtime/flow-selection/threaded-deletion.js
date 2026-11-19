@@ -1,3 +1,7 @@
+import {
+  captureTextSelection,
+  restoreTextSelection,
+} from '../../../src/shared/dom/text-selection.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import {
   startTextFlow,
@@ -143,6 +147,85 @@ export async function verifyThreadedDeletion(host, bridge, composer = 'browser',
         'Click did not reach the first character: ' +
           JSON.stringify([sel.focusOffset, sel.focusNode?.textContent]),
       );
+      if (kind === 'wrapped line') {
+        const input = () => host.querySelector('.canvas-flow-input');
+        const originalCaret = captureTextSelection(input());
+        const resetCaret = async () => {
+          assert(
+            restoreTextSelection(input(), originalCaret),
+            'Could not restore initial glyph hit',
+          );
+          await settle();
+        };
+        const modifiers = /Mac/.test(navigator.platform) ? ['meta'] : ['control'];
+        await bridge.key('Backspace', modifiers);
+        await settle();
+        const expected = before.slice(0, at).replace(/\w+\s*$/, '') + before.slice(at);
+        assert(
+          sourceLines(doc.textFlows[0].html) === expected,
+          'Word deletion at a frame boundary: ' + doc.textFlows[0].html,
+        );
+        await editor.command('undo');
+        await settle();
+        assert(doc.textFlows[0].html === original, 'Undo of keyboard word deletion lost source');
+        await resetCaret();
+        if (/Mac/.test(navigator.platform)) {
+          const beforeScroll = getSelection().focusOffset,
+            beforeNode = getSelection().focusNode;
+          await bridge.key('PageDown');
+          await settle();
+          assert(
+            document.activeElement === input(),
+            'View scroll lost active input: ' + document.activeElement?.tagName,
+          );
+          assert(
+            getSelection().focusNode === beforeNode &&
+              getSelection().focusOffset === beforeScroll &&
+              getSelection().isCollapsed,
+            'View-only scrolling changed the insertion point',
+          );
+          await bridge.key('Home', ['shift']);
+          await settle();
+          assert(
+            getSelection().rangeCount &&
+              getSelection().getRangeAt(0).toString().replace(/\s/g, '') ===
+                before.slice(0, at).replace(/\s/g, ''),
+            'Shift–Fn–Left selection: ' +
+              JSON.stringify([
+                at,
+                getSelection().anchorOffset,
+                getSelection().focusOffset,
+                getSelection().rangeCount && getSelection().getRangeAt(0).toString(),
+                document.activeElement?.className,
+                input().dataset.projectedStart,
+              ]),
+          );
+          await editor.command('fit-all');
+          await settle();
+          await resetCaret();
+        }
+        // Ignore the input surface's guessed range; delete exactly the composed
+        // portion to the left of the caret in this continuation line.
+        await bridge.key('Right');
+        await settle();
+        const target = input(),
+          ev = new InputEvent('beforeinput', {
+            bubbles: true,
+            cancelable: true,
+            inputType: 'deleteSoftLineBackward',
+          });
+        target.dispatchEvent(ev);
+        await settle();
+        assert(
+          ev.defaultPrevented &&
+            sourceLines(doc.textFlows[0].html) === before.slice(0, at) + before.slice(at + 1),
+          'Line deletion included hidden preceding text or missed the visible first character: ' +
+            doc.textFlows[0].html,
+        );
+        await editor.command('undo');
+        await settle();
+        await resetCaret();
+      }
       for (let i = 1; i <= 3; i++) {
         await bridge.key('Backspace');
         await settle();

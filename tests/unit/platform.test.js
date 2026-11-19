@@ -22,7 +22,7 @@ test('asynchronous native startup binds lifecycle saves before returning a ready
   });
   const plugin = {
     get then() {
-      assert.fail('Await a native method result, never the Capacitor plugin proxy itself');
+      throw new Error('Await a native method result, never the Capacitor plugin proxy itself');
     },
     initialize: async () => {
       await gate;

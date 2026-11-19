@@ -36,7 +36,30 @@ The renderer maps the affected source paragraphs into the operation. It keeps th
 
 The platform retains the active marked-text session. A candidate stays in the retained input until confirmed. Cancel restores the original source and selection. When an input method replaces a selection reaching back into an earlier frame, the editor exposes that source before the candidate session begins. The same history then records the confirmed edit and any automatic repagination.
 
-Nested lists, mixed loose text and block structures spanning a selection, multiple target ranges, rich clipboard insertion, and word- or visual-line deletion still use the platform editing path. Physical keyboard, dictation, accessibility and iPhone/iPad testing remain open. Existing vaults keep their authored HTML representation.
+Word deletion uses Unicode segmentation over the source paragraph. It crosses inline styles and frame boundaries, treats a tab or return separately, and preserves the surviving runs. A selected range always takes precedence. A request to delete to a visual line edge uses the caret stops for the visible composed row. Threaded deletion requires reliable row geometry. It never estimates a destructive range from the hidden input's width.
+
+Bulleted and numbered items support typing, soft returns, item splits and joins between siblings. Return in a blank top-level item resumes ordinary paragraph text. Mixed structures, nested-list outdenting and rich clipboard insertion retain their platform editing paths. Native composition of list markers, custom bullet styles and multilevel counters remains open.
+
+### Desktop text shortcuts
+
+| Action                                                         | Mac                                   | Windows                   |
+| -------------------------------------------------------------- | ------------------------------------- | ------------------------- |
+| Move to a visual line edge                                     | Command–Left / Right                  | Home / End                |
+| Move by a word                                                 | Option–Left / Right                   | Ctrl–Left / Right         |
+| Move by a paragraph                                            | Option–Up / Down                      | Ctrl–Up / Down            |
+| Move to the start or end of the text flow                      | Command–Up / Down                     | Ctrl–Home / End           |
+| Scroll to the top or bottom of the document, keeping the caret | Fn–Left / Right                       |                           |
+| Scroll one screen, keeping the caret                           | Fn–Up / Down                          |                           |
+| Extend to the start or end of a flow                           | Shift–Fn–Left / Right                 | Ctrl–Shift–Home / End     |
+| Extend by a screen                                             | Shift–Fn–Up / Down                    | Shift–Page Up / Page Down |
+| Move the caret by a screen                                     | Option–Page Up / Page Down            | Page Up / Page Down       |
+| Delete the preceding word                                      | Command–Delete or Option–Delete       | Ctrl–Backspace            |
+| Delete the following word                                      | Command–Fn–Delete or Option–Fn–Delete | Ctrl–Delete               |
+| Delete the following character                                 | Fn–Delete or Forward Delete           | Delete                    |
+
+Shift extends movement from the original anchor. A Mac keyboard with separate Home, End and Page keys sends the same events as the compact Fn combinations. Ivo follows the Mac text system for navigation and the installed InDesign word-deletion binding for Command–Delete. Ctrl–Right on Windows lands at the beginning of the following word. Option–Right on Mac lands at the end of a word. [Apple keyboard shortcuts](https://support.apple.com/en-us/102650) and [Microsoft keyboard shortcuts](https://support.microsoft.com/en-us/accessibility/windows/keyboard-shortcuts-in-windows).
+
+Physical keyboard, dictation, accessibility and mobile qualification remain open.
 
 ## Verification and limits
 

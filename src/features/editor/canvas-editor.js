@@ -51,6 +51,11 @@ import {
 import { installPublishingControls } from './ui/publishing-controller.js';
 import { applyNamedTextStyles } from '../../rendering/text/styles.js';
 import { applyDocumentInput } from '../../rendering/text/document-input.js';
+import { moveSingleFrameSelection } from '../../rendering/text/single-frame-navigation.js';
+import {
+  textDeletionShortcut,
+  textNavigationShortcut,
+} from '../../domain/text/editing-shortcuts.js';
 import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.js';
 import { wordSpacingSettings } from '../../domain/text/word-spacing.js';
 import { readImageFile } from './assets/image-import.js';
@@ -343,6 +348,18 @@ export function mountCanvasEditor(host, options) {
     state.camera = { ...value };
     state.target = { ...value };
     requestFrame();
+  }
+  function scrollTextView(unit, forward) {
+    const pages = positions(),
+      last = pages.at(-1);
+    if (!last) return;
+    const height = viewport.clientHeight,
+      camera = state.camera;
+    const top = 24 - pages[0].y * camera.zoom;
+    const bottom = Math.min(top, height - 24 - (last.y + last.height) * camera.zoom);
+    const y =
+      unit === 'scroll-edge' ? (forward ? bottom : top) : camera.y + (forward ? -height : height);
+    cameraTo({ ...camera, y: Math.max(bottom, Math.min(top, y)) });
   }
   function fit(all = false) {
     finishGesture();
@@ -3317,6 +3334,11 @@ export function mountCanvasEditor(host, options) {
         event.data ?? event.dataTransfer?.getData('text/plain'),
         pendingMarks,
         event.getTargetRanges?.(),
+        event.inputType.startsWith('deleteSoftLine') &&
+          sourceTextFlow(element) &&
+          element.ownerDocument.getSelection().isCollapsed
+          ? flowSelection.lineDeletionRange(event.inputType.endsWith('Backward'))
+          : undefined,
       );
     if (handled) {
       event.preventDefault();
@@ -3528,6 +3550,93 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     if (handleFieldTab(event)) return;
+    const focusedText = activeText();
+    const move = textNavigationShortcut(event, navigator.platform);
+    // The pasteboard owns the viewport when there is no text insertion point.
+    if (
+      move &&
+      !move.extend &&
+      !event.defaultPrevented &&
+      !focusedText?.isContentEditable &&
+      (event.target === document.body || viewport.contains(event.target)) &&
+      !typing(event.target) &&
+      !event.target.closest('button,a,[role="menu"]')
+    ) {
+      const pageKey = event.key === 'PageUp' || event.key === 'PageDown';
+      const edgeKey = event.key === 'Home' || event.key === 'End';
+      if (move.unit.startsWith('scroll-') || pageKey || edgeKey) {
+        const scrollPage = pageKey || move.unit === 'scroll-page';
+        event.preventDefault();
+        scrollTextView(scrollPage ? 'scroll-page' : 'scroll-edge', move.direction === 'forward');
+        return;
+      }
+    }
+    if (
+      !event.defaultPrevented &&
+      focusedText?.isContentEditable &&
+      focusedText.contains(event.target)
+    ) {
+      if (move?.unit.startsWith('scroll-')) {
+        event.preventDefault();
+        scrollTextView(move.unit, move.direction === 'forward');
+        return;
+      }
+      if (
+        move &&
+        !sourceTextFlow(focusedText) &&
+        moveSingleFrameSelection(
+          focusedText,
+          move,
+          viewport.clientHeight,
+          sceneObject(doc(), activeTextId)?.html,
+        )
+      ) {
+        event.preventDefault();
+        const selection = focusedText.ownerDocument.getSelection();
+        const focus = document.createRange();
+        focus.setStart(selection.focusNode, selection.focusOffset);
+        focus.collapse(true);
+        const rect = focus.getBoundingClientRect(),
+          bounds = viewport.getBoundingClientRect();
+        if (rect.height) {
+          const dy =
+            Math.min(0, bounds.bottom - 12 - rect.bottom) ||
+            Math.max(0, bounds.top + 12 - rect.top);
+          if (dy) cameraTo({ ...state.camera, y: state.camera.y + dy });
+        }
+        return;
+      }
+    }
+    const deletion = textDeletionShortcut(event, navigator.platform);
+    if (deletion && !event.defaultPrevented) {
+      if (focusedText?.isContentEditable && focusedText.contains(event.target)) {
+        const text = focusedText;
+        event.preventDefault();
+        beginTextInput(deletion);
+        const result = applyDocumentInput(text, deletion, '', {});
+        if (result) finishDocumentInput(text, result);
+        else {
+          // A selection across unsupported structures uses the platform's
+          // structural deletion, with the same word/character intent.
+          const selection = text.ownerDocument.getSelection();
+          if (sourceTextFlow(text)) projectFlowInput(text, 0);
+          if (selection.isCollapsed)
+            selection.modify(
+              'extend',
+              deletion.endsWith('Backward') ? 'backward' : 'forward',
+              deletion.startsWith('deleteWord') ? 'word' : 'character',
+            );
+          if (
+            !selection.isCollapsed &&
+            text.contains(selection.anchorNode) &&
+            text.contains(selection.focusNode)
+          )
+            document.execCommand('delete');
+          finishText();
+        }
+        return;
+      }
+    }
     const modifier = event.metaKey || event.ctrlKey;
     if (event.key === 'Tab' && !modifier && !event.altKey) {
       if (event.defaultPrevented) return;
@@ -3638,24 +3747,6 @@ export function mountCanvasEditor(host, options) {
       if (event.shiftKey && ['l', 'r', 'c'].includes(key)) {
         event.preventDefault();
         applyTextProperty('align', { l: 'left', r: 'right', c: 'center' }[key]);
-        return;
-      }
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
-        event.preventDefault();
-        window
-          .getSelection()
-          .modify(
-            event.shiftKey ? 'extend' : 'move',
-            event.key === 'ArrowLeft'
-              ? 'left'
-              : event.key === 'ArrowRight'
-                ? 'right'
-                : event.key === 'ArrowUp'
-                  ? 'backward'
-                  : 'forward',
-            event.key === 'ArrowLeft' || event.key === 'ArrowRight' ? 'word' : 'paragraph',
-          );
-        rememberTextSelection();
         return;
       }
     }

@@ -1,6 +1,8 @@
 // Paragraphs contain runs of UTF-16 text or a single soft break. The caller
 // supplies opaque style identities. Positions never refer to frames or pages.
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const words = new Intl.Segmenter(undefined, { granularity: 'word' });
+const spaces = /^\p{Zs}+$/u;
 const commands = new Set([
   'insertText',
   'insertReplacementText',
@@ -8,6 +10,10 @@ const commands = new Set([
   'insertLineBreak',
   'deleteContentBackward',
   'deleteContentForward',
+  'deleteWordBackward',
+  'deleteWordForward',
+  'deleteSoftLineBackward',
+  'deleteSoftLineForward',
 ]);
 
 export function isDocumentTextEdit(type) {
@@ -39,6 +45,38 @@ function edge(text, offset, end) {
   return end && offset !== part.index ? part.index + part.segment.length : part.index;
 }
 
+// A word and the spaces following it form one deletion unit. Tabs and returns
+// are individual units. Punctuation can form a run distinct from either word.
+function wordEdge(parts, offset, backward) {
+  const partAt = (at) => parts.containing(backward ? at - 1 : at);
+  const boundary = (part) => (backward ? part.index : part.index + part.segment.length);
+  const separator = (part) => /[\t\r\n\u2028\u2029]/u.test(part.segment);
+  let at = offset;
+  let part = partAt(at);
+  if (backward && spaces.test(part.segment)) {
+    at = part.index;
+    part = partAt(at);
+    if (!part || separator(part)) return at;
+  }
+  at = boundary(part);
+  if (separator(part)) return at;
+  if (!part.isWordLike && !spaces.test(part.segment)) {
+    let adjacent;
+    while (
+      (adjacent = partAt(at)) &&
+      !adjacent.isWordLike &&
+      !spaces.test(adjacent.segment) &&
+      !separator(adjacent)
+    )
+      at = boundary(adjacent);
+  }
+  if (!backward) {
+    const next = partAt(at);
+    if (next && spaces.test(next.segment)) at = boundary(next);
+  }
+  return at;
+}
+
 // Return only the changed paragraph window. Unaffected paragraphs keep their
 // identity. A null result is an admitted no-op (e.g. Backspace at document start).
 export function editParagraphs(paragraphs, anchor, focus, { type, text = '', style }) {
@@ -59,8 +97,10 @@ export function editParagraphs(paragraphs, anchor, focus, { type, text = '', sty
       ? [anchor, focus]
       : [focus, anchor];
   const collapsed = start.paragraph === end.paragraph && start.offset === end.offset;
-  const backward = type === 'deleteContentBackward';
-  if (collapsed && (backward || type === 'deleteContentForward')) {
+  const backward = type.endsWith('Backward');
+  // A visual line range comes from the composed page. At its edge it is empty.
+  if (collapsed && type.startsWith('deleteSoftLine')) return null;
+  if (collapsed && type.startsWith('delete')) {
     const p = start.paragraph,
       content = plain(paragraphs[p]);
     if (backward && !start.offset) {
@@ -69,6 +109,24 @@ export function editParagraphs(paragraphs, anchor, focus, { type, text = '', sty
     } else if (!backward && start.offset === content.length) {
       if (p + 1 === paragraphs.length) return null;
       end = { paragraph: p + 1, offset: 0 };
+    } else if (type.startsWith('deleteWord')) {
+      const parts = words.segment(content);
+      const other = wordEdge(parts, start.offset, backward);
+      let left = edge(content, Math.min(start.offset, other), false);
+      let right = edge(content, Math.max(end.offset, other), true);
+      // Smart spacing removes a single stranded separator when the entire
+      // word disappears. Preserve intentional multiple spaces and punctuation.
+      const part = parts.containing(left);
+      if (part?.isWordLike && left === part.index && right === left + part.segment.length) {
+        if (/^\p{Zs}[\p{L}\p{N}]/u.test(content.slice(right, right + 4))) right++;
+        else if (
+          right === content.length &&
+          /[\p{L}\p{N}]\p{Zs}$/u.test(content.slice(Math.max(0, left - 4), left))
+        )
+          left--;
+      }
+      start = { paragraph: p, offset: left };
+      end = { paragraph: p, offset: right };
     } else {
       const unit = graphemes.segment(content).containing(start.offset - (backward ? 1 : 0));
       start = { paragraph: p, offset: unit.index };

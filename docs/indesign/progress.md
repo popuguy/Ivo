@@ -2,7 +2,7 @@
 
 Current overall engineering estimate, 19 November 2026:
 
-`[███████░░░░░░░░░░░░░] ~35%`
+`[███████░░░░░░░░░░░░░] ~36%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
 
@@ -19,6 +19,8 @@ This is a rough assessment of implementation and integration across the [66 incl
 - [Native paragraph layout](../native-paragraph-layout.md) now implements paragraph alignment and justification endings, indents, spacing and indented default tabs in the shared glyph/caret/PDF authority, with actual edit/undo/reopen and source guards. This closes an integrated paragraph-layout dependency and advances the broad estimate from ~22% to ~24%. Native variable-area/wrap scheduling, the full justified-paragraph optimizer and device gates remain open.
 
 - [Document text operations](../text-interaction-core.md#document-text-operations) now own ordinary rich-text edits across frames, including paragraph joins, replacement and Unicode deletion. Marked-text cancellation and source/selection undo are covered in the desktop editor. This strengthens the editing foundation within the existing ~35% estimate. Structured editing, layout fidelity and physical device qualification remain open.
+
+- Desktop navigation now distinguishes page scrolling, caret movement and selection in the visible composition. Word deletion crosses frame edges and flat list edits retain formatting. This advances the broad estimate from ~35% to ~36%. Native list composition, complex-script movement and device qualification remain open.
 
 ## Major work still driving the estimate
 

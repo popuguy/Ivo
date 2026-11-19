@@ -115,20 +115,30 @@ export function moveTextPosition(
     index = forward
       ? edges.find((edge) => edge > current.index)
       : edges.findLast((edge) => edge < current.index);
-  } else if (unit === 'word') {
+  } else if (unit === 'word' || unit === 'word-start') {
     const words = segments(text, 'word', locale).filter((part) => part.isWordLike);
     index = forward
-      ? words.map((part) => part.index + part.segment.length).find((edge) => edge > current.index)
+      ? words
+          .map((part) => (unit === 'word-start' ? part.index : part.index + part.segment.length))
+          .find((edge) => edge > current.index)
       : words.map((part) => part.index).findLast((edge) => edge < current.index);
-  } else if (unit === 'paragraph') {
+  } else if (unit === 'paragraph' || unit === 'paragraph-start') {
     const ranges = paragraphIntervals(text, paragraphs);
     index = forward
-      ? ranges.map((part) => part.end).find((edge) => edge > current.index)
-      : ranges.map((part) => part.start).findLast((edge) => edge < current.index);
+      ? ranges
+          .map((part) =>
+            unit === 'paragraph-start'
+              ? (part.contentStart ?? part.start)
+              : (part.contentEnd ?? part.end),
+          )
+          .find((edge) => edge > current.index)
+      : ranges
+          .map((part) => part.contentStart ?? part.start)
+          .findLast((edge) => edge < current.index);
   } else throw new TypeError('Unknown text movement unit.');
   return {
     index: index ?? (forward ? text.length : 0),
-    affinity: forward ? 'backward' : 'forward',
+    affinity: forward && !(index !== undefined && unit.endsWith('-start')) ? 'backward' : 'forward',
   };
 }
 
@@ -136,7 +146,7 @@ export function moveTextPosition(
 export function moveTextSelection(text, selection, { extend = false, ...options } = {}) {
   const range = logicalSelection(selection.anchor, selection.focus, { length: text.length }),
     way = direction(options.direction || 'forward');
-  if (!extend && !range.collapsed) {
+  if (!extend && !range.collapsed && (!options.unit || options.unit === 'grapheme')) {
     const edge = way === 'forward' ? range.end : range.start,
       point = snapTextPosition(
         text,
@@ -255,7 +265,14 @@ export function createTextNavigation(text, { locale, paragraphs } = {}) {
         ordered = parts.every(
           (part, i) => !i || (part.start >= parts[i - 1].start && part.end >= parts[i - 1].end),
         );
-      paragraphIndex = { parts, starts, ends, ordered };
+      paragraphIndex = {
+        parts,
+        starts,
+        ends,
+        contentStarts: parts.map((part) => part.contentStart ?? part.start),
+        contentEnds: parts.map((part) => part.contentEnd ?? part.end),
+        ordered,
+      };
     }
     return paragraphIndex;
   }
@@ -274,16 +291,16 @@ export function createTextNavigation(text, { locale, paragraphs } = {}) {
     let index, values;
     if (unit === 'flow') index = forward ? text.length : 0;
     else if (unit === 'grapheme') values = graphemeIndex();
-    else if (unit === 'word') {
+    else if (unit === 'word' || unit === 'word-start') {
       const data = wordIndex();
-      values = forward ? data.wordEnds : data.wordStarts;
-    } else if (unit === 'paragraph') {
+      values = forward && unit !== 'word-start' ? data.wordEnds : data.wordStarts;
+    } else if (unit === 'paragraph' || unit === 'paragraph-start') {
       const data = paragraphData();
       // Preserve the standalone contract for unusual caller-supplied overlapping
       // or unordered ranges. Normal authored paragraph order uses binary lookup.
       if (!data.ordered)
         return moveTextPosition(text, point, { direction: way, unit, paragraphs: data.parts });
-      values = forward ? data.ends : data.starts;
+      values = unit === 'paragraph-start' || !forward ? data.contentStarts : data.contentEnds;
     } else throw new TypeError('Unknown text movement unit.');
     if (values)
       index = forward
@@ -291,13 +308,14 @@ export function createTextNavigation(text, { locale, paragraphs } = {}) {
         : values[lowerBound(values, current.index) - 1];
     return {
       index: index ?? (forward ? text.length : 0),
-      affinity: forward ? 'backward' : 'forward',
+      affinity:
+        forward && !(index !== undefined && unit.endsWith('-start')) ? 'backward' : 'forward',
     };
   }
   function selection(value, { extend = false, ...options } = {}) {
     const range = logicalSelection(value.anchor, value.focus, { length: text.length }),
       way = direction(options.direction || 'forward');
-    if (!extend && !range.collapsed)
+    if (!extend && !range.collapsed && (!options.unit || options.unit === 'grapheme'))
       return logicalSelection(
         snap({
           index: way === 'forward' ? range.end : range.start,

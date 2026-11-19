@@ -2,7 +2,7 @@
 
 ## Editing engine priorities
 
-1. Extend [document text operations](text-interaction-core.md#document-text-operations) to word deletion, deletion to the visible line boundary and structured lists. Ordinary insertion, replacement, character deletion, paragraph breaks and Tab use the shared engine in flat rich text. Qualify physical IME, accessibility and touch input on Mac, iPhone and iPad.
+1. Extend [document text operations](text-interaction-core.md#document-text-operations) to nested-list indentation, custom bullets, numbering and native list composition. Certify physical keyboard, accessibility, IME and touch input on the supported devices. The desktop editor now handles word and visual-line deletion, page navigation and flat list-item splits and joins.
 2. Profile object drags on a dense page with a clipped group and wrapped text. The current pointer path builds snap candidates and updates object elements during a move. Measure their cost, then retain stable candidates or geometry where it removes repeated work. Check that object ink, masks, handles and guides reflect the same gesture position.
 3. Extend the existing lock, typing and zoom checks to sustained mixed editing. Track slow frames and memory over the session, exercise autosave and delayed composition during gestures, and check crisp ink, stable on-screen control sizes and pointer or touch targeting at fractional zoom. Use the [editor interaction design](architecture.md#editor-interaction-design) when assessing the results.
 

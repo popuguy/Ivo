@@ -1,5 +1,13 @@
 # Verification
 
+## Desktop text shortcuts and list editing — 19 November 2026
+
+A disposable document supplied reference examples for word deletion. An offscreen AppKit text view distinguished scrolling from selection for Home, End, Page Up and Page Down on Mac.
+
+The flow-selection and native-editor-composition suites exercise word deletion and undo from page two and deletion to a composed line edge in the browser, single-line and paragraph composers. Desktop fixtures cover standalone line commands, Shift selection between frames, Windows modifier routing, and splits, joins, emphasis and empty-item Return in a numbered list. Windows routing runs in a Mac Electron renderer with the Windows platform identity. Actual Windows input, physical Fn chords, complex scripts, mobile input and native list composition remain open.
+
+The Apple Silicon review package is `release/2026-11-19-desktop-text-operations/Ivo-darwin-arm64/Ivo.app`. All 160 shared source files, 17 desktop files, 233 generated web files and both executable helpers matched the build inputs byte for byte. Validation passed 491 unit tests, 44 native tests and 17 background groups.
+
 ## iPhone startup and local storage
 
 On 19 November 2026, a signed build launched on a physical iPhone and created its vault manifest. The earlier build stayed blank because awaiting the Capacitor plugin itself dispatched a nonexistent native method named `then`. Registration now returns the plugin synchronously. Its initialization and file operations remain asynchronous. The startup unit test rejects any attempt to treat the plugin as a promise.

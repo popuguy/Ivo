@@ -65,9 +65,9 @@ app
       }
       if (
         action === 'key' &&
-        ['Down', 'Up', 'Home', 'End'].includes(value?.key) &&
+        ['Down', 'Up', 'Home', 'End', 'Left', 'Right'].includes(value?.key) &&
         Array.isArray(value.modifiers) &&
-        value.modifiers.every((key) => key === 'shift')
+        value.modifiers.every((key) => key === 'shift' || key === 'meta')
       ) {
         focusTestWindow(window);
         for (const type of ['keyDown', 'keyUp'])

@@ -7,6 +7,7 @@ import {
   nativeRectScreenPoints,
   nativeRectScreenBounds,
 } from './native-composition-geometry.js';
+import { textNavigationShortcut } from '../../../domain/text/editing-shortcuts.js';
 import { measureFlowCaretLines } from '../../../rendering/text/flow-geometry.js';
 import {
   logicalSelection,
@@ -15,8 +16,9 @@ import {
   createTextNavigation,
 } from '../../../domain/text/flow-selection.js';
 import {
+  rangeFromBookmark,
   restoreTextSelection,
-  textIndexMap,
+  logicalText,
   textParagraphRanges,
 } from '../../../shared/dom/text-selection.js';
 import { projectFlowInput } from '../../../rendering/text/flow-input.js';
@@ -40,17 +42,6 @@ const point = (value) => ({
   affinity: value.affinity,
 });
 const bookmark = (range) => ({ anchor: point(range.anchor), focus: point(range.focus) });
-function logicalText(root) {
-  const map = textIndexMap(root),
-    length = [...map.boundaries.values()].reduce(
-      (length, points) => Math.max(length, points.at(-1) || 0),
-      0,
-    ),
-    chars = Array(length).fill('\n');
-  for (const segment of map.segments)
-    for (let i = 0; i < segment.node.length; i++) chars[segment.start + i] = segment.node.data[i];
-  return chars.join('');
-}
 /** Preview provenance maps glyph hits back into the single canonical flow. */
 const provenanceCache = new WeakMap();
 function previewLeaves(root, revision) {
@@ -568,6 +559,7 @@ export function installFlowSelection(
     if (!destination) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    preferredX = null;
     const state = navigationState(),
       focus = state.navigation.snap(destination),
       extending = event.shiftKey && before && oldFlow === flow().id,
@@ -666,8 +658,10 @@ export function installFlowSelection(
   listen(
     viewport,
     'beforeinput',
-    () => {
-      logicalHint = null;
+    (event) => {
+      // Line deletion still needs the side of a shared soft-wrap boundary.
+      preferredX = null;
+      if (!event.inputType.startsWith('deleteSoftLine')) logicalHint = null;
     },
     { capture: true },
   );
@@ -712,138 +706,169 @@ export function installFlowSelection(
     }
     return geometryCache.value;
   }
+  function currentLine(measured, focus, allowNearest = false) {
+    const columnList = columns({ measureBounds: false });
+    const owner = caretInterval(focus, columnList);
+    let exact, nearest;
+    for (const line of measured.lines) {
+      const column = columnList[line.columnOrder];
+      const sameRowOwner =
+        !owner ||
+        column === owner ||
+        (owner.wrap &&
+          column?.wrap &&
+          owner.frameId === column.frameId &&
+          owner.column === column.column &&
+          owner.row === column.row);
+      if (!allowNearest && (!sameRowOwner || line.start > focus.index || line.end < focus.index))
+        continue;
+      for (const stop of line.stops) {
+        if (stop.index === focus.index && sameRowOwner) {
+          if (stop.affinity === focus.affinity) return { line, stop };
+          exact ||= { line, stop };
+        }
+        if (
+          allowNearest &&
+          (!nearest ||
+            Math.abs(stop.index - focus.index) < Math.abs(nearest.stop.index - focus.index))
+        )
+          nearest = { line, stop };
+      }
+    }
+    return exact || nearest;
+  }
+  function reliableLines(measured) {
+    return (
+      !measured.truncated &&
+      !measured.limitations.some((reason) =>
+        [
+          'mixed-bidi-affinity',
+          'rotated-or-sheared-column',
+          'offset-inline-baseline',
+          'native-column-unavailable',
+        ].includes(reason),
+      )
+    );
+  }
+  function lineDeletionRange(backward) {
+    const range = current();
+    if (!range || !allowed()) return null;
+    const measured = geometry();
+    if (measured.truncated || measured.limitations.length) return null;
+    const match = currentLine(measured, range.focus);
+    if (!match) return null;
+    const edge = backward ? match.line.stops[0] : match.line.stops.at(-1);
+    return rangeFromBookmark(input(), bookmark(logicalSelection(range.focus, edge)));
+  }
+  // Use page-space row positions at the current zoom. Crossing columns at the
+  // same height still makes progress in reading order.
+  function screenRow(lines, at, step, columnList) {
+    const screenY = (line) => {
+      const c = columnList[line.columnOrder];
+      return c.bounds.top + (line.y - (c.wrap ? c.top : 0)) * (c.bounds.height / c.height);
+    };
+    let index = at,
+      distance = 0;
+    while (lines[index + step]) {
+      const previous = lines[index],
+        next = lines[index + step];
+      const c = columnList[previous.columnOrder];
+      const advance = step * (screenY(next) - screenY(previous));
+      distance += advance > 0 ? advance : (previous.height * c.bounds.height) / c.height;
+      index += step;
+      if (distance >= viewport.clientHeight) break;
+    }
+    return lines[index];
+  }
+  function revealFocus(focus) {
+    const column = caretInterval(focus, columns());
+    if (!column) return;
+    const native = hasNativeColumn(column) && nativeCaretRect(column, focus, { hint: nativeHint });
+    const rect = native
+      ? nativeRectScreenBounds(column, native)
+      : wrappedCaretBounds(column, focus, layoutKey());
+    if (!rect) return;
+    const viewportRect = viewport.getBoundingClientRect();
+    const shift =
+      Math.min(0, viewportRect.bottom - 12 - rect.height - rect.y) ||
+      Math.max(0, viewportRect.top + 12 - rect.y);
+    if (shift) pan(0, shift);
+  }
   listen(
     viewport,
     'keydown',
     (event) => {
+      const move = textNavigationShortcut(event, navigator.platform);
       if (
-        !allowed() ||
-        event.isComposing ||
+        !move ||
+        move.unit.startsWith('scroll-') ||
+        event.defaultPrevented ||
         !input()?.contains(event.target) ||
-        !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)
+        !allowed()
       )
         return;
       const range = current();
       if (!range) return;
-      const { navigation } = navigationState(),
-        mac = /Mac|iPhone|iPad/.test(navigator.platform),
-        horizontal = ['ArrowLeft', 'ArrowRight'].includes(event.key),
-        forward = ['ArrowRight', 'ArrowDown', 'End'].includes(event.key),
-        command = mac ? event.metaKey : event.ctrlKey;
+      const { unit, direction, extend } = move,
+        forward = direction === 'forward';
       let next;
-      nativeHint = null;
-      if (
-        command &&
-        (['ArrowUp', 'ArrowDown'].includes(event.key) || ['Home', 'End'].includes(event.key))
-      )
-        next = navigation.selection(range, {
-          extend: event.shiftKey,
-          direction: forward ? 'forward' : 'backward',
-          unit: 'flow',
-        });
-      else if (horizontal && (mac ? event.altKey : event.ctrlKey))
-        next = navigation.selection(range, {
-          extend: event.shiftKey,
-          direction: forward ? 'forward' : 'backward',
-          unit: 'word',
-        });
-      else if (['ArrowUp', 'ArrowDown'].includes(event.key) && event.altKey)
-        next = navigation.selection(range, {
-          extend: event.shiftKey,
-          direction: forward ? 'forward' : 'backward',
-          unit: 'paragraph',
-        });
-      else {
+      if (['flow', 'word', 'word-start', 'paragraph', 'paragraph-start'].includes(unit)) {
+        next = navigationState().navigation.selection(range, move);
+        nativeHint = null;
+      } else {
         const measured = geometry();
-        if (
-          measured.truncated ||
-          measured.limitations.some((s) =>
-            ['mixed-bidi-affinity', 'rotated-or-sheared-column', 'offset-inline-baseline'].includes(
-              s,
-            ),
-          )
-        )
-          return;
-        if (horizontal && !command)
-          next = navigation.selection(range, {
-            extend: event.shiftKey,
-            direction: forward ? 'forward' : 'backward',
-            unit: 'grapheme',
-          });
-        else {
-          const all = measured.lines.flatMap((line, i) =>
-              line.stops.map((stop) => ({ ...stop, lineIndex: i })),
-            ),
-            ownColumn = caretInterval(range.focus, columns({ measureBounds: false })),
-            candidates = all.filter(
-              (stop) =>
-                stop.index === range.focus.index &&
-                (!ownColumn || measured.lines[stop.lineIndex].frameId === ownColumn.frameId),
-            ),
-            at =
-              candidates.find((stop) => stop.affinity === range.focus.affinity) ||
-              candidates[0] ||
-              all.reduce(
-                (best, stop) =>
-                  !best ||
-                  Math.abs(stop.index - range.focus.index) <
-                    Math.abs(best.index - range.focus.index)
-                    ? stop
-                    : best,
-                null,
-              );
-          if (!at) return;
-          const line = measured.lines[at.lineIndex];
-          let destination;
-          if (horizontal || ['Home', 'End'].includes(event.key))
-            destination = forward ? line.stops.at(-1) : line.stops[0];
+        if (!reliableLines(measured)) return;
+        if (unit === 'grapheme') {
+          next = navigationState().navigation.selection(range, move);
+          nativeHint = null;
+        } else {
+          const match = currentLine(measured, range.focus, true);
+          if (!match) return;
+          const { line, stop } = match;
+          let target = line,
+            destination;
+          if (unit === 'line-boundary') destination = forward ? line.stops.at(-1) : line.stops[0];
           else {
-            preferredX ??=
-              (at.x - (line.wrapColumnLeft || 0)) *
-              (columns({ measureBounds: false })[line.columnOrder]?.scaleX || 1);
-            const target = measured.lines[at.lineIndex + (forward ? 1 : -1)];
+            const cs = columns({ measureBounds: unit === 'screen' }),
+              step = forward ? 1 : -1;
+            const index = measured.lines.indexOf(line);
+            target =
+              unit === 'screen'
+                ? screenRow(measured.lines, index, step, cs)
+                : measured.lines[index + step];
+            const logicalX = (row, s) =>
+              (s.x - (row.wrapColumnLeft || 0)) * (cs[row.columnOrder]?.scaleX || 1);
+            preferredX ??= logicalX(line, stop);
             destination =
-              target?.stops.reduce(
-                (best, stop) =>
-                  !best ||
-                  Math.abs(
-                    (stop.x - (target.wrapColumnLeft || 0)) *
-                      (columns({ measureBounds: false })[target.columnOrder]?.scaleX || 1) -
-                      preferredX,
-                  ) <
-                    Math.abs(
-                      (best.x - (target.wrapColumnLeft || 0)) *
-                        (columns({ measureBounds: false })[target.columnOrder]?.scaleX || 1) -
-                        preferredX,
-                    )
-                    ? stop
-                    : best,
-                null,
-              ) || at;
+              target?.stops.reduce((best, s) =>
+                Math.abs(logicalX(target, s) - preferredX) <
+                Math.abs(logicalX(target, best) - preferredX)
+                  ? s
+                  : best,
+              ) || stop;
           }
-          if (destination?.nativeCaretHint)
-            nativeHint = {
-              ...destination.nativeCaretHint,
-              frameId:
-                destination.frameId ||
-                measured.lines[destination.lineIndex ?? at.lineIndex]?.frameId ||
-                line.frameId,
-              index: destination.index,
-              key: layoutKey(),
-            };
-          next = logicalSelection(event.shiftKey ? range.anchor : destination, destination);
+          nativeHint = destination.nativeCaretHint
+            ? {
+                ...destination.nativeCaretHint,
+                frameId: destination.frameId || target?.frameId || line.frameId,
+                index: destination.index,
+                key: layoutKey(),
+              }
+            : null;
+          next = logicalSelection(extend ? range.anchor : destination, destination);
         }
       }
-      if (!next) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (horizontal || ['Home', 'End'].includes(event.key)) preferredX = null;
+      if (unit !== 'adjacent-line' && unit !== 'screen') preferredX = null;
       set(next);
+      if (extend || unit === 'screen' || unit === 'flow') revealFocus(next.focus);
     },
     { capture: true },
   );
   return {
     selection: current,
+    lineDeletionRange,
     sync,
     hit,
     cancel: () => stop(true, false),
