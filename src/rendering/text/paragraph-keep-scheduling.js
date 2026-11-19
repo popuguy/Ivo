@@ -1,3 +1,9 @@
+import {
+  lastPhysicalRow,
+  fitSplitParagraph,
+  protectedParagraphTail,
+  splitLineViolations,
+} from './paragraph-split-lines.js';
 import { paragraphStartColumn } from './paragraph-start-locations.js';
 import { UnsupportedComposition } from './composition-source.js';
 
@@ -5,13 +11,6 @@ const capacity = () => {
   throw new UnsupportedComposition('paragraph keep scheduling beyond planned frame capacity');
 };
 const fits = (result) => result.status === 'fit';
-
-// One physical row can have several source fragments on either side of artwork.
-function tailStart(lines) {
-  let index = lines.length - 1;
-  while (index > 0 && lines[index].continuesRow) index--;
-  return index;
-}
 
 function joinedRowCount(previous, current) {
   return previous?.keepWithNext ? (previous.keepNextLines ?? 1) : current.keepWithPrevious ? 1 : 0;
@@ -106,19 +105,25 @@ export async function scheduleParagraphKeeps(
     }
     const previousAfter =
       cursor.baseline === null ? 0 : paragraphs[index - 1].layout.paragraphAfter;
+    const split = paragraph.keep.keepBoundaryLines && !paragraph.keep.keepTogether;
     const current = paragraph.keep.keepTogether
       ? await together(paragraph, index, cursor, previousAfter)
-      : {
-          plan: await fit(paragraph, {
-            cursor,
-            previousAfter,
-            sourceStart: prefix.at(-1)?.end ?? 0,
-            role: prefix.length ? 'next-tail' : 'ordinary',
-          }),
-          violations: [],
-        };
+      : split
+        ? {
+            plan: await fitSplitParagraph(paragraph, { fit, cursor, previousAfter, prefix }),
+            violations: [],
+          }
+        : {
+            plan: await fit(paragraph, {
+              cursor,
+              previousAfter,
+              sourceStart: prefix.at(-1)?.end ?? 0,
+              role: prefix.length ? 'next-tail' : 'ordinary',
+            }),
+            violations: [],
+          };
     if (!fits(current.plan)) capacity();
-    const rows = prefix.length ? [...prefix, ...current.plan.lines] : current.plan.lines;
+    const rows = prefix.length && !split ? [...prefix, ...current.plan.lines] : current.plan.lines;
     prefix = [];
     const required = joinedRowCount(paragraphs[index - 1]?.keep, paragraph.keep);
     // A forced start wins over an incoming join. Do not repeatedly move its predecessor.
@@ -137,7 +142,7 @@ export async function scheduleParagraphKeeps(
         row;
       for (;;) {
         const prior = plans[first];
-        row = paragraphs[first].keep.keepTogether ? 0 : tailStart(prior.lines);
+        row = protectedParagraphTail(prior.lines, paragraphs[first].keep);
         const incomingCount = joinedRowCount(paragraphs[first - 1]?.keep, paragraphs[first].keep);
         if (
           first === 0 ||
@@ -180,7 +185,7 @@ export async function scheduleParagraphKeeps(
     const frame = previous.lines.at(-1).frame;
     const last = current.lines[prefixLastFragment(current.lines, count)];
     if (last.frame === frame) continue;
-    const start = preceding.start + previous.lines[tailStart(previous.lines)].start;
+    const start = preceding.start + previous.lines[lastPhysicalRow(previous.lines)].start;
     const reason = paragraph.keep.paragraphStart
       ? 'paragraph-start'
       : preceding.keep.keepTogether
@@ -213,6 +218,18 @@ export async function scheduleParagraphKeeps(
       })),
     ),
     cursor,
-    keepViolations: plans.flatMap((plan) => plan.violations),
+    keepViolations: plans.flatMap((plan, i) => [
+      ...plan.violations,
+      ...splitLineViolations(plan.lines, paragraphs[i].keep).map((v) =>
+        violation(
+          i,
+          v.kind,
+          v.frame,
+          paragraphs[i].start + v.start,
+          paragraphs[i].start + v.end,
+          'empty-column-capacity',
+        ),
+      ),
+    ]),
   };
 }

@@ -28,8 +28,14 @@ Linked headings use the following paragraph’s actual placement, including its 
 
 A flow with automatic continuation can create an intervening empty page to reach the requested side. Resetting to Anywhere can remove unused automatically created pages. A passive view reports overset when the requested page is beyond the existing thread.
 
+## Splitting a paragraph across columns
+
+**At Start/End of Paragraph** protects a minimum number of physical lines at the beginning and end of a split paragraph. Both counts default to two and can be set independently from one to twenty. A count alone leaves this rule off. **Keep paragraph together** takes precedence when both settings are present. Named styles can supply either count or the activation setting.
+
+If only one opening line fits below the preceding paragraph, a two-line opening moves to the next column. If the final column would contain just one line, the previous column can give up a row. Ivo remeasures that suffix at the new width. A narrow empty column can relax an impossible minimum so composition continues; the original preference remains in the document.
+
 ## Remaining scope
 
-Minimum first/last lines of a split paragraph, grids, tables/anchors/notes and wider script/device policies remain open. Existing nondefault widow/orphan counts stay gated until their distinct activation policy and scheduling are implemented. This bounded increment does not certify the whole keep capability or full InDesign parity.
+Interactions with baseline grids, tables, anchors and notes, wider script coverage and physical device qualification remain open.
 
 The [verification record](verification.md) covers pure reference-derived fixtures, actual Properties/typing/undo/reopen, owned continuation handling and independent PDF source/page geometry. Original investigation artifacts remain private.

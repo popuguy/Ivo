@@ -213,7 +213,11 @@ export function createParagraphComposer(measure) {
         !frameFlow &&
         keeps.some(
           (keep) =>
-            keep.keepTogether || keep.keepWithNext || keep.keepWithPrevious || keep.paragraphStart,
+            keep.keepTogether ||
+            keep.keepBoundaryLines ||
+            keep.keepWithNext ||
+            keep.keepWithPrevious ||
+            keep.paragraphStart,
         )
       )
         throw new UnsupportedComposition('paragraph keeps without planned physical frames');

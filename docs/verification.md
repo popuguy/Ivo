@@ -1,5 +1,11 @@
 # Verification
 
+## Split paragraphs — 19 November 2026
+
+Twenty disposable InDesign layouts and the Ivo native paragraph composer used the same Minion Pro Regular font, 12 pt size and 14.4 pt leading. All 143 visible source endings, column assignments and local baselines agreed. Cases include a one-line opening or ending, short intervening columns, impossible minima, linked headings and unequal widths.
+
+The hidden editor checks changing the opening count on one paragraph, undoing and cold reopening. Two additional three-page publications verify opening and closing line protection independently through PDFKit text selection and coordinates. The eight paragraph-keep publications now cover 53 rows.
+
 ## Paragraph joins across linked frames — 19 November 2026
 
 The hidden Mac editor reflows chained headings, a whole caption, a two-line heading rule and a backward caption rule. Focused geometry tests exercise all five counts, count both sides of an illustration as a single line, cover short paragraphs and check impossible joins after later edits. Editor checks cover the Properties controls, named heading style, undo and reopening. A folder vault test preserves a previous revision while saving the new settings. PDFKit independently extracts 39 source rows across six three-page publications and verifies their page ownership, left edges and baseline spacing.

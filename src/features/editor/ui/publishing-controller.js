@@ -269,7 +269,7 @@ export function installPublishingControls(
               settings[key] !== undefined &&
               !(key === 'paragraphStart' && settings[key] === 'anywhere') &&
               !(key === 'keepNextLines' && settings[key] === 1) &&
-              !(key === 'keepWithPrevious' && settings[key] === false),
+              !(['keepWithPrevious', 'keepBoundaryLines'].includes(key) && settings[key] === false),
           )
           .map((key) => [key, settings[key]]),
       );
@@ -286,6 +286,12 @@ export function installPublishingControls(
             ['keepWithPrevious', 'Keep with previous', [false, true]],
             ['keepWithNext', 'Keep with next', [false, true]],
             ['keepNextLines', 'Following lines', [1, 2, 3, 4, 5]],
+            ['keepTogether', 'All Lines in Paragraph', [false, true]],
+            ['keepBoundaryLines', 'At Start/End of Paragraph', [false, true]],
+            ...[
+              ['orphans', 'At Start'],
+              ['widows', 'At End'],
+            ].map(([key, label]) => [key, label, Array.from({ length: 20 }, (_, i) => i + 1)]),
             ['paragraphStart', 'Start Paragraph', Object.keys(PARAGRAPH_STARTS)],
           ]
         : [];

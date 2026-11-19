@@ -551,10 +551,11 @@ export function mountCanvasEditor(host, options) {
     const summary = summarizeTextStyle(root, doc(), effectiveTextStyle(doc(), settings));
     if (
       (summary.values.paragraphStart && summary.values.paragraphStart !== 'anywhere') ||
+      summary.values.keepBoundaryLines ||
       summary.values.keepWithPrevious ||
       summary.values.keepNextLines > 1 ||
       summary.mixed.some((key) =>
-        ['keepWithPrevious', 'keepNextLines', 'paragraphStart'].includes(key),
+        ['keepWithPrevious', 'keepNextLines', 'paragraphStart', 'keepBoundaryLines'].includes(key),
       )
     )
       throw Error(
@@ -1306,7 +1307,7 @@ export function mountCanvasEditor(host, options) {
       );
     } else if (
       hasNativeParagraphSettings(doc()) ||
-      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart)\s*=/i.test(canonical)
+      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart|keepedges)\s*=/i.test(canonical)
     )
       validateLegacyParagraphSettings(canonical, textFlow?.style || item);
     if (element?.classList.contains('canvas-flow-input') && !textFlow?.composition)
@@ -1614,6 +1615,7 @@ export function mountCanvasEditor(host, options) {
           : { [field]: value };
       let message;
       if (
+        settings.keepBoundaryLines ||
         settings.keepWithPrevious ||
         settings.keepNextLines > 1 ||
         (settings.paragraphStart && settings.paragraphStart !== 'anywhere')

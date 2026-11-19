@@ -356,6 +356,7 @@ const hasKeeps = (source) =>
   source.paragraphs.some(
     (paragraph) =>
       paragraph.keepTogether ||
+      paragraph.keepBoundaryLines ||
       paragraph.keepWithNext ||
       paragraph.keepWithPrevious ||
       (paragraph.paragraphStart && paragraph.paragraphStart !== 'anywhere'),

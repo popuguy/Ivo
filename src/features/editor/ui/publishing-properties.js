@@ -314,7 +314,25 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
                 ) +
                 '</div>'
               : '') +
-            `<div class="canvas-geometry">${num('widows', item.widows || 2, 'Widows')}${num('orphans', item.orphans || 2, 'Orphans')}</div>` +
+            (nativeFlow
+              ? check('keepBoundaryLines', item.keepBoundaryLines, 'At Start/End of Paragraph') +
+                '<div class="canvas-geometry">' +
+                [
+                  ['orphans', 'At Start'],
+                  ['widows', 'At End'],
+                ]
+                  .map(([key, label]) =>
+                    field(
+                      label,
+                      unitNumber('object-prop', key, item[key] ?? 2, label, 'lines', {
+                        min: 1,
+                        max: 20,
+                      }),
+                    ),
+                  )
+                  .join('') +
+                '</div>'
+              : `<div class="canvas-geometry">${num('widows', item.widows || 2, 'Widows')}${num('orphans', item.orphans || 2, 'Orphans')}</div>`) +
             choose(
               'direction',
               item.direction || 'ltr',

@@ -24,6 +24,7 @@ export function createWrapLineMeasurer(doc, flow) {
     if (
       ['SUP', 'SUB'].includes(node.tagName) ||
       style.keepTogether ||
+      style.keepBoundaryLines ||
       style.keepWithNext ||
       style.hyphenate ||
       style.widows !== 2 ||

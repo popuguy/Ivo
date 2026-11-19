@@ -119,3 +119,39 @@ test('paragraph starts upgrade only authored documents and validate the location
     assert.throws(() => validateImport(payload), /paragraphStart/);
   }
 });
+
+test('split-line activation is versioned even for explicit off values and named overrides', async () => {
+  const old = JSON.parse(
+    await readFile(new URL('../fixtures/legacy/archive-v12.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(validateImport(old), old);
+  for (const write of [
+    (doc) => {
+      doc.textFlows[0].style.keepBoundaryLines = true;
+    },
+    (doc) => {
+      doc.blocks[0].textOverrides = { keepBoundaryLines: false };
+    },
+    (doc) => {
+      doc.textFlows[0].html = '<p data-ivo-keepedges="false">Reset</p>';
+    },
+    (doc) =>
+      saveTextStyle(doc, 'paragraph', {
+        name: 'Body',
+        attributes: { keepBoundaryLines: true, orphans: 3, widows: 2 },
+      }),
+  ]) {
+    const payload = structuredClone(old),
+      doc = payload.documents[0];
+    doc.textFlows[0].style.orphans = 3;
+    assert.equal(archiveVersion([doc]), 12);
+    write(doc);
+    assert.throws(() => validateImport(payload), /archive 13/);
+    markTypographyVersion(doc);
+    payload.schemaVersion = archiveVersion([doc]);
+    assert.equal(payload.schemaVersion, 13);
+    assert.equal(validateImport(payload).documents[0].canvasVersion, 12);
+    doc.textFlows[0].style.keepBoundaryLines = 'false';
+    assert.throws(() => validateImport(payload), /must be boolean/);
+  }
+});

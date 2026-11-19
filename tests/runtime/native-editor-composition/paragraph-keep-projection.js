@@ -68,7 +68,7 @@ export function verifyParagraphKeepProjection() {
   for (const html of [
     '<p data-ivo-keep="true">A<span data-ivo-keep="false">B</span></p>',
     '<p>A<span data-ivo-next="true">B</span></p>',
-    '<p data-ivo-widows="3">Partial keeps need an explicit activation policy</p>',
+    '<p>Text <span data-ivo-widows="3">inline</span></p>',
   ]) {
     let rejected = false;
     try {

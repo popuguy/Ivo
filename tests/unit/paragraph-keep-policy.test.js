@@ -37,7 +37,9 @@ test('keep policy validates source coverage and boolean fields before scheduling
     [[null], 1],
     [[{ keepTogether: 1 }], 1],
     [[{ keepWithNext: null }], 1],
-    [[{ widows: 2 }], 1],
+    [[{ widows: 1.5 }], 1],
+    [[{ orphans: 21 }], 1],
+    [[{ keepBoundaryLines: 1 }], 1],
     [[{ keepTogether: true }], 1.5],
   ])
     assert.throws(() => normalizeParagraphKeeps(input, count), /keep policy/);

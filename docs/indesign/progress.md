@@ -2,9 +2,11 @@
 
 Current overall engineering estimate, 19 November 2026:
 
-`[████████░░░░░░░░░░░░] ~39%`
+`[████████░░░░░░░░░░░░] ~40%`
 
 This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
+
+Split paragraphs can protect opening and closing lines independently in both native composers. Twenty InDesign layouts matched all 143 line endings, occupied columns and baselines. Editor, archive and PDF checks bring the engineering estimate to **~40%**.
 
 Section starts now target the next column, text frame, page, odd page or even page. A live comparison exercised first paragraphs, full columns, conflicting keeps and successive starts; the 25 layouts matched InDesign’s occupied columns and overset behavior. The overall engineering estimate is **~39%**.
 

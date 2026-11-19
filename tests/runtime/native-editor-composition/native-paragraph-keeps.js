@@ -692,6 +692,48 @@ export async function verifyNativeParagraphKeeps({
       doc.pages.length === 1 && doc.textFlows[0].autoPages.length === 0,
       'Resetting the start retained obsolete automatic pages',
     );
+    const splitRows = [
+      'PRE1\u2029',
+      'PRE2\u2029',
+      'A1 body\u2028',
+      'A2 body\u2028',
+      'A3 body\u2028',
+      'A4 body\u2029',
+      'T1 tail\u2029',
+    ];
+    ownFixture(
+      'Split paragraph lines',
+      '<p>PRE1</p><p>PRE2</p><p>A1 body<br>A2 body<br>A3 body<br>A4 body</p><p>T1 tail</p>',
+    );
+    mount();
+    await settle();
+    const ordinarySplit = [[0, 1, 2], [3, 4, 5, 6], []],
+      protectedSplit = [[0, 1], [2, 3, 4, 5], [6]];
+    verifyPlan(splitRows, ordinarySplit);
+    await selectWord('A1');
+    await property('keepBoundaryLines', true);
+    verifyPlan(splitRows, protectedSplit);
+    assert(
+      paragraphMark(2, 'keepedges') === 'true' && archiveVersion([doc]) === 13,
+      'Split lines lost paragraph ownership',
+    );
+    await property('orphans', 1);
+    verifyPlan(splitRows, ordinarySplit);
+    await editor.command('undo');
+    await settle();
+    verifyPlan(splitRows, protectedSplit);
+    await save({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+    editor.destroy();
+    editor = null;
+    doc = validateImport(await load()).documents[0];
+    resetOwner();
+    mount();
+    await settle();
+    verifyPlan(splitRows, protectedSplit);
+    assert(
+      !commits && paragraphMark(2, 'keepedges') === 'true',
+      'Opening the split paragraph rewrote its source',
+    );
     ownFixture('Native keep final row with next', nextHTML);
     mount();
     await settle();
@@ -813,6 +855,7 @@ export async function verifyNativeParagraphKeeps({
       nativeKeepCountAndPrevious: true,
       nativeKeepNamedStyleReflow: true,
       nativeParagraphStarts: true,
+      nativeSplitParagraphCounts: true,
       ...(diagnosticsChecked ? { nativeKeepDerivedViolations: true } : {}),
     };
   } finally {

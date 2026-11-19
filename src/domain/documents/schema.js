@@ -11,6 +11,7 @@ import {
   hasWordSpacing,
   hasExtendedKeeps,
   hasParagraphStarts,
+  hasSplitLineKeeps,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -210,7 +211,7 @@ function typography(input, out, label) {
     if (valid === null) fail(`${label}.${key} has an invalid typography value`);
     if (key === 'keepNextLines' && !Number.isInteger(input[key]))
       fail(`${label}.${key} must be an integer`);
-    if (key === 'keepWithPrevious' && typeof input[key] !== 'boolean')
+    if (['keepWithPrevious', 'keepBoundaryLines'].includes(key) && typeof input[key] !== 'boolean')
       fail(`${label}.${key} must be boolean`);
     out[key] =
       typeof input[key] === 'number'
@@ -308,7 +309,15 @@ function validateArchive(payload, parentTemplate) {
       fail(`${label} requires frame-composition archive schema 7`);
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
-    if (hasParagraphStarts(doc) && (doc.canvasVersion !== 11 || payload.schemaVersion < 12))
+    if (
+      hasSplitLineKeeps(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 12) || payload.schemaVersion < 13)
+    )
+      fail(`${label} requires split paragraph archive 13 / canvas 12`);
+    if (
+      hasParagraphStarts(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 11) || payload.schemaVersion < 12)
+    )
       fail(`${label} requires paragraph start archive 12 / canvas 11`);
     if (
       hasExtendedKeeps(doc) &&

@@ -736,3 +736,35 @@ test('future starts clone the last frame column count; repeated page starts adva
     );
   }
 });
+
+test('split-line minima activate independently of stored counts and whole-paragraph priority', async () => {
+  const text = 'A1\u2028A2\u2028A3\u2028A4\u2028A5',
+    composer = createParagraphComposer(backend().measure);
+  const layout = async (policy, counts = [4, 4]) =>
+    composer.compose(
+      request(text),
+      counts.map((n) => column(140, 15.5 + (n - 1) * 14.4)),
+      { paragraphKeeps: [policy] },
+    );
+  const frames = (result) => result.placements.map((line) => line.frame);
+  assert.deepEqual(frames(await layout({ widows: 3, orphans: 2 })), [0, 0, 0, 0, 1]);
+  assert.deepEqual(
+    frames(await layout({ keepBoundaryLines: true, widows: 3, orphans: 2 })),
+    [0, 0, 1, 1, 1],
+  );
+  const impossible = await layout({ keepBoundaryLines: true, widows: 3, orphans: 3 }, [2, 2, 1]);
+  assert.deepEqual(frames(impossible), [0, 0, 1, 1, 2]);
+  assert.deepEqual(
+    impossible.keepViolations.map((v) => [v.kind, v.start, v.end]),
+    [
+      ['orphans', 0, 6],
+      ['widows', 12, 14],
+    ],
+  );
+  const all = await layout({ keepBoundaryLines: true, widows: 3, orphans: 2, keepTogether: true });
+  assert.deepEqual(frames(all), [0, 0, 0, 0, 1]);
+  assert.deepEqual(
+    all.keepViolations.map((v) => v.kind),
+    ['keepTogether'],
+  );
+});

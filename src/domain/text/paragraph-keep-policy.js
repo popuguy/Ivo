@@ -9,6 +9,9 @@ export const PARAGRAPH_STARTS = Object.freeze({
 
 export const PARAGRAPH_KEEP_FIELDS = Object.freeze([
   'keepTogether',
+  'keepBoundaryLines',
+  'widows',
+  'orphans',
   'keepWithNext',
   'keepWithPrevious',
   'keepNextLines',
@@ -37,6 +40,15 @@ export function normalizeParagraphKeeps(input, count) {
         throw Error('Invalid paragraph keep policy: ' + key + '.');
       if (key !== 'keepWithPrevious' || value[key]) policy[key] = value[key] ?? false;
     }
+    if (value.keepBoundaryLines !== undefined && typeof value.keepBoundaryLines !== 'boolean')
+      throw Error('Invalid paragraph keep policy: split-line activation.');
+    for (const key of ['widows', 'orphans']) {
+      const n = value[key] ?? 2;
+      if (value[key] === null || !Number.isSafeInteger(n) || n < 1 || n > 20)
+        throw Error('Invalid paragraph keep policy: ' + key + '.');
+      if (value.keepBoundaryLines) policy[key] = n;
+    }
+    if (value.keepBoundaryLines) policy.keepBoundaryLines = true;
     if (value.keepNextLines !== undefined) {
       if (
         !Number.isInteger(value.keepNextLines) ||
