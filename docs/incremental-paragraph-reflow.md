@@ -1,0 +1,23 @@
+# Incremental paragraph reflow
+
+The native Paragraph preview now makes each paragraph's ragged-right decision independently. Previously the optimizer received an entire linked flow: it treated only the flow's final line as a paragraph ending and could spread the cost of earlier short final lines across unrelated paragraphs. The correction uses structural paragraph separators while retaining mandatory soft breaks inside each paragraph. It does not change canonical text, paragraph marks, document IDs or the saved format.
+
+`src/rendering/text/paragraph-composition.js` owns the bounded orchestration; the pure domain optimizer retains its explicit `ragged-right-quadratic-v1` policy. `native-flow-layout.js` supplies a composer per native port. This is an owned fitting policy, not certification of InDesign's paragraph composer.
+
+## Reuse and invalidation
+
+A paragraph-local fingerprint includes normalized text, clipped/rebased transported runs, all their shaping attributes, and the identity/digest of each used exact font resource. It excludes document/flow IDs, markup, global offsets and frame width. Editing or inserting one paragraph can therefore retain measurements for unchanged paragraphs even when their source positions move. Changing font bytes, face, size, tracking, kerning or other shaping attributes invalidates the affected paragraph. Frame-width changes reuse measurements and make a fresh decision at the exact fractional width.
+
+The per-port LRU retains at most 64 paragraph entries and an 8 MB accounted measurement/key budget (not a measured heap limit). Each entry keeps decisions for at most four exact widths, with only line ends and solver counters retained; this has a separate maximum of 64 × 4 × 1,023 ends. Entries contain no font bytes, DOM nodes, exported tokens or saved document snapshots. They remain derived process memory. Whole-flow source, opportunity, measurement and solver budgets apply even on a warm cache.
+
+Cold misses are deduplicated and batched across paragraphs in requests of at most 4,096 alternatives. Requests keep the actual whole source, digest, spans, runs and resources with current global coordinates. The worker does not build a separate whole-source typesetter for each paragraph. Every returned measurement must match its requested source digest and ordered endpoints and have a finite bounded width. All batches must validate before new measurements enter the cache. A failed later batch cannot poison a retry.
+
+The final native request still composes the complete immutable flow from the combined explicit breaks. Its glyphs, caret/source geometry, vector paint, page continuation and searchable PDF retain the same source and ownership fences. Final geometry is not yet an incremental patch protocol. A large paragraph still needs bounded full-paragraph measurement and optimization after it changes. The current 10k UTF-16, 1,024-opportunity, 100k-alternative and equal-column limits remain; existing notes are not migrated to the preview.
+
+## Verification
+
+Eight new unit regressions cover independent paragraph endings, soft/blank paragraphs and CRLF boundaries, offset-shifting edits, insertion/deletion, exact fractional widths, font/style invalidation, source immutability, batching, malformed/stale results, retry behavior, eviction and whole-flow admission/decision limits even with cached decisions. An additional adapter regression proves a malformed batch can retry unchanged source without a corrupt transport cache entry. A real Core Text fixture compares incremental and fresh break decisions, native geometry/vectors and PDF output after edits, resizing and an exact Roman-to-Italic face change. Its four-paragraph edit reuses three paragraphs; resizing needs no new measurements. These work counters are deterministic evidence of reuse, not a general latency guarantee.
+
+The actual canvas fixture types into the middle of a three-paragraph flow, verifies that only that paragraph's alternatives reach the native bridge, and checks undo/redo and archive reopen. Existing native selection/formatting, automatic-page, passive-reader, lost-lease and delayed-result tests remain active.
+
+The focused editor and geometry checks also run in the new `test:background` subset: hidden offscreen windows, renderer-directed input and no native activation. Physical input, system clipboard/menu behavior, actual IME candidate windows, production-window activation and iPhone/iPad pacing remain separate qualification work. Private evidence is retained in parent `work/incremental-reflow-2026-11-18/`; tests use synthetic documents and temporary profiles.

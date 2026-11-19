@@ -1,5 +1,13 @@
 # Verification
 
+## Incremental paragraphs and background checks — 18 November 2026
+
+[Incremental paragraph reflow](incremental-paragraph-reflow.md) separates paragraph-ending policy and reuses exact-font measurements and exact-width decisions after source offset shifts. Native cold-versus-incremental comparisons agree on breaks, glyph/caret geometry, vector paths and searchable PDF. An actual canvas edit reaches the native measurement bridge only for the changed middle paragraph, retains one authored undo boundary and passes undo/redo/archive reopen. Corrupt batches, including a failed later batch, cannot leave reusable partial results; an adapter regression verifies retry on unchanged source. Warm decisions still consume the whole-flow solver budget.
+
+The standard checks pass with **282 unit tests**; **nine native tests** and **eleven background component groups** pass. The latter include the real editor, native geometry, source/formatting/selection, automatic pages, font metrics, browser storage, graph, frame layout and live/cold zoom raster checks. An additional focused native-editor run passes after the measurement-cache retry refinement. Background tests use hidden offscreen windows, renderer input and prohibited macOS activation; a visible/focused test window fails the run. This is separate from native OS menu/clipboard/focus and physical-device qualification, which were not rerun for this source-only composition increment.
+
+A fresh Mac package is built at `release/2026-11-18-incremental-paragraph-reflow/Ivo-darwin-arm64/Ivo.app` without opening it over the user's work. Its **125 source files**, **16 desktop files**, **198 dist files** and **two unpacked helpers** match the build inputs byte for byte. iOS asset synchronization passes; full mobile SDK/device qualification remains open. Native formats/helpers and existing note composers are unchanged. Private evidence is in parent `work/incremental-reflow-2026-11-18/`; personal vaults and global settings remain untouched.
+
 ## Stable text zoom — 18 November 2026
 
 The [camera correction](stable-text-zoom.md) preserves authored layout through a plain 2D paint transform. The new character-rectangle test first fails against the old CSS layout-zoom camera with a 0.5 document-unit metric change at 25%. The fixed camera passes fractional-scale, mixed-font and wrapped-line checks, plus a 90-frame actual-editor pinch sequence across independent text, linked previews and the retained input. Maximum document-coordinate rectangle deviation is approximately 0.000305 units. Source, fragment/node identities, caret and history remain unchanged.

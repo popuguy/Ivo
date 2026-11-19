@@ -98,6 +98,7 @@ function port() {
     calls.push(request);
     if (request.mode === 'measure-lines-proof')
       return {
+        sourceDigest: request.sourceDigest,
         measurements: request.candidates.map((part) => ({
           ...part,
           width: request.text.slice(part.start, part.end).trim().length * 5,
@@ -317,6 +318,31 @@ test('paragraph mode measures actual alternatives then renders explicit owned de
     'Unsupported paragraph geometry must not fall back to greedy',
   );
   assert.equal(doc.textFlows[0].html, before.textFlows[0].html);
+});
+test('a malformed paragraph batch can retry the same source without retaining a corrupt response', async () => {
+  const doc = fixture({
+      composer: 'paragraph',
+      text: 'one two three four',
+      width: 60,
+      height: 200,
+    }),
+    native = port(),
+    original = native.compose,
+    before = structuredClone(doc);
+  let malformed = true;
+  native.compose = async (query) => {
+    const result = await original(query);
+    if (query.mode === 'measure-lines-proof' && malformed) {
+      malformed = false;
+      result.measurements[0].end++;
+    }
+    return result;
+  };
+  await assert.rejects(composeNativeTextFlows(doc, native), /requested alternative/);
+  assert.deepEqual(doc, before);
+  const retry = await composeNativeTextFlows(doc, native);
+  assert.equal(retry.status.get('flow-a').overset, false);
+  assert.equal(native.calls.filter((query) => query.mode === 'measure-lines-proof').length, 2);
 });
 test('source boundary mapping partitions virtual marks without duplicating the next paragraph', () => {
   const source = {

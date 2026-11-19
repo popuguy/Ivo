@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { buildNativeText } from '../../scripts/build-native-text.mjs';
 import { createTextComposition } from '../../desktop/text-composition.mjs';
+import { createParagraphComposer } from '../../src/rendering/text/paragraph-composition.js';
 
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 async function request(
@@ -44,6 +45,113 @@ const portable = (req) => ({
   ...req,
   resources: req.resources.map(({ data: _data, ...resource }) => resource),
 });
+
+test(
+  'incremental Core Text paragraphs equal a cold reflow after edits, resizing and exact-face changes',
+  { skip: process.platform !== 'darwin' },
+  async (t) => {
+    const service = createTextComposition(await buildNativeText());
+    t.after(() => service.close());
+    const measured = [],
+      composer = createParagraphComposer(async (query) => {
+        measured.push(query.candidates.length);
+        return service.compose(query);
+      });
+    const text = [
+        'First paragraph with office affinity and carefully positioned words.',
+        'Second paragraph retains its own short final line and font metrics.',
+        'Third paragraph flows into the next frame without changing its source.',
+        'Last words.',
+      ].join('\u2029'),
+      first = await request(text);
+    first.frames = Array.from({ length: 4 }, (_, index) => ({
+      id: 'frame-' + index,
+      width: 150,
+      height: 90,
+    }));
+    const cold = await composer.compose(first, first.frames),
+      edited = await request(
+        text.replace('First paragraph', 'Edited first paragraph with more words'),
+      );
+    edited.frames = first.frames;
+    const warm = await composer.compose(edited, edited.frames);
+    assert.equal(warm.work.reusedParagraphs, 3);
+    assert.equal(warm.work.measuredParagraphs, 1);
+    assert(warm.work.measuredCandidates < cold.work.measuredCandidates);
+    const fresh = await createParagraphComposer((query) => service.compose(query)).compose(
+      edited,
+      edited.frames,
+    );
+    assert.deepEqual(warm.breaks, fresh.breaks);
+    const geometry = await service.compose({
+        ...edited,
+        mode: 'explicit-lines-proof',
+        breaks: warm.breaks,
+      }),
+      freshGeometry = await service.compose({
+        ...edited,
+        mode: 'explicit-lines-proof',
+        breaks: fresh.breaks,
+      });
+    assert.deepEqual(geometry.layout, freshGeometry.layout);
+    assert.deepEqual(geometry.vectors, freshGeometry.vectors);
+    assert.equal(geometry.layout.coveredLength, edited.text.length);
+    assert.equal(
+      (
+        await PDFDocument.load(Buffer.from((await service.pdf(geometry.token)).data, 'base64'))
+      ).getPageCount(),
+      4,
+    );
+    const resized = { ...edited, frames: edited.frames.map((frame) => ({ ...frame, width: 180 })) },
+      resizeDecision = await composer.compose(resized, resized.frames);
+    assert.equal(resizeDecision.work.backendCalls, 0);
+    assert.deepEqual(
+      resizeDecision.breaks,
+      (
+        await createParagraphComposer((query) => service.compose(query)).compose(
+          resized,
+          resized.frames,
+        )
+      ).breaks,
+    );
+    const italicBytes = await readFile(
+        new URL('../../public/fonts/cmu-serif/cmunti.ttf', import.meta.url),
+      ),
+      italic = structuredClone(edited),
+      firstEnd = italic.text.indexOf('\u2029') + 1;
+    italic.resources.push({
+      id: 'italic',
+      digest: hash(italicBytes),
+      postscript: 'CMUSerif-Italic',
+      data: italicBytes.toString('base64'),
+    });
+    italic.runs = [
+      { ...italic.runs[0], end: firstEnd, font: 'italic' },
+      { ...italic.runs[0], start: firstEnd },
+    ];
+    const styled = await composer.compose(italic, italic.frames);
+    assert.equal(styled.work.reusedParagraphs, 3);
+    assert.equal(styled.work.measuredParagraphs, 1);
+    assert.deepEqual(
+      styled.breaks,
+      (
+        await createParagraphComposer((query) => service.compose(query)).compose(
+          italic,
+          italic.frames,
+        )
+      ).breaks,
+    );
+    t.diagnostic(
+      JSON.stringify({
+        cold: cold.work,
+        edited: warm.work,
+        resized: resizeDecision.work,
+        styled: styled.work,
+        nativeBatches: measured,
+      }),
+    );
+  },
+);
 
 test(
   'persistent native composition retains exact fonts, vectors, geometry and immutable PDF lines',

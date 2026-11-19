@@ -35,6 +35,7 @@ try {
     notices = [],
     mouseTrace = [],
     calls = [],
+    measurements = [],
     phase = new URL(location.href).searchParams.get('phase');
   for (const type of ['pointerdown', 'mousedown', 'pointerup', 'lostpointercapture'])
     window.addEventListener(
@@ -68,7 +69,8 @@ try {
         gate.started = { request, result };
         await gate.wait;
       }
-      if (request.mode !== 'measure-lines-proof') calls.push({ request, result });
+      if (request.mode === 'measure-lines-proof') measurements.push({ request, result });
+      else calls.push({ request, result });
       return result;
     },
   };
@@ -631,6 +633,80 @@ try {
     );
     assert(!notices.length, 'Unexpected native editor notifications: ' + notices.join('; '));
     editor.destroy();
+    doc = createSceneDocument('Incremental paragraph editing', { width: 400, height: 300 });
+    const incremental = insertObject(doc, 'text', doc.pages[0].id, {
+      x: 30,
+      y: 30,
+      w: 300,
+      h: 220,
+      textStyle: 'cmu-serif',
+      fontSize: 16,
+      html:
+        '<p>First paragraph has carefully positioned words.</p>' +
+        '<p>Second paragraph keeps its original text and exact font.</p>' +
+        '<p>Third paragraph remains unchanged through the edit.</p>',
+    });
+    enableNativeComposition(
+      doc,
+      startTextFlow(doc, incremental.id, { automaticPages: true }),
+      'paragraph',
+    );
+    history = createDocumentHistory();
+    changes = commits = 0;
+    mount();
+    await settle();
+    const beforeIncremental = doc.textFlows[0].html,
+      firstComposition = latest(incremental.id),
+      sourceStart = firstComposition.request.text.indexOf('\u2029') + 1,
+      measuredBefore = measurements.length;
+    await editor.command('document-text');
+    await tick();
+    selectWord('Second');
+    await window.nativeEditorTest.insert('Revised second');
+    await settle();
+    const afterIncremental = doc.textFlows[0].html,
+      secondComposition = latest(incremental.id),
+      sourceEnd = secondComposition.request.text.indexOf('\u2029', sourceStart) + 1,
+      newMeasurements = measurements.slice(measuredBefore);
+    assert(
+      newMeasurements.length === 1 &&
+        newMeasurements[0].request.candidates.every(
+          ({ start, end }) => start >= sourceStart && end <= sourceEnd,
+        ),
+      'Typing in one paragraph remeasured unchanged paragraphs',
+    );
+    assert(
+      newMeasurements[0].request.text === secondComposition.request.text,
+      'Incremental measurements used a substitute paragraph source',
+    );
+    assert(
+      afterIncremental !== beforeIncremental && commits === 1,
+      'Incremental composition changed the authored history boundary',
+    );
+    const measuredAfter = measurements.length;
+    await editor.command('undo');
+    await settle();
+    assert(
+      doc.textFlows[0].html === beforeIncremental && measurements.length === measuredAfter,
+      'Undo lost source or failed to reuse earlier paragraph measurements',
+    );
+    await editor.command('redo');
+    await settle();
+    assert(
+      doc.textFlows[0].html === afterIncremental && measurements.length === measuredAfter,
+      'Redo lost source or failed to reuse edited paragraph measurements',
+    );
+    await window.nativeEditorTest.save({
+      schemaVersion: archiveVersion([doc]),
+      documents: [doc],
+      assets: [],
+    });
+    const reopenedIncremental = validateImport(await window.nativeEditorTest.load());
+    assert(
+      reopenedIncremental.documents[0].textFlows[0].html === afterIncremental,
+      'Incremental paragraph source changed across archive reopen',
+    );
+    editor.destroy();
     const passive = createSceneDocument('Passive native reader', { width: 400, height: 260 }),
       passiveFrame = insertObject(passive, 'text', passive.pages[0].id, {
         x: 30,
@@ -730,6 +806,8 @@ try {
       serializeReopen: true,
       undoRedo: true,
       automaticPageGrowthShrink: true,
+      incrementalParagraphEditing: true,
+      incrementalUndoRedoReopen: true,
       derivedHistory: true,
       pendingGeometryFence: true,
       passiveReaderNoWrites: true,

@@ -1,6 +1,6 @@
 import { compositionSource, UnsupportedComposition } from './composition-source.js';
 import { composedSVG } from './composed-svg.js';
-import { chooseParagraphBreaks } from '../../domain/text/paragraph-breaks.js';
+import { createParagraphComposer, validateParagraphSource } from './paragraph-composition.js';
 import { fontVariantAsset, regularFace } from '../../domain/text/font-catalog.js';
 import { shippedTextFontURL } from './font-resources.js';
 import { inspectFont } from '../../domain/text/fonts.js';
@@ -11,11 +11,10 @@ import { escapeHTML } from '../../shared/html/sanitize.js';
 
 const sessions = new WeakMap(),
   requestSessions = new WeakMap(),
+  paragraphSessions = new WeakMap(),
   shipped = new Map(),
   assetResources = new WeakMap(),
-  MAX_COLUMNS = 128,
-  MAX_PARAGRAPH_POINTS = 1024,
-  MAX_ALTERNATIVES = 100000;
+  MAX_COLUMNS = 128;
 const sha = async (bytes) =>
   [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
     .map((n) => n.toString(16).padStart(2, '0'))
@@ -244,76 +243,16 @@ export function nativeSourceBoundary(source, index) {
   if (!Number.isFinite(found)) throw Error('Native layout lost a canonical source boundary.');
   return found;
 }
-function paragraphOpportunities(text) {
-  const points = new Map([
-    [0, { index: 0 }],
-    [text.length, { index: text.length, mandatory: true }],
-  ]);
-  for (const match of text.matchAll(/[ \t]+|[\n\r\u2028\u2029]/g)) {
-    const index = match.index + match[0].length;
-    points.set(index, { index, mandatory: /[\n\r\u2028\u2029]/.test(match[0]) });
-  }
-  const opportunities = [...points.values()].sort((a, b) => a.index - b.index);
-  if (opportunities.length > MAX_PARAGRAPH_POINTS || text.length > 10000)
-    throw new UnsupportedComposition('paragraph composition beyond its bounded source budget');
-  let starts = 1,
-    alternatives = 0;
-  for (const point of opportunities.slice(1)) {
-    alternatives += starts;
-    if (alternatives > MAX_ALTERNATIVES)
-      throw new UnsupportedComposition(
-        'paragraph composition beyond its bounded alternative budget',
-      );
-    starts = point.mandatory ? 1 : starts + 1;
-  }
-  return opportunities;
-}
-function paragraphAlternatives(text) {
-  const opportunities = paragraphOpportunities(text);
-  const candidates = [];
-  for (let a = 0; a < opportunities.length - 1; a++)
-    for (let b = a + 1; b < opportunities.length; b++) {
-      candidates.push({ start: opportunities[a].index, end: opportunities[b].index });
-      if (candidates.length > MAX_ALTERNATIVES)
-        throw new UnsupportedComposition(
-          'paragraph composition beyond its bounded alternative budget',
-        );
-      if (opportunities[b].mandatory) break;
-    }
-  return { opportunities, candidates };
-}
 async function decideParagraph(request, columns, compose) {
-  const width = columns[0].width;
-  if (columns.some((c) => Math.abs(c.width - width) > 0.000001))
-    throw new UnsupportedComposition('paragraph composition across unequal column widths');
-  const { opportunities, candidates } = paragraphAlternatives(request.text),
-    measurements = [];
-  for (let start = 0; start < candidates.length; start += 4096) {
-    const batch = candidates.slice(start, start + 4096),
-      measured = await composeRequest(compose, {
-        ...request,
-        mode: 'measure-lines-proof',
-        includeVectors: false,
-        candidates: batch,
-      });
-    if (measured.measurements?.length !== batch.length)
-      throw Error('Native paragraph measurements are incomplete.');
-    measurements.push(...measured.measurements);
+  let composer = paragraphSessions.get(compose);
+  if (!composer) {
+    // Measurements have their own validated paragraph cache. Keeping raw batch
+    // responses in the full-result cache would duplicate memory and poison a
+    // same-source retry after a malformed batch.
+    composer = createParagraphComposer(compose);
+    paragraphSessions.set(compose, composer);
   }
-  const chosen = chooseParagraphBreaks({
-    start: 0,
-    end: request.text.length,
-    opportunities,
-    // All slots have the same width: an overwide edge can never belong to a
-    // feasible path. Prune it before the bounded optimizer explores states.
-    measurements: measurements.filter((line) => line.width <= width),
-    lineWidths: Array(Math.min(2048, opportunities.length - 1)).fill(width),
-    maxCandidates: 1000000,
-    maxStates: 100000,
-  });
-  if (chosen.status !== 'fit')
-    throw new UnsupportedComposition('paragraph fitting (' + chosen.reason + ')');
-  return { breaks: chosen.lines.map((line) => line.end), policy: chosen.policy };
+  return composer.compose(request, columns);
 }
 function validateResult(result, request) {
   if (
@@ -418,7 +357,7 @@ function projectNativeFlow(doc, flow, fonts) {
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
-  if (flow.composition?.composer === 'paragraph') paragraphOpportunities(source.text);
+  if (flow.composition?.composer === 'paragraph') validateParagraphSource(source.text);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
   return source;
@@ -574,6 +513,7 @@ export async function composeNativeTextFlows(
       additionalFrames: overset ? 1 : 0,
       composer: flow.composition.composer,
       policy: decision?.policy || 'native-single-line',
+      ...(decision ? { paragraphWork: decision.work } : {}),
       token: result.token,
       diagnostics: result.diagnostics || [],
     });
