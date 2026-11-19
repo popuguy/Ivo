@@ -814,6 +814,24 @@ test('word spacing is paragraph-owned and explicitly activates native protocol5 
   assert.deepEqual(validateNativeFlowSource(doc, flow), baseline);
 });
 
+test('an existing long single-line document can still open after pasting a hard space or optional break', async () => {
+  for (const text of [
+    'A\u00a0B ' + 'reference '.repeat(1200),
+    'A\u202fB ' + 'x '.repeat(550),
+    'A\u200bB ' + 'x '.repeat(550),
+  ]) {
+    const doc = fixture({ text }),
+      native = port(),
+      saved = structuredClone(doc);
+    await composeNativeTextFlows(doc, { ...native, allowPages: false });
+    assert.equal(native.calls.at(-1).mode, 'greedy-geometry-proof');
+    assert.equal(native.calls.at(-1).text, text + '\u2029');
+    assert.deepEqual(doc, saved);
+    doc.textFlows[0].style.wordSpacing = '80:100:133';
+    assert.throws(() => validateNativeFlowSource(doc, doc.textFlows[0]), /budget/);
+  }
+});
+
 test('justified hard spaces resolve ordinary spacing defaults without authoring paragraph preferences', () => {
   for (const space of ['\u00a0', '\u202f']) {
     const doc = fixture({ text: 'Pair' + space + 'one with room' });

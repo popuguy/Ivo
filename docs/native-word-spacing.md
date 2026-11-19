@@ -14,6 +14,8 @@ Any authored word-spacing value, including explicit `normal`, requires archive 1
 
 Type → Insert White Space offers Nonbreaking Space and Nonbreaking Space (Fixed Width). Both retain one Unicode source character and bind adjacent words. U+00A0 shares the line’s word-space adjustment. U+202F takes the font’s ordinary space at the desired percentage, even in a face whose narrow-space glyph has a different advance. On a fully justified line with only a fixed gap, the compositor can spread the shaped clusters. Default justified paragraphs with qualified hard spaces use a derived policy on the disposable projection. Opening a document does not add a spacing preference.
 
+An existing single-line flow containing pasted hard spaces can exceed the bounded paragraph search. In that case its earlier native single-line layout remains available. Extended paragraph rules and explicitly authored word-spacing policies still require the bounded planner.
+
 The native editor, Markdown export and the private source carried into PDF preparation preserve the original character. PDF readers can normalize whitespace in extracted text. In two reference fixtures ending in a fixed space followed by an ordinary space, the final invisible caret differed by 5.046 pt. Visible words, line endings and baselines agreed.
 
 ## Measured adjustment and line choice

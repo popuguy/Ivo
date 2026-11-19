@@ -73,7 +73,7 @@ export async function verifyNativeWordSpacing({
     const [minimum, desired, maximum] = value.split(':').map(Number);
     return { minimum, desired, maximum };
   }
-  function ownFixture(name, html) {
+  function ownFixture(name, html, composer = 'paragraph') {
     editor?.destroy();
     doc = createSceneDocument(name, { width: 600, height: 500 });
     enablePublishing(doc);
@@ -99,7 +99,7 @@ export async function verifyNativeWordSpacing({
         html,
       }),
       flow = startTextFlow(doc, frame.id, { automaticPages: false });
-    enableNativeComposition(doc, flow, 'paragraph');
+    enableNativeComposition(doc, flow, composer);
     doc = validateImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] })
       .documents[0];
     frameId = frame.id;
@@ -794,6 +794,24 @@ export async function verifyNativeWordSpacing({
     assert(
       verifyProtocol(5).request.text.includes('ne\u200bighbor'),
       'Optional break interrupted composition in a paragraph with custom word spacing.',
+    );
+    const longText = '12\u00a0pt ' + 'Long document text. '.repeat(600);
+    ownFixture(
+      'Long single-line note with pasted hard space',
+      '<p>' + longText + '</p>',
+      'single-line',
+    );
+    mount();
+    await settle();
+    const longView = painted();
+    assert(
+      longView.request.mode === 'greedy-geometry-proof' &&
+        longView.request.text === longText + '\u2029' &&
+        longView.result.layout.lines.length > 0 &&
+        longView.result.layout.coveredLength < longText.length &&
+        !commits &&
+        !changes,
+      'Opening an existing long single-line flow lost its full text, ink or original history.',
     );
     await rejectedFixture('Unsupported thin space word spacing', '<p>Rejected\u2009neighbor</p>');
     await rejectedFixture('Unsupported tab word spacing', '<p>Rejected\tneighbor</p>');

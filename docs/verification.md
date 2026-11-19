@@ -1,5 +1,9 @@
 # Verification
 
+## Previously saved long single-line notes — 19 November 2026
+
+A single pasted nonbreaking space or optional break could send a previously readable long single-line flow through a paragraph search that exceeded its limits. The compatible native single-line route now renders these notes. A hidden editor test opens more than 12,000 characters in a single frame and checks its visible lines, retained source, overset suffix and zero history writes. The paragraph composer and explicitly authored spacing/keep rules continue to enforce their original limits.
+
 ## Combined text controls — 19 November 2026
 
 A separate matrix combined linked frames of unequal widths, opening/closing line counts, protected phrases, a discretionary break, both nonbreaking spaces and custom justification. Both composers passed all 96 layouts and 608 visible rows. This exposed two integration faults: the Apple worker rejected the optional break under explicit word spacing, and the renderer rejected a valid trailing caret after a hanging flexible space. The native, source-validation, editor and PDF regressions now exercise those combinations.

@@ -513,15 +513,17 @@ const assetSignature = (assets) =>
   assets.filter((a) => a.font).flatMap((a) => [a.id, a.data, JSON.stringify(a.font)]);
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
-function requiresParagraphPlan(flow, source, wrapped) {
-  return (
-    flow.composition?.composer === 'paragraph' ||
-    wrapped ||
-    hasKeeps(source) ||
-    source.noBreakRanges?.length ||
-    /[\u200b\u00a0\u202f]/u.test(source.text) ||
-    source.protocol === 5
-  );
+function selectParagraphPlan(required, source) {
+  if (!required && !/[\u200b\u00a0\u202f]/u.test(source.text)) return false;
+  try {
+    validateParagraphSource(source.text, source.noBreakRanges);
+    return true;
+  } catch (error) {
+    // Keep the existing native single-line route when an incidental pasted
+    // character would otherwise exceed the bounded paragraph search.
+    if (required || !(error instanceof UnsupportedComposition)) throw error;
+    return false;
+  }
 }
 
 function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) {
@@ -542,8 +544,13 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   });
   const columns = compositionColumns(doc, flow),
     wrapped = columns.some((column) => column.obstacles?.length),
-    planned = requiresParagraphPlan(flow, source, wrapped),
-    limit = planned ? 10000 : 100000;
+    required =
+      flow.composition?.composer === 'paragraph' ||
+      wrapped ||
+      hasKeeps(source) ||
+      source.noBreakRanges?.length ||
+      source.protocol === 5,
+    limit = required ? 10000 : 100000;
   if (
     source.text.length > limit ||
     source.spans.length > 30000 ||
@@ -552,13 +559,14 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
-  if (planned) validateParagraphSource(source.text, source.noBreakRanges);
+  const planned = selectParagraphPlan(required, source);
   normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
   for (const paragraph of source.paragraphs) {
     const content = source.text.slice(paragraph.start, paragraph.end);
     const specialJustification =
+      planned &&
       !paragraph.wordSpacing &&
       paragraph.align?.startsWith('justify') &&
       /[\u00a0\u202f]/u.test(content) &&
@@ -608,12 +616,12 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   }
   validateNativeWrapping(source, columns);
   fonts.validateFeatures(source, { deferUnavailable });
-  return source;
+  return { source, columns, wrapped, planned };
 }
 
 /** Synchronous source/exact-face gate; no font bytes, fetches or native requests. */
 export function validateNativeFlowSource(doc, flow, assets = []) {
-  return projectNativeFlow(doc, flow, fontResolver(assets));
+  return projectNativeFlow(doc, flow, fontResolver(assets)).source;
 }
 
 /**
@@ -660,10 +668,12 @@ export async function composeNativeTextFlows(
     )
       throw new UnsupportedComposition('the selected composition version or composer');
     const fonts = fontResolver(assets),
-      source = projectNativeFlow(projection, flow, fonts, { deferUnavailable: true }),
-      initial = compositionColumns(projection, flow),
-      wrapped = initial.some((column) => column.obstacles?.length),
-      planned = requiresParagraphPlan(flow, source, wrapped);
+      {
+        source,
+        columns: initial,
+        wrapped,
+        planned,
+      } = projectNativeFlow(projection, flow, fonts, { deferUnavailable: true });
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
