@@ -1282,6 +1282,18 @@ function applyHistory(record) {
     }
   }
   const canvas = editorMenuState(state);
+  const panelAvailable =
+    !!record.vault && !!record.group?.lease.canWrite(record) && !record.nativeDialogOpen;
+  const panelCommands = [
+    ...Object.keys(PANEL_LABELS).map((kind) => ['show-panel-' + kind, canvas.canvasView]),
+    ['show-contextual', canvas.canShowContextual],
+    ['wrap-preferences', canvas.canvasEditing],
+  ];
+  for (const [id, enabled] of panelCommands) {
+    const item = menu?.getMenuItemById(id);
+    const available = panelAvailable && enabled;
+    if (item && item.enabled !== available) item.enabled = available;
+  }
   for (const name of Object.keys(ARRANGE_COMMANDS)) {
     const item = menu?.getMenuItemById(name);
     if (item)
@@ -1321,7 +1333,12 @@ function installMenu() {
   const compositionPreferences = {
     label: 'Preferences',
     submenu: [
-      { label: 'Composition…', enabled: hasVault, click: () => sendCommand('wrap-preferences') },
+      {
+        id: 'wrap-preferences',
+        label: 'Composition…',
+        enabled: false,
+        click: () => sendCommand('wrap-preferences'),
+      },
     ],
   };
   Menu.setApplicationMenu(
@@ -1507,14 +1524,16 @@ function installMenu() {
         label: 'Window',
         submenu: [
           ...Object.entries(PANEL_LABELS).map(([kind, label]) => ({
+            id: 'show-panel-' + kind,
             label,
-            enabled: hasVault,
+            enabled: false,
             ...(kind === 'text-wrap' && { accelerator: 'CmdOrCtrl+Alt+W' }),
             click: () => sendCommand('show-panel-' + kind),
           })),
           {
             label: 'Contextual Text Bar',
-            enabled: hasVault,
+            id: 'show-contextual',
+            enabled: false,
             click: () => sendCommand('show-contextual'),
           },
           { type: 'separator' },

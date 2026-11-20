@@ -2641,7 +2641,7 @@ export function mountCanvasEditor(host, options) {
       requestFrame();
       return;
     }
-    if (name.startsWith('show-panel-') || name === 'show-contextual') {
+    if (name.startsWith('show-panel-')) {
       editor.classList.remove('panels-hidden', 'tools-hidden');
     }
     if (
@@ -4445,6 +4445,8 @@ export function mountCanvasEditor(host, options) {
       canInsertCharacter: !!activeText()?.isContentEditable,
       canKeepOptions: !!(object() && textFlowForFrame(doc(), object())?.composition),
       canvasView: ownsInput() && !busy && !dialogOpen(),
+      canvasEditing: !!options.editing && canWrite() && !composing,
+      canShowContextual: contextualBar.available(),
       canArrange:
         ownsInput() &&
         canWrite() &&

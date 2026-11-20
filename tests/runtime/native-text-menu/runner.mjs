@@ -110,13 +110,19 @@ void (async () => {
     window.show();
     window.focus();
     await wait(() => execute('ivoNative.windows.info().then(s=>s.active)'), 'Writer');
+    const nativeItem = (id) => Menu.getApplicationMenu()?.getMenuItemById(id);
+    await wait(
+      () => nativeItem('show-panel-text-wrap')?.enabled,
+      'Text Wrap panel in reading view',
+    );
+    assert.equal(nativeItem('wrap-preferences').enabled, false);
+    assert.equal(nativeItem('show-contextual').enabled, false);
     send('toggle-edit');
     await wait(() => execute("!!document.querySelector('.scene-editing')"), 'Edit view');
     await execute(
       'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
     );
-    const nativeItem = (id) => Menu.getApplicationMenu()?.getMenuItemById(id),
-      objectOrder = async () =>
+    const objectOrder = async () =>
         (await execute('ivoNative.store.loadDocuments()'))[0].blocks.map((item) => item.id),
       point = await execute(
         `(()=>{const r=document.querySelector('[data-object="${upperShape.id}"]').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
@@ -128,6 +134,24 @@ void (async () => {
         ...(type === 'mouseMove' ? {} : { button: 'left', clickCount: 1 }),
       });
     await wait(() => nativeItem('send-backward')?.enabled, 'Object arrangement menu');
+    assert.equal(nativeItem('wrap-preferences').enabled, true);
+    assert.equal(nativeItem('show-contextual').enabled, false);
+    nativeItem('show-panel-text-wrap').click();
+    await wait(
+      () =>
+        execute(
+          "document.querySelector('[data-canvas-panel=\"text-wrap\"]')?.getAttribute('aria-selected') === 'true'",
+        ),
+      'Window menu opened Text Wrap',
+    );
+    nativeItem('show-panel-properties').click();
+    await wait(
+      () =>
+        execute(
+          "document.querySelector('[data-canvas-panel=\"properties\"]')?.getAttribute('aria-selected') === 'true'",
+        ),
+      'Window menu reopened Properties',
+    );
     assert.equal(nativeItem('send-backward').accelerator, 'CmdOrCtrl+[');
     assert.equal(nativeItem('send-back').accelerator, 'CmdOrCtrl+Shift+[');
     assert.equal(nativeItem('type-keep-options').accelerator, 'CmdOrCtrl+Alt+K');
@@ -184,6 +208,7 @@ void (async () => {
       () => execute("!!document.querySelector('.canvas-flow-input[contenteditable=true]')"),
       'Live text',
     );
+    await wait(() => nativeItem('show-contextual').enabled, 'Contextual bar for text');
     const select = async (word) => {
       const selection = await execute(
         `(async()=>{const {captureTextSelection}=await import('ivo://app/src/shared/dom/text-selection.js');const root=document.querySelector('.canvas-flow-input'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const at=node.data.indexOf(${JSON.stringify(word)});if(at<0)continue;root.focus({preventScroll:true});const range=document.createRange();range.setStart(node,at);range.setEnd(node,at+${word.length});window.getSelection().removeAllRanges();window.getSelection().addRange(range);return captureTextSelection(root);}throw new Error('Missing selected word');})()`,
@@ -335,6 +360,13 @@ void (async () => {
       async () => (await style('Alpha')).italic && (await style('Second')).italic,
       'Native menu after asynchronous continuation',
     );
+    send('new-tab');
+    await wait(
+      () => !nativeItem('show-panel-text-wrap').enabled,
+      'Empty tab cleared panel commands',
+    );
+    assert.equal(nativeItem('wrap-preferences').enabled, false);
+    assert.equal(nativeItem('show-contextual').enabled, false);
     await finish(0, {
       ok: true,
       actualTypeMenu: true,

@@ -62,10 +62,21 @@ test('page, layer and clipping-parent boundaries survive independent selected or
 test('native menu state rejects implicit truthiness and reserves Adobe arrangement shortcuts', () => {
   assert.deepEqual(editorMenuState({ canArrange: true, canvasView: 'yes', smartGuides: 1 }), {
     canvasView: false,
+    canvasEditing: false,
+    canShowContextual: false,
     canArrange: false,
     smartGuides: false,
   });
   assert.equal(editorMenuState({ canvasView: true, canArrange: true }).canArrange, true);
+  assert.equal(
+    editorMenuState({ canvasView: true, canShowContextual: true }).canShowContextual,
+    false,
+  );
+  assert.equal(
+    editorMenuState({ canvasView: true, canvasEditing: true, canShowContextual: true })
+      .canShowContextual,
+    true,
+  );
   assert.equal(ARRANGE_COMMANDS['send-backward'].accelerator, 'CmdOrCtrl+[');
   assert.equal(ARRANGE_COMMANDS['send-back'].accelerator, 'CmdOrCtrl+Shift+[');
   assert.equal(NATIVE_TEXT_ACCELERATORS.underline, 'CmdOrCtrl+Shift+U');

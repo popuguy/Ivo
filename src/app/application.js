@@ -1879,12 +1879,18 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
                   {
                     id: 'wrap-preferences',
                     label: 'Composition Preferences…',
-                    enabled: canvasMenu.canvasView && editing,
+                    enabled: canvasMenu.canvasEditing,
                   },
                   ...Object.entries(PANEL_LABELS).map(([kind, label]) => ({
                     id: 'show-panel-' + kind,
                     label,
+                    enabled: canvasMenu.canvasView,
                   })),
+                  {
+                    id: 'show-contextual',
+                    label: 'Contextual Text Bar',
+                    enabled: canvasMenu.canShowContextual,
+                  },
                 ],
               },
               {
@@ -1935,6 +1941,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       choice === 'toggle-smart-guides' ||
       choice === 'toggle-panels' ||
       choice === 'wrap-preferences' ||
+      choice === 'show-contextual' ||
       choice.startsWith('show-panel-')
     ) {
       if (workspace.active !== id) return;

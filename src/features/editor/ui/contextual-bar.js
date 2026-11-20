@@ -91,15 +91,13 @@ export function createContextualBar(
     },
     { signal: controller.signal },
   );
+  function available(selected = objects()) {
+    return editing() && selected.length === 1 && ['text', 'quote'].includes(selected[0].type);
+  }
   function layout(rect) {
     if (rect !== undefined) lastRect = rect;
     const selected = objects();
-    if (
-      !editing() ||
-      selected.length !== 1 ||
-      !['text', 'quote'].includes(selected[0].type) ||
-      state.contextBarHidden
-    ) {
+    if (!available(selected) || state.contextBarHidden) {
       bar.hidden = true;
       return;
     }
@@ -164,6 +162,7 @@ export function createContextualBar(
     { signal: controller.signal },
   );
   return {
+    available,
     layout,
     destroy() {
       end();
