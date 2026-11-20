@@ -32,7 +32,7 @@ function endpoint(root, container, offset, end) {
   return { block, container, offset };
 }
 
-function readParagraph(block, root, points) {
+function readParagraph(block, root, points, placeholder = blankParagraphBreak(block)) {
   const runs = [],
     leaves = [],
     positions = new Map();
@@ -44,7 +44,6 @@ function readParagraph(block, root, points) {
       if (point.container === node && point.offset === offset)
         positions.set(point, { offset: length, style });
   };
-  const placeholder = blankParagraphBreak(block);
   function visit(node, style) {
     if (node.nodeType === Node.TEXT_NODE) {
       for (const point of points)
@@ -144,6 +143,7 @@ function applyChange(root, local, change, type, data, marks) {
   const paragraph = local[start.paragraph];
   const leaf =
     start.paragraph === end.paragraph &&
+    type !== 'insertInlineFragment' &&
     type !== 'insertParagraph' &&
     type !== 'insertLineBreak' &&
     paragraph.leaves.find(
@@ -192,6 +192,21 @@ function applyChange(root, local, change, type, data, marks) {
 // edits stay on their existing input path until they have structural commands.
 export function applyDocumentInput(root, type, data, pending, targets = [], lineRange) {
   if (!isDocumentTextEdit(type)) return false;
+  let pasted;
+  if (type === 'insertInlineFragment') {
+    if (!(data instanceof Element) || data.querySelector(structural)) return false;
+    const fragment = readParagraph(data, data, [], null);
+    if (!fragment?.runs.length || fragment.runs.some((run) => /[\r\n]/.test(run.text ?? '')))
+      return false;
+    const [first] = fragment.runs;
+    if (fragment.runs.length === 1 && !first.break && !first.style.length) {
+      type = 'insertText';
+      data = first.text;
+    } else {
+      pasted = fragment.runs;
+      data = '';
+    }
+  }
   const selection = root.ownerDocument.getSelection();
   if (!selection.rangeCount) return false;
   if (targets.length > 1) return false;
@@ -286,7 +301,16 @@ export function applyDocumentInput(root, type, data, pending, targets = [], line
     local,
     { paragraph: firstIndex, offset: from.offset },
     { paragraph: local.indexOf(last), offset: to.offset },
-    { type, text: data, style },
+    {
+      type,
+      text: data,
+      style,
+      // A rich fragment owns its unstyled runs too. Plain text and soft returns
+      // inherit the caret style just as typing does.
+      runs: pasted?.some((run) => run.style.length)
+        ? pasted
+        : pasted?.map((run) => ({ ...run, style })),
+    },
   );
   if (change) applyChange(root, local, change, type, data, style);
   return change ? 'edited' : 'unchanged';

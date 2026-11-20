@@ -3569,7 +3569,18 @@ export function mountCanvasEditor(host, options) {
     if (text && options.editing) {
       event.preventDefault();
       beginTextInput('insertFromPaste');
-      document.execCommand('insertHTML', false, textClipboardHTML(event.clipboardData));
+      const html = textClipboardHTML(event.clipboardData);
+      const fragment = document.createElement('div');
+      fragment.innerHTML = html;
+      // Native HTML insertion can turn untouched spaces beside the replacement
+      // into nonbreaking spaces. Let the same paragraph editor used for typing
+      // replace inline runs; structural clipboard content follows its importer.
+      const result =
+        text === activeText() &&
+        !composing &&
+        applyDocumentInput(text, 'insertInlineFragment', fragment, pendingMarks);
+      if (result) finishDocumentInput(text, result);
+      else document.execCommand('insertHTML', false, html);
       publishingControls.prepareLegacyFonts();
     }
   });

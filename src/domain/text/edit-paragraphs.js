@@ -6,6 +6,7 @@ const spaces = /^\p{Zs}+$/u;
 const commands = new Set([
   'insertText',
   'insertReplacementText',
+  'insertInlineFragment',
   'insertParagraph',
   'insertLineBreak',
   'deleteContentBackward',
@@ -79,7 +80,7 @@ function wordEdge(parts, offset, backward) {
 
 // Return only the changed paragraph window. Unaffected paragraphs keep their
 // identity. A null result is an admitted no-op (e.g. Backspace at document start).
-export function editParagraphs(paragraphs, anchor, focus, { type, text = '', style }) {
+export function editParagraphs(paragraphs, anchor, focus, { type, text = '', style, runs }) {
   if (!isDocumentTextEdit(type)) throw new TypeError('Unknown text operation.');
   for (const { paragraph, offset } of [anchor, focus]) {
     if (
@@ -149,7 +150,10 @@ export function editParagraphs(paragraphs, anchor, focus, { type, text = '', sty
     sliceRuns(first.runs, start.offset, start.offset + 1)[0]?.style ??
     first.emptyStyle;
   let inserted = [];
-  if (type === 'insertLineBreak') inserted = [{ break: true, style: insertionStyle }];
+  if (type === 'insertInlineFragment') {
+    if (!Array.isArray(runs) || !runs.length) return null;
+    inserted = runs;
+  } else if (type === 'insertLineBreak') inserted = [{ break: true, style: insertionStyle }];
   else if (type === 'insertText' || type === 'insertReplacementText') {
     if (!text && collapsed) return null;
     if (text) inserted = [{ text, style: insertionStyle }];
@@ -173,7 +177,10 @@ export function editParagraphs(paragraphs, anchor, focus, { type, text = '', sty
     replacement,
     caret: {
       paragraph: split ? 1 : 0,
-      offset: split ? 0 : start.offset + (inserted[0]?.break ? 1 : inserted[0]?.text.length || 0),
+      offset: split
+        ? 0
+        : start.offset +
+          inserted.reduce((length, run) => length + (run.break ? 1 : run.text.length), 0),
     },
     range: { start, end },
   };
