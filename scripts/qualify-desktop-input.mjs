@@ -13,7 +13,7 @@ const scenarios = [
   ['paragraph', 'properties', 'magazine'],
 ];
 
-/** Use the same build, renderer and thresholds for local packaging and CI. */
+/** Every packaged desktop build must qualify on the release timing profile. */
 export async function qualifyDesktopInput() {
   const reports = process.env.IVO_LATENCY_REPORT_DIR;
   if (reports) await mkdir(reports, { recursive: true });
@@ -24,6 +24,7 @@ export async function qualifyDesktopInput() {
     const env = {
       ...process.env,
       IVO_LATENCY_BUDGET: '1',
+      IVO_RESPONSIVENESS_HOSTED: '0',
       IVO_RESPONSIVENESS_COMPOSER: composer,
       IVO_RESPONSIVENESS_PANEL: panel,
       IVO_RESPONSIVENESS_SCENE: scene,

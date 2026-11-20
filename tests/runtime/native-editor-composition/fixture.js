@@ -974,6 +974,37 @@ try {
       reopenedIncremental.documents[0].textFlows[0].html === afterIncremental,
       'Incremental paragraph source changed across archive reopen',
     );
+    await editor.command('document-text');
+    selectIndices(0);
+    const firstKey = holdNextComposition();
+    await window.nativeEditorTest.insert('x');
+    await firstKey.started();
+    await window.nativeEditorTest.insert('y');
+    firstKey.release();
+    // Block the second native reply so a renderer that drops every superseded
+    // result cannot accidentally pass by showing the final revision immediately.
+    const secondKey = holdNextComposition();
+    try {
+      await secondKey.started();
+      await tick();
+      const visible = host.querySelector('[data-flow-frame] svg[data-composed-text]');
+      assert(
+        visible.getAttribute('aria-label').startsWith('xFirst') &&
+          visible.querySelector('use') &&
+          input().textContent.startsWith('xyFirst'),
+        'Completed first-key ink must reach the page while the second native result is pending',
+      );
+    } finally {
+      secondKey.release();
+    }
+    await settle();
+    assert(
+      host
+        .querySelector('[data-flow-frame] svg[data-composed-text]')
+        .getAttribute('aria-label')
+        .startsWith('xyFirst'),
+      'Final native ink must reach the page after the second key',
+    );
     editor.destroy();
     const passive = createSceneDocument('Passive native reader', { width: 400, height: 260 }),
       passiveFrame = insertObject(passive, 'text', passive.pages[0].id, {

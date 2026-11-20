@@ -79,14 +79,19 @@ jobs:
           node-version: '24'
       - run: npm ci
       - run: npm run test:runtime
-      - name: Qualify desktop input
-        run: npm run test:release-input
+      - name: Check ongoing text updates on the hosted Mac
+        run: |
+          npm run build
+          node_modules/.bin/electron tests/runtime/responsiveness/runner.mjs
         env:
-          IVO_LATENCY_REPORT_DIR: ${{ runner.temp }}/ivo-input
+          IVO_LATENCY_BUDGET: '1'
+          IVO_RESPONSIVENESS_HOSTED: '1'
+          IVO_RESPONSIVENESS_SCENE: magazine
+          IVO_RESPONSIVENESS_REPORT: ${{ runner.temp }}/ivo-input.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: desktop-input-timings
-          path: ${{ runner.temp }}/ivo-input/
+          path: ${{ runner.temp }}/ivo-input.json
           if-no-files-found: ignore
           retention-days: 14
