@@ -115,8 +115,23 @@ void (async () => {
         wc.executeJavaScript(s, true).catch((error) => {
           throw new Error(s.slice(0, 240) + '\n' + error.message, { cause: error });
         });
+    async function focusDocument() {
+      let nextAttempt = 0;
+      await until(async () => {
+        if (win.isFocused() && (await execute('document.hasFocus()'))) return true;
+        if (performance.now() >= nextAttempt) {
+          app.focus({ steal: true });
+          win.show();
+          win.focus();
+          wc.focus();
+          nextAttempt = performance.now() + 500;
+        }
+        return false;
+      }, 'keyboard focus on document');
+    }
     await until(() => execute("!!document.querySelector('.workspace-pane')"), 'workspace');
     await until(() => execute('ivoNative.windows.info().then(s=>s.active)'), 'vault writer');
+    await focusDocument();
     wc.send('ivo:command', 'toggle-edit');
     await until(
       () =>
@@ -136,7 +151,13 @@ void (async () => {
         'all 72 composed frames',
       );
     }
-    await execute(`document.querySelector('[data-canvas-panel="layers"]').click()`);
+    // The compact desktop layout initially hides its inspector. Open it via the
+    // Window menu before measuring, so coordinates belong to an actual control.
+    wc.send('ivo:command', 'show-panel-layers');
+    await until(
+      () => execute("!!document.querySelector('[data-layer-disclosure]')?.getClientRects().length"),
+      'Layers panel on screen',
+    );
     await execute(
       `document.querySelector('[data-layer-disclosure][aria-expanded="false"]:enabled').click()`,
     );
@@ -159,6 +180,12 @@ void (async () => {
       x: Math.round(lock.x + lock.width / 2),
       y: Math.round(lock.y + lock.height / 2),
     };
+    assert.ok(
+      await execute(
+        `document.querySelector(${JSON.stringify(lockSelector)}).contains(document.elementFromPoint(${point.x}, ${point.y}))`,
+      ),
+      'The lock control must receive pointer input at its measured position',
+    );
     wc.sendInputEvent({ type: 'mouseMove', ...point });
     await pause(160);
     const locks = [],
@@ -217,11 +244,7 @@ void (async () => {
           ),
         'floating Properties controls',
       );
-      app.focus({ steal: true });
-      win.show();
-      win.focus();
-      wc.focus();
-      await until(() => execute('document.hasFocus()'), 'keyboard focus on document');
+      await focusDocument();
     }
     function typeKey(letter) {
       wc.sendInputEvent({ type: 'keyDown', keyCode: letter });
