@@ -4,7 +4,7 @@
 
 - **Line breaks and spacing.** Set minimum and maximum letter spacing and glyph width for justified text. Balance spacing against hyphenation across a paragraph. Add dictionaries beyond US English.
 - **Page layout.** Add baseline grids, decimal and right-aligned tabs with leaders, wrapping to image outlines, and wrapping in vertically aligned frames. Refine where sloped edges meet a line.
-- **Type and input.** Finish variable fonts, font fallback, right-to-left and East Asian composition. Exercise selection, typing, menus, keyboard shortcuts and undo with real keyboards, touch and language input methods.
+- **Type and input.** Prioritize everyday European-language editing, font fallback and short horizontal Chinese passages. Advanced multilingual publishing and LaTeX-style equation layout are deferred. See [language and math priorities](indesign/text-parity-programme.md#early-language-and-math-priorities). Exercise selection, typing, menus, keyboard shortcuts and undo with real keyboards, touch and language input methods.
 - **Structured text.** Finish nested lists and numbering, tables, anchored objects, text on paths, and footnotes and endnotes.
 - **Long documents and publishing.** Complete Find/Change and proofing, cross-references, contents and indexes, then accessible PDF and preflight. Check reflow and export on long mixed-layout documents.
 

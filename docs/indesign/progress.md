@@ -55,7 +55,7 @@ The [native PDF encoding correction](../native-pdf-encoding.md) improves eligibl
 The [native word-spacing milestone](../native-word-spacing.md) adds measured minimum/desired/maximum preferences, soft-bound full and condensed-final composition, source-correct carets, paragraph/style controls and selectable PDF. Actual editor tests cover range isolation, one-step undo, paragraph entry, full-paragraph paste capability promotion and cold archive10 reopen. This advances the same estimate from ~33% to ~35%; letter/glyph constraints, hyphenation, the complete paragraph objective, wrapped/script-specific spacing and devices remain open. It does not certify the justification capability.
 
 1. Complete paragraph composition: custom/decimal/right-indent tabs and leaders, justification constraints, hyphenation, keeps, grids and native wraps.
-2. Complete shaping/source maps: fallback capture, full OpenType/variable/language support, bidi/complex scripts/CJK and deterministic cross-device behavior.
+2. Qualify font fallback, OpenType, variable fonts and source mapping for the [early language priorities](text-parity-programme.md#early-language-and-math-priorities). Full bidirectional, complex-script and East Asian publishing and equation layout are deferred within the full-scope estimate.
 3. Structured text and layout: tables, lists/numbering, anchored objects, paths, notes, fields and the page/parent scheduler.
 4. Editorial and publication systems, including scoped search/proofing, references, generated matter and accessible reading order.
 5. Physical Mac/iPhone/iPad input, IME, accessibility, performance, persistence and comparative reference qualification.
