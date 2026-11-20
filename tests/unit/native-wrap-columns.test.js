@@ -86,11 +86,15 @@ test('native wrapping source admission preserves unsupported source and exact ge
       { ...columns[0], obstacles: [{ mode: 'next-column' }] },
     ]);
     for (const mode of ['contour', 'jump'])
-      assert.throws(
-        () =>
-          validateNativeWrapping(candidate, [...columns, { ...columns[0], obstacles: [{ mode }] }]),
-        /Shape or Jump Object/,
-      );
+      validateNativeWrapping(candidate, [...columns, { ...columns[0], obstacles: [{ mode }] }]);
+    assert.throws(
+      () =>
+        validateNativeWrapping(candidate, [
+          ...columns,
+          { ...columns[0], obstacles: [{ mode: 'contour', invert: true }] },
+        ]),
+      /inverted wrap contour/,
+    );
     assert.deepEqual(candidate, before);
   }
   const tabbed = { ...source, text: 'With\ttabs\u2029' };

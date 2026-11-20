@@ -271,7 +271,7 @@ function subtract(available, excluded) {
 }
 
 /** Full line-band exclusion, not a baseline/center point sample. */
-export function textWrapBand(obstacles, band) {
+export function textWrapBand(obstacles, band, lineBand) {
   if (
     !['left', 'right', 'top', 'bottom'].every((key) => Number.isFinite(band[key])) ||
     band.right <= band.left ||
@@ -279,23 +279,40 @@ export function textWrapBand(obstacles, band) {
   )
     throw new TypeError('Choose a finite positive text-wrap band.');
   let segments = [{ left: band.left, right: band.right }],
-    nextColumn = false;
+    nextColumn = false,
+    jumpBottom = null;
+  let jumpThrough = null;
   const events = [],
     excluded = [];
   for (const obstacle of obstacles) {
     const polygons = obstacle.polygons,
       bounds = obstacle.bounds;
+    // Native Shape and Jump inspect the space leading up to this baseline.
+    // Inverse contours still need the whole ink box inside the path.
+    const slice =
+      lineBand && (obstacle.mode === 'jump' || (obstacle.mode === 'contour' && !obstacle.invert))
+        ? lineBand
+        : band;
     const occupied = merge(
       polygons.flatMap((polygon) => {
-        const clipped = clipY(clipY(polygon, band.top, true), band.bottom, false);
-        return clipped.length && Math.abs(area(clipped)) > EPS
-          ? [
-              {
-                left: Math.min(...clipped.map((p) => p.x)),
-                right: Math.max(...clipped.map((p) => p.x)),
-              },
-            ]
-          : [];
+        const clipped = clipY(clipY(polygon, slice.top, true), slice.bottom, false);
+        if (!clipped.length || Math.abs(area(clipped)) <= EPS) return [];
+        if (
+          lineBand &&
+          obstacles.length === 1 &&
+          obstacle.mode === 'jump' &&
+          polygon.every((point) => point.x >= band.left && point.x <= band.right)
+        ) {
+          // This connected polygon stays in the column all the way to its bottom.
+          // Other obstacles, disjoint paths and partial column overlaps need fresh queries.
+          jumpThrough = Math.max(jumpThrough ?? -Infinity, ...polygon.map((point) => point.y));
+        }
+        return [
+          {
+            left: Math.min(...clipped.map((p) => p.x)),
+            right: Math.max(...clipped.map((p) => p.x)),
+          },
+        ];
       }),
     );
     const active = intersection(occupied, [{ left: band.left, right: band.right }]);
@@ -303,6 +320,8 @@ export function textWrapBand(obstacles, band) {
       if (!active.length) continue;
       segments = [];
       nextColumn ||= obstacle.mode === 'next-column';
+      if (lineBand && obstacle.mode === 'jump')
+        jumpBottom = Math.max(jumpBottom ?? -Infinity, bounds.bottom);
     } else if (obstacle.invert) {
       // Every vertical slice of the line band must fit inside the contour. Use
       // the complement's projection to retain concave openings conservatively.
@@ -359,6 +378,7 @@ export function textWrapBand(obstacles, band) {
   return {
     segments: merge(subtract(merge(segments), merge(excluded))),
     nextColumn,
+    ...(lineBand && { jumpBottom, jumpThrough }),
     nextY: events.length ? Math.min(...events) : null,
   };
 }

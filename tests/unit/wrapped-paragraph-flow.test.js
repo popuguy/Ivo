@@ -72,7 +72,16 @@ function rectangularOracle(input) {
           fixed: 0,
         }[column.firstBaseline ?? 'ascent'],
       ),
-    visit = (position, currentFrame, currentBaseline, after, mandatory, initial, cost) => {
+    visit = (
+      position,
+      currentFrame,
+      currentBaseline,
+      after,
+      mandatory,
+      initial,
+      cost,
+      priorRowTop,
+    ) => {
       if (position === input.end) return cost;
       const stop =
           input.opportunities.find((point) => point.index > position && point.mandatory)?.index ??
@@ -95,14 +104,27 @@ function rectangularOracle(input) {
                   style.paragraphBefore
                 : currentBaseline + (mandatory ? uniform.advance : 0),
           consumed = frame === currentFrame && !initial && !mandatory ? after : null;
+        let firstRow = frame !== currentFrame || currentBaseline === null;
+        let rowTop = firstRow ? 0 : consumed === null ? y - uniform.advance : priorRowTop;
         while (y + uniform.descent <= column.height) {
           let segments = [{ left, right }],
-            nextColumn = false;
+            nextColumn = false,
+            jumpEnd = null;
           const events = [],
             top = y - uniform.ascent,
             bottom = y + uniform.descent;
           for (const obstacle of column.obstacles ?? []) {
             const b = obstacle.bounds;
+            if (obstacle.mode === 'jump') {
+              if (
+                b.left < right &&
+                b.right > left &&
+                b.top < Math.max(y, rowTop + 1e-6) &&
+                b.bottom > rowTop
+              )
+                jumpEnd = Math.max(jumpEnd ?? -Infinity, b.bottom);
+              continue;
+            }
             if (!(
               b.left < right - 1e-7 &&
               b.right > left + 1e-7 &&
@@ -113,8 +135,7 @@ function rectangularOracle(input) {
             if (obstacle.mode === 'next-column') {
               nextColumn = true;
               segments = [];
-            } else if (obstacle.mode === 'jump') segments = [];
-            else if (obstacle.side === 'left')
+            } else if (obstacle.side === 'left')
               segments = segments
                 .map((part) => ({ left: part.left, right: Math.min(part.right, b.left) }))
                 .filter((part) => part.right > part.left);
@@ -133,6 +154,12 @@ function rectangularOracle(input) {
             if (b.bottom > top + 1e-7) events.push(b.bottom);
           }
           if (nextColumn) break;
+          if (jumpEnd !== null) {
+            rowTop = firstRow ? jumpEnd : y;
+            y = rowTop + (firstRow ? offset : uniform.advance);
+            consumed = null;
+            continue;
+          }
           if (!segments.length) {
             let next = events.length ? Math.min(...events) + offset : null;
             if (next !== null && next <= y + 1e-6) {
@@ -147,6 +174,7 @@ function rectangularOracle(input) {
             }
             if (next === null) break;
             y = next;
+            rowTop = y - offset;
             consumed = null;
             continue;
           }
@@ -169,6 +197,7 @@ function rectangularOracle(input) {
                       1 +
                       (target.penalty ?? 0) +
                       (row.end === input.end ? 0 : 100 * ((width - row.width) / width) ** 2),
+                    rowTop,
                   );
                 }),
               );
@@ -180,6 +209,8 @@ function rectangularOracle(input) {
             }
             break;
           }
+          rowTop = y;
+          firstRow = false;
           y += uniform.advance;
           consumed = null;
         }
@@ -255,7 +286,7 @@ test('fully blocked bands restart from the exclusion boundary plus first-baselin
   }
 });
 
-test('small first-baseline offsets clear the full ascent band without skipping columns or spinning', () => {
+test('Jump restarts an empty column at its configured first baseline beneath the object', () => {
   for (const firstBaseline of ['cap-height', 'x-height', 'fixed']) {
     const input = measuredWords([20]);
     input.columns = [
@@ -269,9 +300,54 @@ test('small first-baseline offsets clear the full ascent band without skipping c
     const result = chooseWrappedParagraphFlow(input);
     assert.equal(result.status, 'fit');
     assert.equal(result.lines[0].frame, 0);
-    assert.equal(result.lines[0].baseline, 54);
+    assert.equal(
+      result.lines[0].baseline,
+      44 + { 'cap-height': 7, 'x-height': 5, fixed: 0 }[firstBaseline],
+    );
     assert(result.candidates < 30);
   }
+});
+
+test('Jump keeps the leading cadence across a blocker and restarts only at column entry', () => {
+  for (const mode of ['paragraph', 'single-line']) {
+    const input = measuredWords([75, 75, 75]);
+    input.mode = mode;
+    for (const row of input.measurements) row.advance = 14.4;
+    const column = input.columns[0];
+    column.firstBaseline = 'fixed';
+    column.minimumFirstBaseline = 12;
+    const baselines = (top) => {
+      column.obstacles = [rectangle(20, top, 70, 29, { mode: 'jump' })];
+      return chooseWrappedParagraphFlow(input).lines.map((line) =>
+        Number(line.baseline.toFixed(4)),
+      );
+    };
+    assert.deepEqual(baselines(16), [12, 55.2, 69.6]);
+    assert.deepEqual(baselines(12), [12, 55.2, 69.6]);
+    assert.deepEqual(baselines(11.99), [41, 55.4, 69.8]);
+    column.obstacles.push(rectangle(30, 10, 80, 27, { mode: 'next-column' }));
+    input.columns.push({ width: 100, height: 100 });
+    assert.deepEqual(
+      chooseWrappedParagraphFlow(input).lines.map((line) => line.frame),
+      [1, 1, 1],
+    );
+  }
+});
+
+test('a tall Jump Object skips blocked leading intervals within the search budget', () => {
+  const input = measuredWords([75, 75]);
+  for (const row of input.measurements) row.advance = 0.25;
+  input.columns = [
+    { width: 100, height: 12000, obstacles: [rectangle(20, 11, 70, 11000, { mode: 'jump' })] },
+  ];
+  input.cursor = { frame: 0, baseline: 10.75 };
+  input.layout = { paragraphBefore: 0.25 };
+  const result = chooseWrappedParagraphFlow({ ...input, maxCandidates: 100 });
+  assert.equal(result.status, 'fit');
+  assert.deepEqual(
+    result.lines.map((line) => line.baseline),
+    [11000.25, 11000.5],
+  );
 });
 
 test('empty inverse-contour apex rows advance into the usable interior', () => {
@@ -329,7 +405,7 @@ test('a contour covering the first full band can expose usable sides before its 
   assert.equal(result.status, 'fit');
   assert.equal(result.lines[0].baseline, 24);
   assert.equal(result.lines[0].left, 0);
-  assert.equal(result.lines[0].width, 8.75);
+  assert.equal(result.lines[0].width, 6.25);
 });
 
 test('an unrelated contour does not change qualified rectangle or Jump boundary restart', () => {
@@ -408,7 +484,7 @@ test('next-column wrapping skips immediately and future empty columns do not inh
   assert.equal(chooseWrappedParagraphFlow(input).lines[0].frame, 1);
 });
 
-test('side selection and contour geometry use the full ascent/descent band', () => {
+test('side selection uses box geometry and ordinary contours use the physical line band', () => {
   const input = measuredWords([18, 15, 18]);
   input.columns[0].obstacles = [rectangle(25, 0, 60, 80, { side: 'right' })];
   const right = chooseWrappedParagraphFlow(input);
@@ -431,8 +507,8 @@ test('side selection and contour geometry use the full ascent/descent band', () 
   ];
   const result = chooseWrappedParagraphFlow(contour);
   assert.equal(result.status, 'fit');
-  assert.equal(result.lines[0].left, 53);
-  assert.equal(result.lines[0].width, 47);
+  assert.equal(result.lines[0].left, 50);
+  assert.equal(result.lines[0].width, 50);
 });
 
 test('paragraph indents, spacing and first source-fragment indent survive split rows', () => {

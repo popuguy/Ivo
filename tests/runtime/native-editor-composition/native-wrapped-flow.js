@@ -546,11 +546,8 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
         );
       if (mode === 'jump')
         assert(
-          lines.every(
-            (line) =>
-              line.baseline + line.descent <= 50.001 || line.baseline - line.ascent >= 169.999,
-          ),
-          'Native jump-object left ink beside the blocker',
+          lines.every((line) => line.baseline <= 50.001 || line.baseline - line.advance >= 169.999),
+          'Jump Object placed a line with leading crossing the blocker',
         );
       if (mode === 'next-column') {
         assert(
@@ -731,15 +728,27 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
       doc.textFlows[0].html === transformedSource && geometry() === transformedGeometry,
       'Redo lost the transformed wrapped word',
     );
-    await changeMode('next-column');
-    verifyCoverage({ protocol: 5, complete: false });
-    assert(
-      column(second.id).native.lines.length > 0 &&
-        painted().result.layout.lines.some((line) =>
-          line.runs.some((run) => run.baselineShift === -4 && run.verticalScale === 150),
-        ),
-      'Jump to Next Column lost the transformed run or the linked frame',
-    );
+    for (const mode of ['contour', 'jump', 'next-column']) {
+      await changeMode(mode);
+      verifyCoverage({ protocol: 5, complete: false });
+      assert(
+        column(second.id).native.lines.length > 0 &&
+          doc.textFlows[0].html === transformedSource &&
+          painted().result.layout.lines.some((line) =>
+            line.runs.some((run) => run.baselineShift === -4 && run.verticalScale === 150),
+          ),
+        mode + ' lost the transformed run, the source or the linked frame',
+      );
+      if (mode === 'contour') {
+        const contourGeometry = geometry();
+        await editor.command('undo');
+        await settle();
+        assert(geometry() === transformedGeometry, 'Undo failed to restore the styled box wrap');
+        await editor.command('redo');
+        await settle();
+        assert(geometry() === contourGeometry, 'Redo changed the sloped contour placement');
+      }
+    }
     editor.destroy();
     // A read-only view may display a real native prefix but cannot create automatic pages.
     doc = createSceneDocument('Passive native wrapped continuation', { width: 500, height: 300 });

@@ -318,9 +318,10 @@ export function* wrappedParagraphFlowSteps({
           right = column.width - style.rightIndent;
         if (!(yield* checkpoint())) return [];
         if (right - left < 1 || minimumWidths.get(state.end) > right - left + EPS) continue;
+        let firstInColumn = frame !== state.cursor.frame || state.cursor.baseline === null;
         let baseline,
           after = null;
-        if (frame !== state.cursor.frame || state.cursor.baseline === null) baseline = offset;
+        if (firstInColumn) baseline = offset;
         else if (!state.line)
           baseline =
             state.cursor.baseline + metrics.advance + previousAfter + style.paragraphBefore;
@@ -329,9 +330,10 @@ export function* wrappedParagraphFlowSteps({
           after = state.mandatory ? null : state.after;
         }
         const naturalBaseline = baseline;
+        let rowTop = firstInColumn ? 0 : after !== null ? state.rowTop : baseline - metrics.advance;
         while (baseline + metrics.descent <= column.height) {
           if (!(yield* checkpoint())) return [];
-          const key = [frame, baseline, left, metrics.ascent, metrics.descent].join(':');
+          const key = [frame, baseline, rowTop, left, metrics.ascent, metrics.descent].join(':');
           let band = bands.get(key);
           if (!band) {
             if (column.cooperativeBand) yield { stage: 'geometry', states, candidates };
@@ -341,15 +343,21 @@ export function* wrappedParagraphFlowSteps({
               top: baseline - metrics.ascent,
               bottom: Math.max(baseline + metrics.descent, baseline - metrics.ascent + EPS),
             };
-            band = textWrapBand(column.obstacles, query);
-            if (!band.segments.length && !band.nextColumn && column.hasVariableContours) {
+            const lineBand = { top: rowTop, bottom: Math.max(baseline, rowTop + EPS) };
+            band = textWrapBand(column.obstacles, query, lineBand);
+            if (
+              !band.segments.length &&
+              !band.nextColumn &&
+              band.jumpBottom === null &&
+              column.hasVariableContours
+            ) {
               if (!(yield* checkpoint())) return [];
               if (column.cooperativeBand) yield { stage: 'geometry', states, candidates };
-              // Bounding rectangles and Jump retain their boundary restart.
+              // A bounding rectangle can restart at its lower edge.
               // A contour can narrow or open inside its bounds, so its box
               // bottom is not evidence that intervening rows are unusable.
               band.contourBlocked =
-                textWrapBand(column.clearanceObstacles, query).segments.length > 0;
+                textWrapBand(column.clearanceObstacles, query, lineBand).segments.length > 0;
             }
             if (bands.size === 4096) bands.delete(bands.keys().next().value);
             bands.set(key, band);
@@ -357,14 +365,27 @@ export function* wrappedParagraphFlowSteps({
           if (sameRowOnly && (band.nextColumn || !band.segments.length)) return [];
           if (band.nextColumn) break;
           if (!band.segments.length) {
-            if (band.contourBlocked) {
+            if (band.jumpBottom !== null && firstInColumn && band.jumpBottom > rowTop) {
+              rowTop = band.jumpBottom;
+              baseline = rowTop + offset;
+              after = null;
+              continue;
+            }
+            if (band.contourBlocked || band.jumpBottom !== null) {
               // Empty contour rows consume leading, not the contour's entire
               // bounding box. Zero/underflow leading uses one full font band
               // only for searching empty space; painted line advance is intact.
-              let nextBaseline = baseline + metrics.advance;
-              if (nextBaseline <= baseline)
-                nextBaseline = baseline + Math.max(metrics.ascent + metrics.descent, 1);
-              baseline = nextBaseline;
+              const step =
+                baseline + metrics.advance > baseline
+                  ? metrics.advance
+                  : Math.max(metrics.ascent + metrics.descent, 1);
+              const skipped =
+                band.jumpThrough !== null && band.jumpThrough > baseline
+                  ? Math.floor((band.jumpThrough - baseline) / step)
+                  : 0;
+              rowTop = baseline + skipped * step;
+              firstInColumn = false;
+              baseline = rowTop + step;
               after = null;
               continue;
             }
@@ -387,6 +408,7 @@ export function* wrappedParagraphFlowSteps({
             }
             if (nextBaseline === null) break;
             baseline = nextBaseline;
+            rowTop = baseline - offset;
             after = null;
             continue;
           }
@@ -426,6 +448,7 @@ export function* wrappedParagraphFlowSteps({
               line.cost = paragraphLineCost(line, measured.end === end);
               available.push({
                 line,
+                rowTop,
                 after: segment.right,
                 mandatory: measured.mandatory,
                 clearance: baseline - naturalBaseline,
@@ -448,6 +471,8 @@ export function* wrappedParagraphFlowSteps({
             }
             break;
           }
+          rowTop = baseline;
+          firstInColumn = false;
           baseline += metrics.advance;
           after = null;
         }
@@ -464,6 +489,7 @@ export function* wrappedParagraphFlowSteps({
         ),
         cursor: { frame: choice.line.frame, baseline: choice.line.baseline },
         after: choice.after,
+        rowTop: choice.rowTop,
         mandatory: choice.mandatory,
         cost: state.cost + choice.line.cost,
         line: choice.line,
@@ -552,6 +578,8 @@ export function* wrappedParagraphFlowSteps({
             next.cursor.baseline +
             ':' +
             next.after +
+            ':' +
+            (next.after === null ? '' : next.rowTop) +
             ':' +
             next.mandatory +
             ':' +

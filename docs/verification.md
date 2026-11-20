@@ -1,5 +1,11 @@
 # Verification
 
+## Leading-aware Shape and Jump Object wrapping — 20 November 2026
+
+Both native composers preserve the frame’s first-baseline rule on entry and the paragraph’s leading when Jump Object interrupts existing text. Tests cover fractional leading, exact-edge contact, a tall blocker with a small search budget, and a competing Next Column wrap. The hidden editor changes the object’s wrap mode with a lowered, vertically scaled word in linked text and checks source, placement, undo and redo. An independent reader checks two printed PDFs with a raised, vertically scaled italic word. All 100 words are selectable in both. Shape uses the space inside the triangle’s bounding box and Jump Object clears the entire row before text resumes below it.
+
+The native menu fixture checks the Text Wrap and Properties panels, Composition Preferences and the Contextual Text Bar across a reading document, a shape selection, live text and an empty tab.
+
 ## Canvas cursor and mixed typography around objects — 20 November 2026
 
 A browser input check with both the public web artwork and the local desktop artwork follows the Selection cursor from empty page through text-frame hover, press, drag and release. Repeated plain motion also checks for redundant cursor updates. A separate desktop check holds pointer capture across a linked-text selection and checks the I-beam.

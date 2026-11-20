@@ -841,13 +841,14 @@ print(String(data: summaryData, encoding: .utf8)!)
       path.join(output, 'native-wrap-ink.json'),
       JSON.stringify(nativeWrapInk, null, 2),
     );
-    async function inspectWrappedFile(name) {
+    async function inspectWrappedFile(name, mode = 'bounds') {
       const inspected = await promisify(execFile)('xcrun', [
         'swift',
         '-module-cache-path',
         path.join(profile, 'swift-cache'),
         path.join(root, 'tests/runtime/pdf/inspect-wrap.swift'),
         path.join(output, name),
+        mode,
       ]);
       return JSON.parse(inspected.stdout);
     }
@@ -879,6 +880,41 @@ print(String(data: summaryData, encoding: .utf8)!)
     );
     await writeFile(path.join(output, 'native-box-ink.pdf'), boxPDF.bytes);
     const nativeBoxInkPDFInspection = await inspectWrappedFile('native-box-ink.pdf');
+    const signedWrapPDFs = {};
+    for (const mode of ['contour', 'jump']) {
+      const document = structuredClone(boxDocument);
+      document.pages[0].height = 700;
+      document.blocks.find((block) => block.id === wrapFrame.id).h = 620;
+      const triangle = document.blocks.find((block) => block.id === wrapObject.id);
+      triangle.points.splice(2, 1);
+      setTextWrap(document, [triangle.id], {
+        mode,
+        offsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
+      const start = nativeCompositions.length;
+      const pdf = await renderPDF(createPDFSnapshot([document], [asset], document.id), {
+        project: root,
+      });
+      assert.deepEqual(pdf.manifest.warnings, []);
+      const plan = nativeCompositions
+        .slice(start)
+        .findLast(
+          (call) =>
+            call.request.mode === 'planned-lines-proof' &&
+            call.request.id === document.textFlows[0].id,
+        );
+      assert.ok(
+        plan?.result.layout.lines.some((line) =>
+          line.runs.some(
+            (run) => run.baselineShift === 4 && run.verticalScale === 125 && run.glyphs.length,
+          ),
+        ),
+        'Export must use the signed native plan for ' + mode,
+      );
+      const filename = 'native-' + mode + '-ink.pdf';
+      await writeFile(path.join(output, filename), pdf.bytes);
+      signedWrapPDFs[mode] = await inspectWrappedFile(filename, mode);
+    }
     const characterPDFInspection = await verifyCharacterPDF({
       renderPDF,
       root,
@@ -925,6 +961,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           nativeWrappedTextSourceAndExclusion: true,
           nativeWrapPDFInspection,
           nativeBoxInkPDFInspection,
+          signedWrapPDFs,
           ...characterPDFInspection,
           ...paragraphKeepPDFInspection,
           ...wordSpacingPDFInspection,

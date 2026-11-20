@@ -17,20 +17,16 @@ export function nativeWrapColumns(document, columns) {
   }));
 }
 
-/** Box and Next Column use the ordinary line band. Character transforms move
- * the ink and carets inside the resulting fragments. */
+/** Character transforms move ink and carets within the composed fragments.
+ * Inverse shapes still require the entire glyph band to fit inside the path. */
 export function validateNativeWrapping(source, columns) {
   if (!columns.some((column) => column.obstacles?.length)) return;
   if (
-    columns.some((column) =>
-      column.obstacles?.some(
-        (obstacle) => obstacle.mode !== 'bounds' && obstacle.mode !== 'next-column',
-      ),
-    ) &&
+    columns.some((column) => column.obstacles?.some((obstacle) => obstacle.invert)) &&
     source.runs.some((run) => (run.baselineShift ?? 0) !== 0 || (run.verticalScale ?? 100) !== 100)
   )
     throw new UnsupportedComposition(
-      'shifted or vertically scaled ink with Shape or Jump Object text wrap',
+      'shifted or vertically scaled ink inside an inverted wrap contour',
     );
   if (columns.some((column) => column.obstacles?.length && column.verticalAlign !== 'top'))
     throw new UnsupportedComposition('native wrapping with vertically aligned exclusion columns');
