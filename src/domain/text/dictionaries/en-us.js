@@ -1,10 +1,12 @@
-// American English patterns from hyph-utf8, hyph-en-us.tex (2005-05-30).
-// https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex
-// Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken.
-// Copying and distribution of this file, with or without modification,
-// are permitted in any medium without royalty provided the copyright
-// notice and this notice are preserved.
-// The original patterns and exceptions are unchanged. Only the container differs.
+/*!
+ * American English patterns from hyph-utf8, hyph-en-us.tex (2005-05-30).
+ * https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex
+ * Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken.
+ * Copying and distribution of this file, with or without modification,
+ * are permitted in any medium without royalty provided the copyright
+ * notice and this notice are preserved.
+ * The original patterns and exceptions are unchanged. Only the container differs.
+ */
 export const patterns = `.ach4 .ad4der .af1t .al3t .am5at .an5c .ang4 .ani5m .ant4 .an3te .anti5s .ar5s .ar4tie .ar4ty .as3c
 .as1p .as1s .aster5 .atom5 .au1d .av4i .awn4 .ba4g .ba5na .bas4e .ber4 .be5ra .be3sm .be5sto .bri2
 .but4ti .cam4pe .can5c .capa5b .car5ol .ca4t .ce4la .ch4 .chill5i .ci2 .cit5r .co3e .co4r .cor5ner
