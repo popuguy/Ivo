@@ -45,8 +45,26 @@ const bookmark = (range) => ({ anchor: point(range.anchor), focus: point(range.f
 /** Preview provenance maps glyph hits back into the single canonical flow. */
 const provenanceCache = new WeakMap();
 function previewLeaves(root, revision) {
-  const cached = provenanceCache.get(root);
-  if (revision !== undefined && cached?.revision === revision) return cached.leaves;
+  let cached = provenanceCache.get(root);
+  if (revision !== undefined) {
+    if (cached && !cached.observer.takeRecords().length && cached.revision === revision)
+      return cached.leaves;
+    if (!cached) {
+      cached = {
+        observer: new MutationObserver(() => {
+          cached.revision = undefined;
+        }),
+      };
+      cached.observer.observe(root, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['data-flow-text'],
+      });
+      provenanceCache.set(root, cached);
+    }
+  }
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT),
     result = [];
   let node;
@@ -59,8 +77,51 @@ function previewLeaves(root, revision) {
     const start = Number(marker.dataset.flowText) + prefix.toString().length;
     if (Number.isFinite(start)) result.push({ node, start, end: start + node.length });
   }
-  if (revision !== undefined) provenanceCache.set(root, { revision, leaves: result });
+  if (revision !== undefined) Object.assign(cached, { revision, leaves: result });
   return result;
+}
+function rectDistance(r, x, y) {
+  return Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+}
+// The OS may report the editable overlay or its container when the first click
+// returns focus to the window. Resolve against the painted text in that frame.
+function nearestPreviewCaret(leaves, x, y) {
+  const range = document.createRange();
+  function distance(node, start, end) {
+    range.setStart(node, start);
+    range.setEnd(node, end);
+    let result = Infinity;
+    for (const rect of range.getClientRects())
+      if (rect.height) result = Math.min(result, rectDistance(rect, x, y));
+    return result;
+  }
+  let leaf,
+    best = Infinity;
+  for (const part of leaves) {
+    const d = distance(part.node, 0, part.node.length);
+    if (d < best) {
+      leaf = part;
+      best = d;
+    }
+  }
+  if (!leaf) return null;
+  let lo = 0,
+    hi = leaf.node.length;
+  while (hi - lo > 8) {
+    const mid = (lo + hi) >>> 1;
+    if (distance(leaf.node, lo, mid) <= distance(leaf.node, mid, hi)) hi = mid;
+    else lo = mid;
+  }
+  let offset = lo;
+  best = Infinity;
+  for (let i = lo; i <= hi; i++) {
+    const d = distance(leaf.node, i, i);
+    if (d < best) {
+      offset = i;
+      best = d;
+    }
+  }
+  return leaf.start + offset;
 }
 function previewRange(root, start, end, interval, revision) {
   const leaves = previewLeaves(root, revision),
@@ -153,22 +214,24 @@ export function installFlowSelection(
     nativeHint = null,
     logicalHint = null,
     nativeAnimation = null;
-  function columns({ measureBounds = true } = {}) {
-    return (frames() || []).flatMap((frame) => {
-      const root = preview(frame.id),
-        part = fragment(frame.id);
-      if (!root || !part) return [];
-      const nodes = [...root.querySelectorAll(':scope > .flow-column')];
-      return (part.columns || [part]).map((interval, i) => ({
-        ...interval,
-        sourceStart: interval.start,
-        sourceEnd: interval.end,
-        scaleX: frame.textScale?.x || 1,
-        frameId: frame.id,
-        element: nodes[i] || root,
-        bounds: measureBounds ? (nodes[i] || root).getBoundingClientRect() : null,
-      }));
-    });
+  function columns({ measureBounds = true, frameId = null } = {}) {
+    return (frames(frameId) || [])
+      .filter((frame) => !frameId || frame.id === frameId)
+      .flatMap((frame) => {
+        const root = preview(frame.id),
+          part = fragment(frame.id);
+        if (!root || !part) return [];
+        const nodes = [...root.querySelectorAll(':scope > .flow-column')];
+        return (part.columns || [part]).map((interval, i) => ({
+          ...interval,
+          sourceStart: interval.start,
+          sourceEnd: interval.end,
+          scaleX: frame.textScale?.x || 1,
+          frameId: frame.id,
+          element: nodes[i] || root,
+          bounds: measureBounds ? (nodes[i] || root).getBoundingClientRect() : null,
+        }));
+      });
   }
   function current() {
     const value = selection();
@@ -390,10 +453,22 @@ export function installFlowSelection(
     return range;
   }
   function hit(x, y, frameId = null) {
-    const candidates = columns().filter((part) => !frameId || part.frameId === frameId);
+    const candidates = columns({ frameId });
     if (!candidates.length) return null;
-    const distance = ({ bounds: r }) =>
-      Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+    const distance = (column) => {
+      if (frameId && candidates.length > 1 && column.native) {
+        const matrix = column.element.querySelector('svg[data-composed-text]')?.getScreenCTM();
+        if (matrix && column.native.lines.length) {
+          const local = new DOMPoint(x, y).matrixTransform(matrix.inverse());
+          return Math.hypot(
+            Math.max(0, -local.x, local.x - column.width),
+            Math.max(0, -local.y, local.y - column.height),
+          );
+        }
+        return Infinity;
+      }
+      return rectDistance(column.bounds, x, y);
+    };
     const column = [...candidates].sort((a, b) => distance(a) - distance(b))[0],
       r = column.bounds;
     const px = Math.max(r.left + 0.5, Math.min(r.right - 0.5, x)),
@@ -412,7 +487,7 @@ export function installFlowSelection(
     }
     nativeHint = null;
     // The invisible canonical input must not cover the preview used for provenance hits.
-    const pane = input()?.closest('.canvas-input-world'),
+    const pane = viewport.querySelector('.canvas-input-world'),
       previous = pane?.style.pointerEvents;
     if (pane) pane.style.pointerEvents = 'none';
     const clip = pane?.querySelector('.canvas-flow-clip'),
@@ -437,36 +512,14 @@ export function installFlowSelection(
           index = Number(next.dataset.flowBreak);
         else if (prior?.nodeType === Node.ELEMENT_NODE && prior.hasAttribute('data-flow-break'))
           index = Number(prior.dataset.flowBreak) + 1;
-        else if (next)
-          index =
-            leaves.find((part) => next === part.node || next.contains?.(part.node))?.start ?? null;
-        else if (prior)
-          index =
-            leaves.findLast((part) => prior === part.node || prior.contains?.(part.node))?.end ??
-            null;
-        if (index === null && node.hasAttribute('data-flow-block-start'))
+        else if (!node.textContent && node.hasAttribute('data-flow-block-start'))
           index = Number(node.dataset.flowBlockStart);
       }
     }
     if (index === null) {
-      const leaves = previewLeaves(column.element, layoutKey());
-      let closest = null;
-      for (const leaf of leaves) {
-        const line = document.createRange();
-        line.selectNodeContents(leaf.node);
-        for (const rect of line.getClientRects()) {
-          const d = Math.hypot(
-            Math.max(rect.left - px, 0, px - rect.right),
-            Math.max(rect.top - py, 0, py - rect.bottom),
-          );
-          if (!closest || d < closest.distance) closest = { distance: d, leaf, rect };
-        }
-      }
-      index = closest
-        ? px < closest.rect.left
-          ? closest.leaf.start
-          : closest.leaf.end
-        : column.start;
+      index = nearestPreviewCaret(previewLeaves(column.element, layoutKey()), px, py);
+      if (index === null && column.start !== column.end && column.element.textContent) return null;
+      index ??= column.start;
     }
     return {
       frameId: column.frameId,
@@ -554,10 +607,10 @@ export function installFlowSelection(
     const oldFlow = flow()?.id,
       before = current();
     // A preview is visible while a range is selected. Hit it before activating its canonical owner.
-    activate(id, event);
-    if (!input() || !flow() || !allowed(event)) return;
     const destination = hit(event.clientX, event.clientY, id);
     if (!destination) return;
+    activate(id, event, destination);
+    if (!input() || !flow() || !allowed(event)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     preferredX = null;

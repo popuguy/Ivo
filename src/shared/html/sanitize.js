@@ -1,8 +1,14 @@
 import { nativeTextAttributes } from '../dom/native-text-format.js';
 import { normalizeInlineMetrics } from '../dom/inline-metrics.js';
 import { resolveDocumentLink } from '../../domain/knowledge/index.js';
-import { validTextAttribute, TEXT_ATTRIBUTE_NAMES } from '../../domain/text/typography.js';
+import {
+  validTextAttribute,
+  TEXT_ATTRIBUTE_NAMES,
+  OPENTYPE_FEATURES,
+} from '../../domain/text/typography.js';
 import { applyTextAttributes } from '../dom/text-attributes.js';
+const featureTags = new Set(Object.values(OPENTYPE_FEATURES));
+const allowedAttributes = new Set(TEXT_ATTRIBUTE_NAMES);
 const TAGS = new Set([
   'DIV',
   'P',
@@ -81,27 +87,50 @@ export function cleanHTML(value) {
       node.childNodes.forEach((c) => frag.append(clean(c)));
       return frag;
     }
-    const out = document.createElement(node.tagName.toLowerCase());
     const authored = {};
-    for (const name of TEXT_ATTRIBUTE_NAMES) {
-      const raw = node.getAttribute('data-ivo-' + name),
-        valid = raw === null ? null : validTextAttribute(name, raw);
+    for (const attribute of node.attributes) {
+      if (!attribute.name.startsWith('data-ivo-')) continue;
+      const name = attribute.name.slice(9);
+      if (!allowedAttributes.has(name)) continue;
+      const valid = validTextAttribute(name, attribute.value);
       if (valid !== null) authored[name] = valid;
     }
     // Named-style CSS is a disposable projection, not a native direct override.
     const native =
-      'pstyle' in authored || 'cstyle' in authored ? {} : nativeTextAttributes(node.style);
+      !node.style.length || 'pstyle' in authored || 'cstyle' in authored
+        ? {}
+        : nativeTextAttributes(node.style);
     // Both flags share one generated CSS property. Do not reinterpret that
     // derived CSS as a newly authored sibling mark on subsequent serialization.
     if ('underline' in authored || 'strike' in authored) {
       delete native.underline;
       delete native.strike;
     }
-    for (const name of TEXT_ATTRIBUTE_NAMES) {
-      const value = authored[name] ?? native[name];
-      if (value !== undefined) out.setAttribute('data-ivo-' + name, value);
+    const attributes = { ...native, ...authored };
+    const out = document.createElement(node.tagName.toLowerCase());
+    node.childNodes.forEach((c) => out.append(clean(c)));
+    // Older editors nested a new run for each OpenType toggle. A lone child
+    // inherits all flags, with its own flags taking precedence (including Off).
+    // Keep links, sibling runs, named styles and line-metric boundaries intact.
+    if (
+      out.tagName === 'SPAN' &&
+      Object.keys(attributes).length &&
+      Object.keys(attributes).every((name) => featureTags.has(name)) &&
+      out.childNodes.length === 1 &&
+      out.firstChild.nodeName === 'SPAN'
+    ) {
+      const child = out.firstChild;
+      const flags = [...child.attributes].filter((attr) => attr.name !== 'style');
+      if (flags.length && flags.every((attr) => featureTags.has(attr.name.slice(9)))) {
+        for (const attr of flags) attributes[attr.name.slice(9)] = attr.value;
+        child.replaceWith(...child.childNodes);
+      }
     }
-    applyTextAttributes(out);
+    if (Object.keys(attributes).length) {
+      for (const name of TEXT_ATTRIBUTE_NAMES)
+        if (attributes[name] !== undefined) out.setAttribute('data-ivo-' + name, attributes[name]);
+      applyTextAttributes(out, attributes);
+    }
     if (node.tagName === 'A') {
       const target = node.getAttribute('data-doc-id');
       const href = safeURL(node.getAttribute('href'));
@@ -114,7 +143,6 @@ export function cleanHTML(value) {
         out.rel = 'noopener noreferrer';
       }
     }
-    node.childNodes.forEach((c) => out.append(clean(c)));
     return out;
   }
   const host = document.createElement('div');

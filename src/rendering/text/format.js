@@ -6,8 +6,34 @@ import {
   fontFamilyFor,
   CHARACTER_FIELDS,
   PARAGRAPH_FIELDS,
+  OPENTYPE_FEATURES,
 } from '../../domain/text/typography.js';
 import { setTextAttribute } from '../../shared/dom/text-attributes.js';
+const featureAttributes = new Set(Object.values(OPENTYPE_FEATURES).map((tag) => 'data-ivo-' + tag));
+function reusableRun(element, part, attr) {
+  const parent = part.node.parentElement;
+  if (
+    parent === element ||
+    parent?.tagName !== 'SPAN' ||
+    parent.childNodes.length !== 1 ||
+    part.start !== 0 ||
+    part.end !== part.node.length
+  )
+    return null;
+  const direct = 'data-ivo-' + attr;
+  const marks = parent
+    .getAttributeNames()
+    .filter(
+      (name) =>
+        name !== 'style' && !(name === 'class' && parent.className === 'ivo-decoration-source'),
+    );
+  return marks.length &&
+    marks.every(
+      (name) => name === direct || (featureAttributes.has(direct) && featureAttributes.has(name)),
+    )
+    ? parent
+    : null;
+}
 export function applyFrameTypography(element, item) {
   for (const name of TEXT_ATTRIBUTE_NAMES) element.removeAttribute('data-ivo-' + name);
   for (const property of [
@@ -151,6 +177,13 @@ export function formatRange(element, range, field, value) {
     }
   const spans = [];
   for (const part of parts.reverse()) {
+    // Projected and named runs retain their own boundaries.
+    const parent = reusableRun(element, part, attr);
+    if (parent) {
+      setTextAttribute(parent, attr, part.value);
+      spans.unshift(parent);
+      continue;
+    }
     const selected = document.createRange();
     selected.setStart(part.node, part.start);
     selected.setEnd(part.node, part.end);

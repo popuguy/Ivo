@@ -3,7 +3,6 @@ import { customHyphenation } from '../../domain/text/hyphenation.js';
 import { INSERT_CHARACTERS } from '../../domain/text/native-commands.js';
 import { PANEL_LABELS } from '../../domain/workspace/panels.js';
 import { reflectPropertyFormatting } from './ui/publishing-properties.js';
-import { globalIndex as flowIndexAtPoint } from '../../rendering/text/flow-source.js';
 import { patchComposedFrame } from './text/composed-frame.js';
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
 import { createFindChangePanel } from './ui/find-change-panel.js';
@@ -1342,56 +1341,32 @@ export function mountCanvasEditor(host, options) {
     selectionDirty = true;
     requestFrame();
   }
-  function openTextFlowEditor(item, event, word, { focus = true } = {}) {
+  function openTextFlowEditor(item, event, word, { focus = true, destination } = {}) {
     const textFlow = textFlowForFrame(doc(), item);
     if (!textFlow) return;
     if (event && textFlow.composition && nativePlanKey !== compositionLayoutKey(doc())) return;
-    const preview = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`);
     const fragment = flowPlan.fragments.get(item.id);
-    let index = fragment?.start || 0,
-      nativeHit = null;
-    if (textFlow.composition) {
-      const elements = [...(preview?.querySelectorAll(':scope > .flow-column') || [])],
-        columns = (fragment?.columns || []).map((column, i) => ({
-          ...column,
-          frameId: item.id,
-          element: elements[i],
-        }));
-      if (event) {
-        const point = { x: event.clientX, y: event.clientY },
-          closest = columns
-            .map((column) => {
-              const matrix = column.element
-                ?.querySelector('svg[data-composed-text]')
-                ?.getScreenCTM();
-              if (!matrix || !column.native?.lines.length) return null;
-              const local = new DOMPoint(point.x, point.y).matrixTransform(matrix.inverse()),
-                dx = Math.max(0, -local.x, local.x - column.width),
-                dy = Math.max(0, -local.y, local.y - column.height);
-              return { column, distance: dx * dx + dy * dy };
-            })
-            .filter(Boolean)
-            .sort((a, b) => a.distance - b.distance)[0];
-        if (closest) nativeHit = hitNativeColumn(closest.column, point);
-      } else {
-        const column = columns.find((part) => part.native?.lines.length);
-        if (column)
-          nativeHit = hitNativeColumn(
-            column,
-            { x: 0, y: column.native.lines[0].baseline },
-            { coordinateSpace: 'column' },
-          );
-      }
-      if (nativeHit) index = nativeHit.index;
-    } else if (event) {
-      const caret = document.caretRangeFromPoint?.(event.clientX, event.clientY),
-        marker = caret?.startContainer.parentElement?.closest('[data-flow-text]');
-      if (marker && preview?.contains(marker))
-        index = flowIndexAtPoint(
-          { node: caret.startContainer, offset: caret.startOffset },
-          Number(marker.dataset.flowText),
+    let hit = destination;
+    if (event) {
+      hit ??= flowSelection?.hit(event.clientX, event.clientY, item.id);
+      if (!hit) return;
+    } else if (textFlow.composition) {
+      const preview = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`);
+      const i = fragment?.columns?.findIndex((column) => column.native?.lines.length) ?? -1;
+      if (i >= 0) {
+        const column = fragment.columns[i];
+        hit = hitNativeColumn(
+          {
+            ...column,
+            frameId: item.id,
+            element: preview?.querySelectorAll(':scope > .flow-column')[i],
+          },
+          { x: 0, y: column.native.lines[0].baseline },
+          { coordinateSpace: 'column' },
         );
+      }
     }
+    const index = hit?.index ?? fragment?.start ?? 0;
     const pane = host.querySelector('.canvas-input-world'),
       element = pane.querySelector('.canvas-flow-input');
     pane.hidden = false;
@@ -1407,7 +1382,7 @@ export function mountCanvasEditor(host, options) {
     applyFrameTypography(element, effectiveTextStyle(doc(), textFlow.style));
     applyNamedTextStyles(element, doc());
     delete element.dataset.projectedStart;
-    positionFlowInput(item, index, nativeHit?.affinity || 'forward');
+    positionFlowInput(item, index, hit?.affinity || 'forward');
     element.contentEditable = 'true';
     element.removeAttribute('aria-readonly');
     element.setAttribute('role', 'textbox');
@@ -1439,7 +1414,7 @@ export function mountCanvasEditor(host, options) {
         offset: 0,
         index,
         kind: 'text',
-        affinity: nativeHit?.affinity || 'forward',
+        affinity: hit?.affinity || 'forward',
       };
       restoreTextSelection(element, { anchor: position, focus: position }, { focus: true });
       range = window.getSelection().rangeCount ? window.getSelection().getRangeAt(0) : null;
@@ -1628,11 +1603,15 @@ export function mountCanvasEditor(host, options) {
     options.onViewChange?.();
     return true;
   }
-  function focusText(id, event, word = false) {
+  function focusText(id, event, word = false, destination) {
     const item = sceneObject(doc(), id);
     if (item?.textFlowId) {
+      if (event) {
+        destination ??= flowSelection?.hit(event.clientX, event.clientY, id);
+        if (!destination) return;
+      }
       if (endTextEditing() === false) return;
-      openTextFlowEditor(item, event, word);
+      openTextFlowEditor(item, event, word, { destination });
       return;
     }
     const element = world.querySelector(`[data-scene-text="${CSS.escape(id)}"]`);
@@ -2354,8 +2333,7 @@ export function mountCanvasEditor(host, options) {
       textFlowForFrame(doc(), text.dataset.flowFrame)?.id === sourceTextFlow()?.id
     ) {
       event.preventDefault();
-      finishText();
-      openTextFlowEditor(sceneObject(doc(), text.dataset.flowFrame), event, false);
+      focusText(text.dataset.flowFrame, event);
       return;
     }
     if (activeTextId && !space) {
@@ -3557,7 +3535,6 @@ export function mountCanvasEditor(host, options) {
     ) {
       event.preventDefault();
       focusText(element.dataset.sceneText, event);
-      placeTextCaret(element, event.clientX, event.clientY);
     }
   });
   listen(host, 'focusin', (event) => {
@@ -4438,20 +4415,22 @@ export function mountCanvasEditor(host, options) {
       (!event || (!space && (state.tool === 'text' || !!sourceTextFlow()))),
     input: () => (sourceTextFlow() ? activeText() : null),
     flow: () => sourceTextFlow(),
-    frames: () =>
-      (sourceTextFlow()?.frameIds || []).map((id) => sceneObject(doc(), id)).filter(Boolean),
+    frames: (frameId) =>
+      (frameId ? [frameId] : sourceTextFlow()?.frameIds || [])
+        .map((id) => sceneObject(doc(), id))
+        .filter(Boolean),
     fragment: (id) => flowPlan.fragments.get(id),
     layoutKey: () => flowSignature + ':' + sceneRevision,
     preview: (id) => world.querySelector(`[data-flow-frame="${CSS.escape(id)}"]`),
     onNativeCaret: (rect) => inputAnchor.update(rect, { measure: false }),
-    activate: (id, event) => {
+    activate: (id, event, destination) => {
       const native = activeText() && captureTextSelection(activeText());
       if (
         activeTextId !== id ||
         !activeText()?.isContentEditable ||
         (native && native.anchor.index !== native.focus.index)
       )
-        focusText(id, event);
+        focusText(id, event, false, destination);
     },
     selection: () => {
       const element = activeText();

@@ -10,6 +10,7 @@ const scenarios = [
   ['paragraph', 'detached-properties'],
   ['single-line', 'properties'],
   ['browser', 'properties'],
+  ['browser', 'properties', 'formatted'],
   ['paragraph', 'properties', 'magazine'],
 ];
 

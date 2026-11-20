@@ -1,5 +1,5 @@
 import { cleanHTML } from '../../../src/shared/html/sanitize.js';
-import { applyFrameTypography } from '../../../src/rendering/text/format.js';
+import { applyFrameTypography, formatRange } from '../../../src/rendering/text/format.js';
 import { summarizeTextStyle } from '../../../src/rendering/text/selection-style.js';
 import { createSceneDocument } from '../../../src/domain/documents/scene.js';
 
@@ -112,6 +112,45 @@ export function verifyNativeTextFormatting() {
       !/url\(|position:|left:|transform:|onclick|onerror|script|img/i.test(host.innerHTML),
       'Native-format normalization admitted active or arbitrary CSS/HTML',
     );
+    const features = cleanHTML(
+      '<p><span data-ivo-onum="true"><span data-ivo-salt="true"><span data-ivo-onum="false">sample</span></span></span>' +
+        '<span data-ivo-salt="false"><a data-doc-id="target">linked</a> end</span></p>' +
+        '<p><span data-ivo-salt="true"><span data-ivo-cstyle="special"><br></span></span></p>',
+    );
+    render(features);
+    const run = host.querySelector('span');
+    assert(
+      run.textContent === 'sample' &&
+        run.children.length === 0 &&
+        run.dataset.ivoSalt === 'true' &&
+        run.dataset.ivoOnum === 'false',
+      'Effective OpenType flags changed',
+    );
+    assert(
+      host.querySelector('a[data-doc-id="target"]').parentElement.dataset.ivoSalt === 'false' &&
+        host.querySelector('[data-ivo-cstyle="special"] > br'),
+      'Compaction crossed a link or named insertion style',
+    );
+    const range = document.createRange();
+    range.selectNodeContents(run);
+    for (let i = 0; i < 24; i++)
+      formatRange(host, range, i % 2 ? 'oldstyleFigures' : 'ligatures', Boolean(i % 3));
+    assert(
+      run.firstChild.nodeType === Node.TEXT_NODE &&
+        run.dataset.ivoLiga === 'true' &&
+        run.dataset.ivoOnum === 'true' &&
+        range.toString() === 'sample',
+      'Reapplying flags grew the run or changed the selection',
+    );
+    range.setStart(run.firstChild, 1);
+    range.setEnd(run.firstChild, 3);
+    formatRange(host, range, 'stylisticAlternates', false);
+    assert(
+      run.dataset.ivoSalt === 'true' &&
+        run.querySelector('[data-ivo-salt="false"]').textContent === 'am',
+      'Changing part of a run changed the surrounding letters',
+    );
+    assert(cleanHTML(features) === features, 'Compacted feature settings changed on reopen');
     const nativeDecoration = cleanHTML(
       '<p><span style="text-decoration:underline line-through">Decorated</span><span style="text-decoration:none">No local decoration</span></p>',
     );

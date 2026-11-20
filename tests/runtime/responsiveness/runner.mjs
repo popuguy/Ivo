@@ -23,7 +23,7 @@ process.env.IVO_USER_DATA_DIR = path.join(directory, 'Profile');
 process.env.IVO_ATLAS_DIR = path.join(directory, 'Vault');
 app.setPath('userData', process.env.IVO_USER_DATA_DIR);
 const scene = process.env.IVO_RESPONSIVENESS_SCENE || 'linked';
-assert.ok(['linked', 'magazine'].includes(scene));
+assert.ok(['linked', 'magazine', 'formatted'].includes(scene));
 const magazine = scene === 'magazine';
 const doc = createSceneDocument('Disposable responsiveness test', { width: 612, height: 792 });
 enablePublishing(doc);
@@ -31,10 +31,16 @@ const paragraph =
   'A carefully arranged note contains practical text, measured spacing and clear document links. It should remain responsive while editing and arranging objects.';
 const html = magazine
   ? mastheadText()
-  : Array.from(
-      { length: 32 },
-      (_, i) => '<p>' + paragraph + ' ' + String(i).padStart(2, '0') + '.</p>',
-    ).join('');
+  : Array.from({ length: 32 }, (_, i) => {
+      let run = paragraph + ' ' + String(i).padStart(2, '0') + '.';
+      if (scene === 'formatted') {
+        for (let j = 0; j < 40; j++) {
+          const tag = ['liga', 'smcp', 'onum', 'dlig', 'salt'][j % 5];
+          run = `<span data-ivo-${tag}="${j % 2 === 0}">${run}</span>`;
+        }
+      }
+      return '<p>' + run + '</p>';
+    }).join('');
 const frames = [];
 for (let i = 0; i < (magazine ? 1 : 3); i++) {
   const page = i ? addPage(doc, doc.pages.at(-1).id) : doc.pages[0];
@@ -258,7 +264,20 @@ void (async () => {
         `(()=>{const input=document.querySelector('.canvas-flow-input'),element=input?.isContentEditable?input:document.querySelector('[data-flow-text]'),walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT),node=walker.nextNode(),range=document.createRange();range.setStart(node,${offset});range.setEnd(node,${offset + 1});const r=range.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()`,
       );
     };
-    const glyph = await glyphRect(5);
+    // Undocking changes the center viewport while focus moves back from the
+    // panel. Address the glyph after the document owns input at its new position.
+    let priorGlyph;
+    const glyph = await until(async () => {
+      const next = await glyphRect(5);
+      const stable =
+        priorGlyph && ['x', 'y', 'width', 'height'].every((k) => next[k] === priorGlyph[k]);
+      priorGlyph = next;
+      if (!stable || !next.width || !next.height) return null;
+      const onFrame = await execute(
+        `document.elementFromPoint(${next.x + next.width / 2},${next.y + next.height / 2})?.closest('[data-flow-frame]')?.dataset.flowFrame === ${JSON.stringify(frames[0].id)} && !document.querySelector('.canvas-viewport').closest('[inert]')`,
+      );
+      return onFrame && next;
+    }, 'clickable glyph in the settled document');
     const textPoint = {
       x: Math.round(glyph.x + glyph.width / 2),
       y: Math.round(glyph.y + glyph.height / 2),
@@ -289,6 +308,15 @@ void (async () => {
         .map(node => ({node:node.querySelector('svg'), frame:node, label:node.querySelector('svg').getAttribute('aria-label'),
           token:node.querySelector('svg').dataset.compositionToken}));`);
     const original = await execute("document.querySelector('.canvas-flow-input').textContent");
+    if (scene === 'formatted') {
+      assert.equal(composer, 'browser');
+      assert.ok(
+        await execute(
+          "document.querySelector('.canvas-flow-input').querySelectorAll('[data-ivo-salt]').length === 32",
+        ),
+        'Old feature edits compact to one effective run per paragraph',
+      );
+    }
     const ink = await glyphRect(8);
     const inkRegion = { ...ink, width: 190 };
     // At least twenty observations distinguish the nearest-rank p95 from a

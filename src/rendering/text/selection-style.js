@@ -6,7 +6,12 @@ import {
 } from '../../domain/text/typography.js';
 import { resolvedTextStyle } from '../../domain/documents/publishing.js';
 
-const fields = { ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS };
+const fieldForAttribute = new Map(
+  Object.entries({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS }).map(([key, attr]) => [
+    'data-ivo-' + attr,
+    key,
+  ]),
+);
 /** Resolve source-owned attributes, never generated CSS, along one ancestry path. */
 export function nodeTextStyle(node, inherited, doc) {
   const result = { ...inherited };
@@ -19,10 +24,10 @@ export function nodeTextStyle(node, inherited, doc) {
     resolvedTextStyle(doc, 'paragraph', node.getAttribute('data-ivo-pstyle')),
     resolvedTextStyle(doc, 'character', node.getAttribute('data-ivo-cstyle')),
   );
-  for (const [key, attr] of Object.entries(fields)) {
-    const raw = node.getAttribute('data-ivo-' + attr);
-    if (raw === null) continue;
-    const value = validTextAttribute(attr, raw);
+  for (const attribute of node.attributes) {
+    const key = fieldForAttribute.get(attribute.name);
+    if (!key) continue;
+    const value = validTextAttribute(attribute.name.slice(9), attribute.value);
     if (value === null) continue;
     result[key] =
       typeof TEXT_DEFAULTS[key] === 'boolean'

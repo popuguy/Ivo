@@ -11,6 +11,8 @@ import { nodeTextStyle } from './selection-style.js';
 import { applyTextWhitespace } from './whitespace.js';
 const owned = new WeakMap(),
   featuresOwned = new WeakSet();
+const features = Object.entries(OPENTYPE_FEATURES);
+const featureSelector = features.map(([, tag]) => '[data-ivo-' + tag + ']').join(',');
 
 /** Resolve style references into disposable CSS only. Definitions/overrides remain the source. */
 export function applyNamedTextStyles(root, doc) {
@@ -38,18 +40,18 @@ export function applyNamedTextStyles(root, doc) {
   }
   const visit = (node, inherited) => {
     const style = nodeTextStyle(node, inherited, doc),
-      explicit = Object.entries(OPENTYPE_FEATURES).some(
-        ([key, tag]) =>
-          node.hasAttribute('data-ivo-' + tag) ||
-          ['paragraph', 'character'].some((kind) => {
-            const id = node.getAttribute(
-              'data-ivo-' + (kind === 'paragraph' ? 'pstyle' : 'cstyle'),
-            );
-            return id && resolvedTextStyle(doc, kind, id)[key] !== undefined;
-          }),
-      );
+      explicit =
+        node.matches(featureSelector) ||
+        ['paragraph', 'character'].some((kind) => {
+          const id = node.getAttribute(
+            kind === 'paragraph' ? 'data-ivo-pstyle' : 'data-ivo-cstyle',
+          );
+          if (!id) return false;
+          const named = resolvedTextStyle(doc, kind, id);
+          return features.some(([key]) => named[key] !== undefined);
+        });
     if (explicit) {
-      node.style.fontFeatureSettings = Object.entries(OPENTYPE_FEATURES)
+      node.style.fontFeatureSettings = features
         .map(([key, tag]) => `"${tag}" ${style[key] ? 1 : 0}`)
         .join(',');
       featuresOwned.add(node);

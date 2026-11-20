@@ -216,6 +216,64 @@ try {
         !window.getSelection().toString().includes('Paragraph 2.'),
       'Browser flow triple-click did not select its structural paragraph',
     );
+    // The writer can regain focus after the preview was repainted without a
+    // change to the document or pagination. Reuse the same physical column.
+    async function clickInterior(frame, offset) {
+      const marker = [...preview(frame).querySelectorAll('[data-flow-text]')].find(
+        (node) =>
+          node.firstChild?.nodeType === Node.TEXT_NODE && node.firstChild.length > offset + 1,
+      );
+      const r = document.createRange();
+      r.setStart(marker.firstChild, offset);
+      r.setEnd(marker.firstChild, offset + 1);
+      const box = r.getBoundingClientRect();
+      const expected = Number(marker.dataset.flowText) + offset;
+      await window.textCoreTest.select({
+        from: [box.left + box.width * 0.15, box.top + box.height / 2],
+      });
+      await tick();
+      const actual = captureTextSelection(host.querySelector('.canvas-flow-input'));
+      assert(
+        actual?.anchor.index === expected && actual.focus.index === expected,
+        `Repainted frame click expected ${expected}, got ${actual?.anchor.index}..${actual?.focus.index}`,
+      );
+    }
+    await clickInterior(a.id, 3);
+    const firstColumn = preview(a.id).querySelector('.flow-column') || preview(a.id);
+    firstColumn.replaceChildren(...[...firstColumn.childNodes].map((node) => node.cloneNode(true)));
+    await clickInterior(a.id, 5);
+    await clickInterior(c.id, 3);
+    await window.textCoreTest.select({ from: wordPoint('bravo'), clicks: 2 });
+    await tick();
+    const view = editor.deactivate();
+    editor.restoreView(view);
+    await tick();
+    const laterColumn = preview(c.id).querySelector('.flow-column') || preview(c.id);
+    laterColumn.replaceChildren(...[...laterColumn.childNodes].map((node) => node.cloneNode(true)));
+    await clickInterior(c.id, 5);
+    // Some window/overlay hits give the browser no caret in the painted text.
+    // A click in the middle of a wrapped run still resolves to that character.
+    const hitDescriptor = Object.getOwnPropertyDescriptor(document, 'caretRangeFromPoint');
+    Object.defineProperty(document, 'caretRangeFromPoint', {
+      configurable: true,
+      value: () => null,
+    });
+    try {
+      await clickInterior(c.id, 8);
+      Object.defineProperty(document, 'caretRangeFromPoint', {
+        configurable: true,
+        value: () => {
+          const r = document.createRange();
+          r.setStart(laterColumn, 0);
+          r.collapse(true);
+          return r;
+        },
+      });
+      await clickInterior(c.id, 11);
+    } finally {
+      if (hitDescriptor) Object.defineProperty(document, 'caretRangeFromPoint', hitDescriptor);
+      else delete document.caretRangeFromPoint;
+    }
     assert(JSON.stringify(doc) === beforeClicks && commits === 0, 'Clicks wrote authored data');
     const source = JSON.stringify(doc),
       from = charPoint(a.id),
@@ -231,6 +289,7 @@ try {
     window.addEventListener('pointermove', recordCursor, true);
     try {
       await window.textCoreTest.drag(from, to);
+      await tick();
     } finally {
       window.removeEventListener('pointermove', recordCursor, true);
     }

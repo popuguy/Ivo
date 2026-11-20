@@ -6,8 +6,10 @@ export function setTextAttribute(element, name, value) {
   applyTextAttributes(element);
 }
 
-export function applyTextAttributes(element) {
-  const value = (name) => element.getAttribute('data-ivo-' + name),
+export function applyTextAttributes(element, attributes) {
+  const value = attributes
+      ? (name) => attributes[name] ?? null
+      : (name) => element.getAttribute('data-ivo-' + name),
     style = element.style;
   if (value('autoleading') !== null)
     style.setProperty('--ivo-auto-leading', String(Number(value('autoleading')) / 100));

@@ -1,5 +1,11 @@
 # Verification
 
+## Formatted text input and caret placement after a redraw — 20 November 2026
+
+The previous release could resolve a trusted click at character 6 to character 0 after the visible text in a retained frame was replaced. With a missing platform caret hit, it could also resolve character 198 to the end of the run at 367. The threaded-selection fixture covers both cases and clicks on a later page after deactivating and restoring a selected range. It checks the logical caret position and verifies that selection alone leaves document history untouched.
+
+Consecutive OpenType settings on the same run now compact on entry and serialize on edit. The text fixture covers repeated settings, explicit Off values, partial runs, linked text, named styles at an empty paragraph, and a second load of the result. A sixth Mac release scenario uses 32 synthetic paragraphs with 40 nested feature settings apiece. It exercises the same visible insertion, deletion, sustained typing and vault persistence checks as the ordinary linked-frame case.
+
 ## Continuous typing and desktop release qualification — 20 November 2026
 
 The previous three-page test measured isolated keystrokes, then checked that a burst eventually reached the page and disk. On the previous build (`c4e8833`), a 16-key sequence lasting 369 ms produced no visible glyph changes during typing. The first changed glyph arrived at 430 ms with Properties docked and 426 ms with it detached. The isolated mid-paragraph insert and delete medians remained near 60 ms and 57 ms.

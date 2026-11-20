@@ -157,7 +157,12 @@ function bookmarkPoint(element, point, map) {
   return null;
 }
 export function captureTextSelection(element, selection = window.getSelection()) {
-  if (!selection?.rangeCount) return null;
+  if (
+    !selection?.rangeCount ||
+    !element?.contains(selection.anchorNode) ||
+    !element.contains(selection.focusNode)
+  )
+    return null;
   const map = textPositions(element),
     anchor = pointBookmark(element, selection.anchorNode, selection.anchorOffset, map),
     focus = pointBookmark(element, selection.focusNode, selection.focusOffset, map);
