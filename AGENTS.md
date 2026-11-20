@@ -8,7 +8,7 @@ User preference, 18 November 2026: run development and app checks in the backgro
 
 ## Report text parity progress
 
-User direction, 18 November 2026: include a small progress bar toward full InDesign text parity after each completed development milestone. Use the maintained estimate in [text progress](docs/indesign/progress.md), label it as an engineering estimate and distinguish implementation from verified reference/device parity. Keep the same scope and denominator across updates; do not imply that visible controls or cosmetic changes complete an engine capability. Include meaningful gains and major remaining dependencies.
+After each completed text milestone, report a small **Ivo release text parity** progress bar. Use the [release estimate and scope history](docs/indesign/progress.md) and distinguish engineering progress from verified reference and device behavior. Count the release capabilities and their scoped acceptance criteria. Consult the broader-edition wishlist only when the user asks to revisit an exemption. Record any future scope change separately from features delivered.
 
 ## Git throughout the project
 

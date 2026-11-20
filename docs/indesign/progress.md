@@ -1,8 +1,10 @@
-# InDesign text parity progress
+# Ivo release text parity
 
-The [current development state](../development/STATE.md) records the overall estimate after each milestone.
+The [current development state](../development/STATE.md) records the latest engineering estimate. Milestone updates report progress toward the [63 release capabilities](text-parity-programme.md#capability-acceptance-ledger), including their editing, layout, export and device checks.
 
-This is a rough assessment of implementation and integration across the [66 included capabilities](text-parity-programme.md), not a measured completion percentage, a schedule prediction or a count of controls. Foundation implementations have substantial fidelity, international-input, publication and device acceptance work left. No capability is yet certified against every reference and device gate. Report this bar after each completed milestone, keeping this full scope consistent. Small interface corrections need not move the rounded estimate.
+On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
+
+## Earlier estimates on the original scope
 
 The two nonbreaking spaces now bind words across linked columns and take their distinct widths in justified text. Fifty reference layouts matched their row endings, columns and baselines. Two equivalent fixtures differed at the final invisible caret. PDF selection and in-frame authoring bring the estimate to **~43%**.
 
@@ -40,7 +42,7 @@ Repeated horizontal and vertical scale edits now use the final percentage for ea
 
 - Desktop navigation now distinguishes page scrolling, caret movement and selection in the visible composition. Word deletion crosses frame edges and flat list edits retain formatting. This advances the broad estimate from ~35% to ~36%. Native list composition, complex-script movement and device qualification remain open.
 
-## Major work still driving the estimate
+## Earlier composition milestones
 
 The [frame-scheduling milestone](../native-flow-scheduling.md) fits unequal native columns with exact line metrics, one owned break/baseline plan and cooperative preparation/search. It advances the same broad estimate from ~24% to ~26%; the justification objective and reference/device gates remain incomplete.
 
@@ -54,10 +56,12 @@ The [native PDF encoding correction](../native-pdf-encoding.md) improves eligibl
 
 The [native word-spacing milestone](../native-word-spacing.md) adds measured minimum/desired/maximum preferences, soft-bound full and condensed-final composition, source-correct carets, paragraph/style controls and selectable PDF. Actual editor tests cover range isolation, one-step undo, paragraph entry, full-paragraph paste capability promotion and cold archive10 reopen. This advances the same estimate from ~33% to ~35%; letter/glyph constraints, hyphenation, the complete paragraph objective, wrapped/script-specific spacing and devices remain open. It does not certify the justification capability.
 
+## Remaining release work
+
 1. Complete paragraph composition: custom/decimal/right-indent tabs and leaders, justification constraints, hyphenation, keeps, grids and native wraps.
-2. Qualify font fallback, OpenType, variable fonts and source mapping for the [early language priorities](text-parity-programme.md#early-language-and-math-priorities). Full bidirectional, complex-script and East Asian publishing and equation layout are deferred within the full-scope estimate.
+2. Qualify font fallback, OpenType, variable fonts and source mapping for the [early language priorities](text-parity-programme.md#early-language-and-math-priorities). The release includes ordinary mixed-script editing and later equation layout. The three specialist publishing capabilities stay on the broader-edition wishlist.
 3. Structured text and layout: tables, lists/numbering, anchored objects, paths, notes, fields and the page/parent scheduler.
 4. Editorial and publication systems, including scoped search/proofing, references, generated matter and accessible reading order.
 5. Physical Mac/iPhone/iPad input, IME, accessibility, performance, persistence and comparative reference qualification.
 
-Source contracts and test evidence remain in the programme and [verification record](../verification.md). Update the estimate only when an engineering milestone materially closes these dependencies, explaining the reason and retaining prior scope. App appearance has its own backlog and should not inflate this text-engine estimate.
+Source contracts and test evidence remain in the programme and [verification record](../verification.md). Update the estimate only when an engineering milestone materially closes these dependencies, explaining the reason against the release scope in effect. Record any explicitly agreed scope change separately from work delivered. App appearance has its own backlog and should not inflate this text-engine estimate.

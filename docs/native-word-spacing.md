@@ -46,6 +46,6 @@ Initial admission is conservative: simple left-to-right Latin, Greek, Cyrillic, 
 
 ## Remaining scope
 
-Authored letter-spacing and glyph-scaling limits, full nine-field justification, hyphenation dictionaries/limits/discretionary mappings, Adobe's complete paragraph objective, complex scripts/CJK, advanced wrap interactions and physical iPhone/iPad qualification remain open. The shared Apple source is included by the iOS project; Mac worker checks and copied iOS resources do not establish device parity. The 66-capability programme remains the same denominator.
+Authored letter-spacing and glyph-scaling limits, full nine-field justification, hyphenation dictionaries/limits/discretionary mappings, Adobe's complete paragraph objective, spacing for the release languages, advanced wrap interactions and physical iPhone/iPad qualification remain open. The shared Apple source is included by the iOS project; Mac worker checks and copied iOS resources do not establish device parity. See the [release ledger](indesign/progress.md) for the current scope of language qualification.
 
 Original runtime reference captures and native probes are private work artifacts. Public regressions use original synthetic documents and licensed shipped fonts; they do not contain extracted Adobe assets, code or personal notes. Current verification and the packaged review build are recorded in [verification](verification.md).
