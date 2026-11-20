@@ -270,8 +270,17 @@ function subtract(available, excluded) {
   return output;
 }
 
-/** Full line-band exclusion, not a baseline/center point sample. */
-export function textWrapBand(obstacles, band, lineBand) {
+/** Keep the existing leading grid and skip only rows known to be blocked. */
+export function nextWrapRowTop(baseline, step, blockedThrough) {
+  const skipped =
+    blockedThrough != null && blockedThrough > baseline
+      ? Math.floor((blockedThrough - baseline) / step)
+      : 0;
+  return baseline + skipped * step;
+}
+
+/** Each wrap mode projects its polygons across the physical row interval it uses. */
+export function textWrapBand(obstacles, band, { jumpBand, shapeBand } = {}) {
   if (
     !['left', 'right', 'top', 'bottom'].every((key) => Number.isFinite(band[key])) ||
     band.right <= band.left ||
@@ -290,15 +299,17 @@ export function textWrapBand(obstacles, band, lineBand) {
     // Native Shape and Jump inspect the space leading up to this baseline.
     // Inverse contours still need the whole ink box inside the path.
     const slice =
-      lineBand && (obstacle.mode === 'jump' || (obstacle.mode === 'contour' && !obstacle.invert))
-        ? lineBand
-        : band;
+      obstacle.mode === 'jump'
+        ? (jumpBand ?? band)
+        : obstacle.mode === 'contour' && !obstacle.invert
+          ? (shapeBand ?? band)
+          : band;
     const occupied = merge(
       polygons.flatMap((polygon) => {
         const clipped = clipY(clipY(polygon, slice.top, true), slice.bottom, false);
         if (!clipped.length || Math.abs(area(clipped)) <= EPS) return [];
         if (
-          lineBand &&
+          jumpBand &&
           obstacles.length === 1 &&
           obstacle.mode === 'jump' &&
           polygon.every((point) => point.x >= band.left && point.x <= band.right)
@@ -320,7 +331,7 @@ export function textWrapBand(obstacles, band, lineBand) {
       if (!active.length) continue;
       segments = [];
       nextColumn ||= obstacle.mode === 'next-column';
-      if (lineBand && obstacle.mode === 'jump')
+      if (jumpBand && obstacle.mode === 'jump')
         jumpBottom = Math.max(jumpBottom ?? -Infinity, bounds.bottom);
     } else if (obstacle.invert) {
       // Every vertical slice of the line band must fit inside the contour. Use
@@ -378,7 +389,7 @@ export function textWrapBand(obstacles, band, lineBand) {
   return {
     segments: merge(subtract(merge(segments), merge(excluded))),
     nextColumn,
-    ...(lineBand && { jumpBottom, jumpThrough }),
+    ...(jumpBand && { jumpBottom, jumpThrough }),
     nextY: events.length ? Math.min(...events) : null,
   };
 }

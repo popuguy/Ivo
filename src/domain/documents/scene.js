@@ -107,16 +107,17 @@ export function makeObject(type, pageId, overrides = {}) {
   object.type = type;
   object.pageId = pageId;
   if (type === 'polygon') {
-    object.points = [
+    const points = object.points ?? [
       { x: 0, y: 0 },
       { x: 1, y: 0 },
       { x: 1, y: 1 },
       { x: 0, y: 1 },
-    ].map((point) => ({ id: uid('vertex-'), ...point }));
-    object.fill = '#e6e8eb';
-    object.stroke = '#626872';
-    object.strokeWidth = 1;
-    object.clip = false;
+    ];
+    object.points = points.map((point) => ({ ...point, id: point.id ?? uid('vertex-') }));
+    object.fill ??= '#e6e8eb';
+    object.stroke ??= '#626872';
+    object.strokeWidth ??= 1;
+    object.clip ??= false;
   }
   return object;
 }

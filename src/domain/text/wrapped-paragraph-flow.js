@@ -8,7 +8,7 @@ import {
   WORD_SPACING_COST_POLICY,
 } from './word-spacing-adjustment.js';
 import { lineHyphenation } from './line-hyphenation.js';
-import { textWrapBand } from '../geometry/text-wrap.js';
+import { nextWrapRowTop, textWrapBand } from '../geometry/text-wrap.js';
 import { TEXT_WRAP_MODES, TEXT_WRAP_SIDES } from '../documents/text-wrap.js';
 import { FIRST_BASELINES } from './frame-composition.js';
 import { paragraphLayout } from './paragraph-layout.js';
@@ -344,7 +344,8 @@ export function* wrappedParagraphFlowSteps({
               bottom: Math.max(baseline + metrics.descent, baseline - metrics.ascent + EPS),
             };
             const lineBand = { top: rowTop, bottom: Math.max(baseline, rowTop + EPS) };
-            band = textWrapBand(column.obstacles, query, lineBand);
+            const slices = { jumpBand: lineBand, shapeBand: lineBand };
+            band = textWrapBand(column.obstacles, query, slices);
             if (
               !band.segments.length &&
               !band.nextColumn &&
@@ -357,7 +358,7 @@ export function* wrappedParagraphFlowSteps({
               // A contour can narrow or open inside its bounds, so its box
               // bottom is not evidence that intervening rows are unusable.
               band.contourBlocked =
-                textWrapBand(column.clearanceObstacles, query, lineBand).segments.length > 0;
+                textWrapBand(column.clearanceObstacles, query, slices).segments.length > 0;
             }
             if (bands.size === 4096) bands.delete(bands.keys().next().value);
             bands.set(key, band);
@@ -379,11 +380,7 @@ export function* wrappedParagraphFlowSteps({
                 baseline + metrics.advance > baseline
                   ? metrics.advance
                   : Math.max(metrics.ascent + metrics.descent, 1);
-              const skipped =
-                band.jumpThrough !== null && band.jumpThrough > baseline
-                  ? Math.floor((band.jumpThrough - baseline) / step)
-                  : 0;
-              rowTop = baseline + skipped * step;
+              rowTop = nextWrapRowTop(baseline, step, band.jumpThrough);
               firstInColumn = false;
               baseline = rowTop + step;
               after = null;

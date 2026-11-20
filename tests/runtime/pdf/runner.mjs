@@ -880,6 +880,18 @@ print(String(data: summaryData, encoding: .utf8)!)
     );
     await writeFile(path.join(output, 'native-box-ink.pdf'), boxPDF.bytes);
     const nativeBoxInkPDFInspection = await inspectWrappedFile('native-box-ink.pdf');
+    const browserJump = structuredClone(wrapDoc);
+    browserJump.pages[0].height = 700;
+    browserJump.blocks.find((block) => block.id === wrapFrame.id).h = 620;
+    setTextWrap(browserJump, [clippedImage.id], { mode: 'none' });
+    setTextWrap(browserJump, [wrapObject.id], { mode: 'jump' });
+    const browserJumpPDF = await renderPDF(
+      createPDFSnapshot([browserJump], [asset], browserJump.id),
+      { project: root },
+    );
+    assert.deepEqual(browserJumpPDF.manifest.warnings, []);
+    await writeFile(path.join(output, 'browser-jump.pdf'), browserJumpPDF.bytes);
+    const browserJumpInspection = await inspectWrappedFile('browser-jump.pdf', 'jump');
     const signedWrapPDFs = {};
     for (const mode of ['contour', 'jump']) {
       const document = structuredClone(boxDocument);
@@ -962,6 +974,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           nativeWrapPDFInspection,
           nativeBoxInkPDFInspection,
           signedWrapPDFs,
+          browserJumpInspection,
           ...characterPDFInspection,
           ...paragraphKeepPDFInspection,
           ...wordSpacingPDFInspection,

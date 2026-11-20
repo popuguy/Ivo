@@ -26,6 +26,32 @@ import {
 } from '../../src/domain/geometry/viewport.js';
 const archive = (document) => ({ schemaVersion: 2, documents: [document], assets: [] });
 
+test('creating a wrap polygon preserves its path, zero stroke and clipping settings', () => {
+  const document = createSceneDocument('Shape around text');
+  const points = [
+    { id: 'top', x: 0, y: 0 },
+    { id: 'right', x: 1, y: 0 },
+    { id: 'bottom', x: 0, y: 1 },
+  ];
+  const shape = insertObject(document, 'polygon', document.pages[0].id, {
+    points,
+    fill: 'none',
+    stroke: 'none',
+    strokeWidth: 0,
+    clip: true,
+  });
+  assert.deepEqual(shape.points, points);
+  assert.deepEqual(
+    [shape.fill, shape.stroke, shape.strokeWidth, shape.clip],
+    ['none', 'none', 0, true],
+  );
+  shape.points[0].x = 0.25;
+  assert.equal(points[0].x, 0);
+  const defaults = insertObject(document, 'polygon', document.pages[0].id);
+  assert.equal(defaults.points.length, 4);
+  assert.equal(defaults.strokeWidth, 1);
+});
+
 // Independent CSS affine witness: compose each rendered rotate-about-center matrix,
 // including containing masks. Do not use the scene command's coordinate helpers.
 function renderedMatrix(doc, item) {

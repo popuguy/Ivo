@@ -70,6 +70,52 @@ export function verifyAdditionalComposition({ verifyCoverage, verifyInkOutside, 
     { left: 43, top: 40, right: 237, bottom: 100 },
     2,
   );
+  const jumpDoc = createSceneDocument('Jump across line spacing', { width: 300, height: 260 });
+  const jumpFrame = insertObject(jumpDoc, 'text', jumpDoc.pages[0].id, {
+    x: 20,
+    y: 30,
+    w: 240,
+    h: 200,
+    fontSize: 12,
+    leading: 24,
+    html: '<p>First<br>Second<br>Third</p>',
+  });
+  jumpFrame.frameOptions = {
+    ...jumpFrame.frameOptions,
+    firstBaseline: 'fixed',
+    minimumFirstBaseline: 12,
+  };
+  startTextFlow(jumpDoc, jumpFrame.id, { automaticPages: false });
+  const jump = insertObject(jumpDoc, 'polygon', jumpFrame.pageId, {
+    x: 65,
+    y: 47,
+    w: 80,
+    h: 17,
+    stroke: 'none',
+    strokeWidth: 0,
+    points: [
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 1, y: 0 },
+      { id: 'c', x: 1, y: 1 },
+      { id: 'd', x: 0, y: 1 },
+    ],
+  });
+  setTextWrap(jumpDoc, [jump.id], { mode: 'jump' });
+  const jumpLines = () => {
+    const layout = layoutDocumentTextFlows(jumpDoc, { allowPages: false });
+    verifyCoverage(jumpDoc, layout);
+    return layout.fragments.get(jumpFrame.id).columns.map((p) => p.top + p.paddingTop + p.baseline);
+  };
+  const checkBaselines = (expected) => {
+    const actual = jumpLines();
+    assert(
+      actual.length === expected.length && actual.every((y, i) => Math.abs(y - expected[i]) < 0.05),
+      'Browser Jump Object changed the leading cadence: ' + JSON.stringify({ actual, expected }),
+    );
+  };
+  checkBaselines([12, 60, 84]);
+  jump.y = 35;
+  checkBaselines([34, 58, 82]);
   const shifted = createSceneDocument('Wrapped baseline shifts', { width: 600, height: 660 }),
     shiftSource =
       '<p>Intro line<br>base <span data-ivo-baseline="6">raise</span> <span data-ivo-baseline="-4">lower</span> tail</p>',
@@ -301,5 +347,6 @@ export function verifyAdditionalComposition({ verifyCoverage, verifyInkOutside, 
     retainedAuthoredContinuation: true,
     sourceBaselineShiftRow: true,
     noClippedGraphemes: true,
+    leadingAwareJump: true,
   };
 }

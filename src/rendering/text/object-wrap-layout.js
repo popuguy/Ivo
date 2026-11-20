@@ -1,4 +1,8 @@
-import { textWrapObstacles, textWrapBand } from '../../domain/geometry/text-wrap.js';
+import {
+  nextWrapRowTop,
+  textWrapObstacles,
+  textWrapBand,
+} from '../../domain/geometry/text-wrap.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
 import { firstBaselineOffset } from '../../domain/text/frame-composition.js';
 import { createWrapLineMeasurer } from './wrap-lines.js';
@@ -75,7 +79,10 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
         frameStart = start;
       for (const column of columnSlots(frame)) {
         let y = 0,
+          rowTop = 0,
+          entryBaseline = null,
           first = true;
+        const hasJump = obstacles.some((obstacle) => obstacle.mode === 'jump');
         while (start < measured.total && y < column.height) {
           if (++rows > 4096) throw Error('Wrapped text exceeded the 4,096-row composition budget.');
           const initial = measured.measure(start, column.width);
@@ -90,6 +97,7 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
             bandTop = Math.min(0, initial.top),
             planned = [],
             rowBaseline = 0,
+            bandBaseline = initial.baseline,
             band,
             next = start,
             stable = false;
@@ -101,14 +109,26 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
             );
             y += target - initial.baseline;
           } else if (first) y -= Math.min(0, initial.top);
+          if (first) entryBaseline = y + initial.baseline;
           first = false;
           for (let pass = 0; pass < 8; pass++) {
-            band = textWrapBand(obstacles, {
-              left: column.left,
-              right: column.left + column.width,
-              top: column.top + y + bandTop,
-              bottom: column.top + y + height,
-            });
+            band = textWrapBand(
+              obstacles,
+              {
+                left: column.left,
+                right: column.left + column.width,
+                top: column.top + y + bandTop,
+                bottom: column.top + y + height,
+              },
+              hasJump
+                ? {
+                    jumpBand: {
+                      top: column.top + rowTop,
+                      bottom: column.top + Math.max(rowTop + 1e-6, y + bandBaseline),
+                    },
+                  }
+                : undefined,
+            );
             if (band.nextColumn || !band.segments.length) break;
             planned = [];
             next = start;
@@ -139,8 +159,9 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
                 0,
               ),
               actualTop = Math.min(0, ...planned.map((p) => rowBaseline - p.baseline + p.top));
-            if (actualTop < bandTop - 0.01) {
-              bandTop = actualTop;
+            if (actualTop < bandTop - 0.01 || (hasJump && rowBaseline > bandBaseline + 0.01)) {
+              bandTop = Math.min(bandTop, actualTop);
+              bandBaseline = Math.max(bandBaseline, rowBaseline);
               height = Math.max(height, actual);
               continue;
             }
@@ -158,7 +179,25 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
           }
           if (band.nextColumn) break;
           if (!band.segments.length || !planned.length) {
+            if (band.jumpBottom != null) {
+              const bottom = band.jumpBottom - column.top;
+              if (entryBaseline !== null && bottom > rowTop) {
+                rowTop = bottom;
+                y = rowTop + entryBaseline - initial.baseline;
+              } else {
+                const baseline = y + bandBaseline,
+                  step = initial.advance > 0 ? initial.advance : 1;
+                rowTop = nextWrapRowTop(column.top + baseline, step, band.jumpThrough) - column.top;
+                y = rowTop + step - initial.baseline;
+                entryBaseline = null;
+              }
+              // A short first-baseline offset can put the box top above the
+              // column start. The baseline still advances past the obstruction.
+              continue;
+            }
             const nextY = band.nextY === null ? column.height : band.nextY - column.top;
+            entryBaseline = null;
+            rowTop = y + bandBaseline;
             y = band.segments.length
               ? y + Math.max(1, initial.advance)
               : Math.max(y + Math.max(1, initial.advance), nextY);
@@ -185,8 +224,10 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
             });
           }
           start = next;
-          y += height + (planned.at(-1)?.after || 0);
-          first = false;
+          const spaceAfter = planned.at(-1)?.after || 0;
+          rowTop = y + rowBaseline + spaceAfter;
+          y += height + spaceAfter;
+          entryBaseline = null;
         }
         if (start >= measured.total) break;
       }
