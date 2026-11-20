@@ -841,14 +841,44 @@ print(String(data: summaryData, encoding: .utf8)!)
       path.join(output, 'native-wrap-ink.json'),
       JSON.stringify(nativeWrapInk, null, 2),
     );
-    const inspectedNativeWrap = await promisify(execFile)('xcrun', [
-      'swift',
-      '-module-cache-path',
-      path.join(profile, 'swift-cache'),
-      path.join(root, 'tests/runtime/pdf/inspect-wrap.swift'),
-      path.join(output, 'native-wrap.pdf'),
-    ]);
-    const nativeWrapPDFInspection = JSON.parse(inspectedNativeWrap.stdout);
+    async function inspectWrappedFile(name) {
+      const inspected = await promisify(execFile)('xcrun', [
+        'swift',
+        '-module-cache-path',
+        path.join(profile, 'swift-cache'),
+        path.join(root, 'tests/runtime/pdf/inspect-wrap.swift'),
+        path.join(output, name),
+      ]);
+      return JSON.parse(inspected.stdout);
+    }
+    const nativeWrapPDFInspection = await inspectWrappedFile('native-wrap.pdf');
+
+    // Keep the composite Box/Shape proof above. Exercise signed ink in its own Box layout.
+    const boxDocument = structuredClone(nativeWrapDocument);
+    setTextWrap(boxDocument, [clippedImage.id], { mode: 'none' });
+    boxDocument.textFlows[0].html = styledFlow.html.replace(
+      'data-ivo-size="22"',
+      'data-ivo-size="22" data-ivo-baseline="4" data-ivo-vscale="125"',
+    );
+    const boxPDF = await renderPDF(createPDFSnapshot([boxDocument], [asset], boxDocument.id), {
+      project: root,
+    });
+    assert.deepEqual(boxPDF.manifest.warnings, []);
+    const boxPlan = nativeCompositions.findLast(
+      (call) =>
+        call.request.mode === 'planned-lines-proof' &&
+        call.request.id === boxDocument.textFlows[0].id,
+    );
+    const raisedInk = boxPlan.result.layout.lines
+      .flatMap((line) => line.runs)
+      .filter((run) => run.baselineShift === 4 && run.verticalScale === 125)
+      .flatMap((run) => run.glyphs);
+    assert(
+      raisedInk.length >= 7 && raisedInk.every((glyph) => Math.abs(glyph.position[1] - 4) < 0.001),
+      'Transformed Box-wrap PDF lost the raised word or its baseline',
+    );
+    await writeFile(path.join(output, 'native-box-ink.pdf'), boxPDF.bytes);
+    const nativeBoxInkPDFInspection = await inspectWrappedFile('native-box-ink.pdf');
     const characterPDFInspection = await verifyCharacterPDF({
       renderPDF,
       root,
@@ -894,6 +924,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           wrapPDFInspection,
           nativeWrappedTextSourceAndExclusion: true,
           nativeWrapPDFInspection,
+          nativeBoxInkPDFInspection,
           ...characterPDFInspection,
           ...paragraphKeepPDFInspection,
           ...wordSpacingPDFInspection,

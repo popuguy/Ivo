@@ -695,6 +695,51 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
       doc.textFlows[0].html === styledHTML && geometry() === afterSpacing,
       'Reopening changed wrapped text styling or glyph placement',
     );
+    await editor.command('document-text');
+    await settle();
+    const marked = wordRange('word020'),
+      placements = JSON.stringify(painted().request.placements);
+    for (const [name, value] of [
+      ['baselineShift', -4],
+      ['verticalScale', 150],
+    ]) {
+      await select(marked.start, marked.end);
+      await property(name, value);
+    }
+    verifyCoverage({ protocol: 5 });
+    const transformed = painted()
+      .result.layout.lines.flatMap((line) => line.runs)
+      .filter((run) => run.baselineShift === -4 && run.verticalScale === 150);
+    assert(
+      JSON.stringify(painted().request.placements) === placements &&
+        transformed.length &&
+        transformed.every((run) => run.glyphs.every((g) => Math.abs(g.position[1] + 4) < 0.001)),
+      'Lowering and stretching the wrapped word moved line breaks or lost its glyph displacement',
+    );
+    const transformedSource = doc.textFlows[0].html,
+      transformedGeometry = geometry();
+    await editor.command('undo');
+    await settle();
+    assert(
+      geometry() !== transformedGeometry &&
+        JSON.stringify(painted().request.placements) === placements,
+      'Undo lost the box placement while restoring the character scale',
+    );
+    await editor.command('redo');
+    await settle();
+    assert(
+      doc.textFlows[0].html === transformedSource && geometry() === transformedGeometry,
+      'Redo lost the transformed wrapped word',
+    );
+    await changeMode('next-column');
+    verifyCoverage({ protocol: 5, complete: false });
+    assert(
+      column(second.id).native.lines.length > 0 &&
+        painted().result.layout.lines.some((line) =>
+          line.runs.some((run) => run.baselineShift === -4 && run.verticalScale === 150),
+        ),
+      'Jump to Next Column lost the transformed run or the linked frame',
+    );
     editor.destroy();
     // A read-only view may display a real native prefix but cannot create automatic pages.
     doc = createSceneDocument('Passive native wrapped continuation', { width: 500, height: 300 });
@@ -743,6 +788,7 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
     return {
       nativeWrappedCenteredStyleUndoReopen: true,
       nativeMixedSizeWrapEditUndoRedo: true,
+      nativeBoxWrapCharacterTransforms: true,
       nativeObjectWrap: true,
       nativeSameBaselineFragments: true,
       nativeWholeWrappedRowNavigation: true,

@@ -63,7 +63,7 @@ test('native wrapping source admission preserves unsupported source and exact ge
       paragraphs: [{ start: 0, end: 11, align: 'left' }],
       runs: [{ start: 0, end: 11, font: 'cmu', size: 16, leading: 0, autoLeading: 120 }],
     },
-    columns = [{ width: 300, height: 200, verticalAlign: 'top', obstacles: [{ id: 'blocker' }] }],
+    columns = [{ width: 300, height: 200, verticalAlign: 'top', obstacles: [{ mode: 'bounds' }] }],
     before = structuredClone(source);
   validateNativeWrapping(source, columns);
   assert.deepEqual(source, before);
@@ -76,24 +76,26 @@ test('native wrapping source admission preserves unsupported source and exact ge
     { ...styled.runs[0], start: 5, font: 'other', size: 30 },
   ];
   validateNativeWrapping(styled, columns);
-  for (const mutate of [
-    (s) => {
-      s.runs[0].verticalScale = 125;
-    },
-    (s) => {
-      s.runs[0].baselineShift = 3;
-    },
-    (s) => {
-      s.text = 'With\ttabs\u2029';
-    },
-  ]) {
-    const candidate = structuredClone(source);
-    mutate(candidate);
-    const saved = structuredClone(candidate);
-    assert.throws(() => validateNativeWrapping(candidate, columns), /does not yet support/);
-    assert.deepEqual(candidate, saved);
-    validateNativeWrapping(candidate, [{ ...columns[0], obstacles: [] }]);
+  for (const transform of [{ verticalScale: 125 }, { baselineShift: 3 }, { baselineShift: -4 }]) {
+    const candidate = structuredClone(styled);
+    Object.assign(candidate.runs[0], transform);
+    const before = structuredClone(candidate);
+    validateNativeWrapping(candidate, columns);
+    validateNativeWrapping(candidate, [
+      ...columns,
+      { ...columns[0], obstacles: [{ mode: 'next-column' }] },
+    ]);
+    for (const mode of ['contour', 'jump'])
+      assert.throws(
+        () =>
+          validateNativeWrapping(candidate, [...columns, { ...columns[0], obstacles: [{ mode }] }]),
+        /Shape or Jump Object/,
+      );
+    assert.deepEqual(candidate, before);
   }
+  const tabbed = { ...source, text: 'With\ttabs\u2029' };
+  assert.throws(() => validateNativeWrapping(tabbed, columns), /tab characters/);
+  validateNativeWrapping(tabbed, [{ ...columns[0], obstacles: [] }]);
   assert.throws(
     () => validateNativeWrapping(source, [{ ...columns[0], verticalAlign: 'center' }]),
     /vertically aligned/,

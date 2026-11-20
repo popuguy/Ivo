@@ -17,14 +17,20 @@ export function nativeWrapColumns(document, columns) {
   }));
 }
 
-/** Reject unsupported geometry and character ink before an edit changes the flow. */
+/** Box and Next Column use the ordinary line band. Character transforms move
+ * the ink and carets inside the resulting fragments. */
 export function validateNativeWrapping(source, columns) {
   if (!columns.some((column) => column.obstacles?.length)) return;
   if (
+    columns.some((column) =>
+      column.obstacles?.some(
+        (obstacle) => obstacle.mode !== 'bounds' && obstacle.mode !== 'next-column',
+      ),
+    ) &&
     source.runs.some((run) => (run.baselineShift ?? 0) !== 0 || (run.verticalScale ?? 100) !== 100)
   )
     throw new UnsupportedComposition(
-      'shifted or vertically scaled ink in native wrapped paragraphs',
+      'shifted or vertically scaled ink with Shape or Jump Object text wrap',
     );
   if (columns.some((column) => column.obstacles?.length && column.verticalAlign !== 'top'))
     throw new UnsupportedComposition('native wrapping with vertically aligned exclusion columns');

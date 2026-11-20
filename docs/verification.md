@@ -2,9 +2,9 @@
 
 ## Canvas cursor and mixed typography around objects — 20 November 2026
 
-A browser input check follows the Selection cursor from empty page through text-frame hover, press, drag and release. Repeated plain motion also checks for redundant cursor updates. A separate desktop check holds pointer capture across a linked-text selection and checks the I-beam.
+A browser input check with both the public web artwork and the local desktop artwork follows the Selection cursor from empty page through text-frame hover, press, drag and release. Repeated plain motion also checks for redundant cursor updates. A separate desktop check holds pointer capture across a linked-text selection and checks the I-beam.
 
-Mixed-run layout checks cover automatic and fixed leading, two and three fragments on a line, competing frame and obstacle clearances, reversed measurement order and work limits. An editor fixture changes the size of a selected word, verifies changed vector geometry and restores it with Undo and Redo. The PDF fixture wraps a larger italic word in a justified-spacing document and checks ink clearance and selectable source in the exported file.
+Mixed-run layout checks cover automatic and fixed leading, two and three fragments on a line, competing frame and obstacle clearances, reversed measurement order and work limits. An editor fixture changes the size of a selected word, verifies changed vector geometry and restores it with Undo and Redo. Properties also lowers and vertically scales a wrapped word with explicit word spacing. The test verifies stable physical rows, changed ink coordinates, undo/redo and a transition into the next linked frame. The PDF fixture wraps a larger, raised and vertically scaled italic word and checks ink clearance and selectable source in the exported file.
 
 ## Previously saved long single-line notes — 19 November 2026
 
