@@ -299,7 +299,9 @@ export function validateWordSpacingResult(result, request, plan) {
           !integer(glyph.index) ||
           !integer(glyph.end) ||
           glyph.index < start ||
-          glyph.end <= glyph.index ||
+          (glyph.generated === true
+            ? glyph.index !== end || glyph.end !== end || !request.hyphenationPoints?.includes(end)
+            : glyph.end <= glyph.index) ||
           glyph.end > shape.contentEnd ||
           !Array.isArray(glyph.position) ||
           glyph.position.length !== 2 ||

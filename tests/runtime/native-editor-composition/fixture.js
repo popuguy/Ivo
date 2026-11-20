@@ -645,6 +645,83 @@ try {
       load: window.nativeEditorTest.load,
       capture: (name = 'native-word-spacing') => window.nativeEditorTest.capture(name),
     });
+    for (const mode of ['single-line', 'paragraph']) {
+      doc = createSceneDocument('Narrow caption', { width: 400, height: 300 });
+      const word = 'typesetting',
+        html =
+          mode === 'paragraph'
+            ? '<p data-ivo-wordspace="80:110:150" data-ivo-align="justify">' + word + '</p>'
+            : '<p>' + word + '</p>';
+      const frame = insertObject(doc, 'text', doc.pages[0].id, {
+        x: 30,
+        y: 30,
+        w: 42,
+        h: 28,
+        textStyle: 'cmu-serif',
+        fontSize: 16,
+        html,
+      });
+      const second = insertObject(doc, 'text', addPage(doc, doc.pages[0].id).id, {
+        x: 30,
+        y: 30,
+        w: 220,
+        h: 150,
+      });
+      const flow = startTextFlow(doc, frame.id, { automaticPages: false });
+      threadFrame(doc, frame.id, second.id);
+      enableNativeComposition(doc, flow, mode);
+      history = createDocumentHistory();
+      mount();
+      await settle();
+      const check = host.querySelector('[data-object-prop="hyphenate"]');
+      assert(check, 'Hyphenate control is missing');
+      check.checked = true;
+      check.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+      const { request, result } = latest();
+      const [left, right] = result.layout.lines;
+      const generated = left?.runs.flatMap((r) => r.glyphs).find((g) => g.generated);
+      assert(
+        generated && left.page === 0 && right?.page === 1 && left.end === right.start,
+        'The word did not flow across both frames with a generated hyphen: ' +
+          JSON.stringify([
+            mode,
+            request.hyphenationPoints,
+            result.layout.lines.map((l) => [l.end, l.frame]),
+            notices,
+          ]),
+      );
+      assert(
+        request.text === word + '\u2029' && !flow.html.includes('\u00ad'),
+        'Generated break entered source',
+      );
+      assert(
+        host.querySelector(`[data-flow-frame="${frame.id}"] use[href$="-${generated.vector}"]`),
+        'Generated ink did not reach the editor',
+      );
+      await editor.command('document-text');
+      await settle();
+      selectWord(word);
+      await tick();
+      const clipboard = new DataTransfer();
+      input().dispatchEvent(
+        new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: clipboard }),
+      );
+      assert(
+        clipboard.getData('text/plain') === word && clipboard.getData('text/html').includes(word),
+        'Copying across the drawn break changed the word',
+      );
+      editor.destroy();
+      doc.blocks.find((block) => block.id === frame.id).w = 200;
+      mount();
+      await settle();
+      assert(
+        latest().result.layout.lines.length === 1 &&
+          latest().result.layout.lines[0].runs.every((r) => !r.glyphs.some((g) => g.generated)),
+        'Widening the frame retained generated hyphen ink',
+      );
+      editor.destroy();
+    }
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
       x: 30,

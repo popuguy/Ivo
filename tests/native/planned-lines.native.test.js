@@ -558,3 +558,69 @@ test(
       await assert.rejects(() => service.compose(bad));
   },
 );
+
+test(
+  'automatic hyphen ink, exact-fit width and searchable PDF retain the original boundary',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    const req = await request('typesetting');
+    const at = 4;
+    const candidates = [
+      { start: 0, end: at },
+      { start: 0, end: req.text.length },
+    ];
+    const [plain, whole] = await measure(service, req, candidates);
+    req.hyphenationPoints = [at, 7];
+    const [split, wide] = await measure(service, req, candidates);
+    assert.ok(split.width > plain.width);
+    close(wide.width, whole.width);
+    req.frames = [
+      { id: 'first', width: split.width, height: 28 },
+      { id: 'second', width: 180, height: 28 },
+    ];
+    req.placements = req.frames.map((f, i) => ({
+      frame: i,
+      end: i ? req.text.length : at,
+      baseline: 18,
+      left: 0,
+      width: f.width,
+    }));
+    const result = await service.compose(req);
+    const [first, second] = result.layout.lines;
+    const ink = glyphs(first).filter((g) => g.generated);
+    assert.equal(ink.length, 1);
+    assert.deepEqual([ink[0].index, ink[0].end, ...ink[0].sourceRanges], [at, at]);
+    assert.ok(result.vectors.some((v) => v.id === ink[0].vector && v.pathD));
+    close(first.visibleWidth, split.width);
+    close(first.carets.at(-1).primary, first.visibleWidth);
+    assert.equal(second.carets[0].index, first.end);
+    assert.equal(
+      glyphs(second).some((g) => g.generated),
+      false,
+    );
+    const folder = await mkdtemp(path.join(tmpdir(), 'ivo-auto-hyphen-'));
+    t.after(() => rm(folder, { recursive: true, force: true }));
+    const reader = path.join(folder, 'read.swift'),
+      file = path.join(folder, 'pages.pdf');
+    await writeFile(file, Buffer.from((await service.pdf(result.token)).data, 'base64'));
+    await writeFile(
+      reader,
+      `import Foundation
+import PDFKit
+let pdf = PDFDocument(url: URL(fileURLWithPath: CommandLine.arguments[1]))!
+for i in 0..<pdf.pageCount { print(pdf.page(at: i)!.string ?? "") }
+`,
+    );
+    const { stdout } = await exec('/usr/bin/xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(folder, 'cache'),
+      reader,
+      file,
+    ]);
+    assert.deepEqual(stdout.trim().split(/\s+/), ['type', 'setting']);
+    req.placements[0].width -= 0.1;
+    await assert.rejects(service.compose(req), /exceeds its indented line area/);
+  },
+);

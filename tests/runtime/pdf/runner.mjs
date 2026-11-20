@@ -398,6 +398,54 @@ app
       path.join(output, 'native-source.json'),
       JSON.stringify(nativeSnapshot, null, 2),
     );
+    const caption = createSceneDocument('Narrow caption export', { width: 200, height: 200 });
+    const captionFrame = insertObject(caption, 'text', {
+      x: 20,
+      y: 20,
+      w: 42,
+      h: 140,
+      textStyle: 'cmu-serif',
+      fontSize: 16,
+      html: '<p data-ivo-hyphens="true">typesetting</p>',
+    });
+    enableNativeComposition(
+      caption,
+      startTextFlow(caption, captionFrame.id, { automaticPages: false }),
+      'single-line',
+    );
+    const captionSnapshot = createPDFSnapshot([caption], [], caption.id);
+    const captionPDF = await renderPDF(captionSnapshot, { project: root });
+    const captionLayout = nativeCompositions.findLast(
+      ({ result }) => result.token === captionPDF.manifest.composedText[0]?.token,
+    )?.result.layout;
+    assert(
+      captionLayout?.lines.some((line) =>
+        line.runs.some((run) => run.glyphs.some((g) => g.generated)),
+      ),
+      'Export did not use the hyphenated line geometry',
+    );
+    const captionFile = path.join(profile, 'caption.pdf'),
+      captionReader = path.join(profile, 'caption.swift');
+    await writeFile(captionFile, captionPDF.bytes);
+    await writeFile(
+      captionReader,
+      `import PDFKit
+let pdf = PDFDocument(url: URL(fileURLWithPath: CommandLine.arguments[1]))!
+print(pdf.page(at: 0)!.string ?? "")
+`,
+    );
+    const captionText = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      captionReader,
+      captionFile,
+    ]);
+    assert.equal(
+      captionText.stdout.replace(/\s/g, ''),
+      'typesetting',
+      'Generated caption ink entered selectable PDF text',
+    );
     const unequalDoc = createSceneDocument('Unequal native paragraph PDF', {
         width: 420,
         height: 360,

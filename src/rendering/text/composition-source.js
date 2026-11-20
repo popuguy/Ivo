@@ -1,3 +1,4 @@
+import { englishHyphenationPoints } from '../../domain/text/english-hyphenation.js';
 import { blankParagraphBreak } from './insertion.js';
 import { textIndexMap } from '../../shared/dom/text-selection.js';
 import { nodeTextStyle } from './selection-style.js';
@@ -14,7 +15,12 @@ import {
 
 const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE']),
   supportedTags = new Set(['P', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'A', 'BR']),
-  paragraphFields = [...PARAGRAPH_LAYOUT_FIELDS, ...PARAGRAPH_KEEP_FIELDS, 'wordSpacing'],
+  paragraphFields = [
+    ...PARAGRAPH_LAYOUT_FIELDS,
+    ...PARAGRAPH_KEEP_FIELDS,
+    'wordSpacing',
+    'hyphenate',
+  ],
   supportedFields = new Set([
     'textStyle',
     'fontSize',
@@ -273,7 +279,11 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
           token.kind === 'paragraph' ? token.logicalEnd : token.logicalStart + match.index + 1,
         ...Object.fromEntries(
           paragraphFields
-            .filter((key) => key !== 'wordSpacing' || token.style[key] !== 'normal')
+            .filter(
+              (key) =>
+                (key !== 'wordSpacing' || token.style[key] !== 'normal') &&
+                (key !== 'hyphenate' || token.style.hyphenate),
+            )
             .map((key) => [key, token.style[key]]),
         ),
       });
@@ -283,7 +293,25 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   }
   if (logical !== logicalLength || root.innerHTML !== sourceHTML)
     throw Error('Text composition changed its source.');
+  const hyphenationPoints = [];
+  let rangeIndex = 0;
+  for (const paragraph of paragraphs) {
+    if (!paragraph.hyphenate) continue;
+    const content = text.slice(paragraph.start, paragraph.end);
+    if (
+      /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]|[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/u.test(
+        content,
+      )
+    )
+      throw new UnsupportedComposition('automatic hyphenation in mixed writing systems');
+    for (const relative of englishHyphenationPoints(content)) {
+      const at = paragraph.start + relative;
+      while (noBreakRanges[rangeIndex]?.end <= at) rangeIndex++;
+      if (!(noBreakRanges[rangeIndex]?.start <= at)) hyphenationPoints.push(at);
+    }
+  }
   return {
+    ...(hyphenationPoints.length ? { hyphenationPoints } : {}),
     protocol: paragraphs.some((paragraph) => wordSpacingSettings(paragraph.wordSpacing))
       ? 5
       : runs.some(hasNondefaultNativeCharacter)

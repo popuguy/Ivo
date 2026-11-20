@@ -82,7 +82,9 @@ export async function fitFrameParagraphs(
         previousAfter,
         mode,
         retainOversetPrefix:
-          (paragraph.hasNoBreak || hasAuthoredBreakCharacters(paragraph.text)) &&
+          (paragraph.hasNoBreak ||
+            paragraph.automatic?.length ||
+            hasAuthoredBreakCharacters(paragraph.text)) &&
           onlyFrame === undefined,
         maxStates: maxStates - states,
         maxCandidates: maxCandidates - candidates,

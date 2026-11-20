@@ -36,6 +36,9 @@ function paragraphShape(request, paragraph, fonts) {
   const first = spans[0];
   const logical =
     first.logicalStart + (first.kind === 'text' ? Math.max(0, start - first.start) : 0);
+  const hyphens = request.hyphenationPoints
+    ?.filter((at) => at > start && at < end)
+    .map((at) => at - start);
   const mapping = spans.map((span) => {
     const left = Math.max(start, span.start),
       right = Math.min(end, span.end);
@@ -50,7 +53,7 @@ function paragraphShape(request, paragraph, fonts) {
   return {
     start,
     logical,
-    key: JSON.stringify([request.protocol, text, settings, runs, fonts, mapping]),
+    key: JSON.stringify([request.protocol, text, settings, runs, fonts, mapping, hyphens]),
   };
 }
 

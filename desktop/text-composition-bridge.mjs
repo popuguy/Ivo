@@ -20,6 +20,7 @@ const fields = {
     'allowFallback',
     'candidates',
     'breaks',
+    'hyphenationPoints',
     'includeVectors',
   ],
   span: ['kind', 'logicalStart', 'logicalEnd', 'start', 'end'],
@@ -75,6 +76,9 @@ export function validateCompositionRequest(request) {
     (request.protocol === 1 && request.paragraphs !== undefined) ||
     (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
     (request.protocol < 3 && request.placements !== undefined) ||
+    (request.hyphenationPoints !== undefined &&
+      (request.protocol < 3 ||
+        !['planned-lines-proof', 'measure-lines-proof'].includes(request.mode))) ||
     (request.oversetStart !== undefined &&
       (request.mode !== 'planned-lines-proof' ||
         !Number.isSafeInteger(request.oversetStart) ||
@@ -108,6 +112,7 @@ export function validateCompositionRequest(request) {
     ['retainedLines', 4096, 'retainedLine'],
     ['candidates', 4096, 'candidate'],
     ['breaks', 2048, null],
+    ['hyphenationPoints', 1024, null],
   ];
   let budget = 0;
   function atom(value) {
@@ -123,11 +128,29 @@ export function validateCompositionRequest(request) {
     const value = request[name];
     if (
       value === undefined &&
-      ['candidates', 'breaks', 'paragraphs', 'placements', 'retainedLines'].includes(name)
+      [
+        'candidates',
+        'breaks',
+        'hyphenationPoints',
+        'paragraphs',
+        'placements',
+        'retainedLines',
+      ].includes(name)
     )
       continue;
     if (!Array.isArray(value) || value.length > maximum)
       throw Error('Invalid text composition ' + name + '.');
+    if (
+      name === 'hyphenationPoints' &&
+      value.some(
+        (at, i) =>
+          !Number.isSafeInteger(at) ||
+          at <= (value[i - 1] ?? 0) ||
+          at >= request.text.length ||
+          !/^[a-z]{2}$/i.test(request.text.slice(at - 1, at + 1)),
+      )
+    )
+      throw Error('Invalid automatic hyphenation boundary.');
     const retainedStarts = name === 'retainedLines' ? new Set() : null;
     for (const row of value) {
       if (!shape) atom(row);

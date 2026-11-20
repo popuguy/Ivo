@@ -452,3 +452,19 @@ test('invalid metrics, columns, opportunity ranges and unsupported geometry are 
   ])
     assert.throws(() => chooseParagraphFlow({ ...input, ...override }));
 });
+
+test('ragged single-line hyphenation zone protects whole words within half an inch', () => {
+  const options = measuredWords([60, 20, 50]);
+  options.opportunities[2].automatic = true;
+  const first = (width, align = 'left') =>
+    chooseParagraphFlow({
+      ...options,
+      columns: [{ width, height: 120 }],
+      mode: 'single-line',
+      layout: { align },
+    }).lines[0].end;
+  assert.equal(first(96), 1);
+  assert.equal(first(97), 2);
+  assert.equal(first(96, 'justify'), 2);
+  assert.equal(first(160), 3);
+});

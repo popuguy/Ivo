@@ -50,7 +50,7 @@ function opportunities(text, base, ranges, scan) {
 }
 
 /** Admission limits apply to the entire flow, including cached paragraphs. */
-export function validateParagraphSource(text, noBreakRanges = []) {
+export function validateParagraphSource(text, noBreakRanges = [], hyphenationPoints = []) {
   if (typeof text !== 'string' || !text.length || text.length > MAX_SOURCE)
     throw new UnsupportedComposition('paragraph composition beyond its bounded source budget');
   if (
@@ -67,6 +67,21 @@ export function validateParagraphSource(text, noBreakRanges = []) {
     )
   )
     throw Error('Invalid No Break source ranges.');
+  if (!Array.isArray(hyphenationPoints) || hyphenationPoints.length > MAX_POINTS)
+    throw new UnsupportedComposition('paragraph hyphenation beyond its bounded source budget');
+  const isLetter = (at) => /[a-z]/i.test(text.charAt(at));
+  if (
+    hyphenationPoints.some(
+      (at, i) =>
+        !Number.isSafeInteger(at) ||
+        at <= (hyphenationPoints[i - 1] ?? 0) ||
+        at >= text.length ||
+        !isLetter(at - 1) ||
+        !isLetter(at),
+    )
+  )
+    throw Error('Invalid automatic hyphenation boundary.');
+  let nextHyphen = 0;
   const paragraphs = [],
     scan = { index: 0 };
   let start = 0,
@@ -75,6 +90,14 @@ export function validateParagraphSource(text, noBreakRanges = []) {
   for (const match of text.matchAll(/[^\u2029]*\u2029|[^\u2029]+$/g)) {
     const content = match[0],
       points = opportunities(content, start, noBreakRanges, scan);
+    const automatic = [];
+    while (hyphenationPoints[nextHyphen] < start + content.length) {
+      const index = hyphenationPoints[nextHyphen++] - start;
+      automatic.push(index);
+      // Moderate preference for a whole-word ending at comparable line fullness.
+      points.push({ index, penalty: 4, automatic: true });
+    }
+    if (automatic.length) points.sort((a, b) => a.index - b.index);
     pointCount += points.length - 1;
     if (pointCount > MAX_POINTS)
       throw new UnsupportedComposition('paragraph composition beyond its bounded source budget');
@@ -87,7 +110,12 @@ export function validateParagraphSource(text, noBreakRanges = []) {
         );
       starts = point.mandatory ? 1 : starts + 1;
     }
-    paragraphs.push({ start, text: content, opportunities: points });
+    paragraphs.push({
+      start,
+      text: content,
+      opportunities: points,
+      ...(automatic.length ? { automatic } : {}),
+    });
     start += content.length;
   }
   return paragraphs;
@@ -120,6 +148,7 @@ function paragraphIdentity(request, paragraph) {
     frameMetrics: request.protocol >= 3,
     allowFallback: request.allowFallback,
     text: paragraph.text,
+    ...(paragraph.automatic ? { automatic: paragraph.automatic } : {}),
     ...(paragraph.hasNoBreak ? { breaks: paragraph.opportunities.map((p) => p.index) } : {}),
     ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),
     ...(paragraph.text.includes('\t')
@@ -232,7 +261,11 @@ export function createParagraphComposer(measure) {
         )
       )
         throw new UnsupportedComposition('paragraph composition across unequal column widths');
-      const paragraphs = validateParagraphSource(request.text, noBreakRanges),
+      const paragraphs = validateParagraphSource(
+          request.text,
+          noBreakRanges,
+          request.hyphenationPoints,
+        ),
         keeps = normalizeParagraphKeeps(paragraphKeeps, paragraphs.length),
         missing = new Map(),
         work = {

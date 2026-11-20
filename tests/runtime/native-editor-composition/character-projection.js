@@ -249,7 +249,7 @@ export function verifyNativeCharacterProjection() {
     '<p data-ivo-lang="fr-FR">Unsupported shaping language</p>',
     '<p data-ivo-optical="false">Unsupported optical size policy</p>',
     '<p data-ivo-dir="rtl">Unsupported direction</p>',
-    '<p data-ivo-hyphens="true">Unsupported hyphenation</p>',
+    '<p data-ivo-hyphens="true" data-ivo-lang="fr-FR">Unsupported hyphenation language</p>',
   ]) {
     let failed = false;
     try {

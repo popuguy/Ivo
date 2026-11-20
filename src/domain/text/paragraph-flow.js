@@ -222,6 +222,10 @@ export function* paragraphFlowSteps({
     maxCandidates,
     wordSpacing,
   });
+  const automaticEnds = new Set(
+    opportunities.filter((point) => point?.automatic === true).map((point) => point.index),
+  );
+
   let states = 1,
     candidates = 0,
     budget = null;
@@ -301,7 +305,23 @@ export function* paragraphFlowSteps({
             available.push(line);
           }
         }
-        if (available.length) return available;
+        if (available.length) {
+          // Single-line ragged text keeps a complete word ending within the
+          // half-inch hyphenation zone. Authored breaks remain eligible.
+          if (
+            mode === 'single-line' &&
+            !style.align.startsWith('justify') &&
+            automaticEnds.has(available[0].end)
+          ) {
+            const intact = available.find(
+              (line) =>
+                !automaticEnds.has(line.end) &&
+                line.width - (line.wordSpacing?.visibleWidth ?? line.naturalWidth) <= 36,
+            );
+            if (intact) return [intact];
+          }
+          return available;
+        }
       }
       return [];
     },

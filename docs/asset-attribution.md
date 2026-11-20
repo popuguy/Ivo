@@ -36,3 +36,7 @@ Geist variable Sans, version 1.401, is now bundled locally in `public/fonts/geis
 The 18 November publishing foundation adds unchanged Obsidian/Lucide registry geometry for layer visibility/locking, layers, text highlighting, text alignment, decorations, superscript/subscript and front/back arrangement. The same ISC/MIT notices apply; source and SVG SHA-256 identities are retained in the public fallback manifest. No proprietary InDesign artwork or font bytes are added to the public repository. User-imported fonts are original vault assets, not bundled application assets.
 
 The 18 November text-control correction maps the exact locally installed InDesign OpenType frame adornment through the ignored private reference-art pipeline. The public `opentype` alias uses the existing licensed text icon. No extracted native SVG is committed, and public builds remain reproducible without it.
+
+## American English hyphenation
+
+Ivo ships the patterns and exceptions from `hyph-en-us.tex` with their original copyright and redistribution notice in `src/domain/text/dictionaries/en-us.js`. The data works offline. [TeX hyphenation project](https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex)

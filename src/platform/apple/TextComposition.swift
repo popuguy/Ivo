@@ -164,6 +164,7 @@ public final class TextCompositionEngine {
     let resources: [FontResource]
     let frames: [Frame]
     let allowFallback: Bool
+    let hyphenationPoints: [Int]?
     let candidates: [Candidate]?
     let breaks: [Int]?
     let includeVectors: Bool?
@@ -180,6 +181,8 @@ public final class TextCompositionEngine {
     let ascent: Double
     let descent: Double
     let line: CTLine
+    let hyphen: BreakHyphen?
+    let bodyWidth: Double
     let originX: Double
   }
   func fail(_ message: String) -> NSError {
@@ -268,6 +271,19 @@ public final class TextCompositionEngine {
     var logical = 0
     var native = 0
     let string = request.text as NSString
+    if let points = request.hyphenationPoints {
+      try require(request.protocol >= 3 && ["planned-lines-proof", "measure-lines-proof"].contains(request.mode)
+        && points.count <= 1024, "Invalid automatic hyphenation request")
+      var previous = 0
+      func letter(_ unit: unichar) -> Bool {
+        (65...90).contains(unit) || (97...122).contains(unit)
+      }
+      for at in points {
+        try require(at > previous && at < length && letter(string.character(at: at - 1))
+          && letter(string.character(at: at)), "Invalid automatic hyphenation boundary")
+        previous = at
+      }
+    }
     if request.protocol >= 2 {
       guard let paragraphs = request.paragraphs else { throw fail("Missing paragraph layout") }
       try require(!paragraphs.isEmpty && paragraphs.count <= 10_000, "Invalid paragraph layout")
@@ -1013,11 +1029,43 @@ public final class TextCompositionEngine {
       NSAttributedString.Key(kCTGlyphInfoAttributeName as String), value: info, range: range)
   }
 
+  // Generated ink has no source character. Shape one dash with the preceding
+  // run's attributes and keep the searchable PDF text and insertion stops intact.
+  struct BreakHyphen {
+    let font: CTFont
+    let glyph: CGGlyph
+    let offset: CGPoint
+    let advance: CGFloat
+    let color: CGColor
+  }
+  func breakHyphen(_ source: NSAttributedString, at end: Int) throws -> BreakHyphen {
+    let attributes = source.attributes(at: end - 1, effectiveRange: nil)
+    let face = attributes[NSAttributedString.Key(kCTFontAttributeName as String)] as! CTFont
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: "-", attributes: attributes))
+    let runs = CTLineGetGlyphRuns(line) as! [CTRun]
+    guard runs.count == 1, let run = runs.first, CTRunGetGlyphCount(run) == 1
+    else { throw fail("Cannot shape a generated hyphen in the selected face") }
+    let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+    try require(CTFontCopyPostScriptName(font) == CTFontCopyPostScriptName(face),
+      "The selected face has no generated hyphen")
+    var glyph = CGGlyph()
+    var offset = CGPoint.zero
+    let one = CFRange(location: 0, length: 1)
+    CTRunGetGlyphs(run, one, &glyph)
+    CTRunGetPositions(run, one, &offset)
+    let advance = CTLineGetTypographicBounds(line, nil, nil, nil)
+    try require(glyph != 0 && advance > 0 && advance.isFinite, "Invalid generated hyphen metrics")
+    return BreakHyphen(font: font, glyph: glyph, offset: offset.applying(CTRunGetTextMatrix(run)),
+      advance: advance, color: attributes[NSAttributedString.Key(kCTForegroundColorAttributeName as String)] as! CGColor)
+  }
+
   func measureCandidates(_ request: Request, fonts: [String: CGFont]) throws -> [[String: Any]] {
     let attributed = try attributedSource(request, fonts: fonts)
     let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let string = request.text as NSString
     let candidates = request.candidates!
+    let automaticEnds = Set(request.hyphenationPoints ?? [])
+    var hyphenWidths: [Int: CGFloat] = [:]
     // Multiple candidate starts can share the same conditional ending. Keep only
     // one alternate typesetter alive and return measurements in caller order.
     let order =
@@ -1055,6 +1103,9 @@ public final class TextCompositionEngine {
         0,
         CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
           - CTLineGetTrailingWhitespaceWidth(line))
+      if automaticEnds.contains(candidate.end) && hyphenWidths[candidate.end] == nil {
+        hyphenWidths[candidate.end] = try breakHyphen(attributed, at: candidate.end).advance
+      }
       let sourceRuns = request.runs.filter { $0.start < candidate.end && $0.end > candidate.start }
       let nativeFonts = (CTLineGetGlyphRuns(line) as! [CTRun]).map {
         (CTRunGetAttributes($0) as NSDictionary)[kCTFontAttributeName] as! CTFont
@@ -1080,8 +1131,9 @@ public final class TextCompositionEngine {
         sourceRuns.map {
           ($0.leading ?? 0) > 0 ? $0.leading! : $0.size * ($0.autoLeading ?? 120) / 100
         }.max() ?? 14.4
+      let measuredWidth = width + (hyphenWidths[candidate.end] ?? 0)
       var row: [String: Any] = [
-        "start": candidate.start, "end": candidate.end, "width": width,
+        "start": candidate.start, "end": candidate.end, "width": measuredWidth,
         "ascent": Double(ascent), "descent": Double(descent), "leading": Double(leading),
         "advance": advance,
         "capHeight": character.map { Double($0.capHeight) }
@@ -1099,7 +1151,7 @@ public final class TextCompositionEngine {
         try validateWordSpaceDirection(line)
         let shape = try wordSpaceShape(
           attributed, text: string, start: candidate.start, contentEnd: end)
-        row["wordSpacing"] = wordSpaceCapacities(shape, naturalWidth: width, policy: policy)
+        row["wordSpacing"] = wordSpaceCapacities(shape, naturalWidth: measuredWidth, policy: policy)
       }
       rows[index] = row
     }
@@ -1110,6 +1162,7 @@ public final class TextCompositionEngine {
   ) {
     let canonicalString = request.text as NSString
     let base = try attributedSource(request, fonts: fonts)
+    let automaticEnds = Set(request.hyphenationPoints ?? [])
     let usesGreedyBreaks = request.placements == nil && request.breaks == nil
     if request.text.contains("\u{00AD}"),
       let ends = request.placements?.map(\.end) ?? request.breaks
@@ -1211,6 +1264,8 @@ public final class TextCompositionEngine {
         let justified =
           alignment.hasPrefix("justify")
           && (!paragraphLastLine || alignment == "justify-all")
+        let hyphen = automaticEnds.contains(end) ? try breakHyphen(base, at: end) : nil
+        let bodyArea = availableWidth - (hyphen?.advance ?? 0)
         var wordSpacingRow: [String: Any]?
         var collapsedShape: WordSpaceShape?
         var collapsedEdge: Double?
@@ -1226,17 +1281,17 @@ public final class TextCompositionEngine {
           let minimum = max(0, visibleWidth + nominal * (policy.minimum / 100 - 1))
           let condensesLast =
             alignment.hasPrefix("justify") && paragraphLastLine
-            && alignment != "justify-all" && desired > availableWidth
+            && alignment != "justify-all" && desired > bodyArea
           let adjustsToArea = justified || condensesLast
-          let target = adjustsToArea ? availableWidth : desired
+          let target = adjustsToArea ? bodyArea : desired
           if condensesLast {
             try require(
-              minimum <= availableWidth + 0.000001,
+              minimum <= bodyArea + 0.000001,
               "Final justified line exceeds its minimum word-space preference")
           }
           if nominal > 0 && adjustsToArea {
             try require(
-              visibleWidth - nominal <= availableWidth + 0.000001,
+              visibleWidth - nominal <= bodyArea + 0.000001,
               "Justified line exceeds its zero-word-space physical floor")
           }
           let percentage =
@@ -1249,11 +1304,11 @@ public final class TextCompositionEngine {
             attributed, text: canonicalString, shape: shape, percent: max(0, percentage),
             collapseTrailing: adjustsToArea, offset: indent)
           var fallback = false
-          if justified && nominal == 0 && visibleWidth > 0.000001 && visibleWidth < availableWidth,
+          if justified && nominal == 0 && visibleWidth > 0.000001 && visibleWidth < bodyArea,
             let expanded = justifyFixedPair(
               attributed, text: canonicalString, shape: shape, line: line,
-              width: visibleWidth, target: availableWidth, offset: indent)
-              ?? CTLineCreateJustifiedLine(line, 1, availableWidth)
+              width: visibleWidth, target: bodyArea, offset: indent)
+              ?? CTLineCreateJustifiedLine(line, 1, bodyArea)
           {
             // Preserve the already-qualified native single-word letter-spreading
             // fallback. This does not implement authored letter-spacing limits.
@@ -1285,8 +1340,8 @@ public final class TextCompositionEngine {
           if let collapsed = collapsedShape {
             wordSpacingRow!["collapsedTrailingStart"] = collapsed.trailingStart
           }
-        } else if justified && visibleWidth > 0 && visibleWidth < availableWidth,
-          let expanded = CTLineCreateJustifiedLine(line, 1, availableWidth)
+        } else if justified && visibleWidth > 0 && visibleWidth < bodyArea,
+          let expanded = CTLineCreateJustifiedLine(line, 1, bodyArea)
         {
           line = expanded
           width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
@@ -1297,7 +1352,12 @@ public final class TextCompositionEngine {
           ? 0.5
           : alignment == "right" || alignment == "end"
             || (alignment == "justify-right" && paragraphLastLine) ? 1 : 0
-        let originX = indent + CTLineGetPenOffsetForFlush(line, flush, availableWidth)
+        let originX = indent + CTLineGetPenOffsetForFlush(line, flush, bodyArea)
+        let bodyWidth = visibleWidth
+        if let hyphen = hyphen {
+          width += hyphen.advance
+          visibleWidth += hyphen.advance
+        }
         if contentEnd == position,
           let blank = request.runs.first(where: { $0.start <= position && $0.end > position })
         {
@@ -1409,7 +1469,7 @@ public final class TextCompositionEngine {
             positions = positions.map { $0.applying(matrix) }
           }
           let edges = Array(Set(indices + [source.location + source.length])).sorted()
-          let rows: [[String: Any]] = try (0..<n).map { i in
+          var rows: [[String: Any]] = try (0..<n).map { i in
             let a = indices[i]
             let b = edges.first(where: { $0 > a }) ?? source.location + source.length
             var row: [String: Any] = [
@@ -1436,6 +1496,23 @@ public final class TextCompositionEngine {
               }
             }
             return row
+          }
+          if let hyphen = hyphen, source.location + source.length == end {
+            let x = originX + bodyWidth + hyphen.offset.x
+            var ink: [String: Any] = [
+              "glyph": Int(hyphen.glyph), "index": end, "end": end, "generated": true,
+              "position": [x, hyphen.offset.y], "advance": [hyphen.advance, 0], "sourceRanges": [],
+            ]
+            if request.includeVectors == true {
+              let id = vectorIdentity(font: hyphen.font, glyph: hyphen.glyph, request: request)
+              guard let path = try vectorPath(font: hyphen.font, glyph: hyphen.glyph, id: id)
+              else { throw fail("Generated hyphen outline unavailable") }
+              vectors[id] = path
+              ink["vector"] = id
+            }
+            rows.append(ink)
+            glyphBudget += 1
+            try require(glyphBudget <= 100_000, "Glyph budget exceeded")
           }
           var row: [String: Any] = [
             "font": name, "size": Double(CTFontGetSize(font)),
@@ -1503,6 +1580,10 @@ public final class TextCompositionEngine {
             primary = CGFloat(edge)
             secondary = primary
           }
+          if hyphen != nil && index == end {
+            primary = visibleWidth
+            secondary = primary
+          }
           return [
             "index": index, "primary": Double(primary) + originX,
             "secondary": Double(secondary) + originX,
@@ -1512,14 +1593,14 @@ public final class TextCompositionEngine {
               : contentEnd == position
                 ? "empty-paragraph-origin"
                 : originalWordSpaceLine != nil ? "native-word-space" : "native-line",
-            "hitIndex": contentEnd == position
+            "hitIndex": hyphen != nil && index == end ? end : contentEnd == position
               ? position : CTLineGetStringIndexForPosition(line, CGPoint(x: primary, y: 0)),
           ]
         }
         frozen.append(
           FrozenLine(
             page: page, start: position, end: end, baseline: baseline, ascent: Double(ascent),
-            descent: Double(descent), line: line, originX: originX))
+            descent: Double(descent), line: line, hyphen: hyphen, bodyWidth: bodyWidth, originX: originX))
         var row: [String: Any] = [
           "frame": frame.id, "page": page, "start": position, "end": end, "contentEnd": contentEnd,
           "baseline": baseline, "ascent": Double(ascent), "descent": Double(descent),
@@ -1769,6 +1850,17 @@ public final class TextCompositionEngine {
         context.textPosition = CGPoint(
           x: margin + line.originX, y: box.height - margin - line.baseline)
         CTLineDraw(line.line, context)
+        if !invisible, let hyphen = line.hyphen,
+          let path = CTFontCreatePathForGlyph(hyphen.font, hyphen.glyph, nil)
+        {
+          context.saveGState()
+          context.translateBy(x: margin + line.originX + line.bodyWidth + hyphen.offset.x,
+            y: box.height - margin - line.baseline + hyphen.offset.y)
+          context.setFillColor(hyphen.color)
+          context.addPath(path)
+          context.fillPath()
+          context.restoreGState()
+        }
       }
       context.endPDFPage()
       try require(data.length <= 24_000_000, "Native PDF exceeds bounds")

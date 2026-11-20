@@ -379,6 +379,7 @@ function validateResult(result, request) {
   )
     throw Error('The native text result does not match its source.');
   const frames = new Map(request.frames.map((f) => [f.id, f]));
+  const automaticEnds = new Set(request.hyphenationPoints || []);
   let end = 0;
   for (const [lineIndex, line] of result.layout.lines.entries()) {
     if (
@@ -389,6 +390,22 @@ function validateResult(result, request) {
       line.end > request.text.length
     )
       throw Error('Native text lines lost their ordered source or frame identity.');
+    if (automaticEnds.size) {
+      const generated = line.runs.flatMap((run) => run.glyphs.filter((glyph) => glyph.generated));
+      if (
+        generated.length !== (automaticEnds.has(line.end) ? 1 : 0) ||
+        generated.some(
+          (glyph) =>
+            glyph.index !== line.end ||
+            glyph.end !== line.end ||
+            !Array.isArray(glyph.sourceRanges) ||
+            glyph.sourceRanges.length !== 0 ||
+            !(glyph.advance[0] > 0) ||
+            !glyph.vector,
+        )
+      )
+        throw Error('Generated hyphen ink does not match its source boundary.');
+    }
     if (request.protocol >= 4) {
       const validInk = (value) =>
         [value.inkAscent, value.inkDescent].every(
@@ -517,7 +534,7 @@ const same = (a, b) => a.length === b.length && a.every((value, i) => value === 
 function selectParagraphPlan(required, source) {
   if (!required && !hasAuthoredBreakCharacters(source.text)) return false;
   try {
-    validateParagraphSource(source.text, source.noBreakRanges);
+    validateParagraphSource(source.text, source.noBreakRanges, source.hyphenationPoints);
     return true;
   } catch (error) {
     // Keep the existing native single-line route when an incidental pasted
@@ -548,6 +565,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     required =
       flow.composition?.composer === 'paragraph' ||
       wrapped ||
+      source.paragraphs.some((p) => p.hyphenate) ||
       hasKeeps(source) ||
       source.noBreakRanges?.length ||
       source.protocol === 5,
@@ -686,6 +704,7 @@ export async function composeNativeTextFlows(
         logicalLength: source.logicalLength,
         text: source.text,
         spans: source.spans,
+        ...(source.hyphenationPoints ? { hyphenationPoints: source.hyphenationPoints } : {}),
         runs: source.runs.map(
           ({
             start,
