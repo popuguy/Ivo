@@ -4,26 +4,15 @@ export const CHARACTER_MENUS = Object.freeze([
     commands: {
       'em-dash': { label: 'Em Dash', inputType: 'insertText', text: '\u2014' },
       'en-dash': { label: 'En Dash', inputType: 'insertText', text: '\u2013' },
-      'nonbreaking-hyphen': {
-        label: 'Nonbreaking Hyphen',
-        inputType: 'insertText',
-        text: '\u2011',
-      },
       'discretionary-hyphen': {
         label: 'Discretionary Hyphen',
         inputType: 'insertText',
         text: '\u00ad',
       },
-    },
-  },
-  {
-    path: ['Insert Break Character'],
-    commands: {
-      'forced-line-break': { label: 'Forced Line Break', inputType: 'insertLineBreak', text: '' },
-      'discretionary-line-break': {
-        label: 'Discretionary Line Break',
+      'nonbreaking-hyphen': {
+        label: 'Nonbreaking Hyphen',
         inputType: 'insertText',
-        text: '\u200b',
+        text: '\u2011',
       },
     },
   },
@@ -35,6 +24,17 @@ export const CHARACTER_MENUS = Object.freeze([
         label: 'Nonbreaking Space (Fixed Width)',
         inputType: 'insertText',
         text: '\u202f',
+      },
+    },
+  },
+  {
+    path: ['Insert Break Character'],
+    commands: {
+      'forced-line-break': { label: 'Forced Line Break', inputType: 'insertLineBreak', text: '' },
+      'discretionary-line-break': {
+        label: 'Discretionary Line Break',
+        inputType: 'insertText',
+        text: '\u200b',
       },
     },
   },
