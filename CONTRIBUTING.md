@@ -35,6 +35,8 @@ Use Git throughout the remainder of the project, as requested on 17 November 202
 
 Inspect the working tree and branch before starting. Use feature branches for substantial work, preserve unrelated edits, and commit completed, verified milestones during each implementation pass. Review the staged diff and run the relevant checks. Keep the existing GitHub origin in sync with ordinary pushes, preserving remote changes and published history. Report the commit, validation and any remaining local work at handoff. An explicit request to leave work uncommitted takes precedence.
 
+GitHub checks Markdown formatting and patch whitespace for changes confined to the three root guides and Markdown under `docs/`. Feature branches are compared with their common ancestor on the default branch. Other changes run the shared engine, native storage, iOS build and desktop editor checks. A push of the same commit can reuse a successful run with all four jobs. Its check summary links to the evidence. If verification history is unavailable, GitHub runs all four. Use **Run workflow** on Check Ivo to request a fresh full run.
+
 File archives are supplemental recovery checkpoints. Keep extracted proprietary artifacts, personal vault data, credentials, dependencies and generated release trees outside Git. Include licensed public assets and their notices. [AGENTS.md](AGENTS.md) carries this workflow into future coding sessions.
 
 ## Commands
