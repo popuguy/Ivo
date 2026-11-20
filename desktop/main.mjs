@@ -1243,14 +1243,16 @@ function sendCommand(name) {
   record.window.webContents.send('ivo:command', name);
 }
 function characterMenuItems(contextMenu) {
-  return Object.entries(CHARACTER_MENUS).map(([label, commands]) => ({
-    label,
-    submenu: Object.entries(commands).map(([name, item]) => ({
+  return CHARACTER_MENUS.map(({ path, commands }) => {
+    const items = Object.entries(commands).map(([name, item]) => ({
       label: item.label,
-      ...(contextMenu ? {} : { id: 'type-' + name, enabled: false }),
+      ...(contextMenu
+        ? {}
+        : { id: 'type-' + name, enabled: false, accelerator: NATIVE_TEXT_ACCELERATORS[name] }),
       click: () => sendTextCommand(name),
-    })),
-  }));
+    }));
+    return path.reduceRight((submenu, label) => [{ label, submenu }], items)[0];
+  });
 }
 function sendTextCommand(name) {
   const record = activeRecord(),

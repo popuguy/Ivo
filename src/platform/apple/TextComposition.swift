@@ -981,11 +981,62 @@ public final class TextCompositionEngine {
         CTRunGetStatus($0).contains(.rightToLeft)
       }, "Explicit word spacing requires qualified left-to-right shaping")
   }
+  // Core Text normally suppresses the soft hyphen. A glyph override on the authored
+  // character supplies ink while preserving its UTF-16 identity for carets and PDF.
+  func discretionaryBreak(_ text: NSString, at end: Int) -> Bool {
+    guard end >= 2, end < text.length, text.character(at: end - 1) == 0xAD else { return false }
+    func boundary(_ unit: unichar) -> Bool {
+      if [0x2D, 0x200B, 0x2010, 0x2011, 0x2013, 0x2014, 0xFEFF].contains(unit) { return true }
+      return UnicodeScalar(unit).map { CharacterSet.whitespacesAndNewlines.contains($0) } ?? false
+    }
+    let following = text.character(at: end)
+    guard following != 0xAD && !boundary(following) else { return false }
+    // Only the final soft marker in a run can print. A literal dash already
+    // supplies the ink, so a following soft marker stays silent.
+    var before = end - 2
+    while before >= 0 && text.character(at: before) == 0xAD { before -= 1 }
+    return before >= 0 && !boundary(text.character(at: before))
+  }
+
+  func showDiscretionaryHyphen(_ text: NSMutableAttributedString, at end: Int) throws {
+    let range = NSRange(location: end - 1, length: 1)
+    let font =
+      text.attribute(
+        NSAttributedString.Key(kCTFontAttributeName as String),
+        at: range.location, effectiveRange: nil) as! CTFont
+    var character: UniChar = 0x2D
+    var glyph: CGGlyph = 0
+    guard CTFontGetGlyphsForCharacters(font, &character, &glyph, 1),
+      let info = CTGlyphInfoCreateWithGlyph(glyph, font, "\u{00AD}" as CFString)
+    else { throw fail("The selected face has no discretionary hyphen glyph") }
+    text.addAttribute(
+      NSAttributedString.Key(kCTGlyphInfoAttributeName as String), value: info, range: range)
+  }
+
   func measureCandidates(_ request: Request, fonts: [String: CGFont]) throws -> [[String: Any]] {
     let attributed = try attributedSource(request, fonts: fonts)
     let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let string = request.text as NSString
-    return try request.candidates!.map { candidate in
+    let candidates = request.candidates!
+    // Multiple candidate starts can share the same conditional ending. Keep only
+    // one alternate typesetter alive and return measurements in caller order.
+    let order =
+      request.text.contains("\u{00AD}")
+      ? candidates.indices.sorted { candidates[$0].end < candidates[$1].end }
+      : Array(candidates.indices)
+    var alternate: (end: Int, typesetter: CTTypesetter)?
+    var rows = Array(repeating: [String: Any](), count: candidates.count)
+    for index in order {
+      let candidate = candidates[index]
+      var lineTypesetter = typesetter
+      if candidate.end - candidate.start >= 2 && discretionaryBreak(string, at: candidate.end) {
+        if alternate?.end != candidate.end {
+          let copy = NSMutableAttributedString(attributedString: attributed)
+          try showDiscretionaryHyphen(copy, at: candidate.end)
+          alternate = (candidate.end, CTTypesetterCreateWithAttributedString(copy))
+        }
+        lineTypesetter = alternate!.typesetter
+      }
       var end = candidate.end
       while end > candidate.start
         && [10, 13, 0x2028, 0x2029].contains(Int(string.character(at: end - 1)))
@@ -993,7 +1044,7 @@ public final class TextCompositionEngine {
       let line =
         end > candidate.start
         ? CTTypesetterCreateLineWithOffset(
-          typesetter, CFRange(location: candidate.start, length: end - candidate.start),
+          lineTypesetter, CFRange(location: candidate.start, length: end - candidate.start),
           candidate.offset ?? 0)
         : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
       try validateFallback(line, request: request)
@@ -1050,16 +1101,30 @@ public final class TextCompositionEngine {
           attributed, text: string, start: candidate.start, contentEnd: end)
         row["wordSpacing"] = wordSpaceCapacities(shape, naturalWidth: width, policy: policy)
       }
-      return row
+      rows[index] = row
     }
+    return rows
   }
   func compose(_ request: Request, fonts: [String: CGFont]) throws -> (
     [FrozenLine], [[String: Any]], [String], [[String: String]]
   ) {
     let canonicalString = request.text as NSString
-    let attributed = try attributedSource(request, fonts: fonts)
-    let typesetter = CTTypesetterCreateWithAttributedString(attributed)
-    let textLength = attributed.length
+    let base = try attributedSource(request, fonts: fonts)
+    let usesGreedyBreaks = request.placements == nil && request.breaks == nil
+    if request.text.contains("\u{00AD}"),
+      let ends = request.placements?.map(\.end) ?? request.breaks
+    {
+      var start = 0
+      for end in ends {
+        if end - start >= 2 && discretionaryBreak(canonicalString, at: end) {
+          try showDiscretionaryHyphen(base, at: end)
+        }
+        start = end
+      }
+    }
+    let typesetter = CTTypesetterCreateWithAttributedString(base)
+    let textLength = base.length
+    let nativeString = base.string as NSString
     let boundaries = graphemeBoundaries(request.text)
     var vectors: [String: String] = [:]
     var glyphBudget = 0
@@ -1104,16 +1169,37 @@ public final class TextCompositionEngine {
           count = (boundaries.first(where: { $0 > position }) ?? textLength) - position
           diagnostics.insert("unbreakable-cluster-overflow")
         }
-        let end = min(textLength, position + count)
+        var end = min(textLength, position + count)
+        var attributed = base
+        var lineTypesetter = typesetter
+        // Long single-line flows use Core Text's streaming fitter. Its first
+        // suggestion measures a silent marker. Refit with the chosen glyph's
+        // actual advance before accepting that break in a tight column.
+        while usesGreedyBreaks && end - position >= 2
+          && discretionaryBreak(canonicalString, at: end)
+        {
+          let copy = NSMutableAttributedString(attributedString: base)
+          try showDiscretionaryHyphen(copy, at: end)
+          let alternate = CTTypesetterCreateWithAttributedString(copy)
+          let revised = CTTypesetterSuggestLineBreakWithOffset(
+            alternate, position, availableWidth, indent)
+          if revised >= end - position {
+            attributed = copy
+            lineTypesetter = alternate
+            break
+          }
+          end =
+            revised > 0
+            ? position + revised : (boundaries.first(where: { $0 > position }) ?? textLength)
+        }
         var contentEnd = end
-        let nativeString = attributed.string as NSString
         while contentEnd > position
           && [10, 13, 0x2028].contains(Int(nativeString.character(at: contentEnd - 1)))
         { contentEnd -= 1 }
         var line =
           contentEnd > position
           ? CTTypesetterCreateLineWithOffset(
-            typesetter, CFRange(location: position, length: contentEnd - position), indent)
+            lineTypesetter, CFRange(location: position, length: contentEnd - position), indent)
           : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
         var ascent = CGFloat.zero
         var descent = CGFloat.zero

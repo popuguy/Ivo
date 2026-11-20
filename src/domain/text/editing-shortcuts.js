@@ -27,6 +27,8 @@ export function typeShortcut(event, platform) {
     return { field: 'fontSize', delta: -step };
   if (key === '.' || key === '>' || event.code === 'Period')
     return { field: 'fontSize', delta: step };
+  if (!event.altKey && (key === '-' || key === '_' || event.code === 'Minus'))
+    return { command: 'discretionary-hyphen' };
   if (event.altKey)
     return key === 'a' || event.code === 'KeyA' ? { field: 'leading', value: 0 } : null;
   if (key === 'h' || key === 'k')

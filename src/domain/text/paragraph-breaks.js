@@ -1,3 +1,7 @@
+/** Source characters whose authored break or binding must survive fitting into unequal frames. */
+export const hasAuthoredBreakCharacters = (text) =>
+  /[-\u00ad\u00a0\u200b\u2010\u2011\u2013\u2014\u202f]/u.test(text);
+
 /**
  * An owned, bounded paragraph decision over externally measured line alternatives.
  * Policy v1 is ragged-right quadratic fitting, not an InDesign composer claim.

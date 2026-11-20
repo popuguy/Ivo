@@ -1,3 +1,4 @@
+import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
 import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-flow.js';
 import { UnsupportedComposition } from './composition-source.js';
@@ -81,7 +82,7 @@ export async function fitFrameParagraphs(
         previousAfter,
         mode,
         retainOversetPrefix:
-          (paragraph.hasNoBreak || /[\u200b\u00a0\u202f]/u.test(paragraph.text)) &&
+          (paragraph.hasNoBreak || hasAuthoredBreakCharacters(paragraph.text)) &&
           onlyFrame === undefined,
         maxStates: maxStates - states,
         maxCandidates: maxCandidates - candidates,

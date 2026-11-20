@@ -1,23 +1,46 @@
-export const CHARACTER_MENUS = Object.freeze({
-  'Insert Break Character': {
-    'forced-line-break': { label: 'Forced Line Break', inputType: 'insertLineBreak', text: '' },
-    'discretionary-line-break': {
-      label: 'Discretionary Line Break',
-      inputType: 'insertText',
-      text: '\u200b',
+export const CHARACTER_MENUS = Object.freeze([
+  {
+    path: ['Insert Special Character', 'Hyphens and Dashes'],
+    commands: {
+      'em-dash': { label: 'Em Dash', inputType: 'insertText', text: '\u2014' },
+      'en-dash': { label: 'En Dash', inputType: 'insertText', text: '\u2013' },
+      'nonbreaking-hyphen': {
+        label: 'Nonbreaking Hyphen',
+        inputType: 'insertText',
+        text: '\u2011',
+      },
+      'discretionary-hyphen': {
+        label: 'Discretionary Hyphen',
+        inputType: 'insertText',
+        text: '\u00ad',
+      },
     },
   },
-  'Insert White Space': {
-    'nonbreaking-space': { label: 'Nonbreaking Space', inputType: 'insertText', text: '\u00a0' },
-    'fixed-nonbreaking-space': {
-      label: 'Nonbreaking Space (Fixed Width)',
-      inputType: 'insertText',
-      text: '\u202f',
+  {
+    path: ['Insert Break Character'],
+    commands: {
+      'forced-line-break': { label: 'Forced Line Break', inputType: 'insertLineBreak', text: '' },
+      'discretionary-line-break': {
+        label: 'Discretionary Line Break',
+        inputType: 'insertText',
+        text: '\u200b',
+      },
     },
   },
-});
+  {
+    path: ['Insert White Space'],
+    commands: {
+      'nonbreaking-space': { label: 'Nonbreaking Space', inputType: 'insertText', text: '\u00a0' },
+      'fixed-nonbreaking-space': {
+        label: 'Nonbreaking Space (Fixed Width)',
+        inputType: 'insertText',
+        text: '\u202f',
+      },
+    },
+  },
+]);
 export const INSERT_CHARACTERS = Object.freeze(
-  Object.assign({}, ...Object.values(CHARACTER_MENUS)),
+  Object.assign({}, ...CHARACTER_MENUS.map((group) => group.commands)),
 );
 export const NATIVE_TEXT_COMMANDS = Object.freeze([
   'bold',
@@ -35,6 +58,7 @@ export function textCommandEnabled(name, state) {
 }
 export const NATIVE_TEXT_ACCELERATORS = Object.freeze({
   'keep-options': 'CmdOrCtrl+Alt+K',
+  'discretionary-hyphen': 'CmdOrCtrl+Shift+-',
   bold: 'CmdOrCtrl+B',
   italic: 'CmdOrCtrl+I',
   underline: 'CmdOrCtrl+Shift+U',

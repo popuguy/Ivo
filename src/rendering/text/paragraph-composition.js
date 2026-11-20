@@ -22,13 +22,26 @@ const MAX_POINTS = 1024,
 
 function opportunities(text, base, ranges, scan) {
   const points = [{ index: 0 }];
-  for (const match of text.matchAll(/[ \t]+|\u200b|\r\n|[\n\r\u2028\u2029]/g)) {
+  const wordBoundary = /[\s\u200b\u2011]/u;
+  for (const match of text.matchAll(
+    /[ \t]+|\u200b|[-\u00ad\u2010\u2013\u2014]+|\r\n|[\n\r\u2028\u2029]/g,
+  )) {
     const index = match.index + match[0].length,
-      space = base + index - 1;
-    while (scan.index < ranges.length && ranges[scan.index].end <= space) scan.index++;
+      hyphen = /[-\u00ad\u2010\u2013\u2014]/u.test(match[0]);
+    if (
+      hyphen &&
+      (!match.index ||
+        index === text.length ||
+        wordBoundary.test(text[match.index - 1]) ||
+        wordBoundary.test(text[index]))
+    )
+      continue;
+    // A hyphen or dash takes its break permission from the following character.
+    const owner = base + index - (hyphen ? 0 : 1);
+    while (scan.index < ranges.length && ranges[scan.index].end <= owner) scan.index++;
     const mandatory = /[\n\r\u2028\u2029]/.test(match[0]);
     // The space owns its break. Protecting a trailing space binds the next word.
-    if (!mandatory && ranges[scan.index]?.start <= space && index < text.length) continue;
+    if (!mandatory && ranges[scan.index]?.start <= owner && index < text.length) continue;
     points.push({ index, mandatory });
   }
   if (points.at(-1).index !== text.length) points.push({ index: text.length });

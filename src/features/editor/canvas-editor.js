@@ -3710,6 +3710,7 @@ export function mountCanvasEditor(host, options) {
     const typeAction = typeShortcut(event, navigator.platform);
     if (
       typeAction &&
+      (!typeAction.command || focusedText?.contains(event.target)) &&
       !event.defaultPrevented &&
       options.editing &&
       (focusedText?.contains(event.target) ||
@@ -3719,6 +3720,10 @@ export function mountCanvasEditor(host, options) {
       ['text', 'quote'].includes(object()?.type)
     ) {
       event.preventDefault();
+      if (typeAction.command) {
+        command(typeAction.command);
+        return;
+      }
       const { field, delta, toggle, value } = typeAction;
       if (delta) {
         const base = effectiveTextStyle(doc(), frameTextSettings(doc(), object())).fontSize ?? 16;

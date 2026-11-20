@@ -1,3 +1,4 @@
+import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { compositionSource, UnsupportedComposition } from './composition-source.js';
 import { composedSVG } from './composed-svg.js';
 import { createParagraphComposer, validateParagraphSource } from './paragraph-composition.js';
@@ -514,7 +515,7 @@ const assetSignature = (assets) =>
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
 function selectParagraphPlan(required, source) {
-  if (!required && !/[\u200b\u00a0\u202f]/u.test(source.text)) return false;
+  if (!required && !hasAuthoredBreakCharacters(source.text)) return false;
   try {
     validateParagraphSource(source.text, source.noBreakRanges);
     return true;
