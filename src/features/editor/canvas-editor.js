@@ -115,6 +115,7 @@ import {
 import { setTextAttribute } from '../../shared/dom/text-attributes.js';
 import { installTooltips } from '../../shared/ui/tooltips.js';
 import { installDocumentPreviews } from '../links/previews.js';
+import { updateLayerObjectLocks } from './ui/pages-and-layers.js';
 import { installWorkspacePanels } from './ui/panels.js';
 import { applyPageCamera } from '../../rendering/page-camera.js';
 import { icon as svg, cursor, installReferenceCursors } from '../../shared/ui/icons.js';
@@ -237,6 +238,7 @@ export function mountCanvasEditor(host, options) {
     inputAnchor,
     compositionNotice;
   let nativePlan = { fragments: new Map(), status: new Map() },
+    typingPreview = null,
     nativePlanKey = '',
     nativeError = '';
   const compositionWaiters = [];
@@ -381,6 +383,7 @@ export function mountCanvasEditor(host, options) {
     allowed: () => !busy && !composing && !dialogOpen(),
     initialState: options.panelLayout,
     openExternal: globalThis.ivoNative?.palettes?.open,
+    dragExternal: globalThis.ivoNative?.palettes?.drag,
     splitSurface: options.parentMode ? null : options.splitPanelSurface,
     onCommand: (name) => command(name),
     wrapOptionsShown: () => state.propertyDisclosures?.wrapPanel !== false,
@@ -590,6 +593,16 @@ export function mountCanvasEditor(host, options) {
     button.dataset.tooltip = button.getAttribute('aria-label');
     // Nested masks and children inherit a parent's or layer's editability.
     const blocks = new Map(doc().blocks.map((item) => [item.id, item]));
+    const branch = button.closest('[data-object-branch],[data-layer-row]');
+    if (branch) {
+      branch.dataset.membersLocked = String(!!target.locked);
+      updateLayerObjectLocks(
+        layer ? branch.closest('.layer-tree') : branch,
+        blocks,
+        doc(),
+        options.editing,
+      );
+    }
     for (const node of world.querySelectorAll('[data-object]')) {
       const item = blocks.get(node.dataset.object);
       if (item) node.style.pointerEvents = objectAvailable(doc(), item) ? '' : 'none';
@@ -1082,9 +1095,10 @@ export function mountCanvasEditor(host, options) {
     }
   }
 
-  function updateFlowPlan() {
+  function updateFlowPlan(typingFlow) {
     const key = flowLayoutKey();
     if (key === flowSignature) return false;
+    if (typingPreview?.flow !== typingFlow) typingPreview = null;
     flowPlan = layoutDocumentTextFlows(doc(), { allowPages: canWrite() });
     for (const flow of doc().textFlows || [])
       if (flow.composition) {
@@ -1099,13 +1113,14 @@ export function mountCanvasEditor(host, options) {
       nativeSession?.request(doc(), {
         assets: options.assets?.() || options.fonts?.() || [],
         allowPages: canWrite(),
+        typingFlow,
       });
     else if (compositionNotice) compositionNotice.hidden = true;
     flowPreviewDirty = true;
     return true;
   }
-  function refreshFlowPreview() {
-    updateFlowPlan();
+  function refreshFlowPreview(typingFlow) {
+    updateFlowPlan(typingFlow);
     if (!flowPreviewDirty) return;
     flowPreviewDirty = false;
     const ids = new Set(doc().pages.map((p) => p.id)),
@@ -1131,12 +1146,28 @@ export function mountCanvasEditor(host, options) {
         height: p.height + 'px',
       });
     }
+    // Look up new/replaced nodes in one pass. During typing the mounted frames
+    // already have references; querying the SVG tree once per frame is costly.
+    let mountedFrames;
     for (const item of frames) {
-      const element = world.querySelector(`[data-flow-frame="${CSS.escape(item.id)}"]`);
+      const cached = flowRenderCache.get(item.id);
+      let element = cached?.element;
+      if (!element || !world.contains(element)) {
+        mountedFrames ??= new Map(
+          Array.from(world.querySelectorAll('[data-flow-frame]'), (el) => [
+            el.dataset.flowFrame,
+            el,
+          ]),
+        );
+        element = mountedFrames.get(item.id);
+      }
       if (!element) continue;
-      const part = flowPlan.fragments.get(item.id),
-        sourceHTML = part?.html || '',
-        cached = flowRenderCache.get(item.id);
+      // Intermediate native ink is visual only. Hit testing, text navigation,
+      // continuation ownership and save still use the current, accepted plan.
+      const part =
+          (typingPreview?.flow === item.textFlowId && typingPreview.fragments.get(item.id)) ||
+          flowPlan.fragments.get(item.id),
+        sourceHTML = part?.html || '';
       element.toggleAttribute('data-native-flow', !!textFlowForFrame(doc(), item)?.composition);
       if (
         cached?.element === element &&
@@ -1364,7 +1395,11 @@ export function mountCanvasEditor(host, options) {
     const pane = host.querySelector('.canvas-input-world'),
       element = pane.querySelector('.canvas-flow-input');
     pane.hidden = false;
-    if (element.dataset.textFlow !== textFlow.id || flowInputHTML(element) !== textFlow.html)
+    if (
+      element.dataset.textFlow !== textFlow.id ||
+      element.classList.contains('native-composition-input') !== !!textFlow.composition ||
+      flowInputHTML(element) !== textFlow.html
+    )
       element.innerHTML = cleanHTML(textFlow.html);
     element.dataset.textFlow = textFlow.id;
     element.dataset.sceneText = item.id;
@@ -1452,18 +1487,22 @@ export function mountCanvasEditor(host, options) {
       ? host.querySelector(`[data-scene-text="${CSS.escape(activeTextId)}"]`)
       : null;
   }
-  function captureView() {
+  function currentTextSelection() {
     const element = activeText(),
       selection =
         element && document.activeElement === element && captureOwnedTextSelection(element);
+    return (
+      selection || (savedTextSelection?.id === activeTextId ? savedTextSelection.bookmark : null)
+    );
+  }
+  function captureView() {
     return {
       selection: state.selection.slice(),
       activePage: state.activePage,
       inside: state.inside,
       tool: state.tool,
       activeTextId,
-      textSelection:
-        selection || (savedTextSelection?.id === activeTextId ? savedTextSelection.bookmark : null),
+      textSelection: currentTextSelection(),
       pendingMarks: structuredClone(pendingMarks),
     };
   }
@@ -1504,7 +1543,12 @@ export function mountCanvasEditor(host, options) {
       writeText(item, element.innerHTML, element);
       if (!composing) applyNamedTextStyles(element, doc());
       if (textFlow && !composing) {
-        refreshFlowPreview();
+        const typingFlow =
+          textFlow.composition &&
+          ['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(inputType)
+            ? textFlow.id
+            : undefined;
+        refreshFlowPreview(typingFlow);
         followTextFlowCaret();
       }
       if (item) measureText(item, element);
@@ -4317,9 +4361,17 @@ export function mountCanvasEditor(host, options) {
       return composeNativeTextFlows(snapshot, {
         ...settings,
         compose: options.textComposition.compose,
+        editorSession: nativeSession,
       });
     },
+    onTypingPreview: (plan, flowId) => {
+      if (plan.changed || !ownsInput() || !canWrite() || sourceTextFlow()?.id !== flowId) return;
+      typingPreview = { flow: flowId, fragments: plan.fragments };
+      flowPreviewDirty = true;
+      refreshFlowPreview(flowId);
+    },
     onResult: (plan, snapshot) => {
+      typingPreview = null;
       nativeError = '';
       compositionNotice.hidden = true;
       delete editor.dataset.compositionError;
@@ -4345,6 +4397,11 @@ export function mountCanvasEditor(host, options) {
       flowSelection?.sync();
     },
     onError: (error) => {
+      if (typingPreview) {
+        typingPreview = null;
+        flowPreviewDirty = true;
+        refreshFlowPreview();
+      }
       editor.dataset.compositionError = error.message;
       if (nativeError !== error.message)
         options.onNotify?.('Text is saved; composition paused. ' + error.message);
@@ -4495,16 +4552,16 @@ export function mountCanvasEditor(host, options) {
       )
         return null;
       const flow = textFlowForFrame(doc(), item),
-        view = captureView();
+        selection = currentTextSelection();
       return JSON.stringify([
         doc().id,
         doc().version,
         item.id,
         flow?.id || null,
-        view.textSelection?.anchor.index ?? null,
-        view.textSelection?.focus.index ?? null,
-        view.textSelection?.anchor.affinity || null,
-        view.textSelection?.focus.affinity || null,
+        selection?.anchor.index ?? null,
+        selection?.focus.index ?? null,
+        selection?.anchor.affinity || null,
+        selection?.focus.affinity || null,
       ]);
     },
     refreshFonts() {
@@ -4530,12 +4587,17 @@ export function mountCanvasEditor(host, options) {
       if (!alive || !workspacePanels.setExternal(kinds)) return;
       renderPanel({ visibleOnly: true });
     },
-    paletteSurface(kind) {
+    dockPaletteAt(value) {
+      if (!alive || (value.action !== 'clear' && (!ownsInput() || host.closest('[inert]'))))
+        return false;
+      return workspacePanels.dockPaletteAt(value);
+    },
+    paletteContext() {
       if (!alive || !ownsInput() || host.closest('[inert]') || busy || composing || dialogOpen())
         return null;
-      const view = captureView();
+      const selection = currentTextSelection();
       return {
-        content: workspacePanels.entries().find((entry) => entry.kind === kind)?.content,
+        entries: workspacePanels.entries(),
         title: doc().title,
         scope: JSON.stringify([
           options.sessionId,
@@ -4545,9 +4607,9 @@ export function mountCanvasEditor(host, options) {
           state.activePage,
           state.selection,
           state.activeLayer,
-          view.activeTextId,
-          view.textSelection?.anchor?.index,
-          view.textSelection?.focus?.index,
+          activeTextId,
+          selection?.anchor?.index,
+          selection?.focus?.index,
         ]),
       };
     },

@@ -44,12 +44,12 @@ export function applySceneTypography(root, doc) {
   const composedFlows = new Set(
     (doc.textFlows || []).filter((flow) => flow.composition).map((flow) => flow.id),
   );
-  for (const item of doc.blocks) {
-    if (item.type !== 'text' && item.type !== 'quote') continue;
-    const element = root.querySelector(
-      `[data-scene-text="${CSS.escape(item.id)}"],[data-flow-frame="${CSS.escape(item.id)}"]`,
-    );
-    if (element) {
+  const items = new Map(doc.blocks.map((item) => [item.id, item]));
+  // Each SVG may contain thousands of glyphs. Scan the surface once for all
+  // its text frames, including in a frozen PDF page or a nested clipping group.
+  for (const element of root.querySelectorAll('[data-scene-text],[data-flow-frame]')) {
+    const item = items.get(element.dataset.sceneText || element.dataset.flowFrame);
+    if (item && (item.type === 'text' || item.type === 'quote')) {
       const settings = effectiveTextStyle(doc, frameTextSettings(doc, item));
       if (composedFlows.has(item.textFlowId)) {
         const key = JSON.stringify([settings, item.textScale, item.frameOptions, item.textKind]);

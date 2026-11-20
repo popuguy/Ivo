@@ -6,43 +6,67 @@ body.palette-window {
 }
 .palette-window .palette-surface,
 .palette-window .context-panel-group {
-  position: static;
+  position: relative;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
   border: 0;
 }
-.palette-window .context-panel-group > header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 7px;
-  min-height: 25px;
-  color: var(--panel-muted);
-  background: var(--panel-tab);
-  border-bottom: 1px solid var(--panel-line);
-  font: 11px/1.3 var(--interface-font);
+.palette-window .context-panel-group {
+  border: 1px solid var(--panel-control-border);
 }
-.palette-window [data-palette-context] {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.palette-window [data-palette-dock] {
-  font: inherit;
-  color: var(--panel-ink);
-  background: none;
-  border: 0;
-  border-radius: 3px;
-  padding: 3px 6px;
+.palette-window [data-palette-handle] {
+  touch-action: none;
+  user-select: none;
+  -webkit-app-region: no-drag;
   cursor: default;
 }
-.palette-window [data-palette-dock]:hover {
+.palette-window .canvas-panel-microbar {
+  display: flex;
+  flex: 0 0 13px;
+  align-items: center;
+  box-sizing: border-box;
+}
+.palette-window .context-panel-header {
+  height: 27px;
+}
+.palette-window .palette-title {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding-inline: 8px;
+  background: var(--panel-bg);
+  border-inline-end: 1px solid var(--panel-line);
+  font: 600 12px/18px var(--interface-font);
+}
+.palette-window [data-palette-menu] {
+  width: 25px;
+  padding: 0 5px;
+  border: 0;
+  color: var(--panel-muted);
+  background: transparent;
+}
+.palette-window [data-palette-menu] .reference-icon {
+  width: 13px;
+  height: 13px;
+}
+.palette-window [data-palette-menu]:hover,
+.palette-window .canvas-panel-microbar button:hover {
   background: var(--panel-hover);
+}
+.palette-window [data-palette-collapse][aria-expanded='true'] img {
+  transform: rotate(180deg);
+}
+.palette-context {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .palette-window .canvas-panel-content {
   flex: 1;

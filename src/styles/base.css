@@ -2161,7 +2161,6 @@ dialog .dialog-close {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #f0f1f3;
 }
 .canvas-image-frame img {
   display: block;

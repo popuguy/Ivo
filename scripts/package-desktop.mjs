@@ -3,7 +3,9 @@ import path from 'node:path';
 import { buildNativeFonts } from './build-native-fonts.mjs';
 import { buildNativeText } from './build-native-text.mjs';
 import { packager } from '@electron/packager';
+import { qualifyDesktopInput } from './qualify-desktop-input.mjs';
 await Promise.all([buildNativeFonts(), buildNativeText()]);
+await qualifyDesktopInput();
 const outputs = await packager({
   asar: { unpack: '**/desktop/native/bin/ivo-*' },
   electronZipDir: process.env.IVO_ELECTRON_ZIP_DIR || undefined,

@@ -79,3 +79,14 @@ jobs:
           node-version: '24'
       - run: npm ci
       - run: npm run test:runtime
+      - name: Qualify desktop input
+        run: npm run test:release-input
+        env:
+          IVO_LATENCY_REPORT_DIR: ${{ runner.temp }}/ivo-input
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-input-timings
+          path: ${{ runner.temp }}/ivo-input/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -2,6 +2,7 @@ import { createSceneDocument, insertObject } from '../../../src/domain/documents
 import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
 import { prepareTextFlowFonts } from '../../../src/rendering/text/flow-layout.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
+import { verifyPalettePublication } from './palette-publication.js';
 const assert = (value, message) => {
     if (!value) throw new Error(message);
   },
@@ -16,6 +17,7 @@ async function keyboard(name) {
   throw new Error('Trusted keyboard delivery timed out: ' + name);
 }
 try {
+  await verifyPalettePublication(assert);
   localStorage.removeItem('ivo:workspace-panels:1');
   await prepareTextFlowFonts();
   const doc = createSceneDocument('Workspace'),

@@ -163,6 +163,140 @@ async function edit(window, text) {
     'Canonical text commit',
   );
 }
+async function verifyPaletteDrag(window, palettes) {
+  const frame = window.getBounds();
+  const panel = '.workspace-view.active .scene-editor [data-canvas-panel="layers"]';
+  const tab = '.workspace-view.active .scene-editor [data-canvas-panel="pages"]';
+  const center = (win, selector) =>
+    execute(
+      win,
+      `(() => {
+    const rect = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
+    return rect?.width && rect?.height && { x: Math.round(rect.left + rect.width/2), y: Math.round(rect.top + rect.height/2) };
+  })()`,
+    );
+  const mouse = (win, type, p) =>
+    win.webContents.sendInputEvent({
+      type,
+      x: Math.round(p.x),
+      y: Math.round(p.y),
+      globalX: Math.round(win.getContentBounds().x + p.x),
+      globalY: Math.round(win.getContentBounds().y + p.y),
+      button: 'left',
+      clickCount: 1,
+      modifiers: type === 'mouseUp' ? [] : ['leftButtonDown'],
+    });
+  await focus(window);
+  window.setBounds({ ...frame, width: 820 });
+  window.webContents.send('ivo:command', 'show-panel-layers');
+  await wait(
+    () =>
+      execute(
+        window,
+        "document.querySelector('.workspace-view.active .scene-editor')?.classList.contains('show-properties') && innerWidth < 900",
+      ),
+    'Narrow layout resized',
+  );
+  await execute(
+    window,
+    'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const source = await wait(() => center(window, panel), 'Narrow layout revealed Layers');
+  const viewport = await center(window, '.workspace-view.active .canvas-viewport');
+  assert.ok(viewport);
+  const begin = async (point) => {
+    mouse(window, 'mouseDown', point);
+    await wait(
+      () =>
+        execute(
+          window,
+          "document.querySelector('.workspace-view.active .scene-editor').dataset.panelGesture === 'tab'",
+        ),
+      'Pointer pressed the Layers tab',
+    );
+    mouse(window, 'mouseMove', viewport);
+    const lifted = await wait(
+      () => palettes()[0],
+      'A native window was created during the held drag',
+    );
+    try {
+      await wait(() => lifted.isVisible(), 'Held native palette painted');
+    } catch (error) {
+      console.error(
+        'Unpainted palette',
+        await execute(
+          lifted,
+          "({kind:document.querySelector('[data-palette-name]')?.textContent,content:!!document.querySelector('.layer-tree')})",
+        ),
+      );
+      throw error;
+    }
+    return lifted;
+  };
+  // Escape restores the layout even after the native window has painted.
+  const cancelled = await begin(source);
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+  await wait(() => cancelled.isDestroyed(), 'Escape rolled back the held tear-off');
+  mouse(window, 'mouseUp', viewport);
+  const restored = await wait(() => center(window, panel), 'Cancelled Layers tab restored');
+  // Stay inside the document window; the separate palette must appear before release.
+  const palette = await begin(restored);
+  const first = palette.getBounds();
+  const moved = { x: viewport.x - 53, y: viewport.y - 28 };
+  mouse(window, 'mouseMove', moved);
+  await wait(
+    () => palette.getBounds().x < first.x - 25,
+    'Floating palette followed the continuing drag',
+  );
+  mouse(window, 'mouseUp', moved);
+  await wait(() => center(palette, '[data-palette-name]'), 'Panel chrome has a named tab');
+  await wait(
+    () => execute(palette, "!!document.querySelector('.layer-tree')"),
+    'Layers content reached the detached surface',
+  );
+  await capture(palette, 'detached-layers-chrome.png');
+  const expanded = palette.getBounds();
+  await execute(palette, "document.querySelector('[data-palette-collapse]').click()");
+  await wait(() => palette.getBounds().height === 42, 'Palette collapsed to its two bars');
+  await execute(palette, "document.querySelector('[data-palette-collapse]').click()");
+  await wait(
+    () => palette.getBounds().height === expanded.height,
+    'Palette restored its working height',
+  );
+  const header = await center(palette, '[data-palette-name]');
+  const destination = await center(window, tab);
+  assert.ok(destination);
+  // Capture starts in the utility. Derive each destination in the moving window’s coordinates.
+  mouse(palette, 'mouseDown', header);
+  mouse(palette, 'mouseMove', { x: header.x + 12, y: header.y });
+  const origin = window.getContentBounds();
+  const relative = () => {
+    const bounds = palette.getContentBounds();
+    return { x: origin.x + destination.x - bounds.x, y: origin.y + destination.y - bounds.y };
+  };
+  mouse(palette, 'mouseMove', relative());
+  await wait(
+    () =>
+      execute(
+        window,
+        "Array.from(document.querySelectorAll('.native-panel-dock-guide')).some(el => !el.hidden)",
+      ),
+    'Returning the palette over a tab previews its insertion',
+  );
+  mouse(palette, 'mouseUp', relative());
+  await wait(() => palette.isDestroyed(), 'Dropping the held native title tab reattached Layers');
+  await wait(() => center(window, panel), 'Layers present in document dock');
+  assert.equal(
+    await execute(
+      window,
+      `document.querySelector(${JSON.stringify(panel)}).getAttribute('aria-selected')`,
+    ),
+    'true',
+  );
+  window.setBounds(frame);
+}
+
 async function verifyFloatingPalette(first, originalId) {
   const lock = '[data-layer-toggle="locked"]:not(:disabled)',
     palettes = () =>
@@ -175,6 +309,7 @@ async function verifyFloatingPalette(first, originalId) {
         "document.querySelector('.workspace-view.active [data-document-title]')?.dataset.documentTitle",
       ),
     documents = () => execute(first, 'ivoNative.store.loadDocuments()');
+  await verifyPaletteDrag(first, palettes);
   first.webContents.send('ivo:command', 'new-document-right');
   const rightId = await wait(async () => {
     const id = await activeDocument(first);
@@ -269,8 +404,23 @@ async function verifyFloatingPalette(first, originalId) {
   await toggle();
   await wait(() => locked(true, false), 'Detached document received the shared action');
 
-  await execute(palette, "document.querySelector('[data-palette-dock]').click()");
-  await wait(() => palette.isDestroyed(), 'Docking closed the separate Layers window');
+  await execute(palette, "document.querySelector('[data-palette-collapse]').click()");
+  await wait(() => palette.getBounds().height === 42, 'Collapsed palette retained its native menu');
+  Menu.prototype.popup = function (options) {
+    assert.equal(options.window, palette);
+    assert.ok(this.getMenuItemById('close-panel').enabled);
+    this.getMenuItemById('dock-panel').click();
+    options.callback();
+  };
+  try {
+    await execute(palette, "document.querySelector('[data-palette-menu]').click()");
+    await wait(
+      () => palette.isDestroyed(),
+      'Docking from the native menu closed the separate Layers window',
+    );
+  } finally {
+    Menu.prototype.popup = originalPopup;
+  }
   await wait(
     () =>
       execute(

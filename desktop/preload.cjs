@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('ivoNative', {
   ),
   palettes: Object.freeze({
     open: (kind, point) => ipcRenderer.invoke('ivo:palette-open', kind, point),
+    drag: (value) => ipcRenderer.send('ivo:palette-drag', value),
+    onDockPointer: (fn) => ipcRenderer.on('ivo:palette-dock-pointer', (_event, value) => fn(value)),
+    dropResult: (id, accepted) => ipcRenderer.send('ivo:palette-drop-result', id, accepted),
+    dockHover: (id, over) => ipcRenderer.send('ivo:palette-dock-hover', id, over),
     revealDialog: () => ipcRenderer.send('ivo:palette-dialog'),
     publish: (value) => ipcRenderer.send('ivo:palette-publish', value),
     onConfiguration: (fn) =>

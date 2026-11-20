@@ -60,7 +60,9 @@ Keep the user's laptop usable while developing. Prefer command-line workers and 
 
 ### Measure desktop interaction latency
 
-Run `npm run test:responsiveness` in an idle Mac desktop session. It opens a normal Ivo window with a temporary vault, measures submitted input through the first matching window frame, and checks that rapid edits reach disk. The default is Paragraph Composer. Set `IVO_RESPONSIVENESS_COMPOSER=single-line` or `browser` to exercise the other modes. Set `IVO_LATENCY_BUDGET=1` for reference-Mac median limits of 25 ms for Layers locks, 80 ms for fresh middle-of-paragraph edits and 65 ms for the repeated last-page edit. Review the full distribution for slow inputs. Run the modes sequentially with other suites idle.
+Run `npm run test:release-input` in an idle Mac desktop session for the same qualification used by desktop packaging and the existing desktop CI job. It measures Paragraph Composer with Properties docked and detached, then Single-line Composer and browser layout with Properties docked. A fifth scenario types into a 72-frame masthead with independently positioned, horizontally and vertically scaled text. It verifies that the other 71 frames retain their rendered ink and saved sources. Each case opens a disposable vault. Numbers measure submitted input through the window compositor. A rapid sequence must paint glyphs during typing and save the exact final text. Packaging stops on a failed case. Set `IVO_LATENCY_REPORT_DIR` to retain the individual JSON distributions. CI attaches them to the check run.
+
+For a single diagnostic case, use `npm run test:responsiveness` with `IVO_RESPONSIVENESS_COMPOSER=paragraph|single-line|browser` and `IVO_RESPONSIVENESS_PANEL=properties|detached-properties`. Use `IVO_RESPONSIVENESS_SCENE=magazine` with Paragraph Composer for the dense document. Set `IVO_LATENCY_BUDGET=1` to enforce the limits. Run measurements sequentially.
 
 ## Build and artwork
 

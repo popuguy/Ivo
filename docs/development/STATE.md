@@ -2,6 +2,8 @@
 
 Updated 20 November 2026. This file describes current contracts; the [verification record](../verification.md) retains milestone history, test counts and review builds. The [backlog](../backlog.md) owns unfinished work.
 
+Desktop release qualification now checks sustained typing in a real window, including a 72-flow magazine masthead. A completed native typing revision can display its glyphs while the next revision is being composed. Only the latest revision owns document geometry and autosave. [Release input checks](../verification.md#continuous-typing-and-desktop-release-qualification--20-november-2026)
+
 Ivo is a linked-document editor for Mac, iPhone and iPad: precise, independently sized pages, rich text and positioned objects, an interactive knowledge graph, and portable vaults. The interface uses Geist, a pale neutral palette and professional document language. New documents use Minion Pro Regular at 12 pt with 120% automatic leading and zero paragraph spacing. CMU Serif is the offline fallback when the preferred face is unavailable. Preserve the smooth Illustrator-like frame movement and camera while extending the InDesign-based text system. Google Drive/other cloud replicas, physical mobile qualification and scans/OCR remain programme work.
 
 The [publishing panels](../publishing-foundation.md#desktop-panels) use the InDesign Light palette. A single shape or graphic exposes Text Wrap in Properties. Window → Text Wrap opens the dedicated panel for other selections or new-object defaults. Properties → Character → More Options contains the horizontal and vertical character scales.

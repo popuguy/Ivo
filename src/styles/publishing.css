@@ -757,3 +757,22 @@
 .ivo-decoration-run[data-ivo-decoration-link='unresolved'] {
   text-decoration-style: dashed;
 }
+
+.native-panel-dock-guide {
+  position: fixed;
+  z-index: 98;
+  pointer-events: none;
+  background: #1473e6;
+}
+.native-panel-drag-preview {
+  position: fixed;
+  z-index: 99;
+  width: 254px;
+  height: min(480px, 90vh);
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  background: #f0f0f0;
+  border: 1px solid #bdbdbd;
+  box-shadow: 0 3px 12px #0003;
+}

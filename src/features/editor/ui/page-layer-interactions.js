@@ -1,6 +1,9 @@
+import { reorderSibling } from '../../../domain/documents/arrange.js';
 import {
   applyParent,
+  layerFor,
   layersFor,
+  objectAvailable,
   moveToLayer,
   reorderLayer,
 } from '../../../domain/documents/publishing.js';
@@ -14,6 +17,16 @@ export function installPageLayerInteractions(
     resize = null,
     pressedLock = false;
   listen(editor, 'click', (event) => {
+    const branch = event.target.closest('[data-object-disclosure]');
+    if (branch) {
+      const expanded = new Set(state.expandedLayerObjects);
+      const id = branch.dataset.objectDisclosure;
+      if (expanded.has(id)) expanded.delete(id);
+      else expanded.add(id);
+      state.expandedLayerObjects = [...expanded];
+      render();
+      return;
+    }
     const toggle = event.target.closest('[data-layer-disclosure]');
     if (toggle) {
       const id = toggle.dataset.layerDisclosure,
@@ -125,7 +138,21 @@ export function installPageLayerInteractions(
     if (!allowed()) return;
     const parent = event.target.closest('[data-page-parent]');
     const layer = event.target.closest('[data-layer-row]');
-    if (parent && !parentMode) drag = { kind: 'parent', id: parent.dataset.pageParent };
+    const row = event.target.closest('[data-object-row]');
+    if (row) {
+      const item = doc().blocks.find((block) => block.id === row.dataset.objectRow);
+      if (!item || pressedLock || !row.draggable || !objectAvailable(doc(), item)) {
+        event.preventDefault();
+        return;
+      }
+      drag = {
+        kind: 'object',
+        id: item.id,
+        parentId: item.parentId,
+        pageId: item.pageId,
+        layerId: layerFor(doc(), item).id,
+      };
+    } else if (parent && !parentMode) drag = { kind: 'parent', id: parent.dataset.pageParent };
     else if (layer && !pressedLock) {
       const target = event.target.closest('[data-layer-move]');
       drag = target
@@ -143,7 +170,22 @@ export function installPageLayerInteractions(
   });
   function targetFor(event) {
     if (!drag) return null;
+    if (drag.kind === 'object') {
+      const row = event.target.closest('[data-object-row]');
+      const item = row && doc().blocks.find((block) => block.id === row.dataset.objectRow);
+      return item &&
+        item.id !== drag.id &&
+        item.parentId === drag.parentId &&
+        item.pageId === drag.pageId &&
+        layerFor(doc(), item).id === drag.layerId
+        ? row
+        : null;
+    }
     return event.target.closest(drag.kind === 'parent' ? '[data-select-page]' : '[data-layer-row]');
+  }
+  function aboveRow(event, target) {
+    const rect = target.getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2;
   }
   function clearTargets() {
     for (const element of editor.querySelectorAll('.inventory-drop'))
@@ -154,6 +196,9 @@ export function installPageLayerInteractions(
     if (!target || !allowed()) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = drag.kind === 'parent' ? 'copy' : 'move';
+    clearTargets();
+    if (drag.kind === 'object')
+      target.dataset.dropSide = aboveRow(event, target) ? 'above' : 'below';
     target.classList.add('inventory-drop');
   });
   listen(editor, 'dragleave', (event) => {
@@ -173,7 +218,14 @@ export function installPageLayerInteractions(
     drag = null;
     clearTargets();
     run(() => {
-      if (payload.kind === 'parent') {
+      if (payload.kind === 'object') {
+        const side = event.dataTransfer.getData('application/x-ivo-layer-drop-side');
+        const above = side ? side === 'above' : aboveRow(event, target);
+        mutate(
+          () => reorderSibling(doc(), payload.id, target.dataset.objectRow, above),
+          'Reorder objects',
+        );
+      } else if (payload.kind === 'parent') {
         state.panelParent = null;
         mutate(
           () => applyParent(doc(), target.dataset.selectPage, payload.id || null),

@@ -741,13 +741,39 @@ export function validateNativeFlowSource(doc, flow, assets = []) {
  */
 export async function composeNativeTextFlows(
   doc,
-  { compose, allowPages = true, assets = [] } = {},
+  { compose, allowPages = true, assets = [], editorSession } = {},
 ) {
   if (typeof compose !== 'function') throw Error('A native text composition port is required.');
+  // One editor keeps its last displayed plan across immutable input snapshots.
+  // A proof/export or a different window has its own cache and backend tokens.
+  // Text in independent authored frames has no effect on its neighbours.
+  // Treat every change to styles, ownership, artwork or geometry as global.
+  // Wrap and automatic pagination have cross-flow effects and always take the
+  // complete route. Reuse is bounded to the one plan this editor already holds.
+  const context =
+    editorSession &&
+    doc.id &&
+    doc.textFlows?.filter((flow) => flow.composition).length > 1 &&
+    !documentHasObjectWrap(doc) &&
+    !doc.textFlows.some((flow) => flow.automaticPages || flow.autoPages?.length)
+      ? JSON.stringify([
+          allowPages,
+          doc.pages,
+          doc.blocks,
+          doc.publishing,
+          doc.textWrapPreferences,
+          doc.textFlows.map(({ html: _text, ...settings }) => settings),
+        ])
+      : null;
+  const owner = context ? editorSession : doc;
   const key = semanticKey(doc, allowPages),
     signature = assetSignature(assets),
-    prior = sessions.get(doc);
-  if (prior?.key === key && prior.compose === compose && same(prior.assets, signature))
+    previous = sessions.get(owner),
+    prior =
+      previous?.id === doc.id && previous?.compose === compose && same(previous.assets, signature)
+        ? previous
+        : null;
+  if (prior?.key === key && prior.context === context)
     return {
       fragments: new Map(prior.fragments),
       status: new Map(prior.status),
@@ -770,8 +796,18 @@ export async function composeNativeTextFlows(
     queue = projection.textFlows.filter((flow) => flow.composition);
   let changed = false,
     passes = 0;
+  const priorFlows = context && prior?.context === context ? prior.flowEntries : null;
+  const flowEntries = new Map();
   for (let i = 0; i < queue.length; i++) {
     const flow = queue[i];
+    const retained = priorFlows?.get(flow.id);
+    if (retained && retained.html === flow.html) {
+      byFlow.set(flow, retained.composition);
+      flowEntries.set(flow.id, retained);
+      status.set(flow.id, prior.status.get(flow.id));
+      for (const id of flow.frameIds) fragments.set(id, prior.fragments.get(id));
+      continue;
+    }
     if (
       flow.composition.version !== 1 ||
       !['paragraph', 'single-line'].includes(flow.composition.composer)
@@ -945,6 +981,7 @@ export async function composeNativeTextFlows(
       source,
       frames: columns.filter((c) => flow.frameIds.includes(c.frameId)),
     });
+    if (context) flowEntries.set(flow.id, { html: flow.html, composition: byFlow.get(flow) });
     // A different thread can insert or remove pages before one already fitted.
     // Refit only sections whose physical frames changed parity before publishing.
     if (changed && i + 1 === queue.length) {
@@ -976,7 +1013,10 @@ export async function composeNativeTextFlows(
       }
     }
   }
-  sessions.set(doc, {
+  sessions.set(owner, {
+    id: doc.id,
+    context,
+    flowEntries,
     key: semanticKey(doc, allowPages),
     assets: signature,
     compose,

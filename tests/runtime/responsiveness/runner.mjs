@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openVault } from '../../../desktop/vault.mjs';
@@ -16,28 +16,34 @@ import {
   markTypographyVersion,
 } from '../../../src/domain/documents/capabilities.js';
 import { observeRenderedActions } from './rendered-pixels.mjs';
+import { addMagazineCredits, mastheadText } from './magazine.mjs';
 
 const directory = await mkdtemp(path.join(tmpdir(), 'ivo-window-responsiveness-'));
 process.env.IVO_USER_DATA_DIR = path.join(directory, 'Profile');
 process.env.IVO_ATLAS_DIR = path.join(directory, 'Vault');
 app.setPath('userData', process.env.IVO_USER_DATA_DIR);
+const scene = process.env.IVO_RESPONSIVENESS_SCENE || 'linked';
+assert.ok(['linked', 'magazine'].includes(scene));
+const magazine = scene === 'magazine';
 const doc = createSceneDocument('Disposable responsiveness test', { width: 612, height: 792 });
 enablePublishing(doc);
 const paragraph =
   'A carefully arranged note contains practical text, measured spacing and clear document links. It should remain responsive while editing and arranging objects.';
-const html = Array.from(
-  { length: 32 },
-  (_, i) => '<p>' + paragraph + ' ' + String(i).padStart(2, '0') + '.</p>',
-).join('');
+const html = magazine
+  ? mastheadText()
+  : Array.from(
+      { length: 32 },
+      (_, i) => '<p>' + paragraph + ' ' + String(i).padStart(2, '0') + '.</p>',
+    ).join('');
 const frames = [];
-for (let i = 0; i < 3; i++) {
+for (let i = 0; i < (magazine ? 1 : 3); i++) {
   const page = i ? addPage(doc, doc.pages.at(-1).id) : doc.pages[0];
   frames.push(
     insertObject(doc, 'text', page.id, {
       x: 45,
       y: 45,
       w: 520,
-      h: 660,
+      h: magazine ? 300 : 660,
       fontSize: 16,
       leading: 20,
       textStyle: 'cmu-serif',
@@ -49,7 +55,13 @@ const flow = startTextFlow(doc, frames[0].id, { automaticPages: false });
 for (let i = 1; i < frames.length; i++) threadFrame(doc, frames[i - 1].id, frames[i].id);
 const composer = process.env.IVO_RESPONSIVENESS_COMPOSER || 'paragraph';
 assert.ok(['browser', 'paragraph', 'single-line'].includes(composer));
+const panel = process.env.IVO_RESPONSIVENESS_PANEL || 'properties';
+assert.ok(['properties', 'detached-properties', 'layers'].includes(panel));
 if (composer !== 'browser') enableNativeComposition(doc, flow, composer);
+if (magazine) {
+  assert.equal(composer, 'paragraph');
+  addMagazineCredits(doc, composer);
+}
 for (let i = 0; i < 30; i++)
   insertObject(doc, 'polygon', doc.pages[0].id, {
     x: 40 + (i % 10) * 45,
@@ -60,6 +72,8 @@ for (let i = 0; i < 30; i++)
 markTypographyVersion(doc);
 const vault = await openVault(process.env.IVO_ATLAS_DIR);
 await vault.saveImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+const otherFlows = (document) => document.textFlows.filter((item) => item.id !== flow.id);
+const originalCredits = magazine ? otherFlows((await vault.loadDocuments())[0]) : null;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(check, label) {
   for (let i = 0; i < 260; i++) {
@@ -82,7 +96,9 @@ function stats(values) {
 }
 void (async () => {
   let exitCode = 1,
-    samples;
+    samples,
+    report;
+  const reportPath = process.env.IVO_RESPONSIVENESS_REPORT;
   try {
     await import('../../../desktop/main.mjs');
     const win = await until(
@@ -95,7 +111,10 @@ void (async () => {
       'production window',
     );
     const wc = win.webContents,
-      execute = (s) => wc.executeJavaScript(s, true);
+      execute = (s) =>
+        wc.executeJavaScript(s, true).catch((error) => {
+          throw new Error(s.slice(0, 240) + '\n' + error.message, { cause: error });
+        });
     await until(() => execute("!!document.querySelector('.workspace-pane')"), 'workspace');
     await until(() => execute('ivoNative.windows.info().then(s=>s.active)'), 'vault writer');
     wc.send('ivo:command', 'toggle-edit');
@@ -108,6 +127,15 @@ void (async () => {
         ),
       'composed edit view',
     );
+    if (magazine) {
+      await until(
+        () =>
+          execute(
+            "document.querySelectorAll('[data-flow-frame] svg[data-composed-text]').length === 72",
+          ),
+        'all 72 composed frames',
+      );
+    }
     await execute(`document.querySelector('[data-canvas-panel="layers"]').click()`);
     await execute(
       `document.querySelector('[data-layer-disclosure][aria-expanded="false"]:enabled').click()`,
@@ -169,6 +197,37 @@ void (async () => {
       const s = await buttonState();
       return s.locked === 'false' && !s.closed;
     }, 'canceled lock press');
+    if (panel === 'properties') {
+      await execute(`document.querySelector('[data-canvas-panel="properties"]').click()`);
+    } else if (panel === 'detached-properties') {
+      assert.equal(await execute("ivoNative.palettes.open('properties')"), true);
+      const inspector = await until(
+        () =>
+          BrowserWindow.getAllWindows().find((item) =>
+            item.webContents.getURL().startsWith('ivo://app/palette.html'),
+          ),
+        'floating Properties window',
+      );
+      await until(
+        () =>
+          inspector.isVisible() &&
+          !inspector.webContents.isLoading() &&
+          inspector.webContents.executeJavaScript(
+            "!!document.querySelector('[data-palette-control]')",
+          ),
+        'floating Properties controls',
+      );
+      app.focus({ steal: true });
+      win.show();
+      win.focus();
+      wc.focus();
+      await until(() => execute('document.hasFocus()'), 'keyboard focus on document');
+    }
+    function typeKey(letter) {
+      wc.sendInputEvent({ type: 'keyDown', keyCode: letter });
+      wc.sendInputEvent({ type: 'char', keyCode: letter });
+      wc.sendInputEvent({ type: 'keyUp', keyCode: letter });
+    }
     const glyphRect = async (offset) => {
       if (composer !== 'browser')
         return rect(`[data-line-start="0"] use[data-glyph-offset="${offset}"]`);
@@ -193,29 +252,59 @@ void (async () => {
     );
     async function caret(offset) {
       await execute(
-        `(()=>{const input=document.querySelector('.canvas-flow-input'),walker=document.createTreeWalker(input,NodeFilter.SHOW_TEXT),node=walker.nextNode();getSelection().collapse(node,${offset});})()`,
+        `(()=>{const input=document.querySelector('.canvas-flow-input'),walker=document.createTreeWalker(input,NodeFilter.SHOW_TEXT);
+          let node, remaining=${offset};while ((node=walker.nextNode())) {
+            if(remaining<=node.length){getSelection().collapse(node,remaining);return;} remaining-=node.length;
+          }throw Error('Missing text offset');})()`,
       );
       await pause(70);
     }
     await caret(5);
+    if (magazine)
+      await execute(`window.untouchedCredits = [...document.querySelectorAll('[data-flow-frame]')]
+        .filter(node => node.dataset.flowFrame !== ${JSON.stringify(frames[0].id)})
+        .map(node => ({node:node.querySelector('svg'), frame:node, label:node.querySelector('svg').getAttribute('aria-label'),
+          token:node.querySelector('svg').dataset.compositionToken}));`);
+    const original = await execute("document.querySelector('.canvas-flow-input').textContent");
     const ink = await glyphRect(8);
     const inkRegion = { ...ink, width: 190 };
-    for (const letter of 'modification')
-      typed.push(await samples.measure(inkRegion, () => wc.insertText(letter)));
-    await caret(50);
+    // At least twenty observations distinguish the nearest-rank p95 from a
+    // single worst-case compositor callback. Keep the maximum in the report.
+    const typedWord = 'modificationtypographics';
+    for (const letter of typedWord)
+      typed.push(
+        await samples.measure(
+          inkRegion,
+          () => typeKey(letter),
+          'Insert ' + letter + ' at ' + (5 + typed.length),
+        ),
+      );
+    // Leave a sentinel after the measured word. Each deletion now removes a
+    // visible letter and creates a source never seen during the insert trials.
+    typeKey('z');
+    const marked = original.slice(0, 5) + typedWord + 'z' + original.slice(5);
+    await until(
+      async () =>
+        (await execute("document.querySelector('.canvas-flow-input').textContent")) === marked,
+      'independent deletion source',
+    );
+    await caret(5 + typedWord.length);
     const first = await glyphRect(0);
     const deletionRegion = { x: first.x + 20, y: first.y, width: 400, height: 72 };
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < typedWord.length; i++) {
       deleted.push(
-        await samples.measure(deletionRegion, () => {
-          for (const type of ['keyDown', 'keyUp'])
-            wc.sendInputEvent({ type, keyCode: 'Backspace' });
-        }),
+        await samples.measure(
+          deletionRegion,
+          () => {
+            for (const type of ['keyDown', 'keyUp'])
+              wc.sendInputEvent({ type, keyCode: 'Backspace' });
+          },
+          'Delete ' + typedWord.at(-i - 1) + ' at ' + (5 + typedWord.length - i),
+        ),
       );
     }
     // Wait for the real autosave and compare exact text, including the edited middle.
-    const inserted = paragraph.slice(0, 5) + 'modification' + paragraph.slice(5);
-    const expected = inserted.slice(0, 38) + inserted.slice(50);
+    const expected = original.slice(0, 5) + 'z' + original.slice(5);
     const savedText = async () => {
       const disk = await openVault(process.env.IVO_ATLAS_DIR);
       const data = (await disk.loadDocuments())[0].textFlows[0].html;
@@ -224,15 +313,40 @@ void (async () => {
       );
     };
     const editedText = await execute("document.querySelector('.canvas-flow-input').textContent");
-    assert.ok(
-      editedText.includes(expected),
-      JSON.stringify({ edited: editedText.slice(0, 200), expected }),
-    );
+    assert.equal(editedText, expected, 'Every individual key edited the expected source offset');
     await until(async () => (await savedText()) === editedText, 'exact persisted edits');
     const beforeBurst = await execute("document.querySelector('.canvas-flow-input').textContent");
     await caret(5);
-    for (const c of 'rapidinput') await wc.insertText(c);
-    const savedBurst = beforeBurst.slice(0, 5) + 'rapidinput' + beforeBurst.slice(5);
+    const word = 'rapidinputswatch';
+    if (composer !== 'browser') {
+      // Check the actual published vector-column text for each intermediate
+      // plan. Each displayed sequence must be an exact prefix of these edits.
+      const prefixes = Array.from({ length: word.length + 1 }, (_, i) =>
+        (beforeBurst.slice(0, 5) + word.slice(0, i) + beforeBurst.slice(5)).slice(0, 90),
+      );
+      await execute(`(() => {
+        const column = document.querySelector('[data-flow-frame] svg[data-composed-text]');
+        const expected = ${JSON.stringify(prefixes)};
+        const seen = [];
+        const read = () => seen.push(expected.indexOf(column.getAttribute('aria-label').slice(0, 90)));
+        const observer = new MutationObserver(read);
+        observer.observe(column, {attributes: true, attributeFilter:['aria-label']});
+        read();
+        window.finishBurstCheck = () => { observer.disconnect(); read(); return seen; };
+      })()`);
+    }
+    const burstGlyph =
+      composer === 'browser'
+        ? await glyphRect(32)
+        : await execute(`
+      (() => {
+        const glyph = [...document.querySelectorAll('[data-line-start="0"] use')]
+          .find((node) => Number(node.dataset.glyphOffset) >= 28);
+        const r = glyph.getBoundingClientRect();
+        return {x:r.x,y:r.y,width:r.width,height:r.height};
+      })()`);
+    const burst = await samples.measureBurst({ ...burstGlyph, width: 100 }, word, typeKey, 24);
+    const savedBurst = beforeBurst.slice(0, 5) + word + beforeBurst.slice(5);
     await until(
       () =>
         execute("document.querySelector('.canvas-flow-input').textContent").then(
@@ -244,23 +358,39 @@ void (async () => {
       await until(
         () =>
           execute(
-            "[...document.querySelectorAll('svg[data-composed-text]')].map(e=>e.getAttribute('aria-label')).join('').includes('rapidinput')",
+            `[...document.querySelectorAll('[data-flow-frame] svg[data-composed-text]')].map(e=>e.getAttribute('aria-label')).join('').startsWith(${JSON.stringify(savedBurst.slice(0, 90))})`,
           ),
         'painted burst',
       );
+    if (composer !== 'browser') {
+      const shown = await execute('window.finishBurstCheck()');
+      assert.equal(shown[0], 0);
+      assert.equal(shown.at(-1), word.length);
+      assert.ok(
+        shown.every((n, i) => n >= 0 && (!i || n >= shown[i - 1])),
+        'An intermediate native column showed incorrect text or moved backwards',
+      );
+    }
     await until(async () => (await savedText()) === savedBurst, 'persisted burst');
     let pageEnd;
-    if (composer === 'paragraph') {
+    if (composer === 'paragraph' && !magazine) {
       await execute(
         `(()=>{const input=document.querySelector('.canvas-flow-input'),walker=document.createTreeWalker(input,NodeFilter.SHOW_TEXT);let last,node;while((node=walker.nextNode()))last=node;getSelection().collapse(last,last.length);})()`,
       );
       await pause(160);
-      await wc.insertText('x');
+      typeKey('x');
       const lastGlyph = () =>
         execute(
           `(()=>{const cols=[...document.querySelectorAll('[data-flow-frame] svg[data-composed-text]')];const col=cols.at(-1);if(!col?.getAttribute('aria-label')?.trimEnd().endsWith('x'))return null;const r=[...col.querySelectorAll('use')].at(-1).getBoundingClientRect();return {x:r.x+1,y:r.y,width:Math.max(2,r.width-2),height:r.height};})()`,
         );
-      const endRegion = await until(lastGlyph, 'visible last-page glyph');
+      // Layout can publish its final-page glyph before the window has painted
+      // the warm-up edit or finished following the caret onto that page.
+      const endRegion = await until(async () => {
+        const first = await lastGlyph();
+        if (!first || !(await samples.containsInk(first))) return null;
+        const current = await lastGlyph();
+        return current && JSON.stringify(first) === JSON.stringify(current) ? current : null;
+      }, 'painted last-page glyph at its final position');
       const insert = [],
         backspace = [];
       for (let i = 0; i < 6; i++) {
@@ -270,40 +400,77 @@ void (async () => {
               wc.sendInputEvent({ type, keyCode: 'Backspace' });
           }),
         );
-        insert.push(await samples.measure(endRegion, () => wc.insertText('x')));
+        insert.push(await samples.measure(endRegion, () => typeKey('x')));
       }
       await until(async () => (await savedText()) === savedBurst + 'x', 'final page persisted');
       pageEnd = { insert: stats(insert), backspace: stats(backspace) };
     }
-    const report = {
+    if (magazine) {
+      assert.equal(
+        await execute(`window.untouchedCredits.filter(({node,frame,label,token}) =>
+        node.isConnected && frame.querySelector('svg') === node && node.getAttribute('aria-label') === label &&
+        node.dataset.compositionToken === token).length`),
+        71,
+        'Unedited credits retained their native ink',
+      );
+      const [saved] = await (await openVault(process.env.IVO_ATLAS_DIR)).loadDocuments();
+      assert.deepEqual(otherFlows(saved), originalCredits, 'Independent saved sources');
+    }
+    report = {
       composer,
-      pages: 3,
+      panel,
+      scene,
+      flows: doc.textFlows.length,
+      pages: doc.pages.length,
       objects: doc.blocks.length,
       characters: flow.html.replace(/<[^>]+>/g, '').length,
       lock: stats(locks),
       unlock: stats(unlocks),
       insert: stats(typed),
       backspace: stats(deleted),
-      burst: true,
+      burst,
       pageEnd,
     };
-    console.log(JSON.stringify(report, null, 2));
-    // Reference Mac budgets apply to typical input-to-compositor feedback.
-    // Keep every sample so occasional slow frames remain visible.
     if (process.env.IVO_LATENCY_BUDGET === '1') {
-      for (const action of ['lock', 'unlock'])
-        assert.ok(report[action].median <= 25, action + ' exceeded 25 ms median');
+      const check = (label, result, median, p95) => {
+        assert.ok(
+          result.samples.every((v) => !v.upperBoundOnly),
+          label + ' did not yield a first matching rendered frame for every input',
+        );
+        assert.ok(result.median <= median, label + ' exceeded ' + median + ' ms median');
+        assert.ok(result.p95 <= p95, label + ' exceeded ' + p95 + ' ms p95');
+      };
+      for (const action of ['lock', 'unlock']) check(action, report[action], 25, 65);
+      const [median, p95] = { browser: [35, 70], 'single-line': [65, 115], paragraph: [80, 120] }[
+        composer
+      ];
       for (const action of ['insert', 'backspace']) {
-        assert.ok(report[action].median <= 80, action + ' exceeded 80 ms median');
-        if (pageEnd)
-          assert.ok(pageEnd[action].median <= 65, 'Page-end ' + action + ' exceeded 65 ms median');
+        check(action, report[action], median, p95);
+        if (pageEnd) check('Page-end ' + action, pageEnd[action], 65, 100);
       }
+      assert.ok(burst.whileTyping >= 2, 'Glyphs must advance during sustained typing');
+      const gap = composer === 'browser' ? 90 : 135;
+      assert.ok(
+        burst.longestPause <= gap && burst.finish <= gap,
+        'Sustained typing exceeded ' + gap + ' ms between visible changes or to final ink',
+      );
     }
     exitCode = 0;
   } catch (error) {
     console.error(error.stack);
+    report = { ...report, composer, panel, scene, error: error.message };
   } finally {
     samples?.close();
+    const json = JSON.stringify({ ...report, passed: exitCode === 0 }, null, 2) + '\n';
+    console.log(json);
+    if (reportPath) {
+      try {
+        await writeFile(reportPath, json);
+      } catch (error) {
+        console.error(error);
+        exitCode = 1;
+      }
+    }
     app.removeAllListeners('window-all-closed');
     for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.destroy();
     await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

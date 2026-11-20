@@ -13,12 +13,26 @@
   <body class="palette-window">
     <main class="palette-surface">
       <section class="canvas-properties context-panel-group">
-        <header>
-          <span data-palette-context></span
-          ><button type="button" data-palette-dock title="Return panel to the document window">
-            Dock
-          </button>
+        <div class="canvas-panel-microbar" data-palette-handle>
+          <button data-palette-close aria-label="Close panel" title="Close panel"></button>
+          <button
+            data-palette-collapse
+            aria-label="Collapse panel"
+            title="Collapse panel"
+            aria-expanded="true"
+          ></button>
+        </div>
+        <header class="context-panel-header" data-palette-handle>
+          <div class="canvas-panel-tabs"><span class="palette-title" data-palette-name></span></div>
+          <button
+            data-palette-menu
+            aria-haspopup="menu"
+            aria-label="Panel menu"
+            aria-expanded="false"
+            title="Panel menu"
+          ></button>
         </header>
+        <span data-palette-context class="palette-context"></span>
         <div class="canvas-panel-content" aria-live="off"></div>
       </section>
     </main>

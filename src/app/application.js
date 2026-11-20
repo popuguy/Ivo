@@ -2739,6 +2739,10 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       view === 'document' &&
       !canvasHandle?.getState().composing;
     const timeline = current() && documentSession.existingHistory(current().id);
+    const menuState =
+      !dialog.open && !transitions.busy && view === 'document'
+        ? canvasHandle?.getMenuState?.()
+        : null;
     globalThis.ivoNative.updateHistory({
       canGoBack: !dialog.open && !transitions.busy && canNavigate(workspace, 'back'),
       canGoForward: !dialog.open && !transitions.busy && canNavigate(workspace, 'forward'),
@@ -2750,29 +2754,19 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         : !!(allowed && timeline?.canRedo),
       undoLabel: nativeField ? '' : allowed ? timeline?.undoLabel || '' : '',
       redoLabel: nativeField ? '' : allowed ? timeline?.redoLabel || '' : '',
-      ...editorMenuState(
-        !dialog.open && !transitions.busy && view === 'document'
-          ? canvasHandle?.getMenuState?.()
-          : null,
-      ),
+      ...editorMenuState(menuState),
       ...nativeTextMenuState({
         canFormat: !!allowed,
-        canInsertCharacter: !!allowed && canvasHandle?.getMenuState?.().canInsertCharacter === true,
-        canKeepOptions: !!allowed && canvasHandle?.getMenuState?.().canKeepOptions === true,
+        canInsertCharacter: !!allowed && menuState?.canInsertCharacter === true,
+        canKeepOptions: !!allowed && menuState?.canKeepOptions === true,
         textTarget: allowed ? canvasHandle?.textCommandTarget?.() : null,
       }),
     });
   }
-  for (const name of [
-    'focusin',
-    'focusout',
-    'input',
-    'change',
-    'compositionstart',
-    'compositionend',
-    'selectionchange',
-  ])
+  for (const name of ['focusin', 'focusout', 'change', 'compositionstart', 'compositionend'])
     document.addEventListener(name, () => queueMicrotask(updateNativeHistory));
+  for (const name of ['input', 'selectionchange'])
+    document.addEventListener(name, scheduleNativeMenu);
   function routeNativeCommand(name) {
     if (!initialized || !windowLease) {
       if (name === 'close-tab') return globalThis.ivoNative?.windows?.close?.();

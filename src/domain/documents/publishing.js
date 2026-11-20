@@ -83,9 +83,19 @@ export function moveToLayer(doc, ids, layerId) {
   if (!layer || layer.locked || !layer.visible)
     throw new Error('Choose an unlocked visible layer.');
   const selected = new Set(ids);
+  const byId = new Map(doc.blocks.map((item) => [item.id, item]));
+  for (const id of selected) {
+    const item = byId.get(id);
+    if (!item?.parentId) continue;
+    let ancestor = byId.get(item.parentId);
+    const parentLayer = layerFor(doc, ancestor);
+    while (ancestor && !selected.has(ancestor.id)) ancestor = byId.get(ancestor.parentId);
+    if (!ancestor && parentLayer.id !== layerId)
+      throw new Error('Move the containing group to change its layer.');
+  }
   for (const item of doc.blocks) {
     let node = item;
-    while (node && !selected.has(node.id)) node = doc.blocks.find((b) => b.id === node.parentId);
+    while (node && !selected.has(node.id)) node = byId.get(node.parentId);
     if (node) item.layerId = layerId;
   }
 }

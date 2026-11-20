@@ -36,6 +36,11 @@ function classOn(node, name) {
  * These transparent inline wrappers never own fonts, metrics or canonical text.
  */
 export function applyTextDecorations(root, doc) {
+  // Native glyphs own horizontal advances. The hidden input still supplies
+  // the OS caret height for IME, including vertically scaled inline runs.
+  const flowId = root.dataset.textFlow;
+  const nativeInput =
+    flowId && doc.textFlows?.some((flow) => flow.id === flowId && flow.composition);
   if (!contexts.has(root)) observeComposition(root);
   contexts.set(root, { doc });
   if (composing.has(root)) return false;
@@ -64,7 +69,7 @@ export function applyTextDecorations(root, doc) {
             .filter(Boolean)
             .join(' '),
           link,
-          horizontalScale: inherited.horizontalScale,
+          horizontalScale: nativeInput ? 100 : inherited.horizontalScale,
           verticalScale: inherited.verticalScale,
           paragraph,
         });

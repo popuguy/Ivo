@@ -1,4 +1,5 @@
 import { PANEL_LABELS } from '../domain/workspace/panels.js';
+import { icon } from '../shared/ui/icons.js';
 
 const bridge = globalThis.ivoPalette;
 const content = document.querySelector('.canvas-panel-content');
@@ -121,18 +122,24 @@ content.addEventListener('keydown', (event) => {
   }
 });
 content.addEventListener('dragstart', (event) => {
-  const el = event.target.closest('[data-layer-move],[data-layer-row],[data-page-parent]');
+  const el = event.target.closest(
+    '[data-object-row],[data-layer-move],[data-layer-row],[data-page-parent]',
+  );
   if (!el || !view) return;
   drag = { index: controlIndex(el), revision: view.revision };
   event.dataTransfer.setData('application/x-ivo-palette-item', String(drag.index));
 });
 content.addEventListener('dragover', (event) => {
-  if (drag && event.target.closest('[data-layer-row],[data-select-page]')) event.preventDefault();
+  if (drag && event.target.closest('[data-object-row],[data-layer-row],[data-select-page]'))
+    event.preventDefault();
 });
 content.addEventListener('drop', (event) => {
   event.preventDefault();
-  const el = event.target.closest('[data-layer-row],[data-select-page]');
-  if (drag && drag.revision === view?.revision) send(el, 'drop', { from: drag.index });
+  const el = event.target.closest('[data-object-row],[data-layer-row],[data-select-page]');
+  if (el && drag && drag.revision === view?.revision) {
+    const box = el.getBoundingClientRect();
+    send(el, 'drop', { from: drag.index, above: event.clientY < box.top + box.height / 2 });
+  }
   drag = null;
 });
 content.addEventListener('dragend', () => {
@@ -183,9 +190,98 @@ const fieldFocus = () =>
   );
 document.addEventListener('focusin', fieldFocus);
 document.addEventListener('focusout', () => queueMicrotask(fieldFocus));
-document.querySelector('[data-palette-dock]').addEventListener('click', () => bridge.dock());
-bridge.onView((value, name) => {
+const close = document.querySelector('[data-palette-close]');
+const collapse = document.querySelector('[data-palette-collapse]');
+const menuButton = document.querySelector('[data-palette-menu]');
+close.innerHTML = icon('close');
+collapse.innerHTML = icon('panel-collapse');
+menuButton.innerHTML = icon('menu');
+let handleDrag = null;
+menuButton.addEventListener('click', async () => {
+  const { left, bottom } = menuButton.getBoundingClientRect();
+  menuButton.setAttribute('aria-expanded', 'true');
+  try {
+    await bridge.menu(Math.round(left), Math.round(bottom));
+  } finally {
+    menuButton.setAttribute('aria-expanded', 'false');
+  }
+});
+close.addEventListener('click', () => bridge.close());
+collapse.addEventListener('click', () => {
+  const collapsed = collapse.getAttribute('aria-expanded') === 'true';
+  collapse.setAttribute('aria-expanded', String(!collapsed));
+  const label = collapsed ? 'Expand panel' : 'Collapse panel';
+  collapse.setAttribute('aria-label', label);
+  collapse.title = label;
+  bridge.collapse(collapsed);
+});
+document.addEventListener('pointerdown', (event) => {
+  const handle = event.target.closest('[data-palette-handle]');
+  if (!handle || event.button !== 0 || event.target.closest('button')) return;
+  event.preventDefault();
+  handle.setPointerCapture(event.pointerId);
+  handleDrag = {
+    id: crypto.randomUUID(),
+    pointer: event.pointerId,
+    handle,
+    started: false,
+    x: event.screenX,
+    y: event.screenY,
+    gripX: event.clientX,
+    gripY: event.clientY,
+  };
+});
+document.addEventListener('pointermove', (event) => {
+  if (handleDrag?.pointer !== event.pointerId) return;
+  if (!event.buttons && event.pointerType !== 'touch') return finishHandle('cancel');
+  const { id, gripX, gripY } = handleDrag;
+  if (
+    !handleDrag.started &&
+    Math.hypot(event.screenX - handleDrag.x, event.screenY - handleDrag.y) < 4
+  )
+    return;
+  bridge.drag({
+    phase: handleDrag.started ? 'move' : 'start',
+    id,
+    x: event.screenX,
+    y: event.screenY,
+    gripX,
+    gripY,
+  });
+  handleDrag.started = true;
+});
+function finishHandle(phase, event) {
+  if (!handleDrag || (event?.pointerId != null && handleDrag.pointer !== event.pointerId)) return;
+  const { id, started, handle, pointer } = handleDrag;
+  handleDrag = null;
+  if (started) bridge.drag({ phase, id, x: event?.screenX, y: event?.screenY });
+  if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
+}
+document.addEventListener('pointerup', (event) => finishHandle('drop', event));
+for (const type of ['lostpointercapture', 'pointercancel'])
+  document.addEventListener(type, (event) => finishHandle('cancel', event));
+window.addEventListener('blur', () => {
+  finishHandle('cancel');
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && handleDrag) {
+    event.preventDefault();
+    finishHandle('cancel');
+  }
+});
+let firstLayout = true;
+bridge.onView((value, name, published) => {
   kind = name;
+  const tab = document.querySelector('[data-palette-name]');
+  tab.textContent = PANEL_LABELS[kind];
+  tab.title = value?.title || 'No active document';
   show(value);
+  if (firstLayout && published) {
+    firstLayout = false;
+    // Waiting for an animation frame here can deadlock a hidden macOS panel:
+    // showing the window is itself waiting for the first usable inspector.
+    content.getBoundingClientRect();
+    bridge.painted();
+  }
 });
 bridge.ready();

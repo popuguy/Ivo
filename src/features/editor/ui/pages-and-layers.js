@@ -12,26 +12,75 @@ function lockCell(attributes, locked, label, editing) {
 function visibilityCell(attributes, visible, label, editing) {
   return `<button ${attributes} aria-pressed="${visible}" ${tip((visible ? 'Hide ' : 'Show ') + label)} ${editing ? '' : 'disabled'}>${visible ? icon('panel-eye') : ''}</button>`;
 }
-function objectRow(item, selected, editing) {
-  const id = esc(item.id),
-    name = item.name || item.type[0].toUpperCase() + item.type.slice(1);
-  return `<div class="layer-entry object-entry" role="treeitem" aria-selected="${selected}" aria-level="2">
-    ${visibilityCell(`data-object-id="${id}" data-object-toggle="hidden"`, !item.hidden, 'object', editing)}
-    ${lockCell(`data-object-id="${id}" data-object-toggle="locked"`, item.locked, 'object', editing)}
-    <button data-layer-object="${id}" class="object-caption" ${tip(name)}>${esc(name)}</button>
-    <span class="layer-selection-mark" data-filled="${selected}" aria-hidden="true"></span>
+function objectRow(item, level, tree, ancestorsVisible, ancestorsLocked) {
+  const { children, expandedObjects, chosen, editing, layerById, defaultLayer } = tree;
+  const ownLayer = layerById.get(item.layerId) || defaultLayer;
+  ancestorsVisible = ancestorsVisible && ownLayer.visible !== false;
+  ancestorsLocked = ancestorsLocked || !!ownLayer.locked;
+  const id = esc(item.id);
+  const members = children.get(item.id);
+  const name =
+    item.name ||
+    item.alt ||
+    (members?.length ? 'Clipping group' : item.type[0].toUpperCase() + item.type.slice(1));
+  const expanded = !!members?.length && expandedObjects.has(item.id);
+  const visible = ancestorsVisible && !item.hidden;
+  const editable = editing && ancestorsVisible && !ancestorsLocked;
+  const selected = chosen.has(item.id);
+  return `<div role="treeitem" aria-selected="${selected}" aria-level="${level}" ${members?.length ? `aria-expanded="${expanded}"` : ''} data-object-branch="${id}" data-members-locked="${!!item.locked || !!ownLayer.locked}">
+    <div class="layer-entry object-entry" data-object-row="${id}" data-ancestors-visible="${ancestorsVisible}" draggable="${editable && visible && !item.locked}" style="--object-indent:${Math.min(level - 2, 8) * 10}px">
+      ${visibilityCell(`data-object-id="${id}" data-object-toggle="hidden"`, visible, 'object', editable)}
+      ${lockCell(`data-object-id="${id}" data-object-toggle="locked"`, item.locked || ancestorsLocked, 'object', editable)}
+      ${members?.length ? `<button class="layer-disclosure" data-object-disclosure="${id}" aria-expanded="${expanded}" ${tip((expanded ? 'Collapse ' : 'Expand ') + name)}>${icon(expanded ? 'chevron-down' : 'chevron-right')}</button>` : '<span></span>'}
+      <button data-layer-object="${id}" class="object-caption" ${tip(name)} ${visible && !ancestorsLocked && !item.locked ? '' : 'disabled'}>${esc(name)}</button>
+      <span class="layer-selection-mark" data-filled="${selected}" aria-hidden="true"></span>
+    </div>${expanded ? `<div role="group">${members.map((child) => objectRow(child, level + 1, tree, visible, ancestorsLocked || item.locked)).join('')}</div>` : ''}
   </div>`;
+}
+
+/** Update just the mounted rows under a locked group, keeping their DOM and scroll position. */
+export function updateLayerObjectLocks(branch, blocks, doc, editing) {
+  for (const row of branch.querySelectorAll('[data-object-row]')) {
+    const item = blocks.get(row.dataset.objectRow);
+    const ownLayerLocked = layerFor(doc, item).locked;
+    const inherited =
+      !!ownLayerLocked || !!row.parentElement.parentElement.closest('[data-members-locked="true"]');
+    row.parentElement.dataset.membersLocked = String(!!item.locked || !!ownLayerLocked);
+    const parentVisible = row.dataset.ancestorsVisible === 'true';
+    const available = parentVisible && !inherited && !item.hidden && !item.locked;
+    const lock = row.querySelector('[data-object-toggle="locked"]');
+    const locked = !!item.locked || inherited;
+    lock.setAttribute('aria-pressed', String(locked));
+    lock.setAttribute('aria-label', locked ? 'Unlock object' : 'Lock object');
+    lock.dataset.tooltip = lock.getAttribute('aria-label');
+    lock.disabled = row.querySelector('[data-object-toggle="hidden"]').disabled =
+      !editing || !parentVisible || inherited;
+    row.querySelector('[data-layer-object]').disabled = !available;
+    row.draggable = editing && available;
+  }
 }
 export function layersContent(doc, state, selected, editing) {
   const layers = layersFor(doc),
     active = layers.find((layer) => layer.id === state.activeLayer) || layers[0],
     chosen = new Set(selected.map((item) => item.id)),
-    rows = new Map(layers.map((layer) => [layer.id, []]));
+    rows = new Map(layers.map((layer) => [layer.id, []])),
+    children = new Map(),
+    tree = {
+      children,
+      expandedObjects: new Set(state.expandedLayerObjects),
+      chosen,
+      editing,
+      layerById: new Map(layers.map((layer) => [layer.id, layer])),
+      defaultLayer: layers[0],
+    };
   const pageId = state.activePage || doc.pages[0]?.id;
   for (let i = doc.blocks.length - 1; i >= 0; i--) {
     const item = doc.blocks[i];
-    if (!item.parentId && (item.pageId || doc.pages[0]?.id) === pageId)
-      rows.get(layerFor(doc, item).id).push(item);
+    if ((item.pageId || doc.pages[0]?.id) !== pageId) continue;
+    if (item.parentId) {
+      if (!children.has(item.parentId)) children.set(item.parentId, []);
+      children.get(item.parentId).push(item);
+    } else rows.get(layerFor(doc, item).id).push(item);
   }
   const layerRows = [...layers].reverse().map((layer) => {
     const items = rows.get(layer.id),
@@ -41,16 +90,22 @@ export function layersContent(doc, state, selected, editing) {
       ),
       id = esc(layer.id),
       color = /^#[\da-f]{6}$/i.test(layer.color) ? layer.color : '#4b80ff',
-      containsSelection = selected.some((item) => layerFor(doc, item).id === layer.id);
-    return `<div role="treeitem" aria-level="1" aria-expanded="${expanded}" class="layer-group ${layer === active ? 'active' : ''}" data-layer-row="${id}" style="--layer-color:${color}">
+      containsSelection = selected.some((item) => layerFor(doc, item).id === layer.id),
+      canReceive =
+        editing &&
+        selected.length &&
+        !layer.locked &&
+        layer.visible !== false &&
+        selected.every((item) => !item.parentId || layerFor(doc, item).id === layer.id);
+    return `<div role="treeitem" aria-level="1" aria-expanded="${expanded}" class="layer-group ${layer === active ? 'active' : ''}" data-layer-row="${id}" data-members-locked="${!!layer.locked}" style="--layer-color:${color}">
       <div class="layer-entry" draggable="${editing}">
         ${visibilityCell(`data-layer-id="${id}" data-layer-toggle="visible"`, layer.visible !== false, layer.name, editing)}
         ${lockCell(`data-layer-id="${id}" data-layer-toggle="locked"`, layer.locked, layer.name, editing)}
         <button class="layer-disclosure" data-layer-disclosure="${id}" aria-expanded="${expanded}" ${tip((expanded ? 'Collapse ' : 'Expand ') + layer.name)} ${items.length ? '' : 'disabled'}>${icon(expanded ? 'chevron-down' : 'chevron-right')}</button>
         <button class="layer-caption" data-layer-select="${id}" ${tip(layer.name)}>${esc(layer.name)}</button>
         <span class="layer-pencil" aria-hidden="true">${icon('panel-pen')}</span>
-        <button class="layer-target" data-layer-move="${id}" ${tip('Move selection to ' + layer.name)} draggable="${!!(editing && containsSelection)}" ${editing && selected.length ? '' : 'disabled'}><span class="layer-selection-mark" data-filled="${containsSelection}"></span></button>
-      </div>${expanded ? `<div role="group">${items.map((item) => objectRow(item, chosen.has(item.id), editing)).join('')}</div>` : ''}
+        <button class="layer-target" data-layer-move="${id}" ${tip('Move selection to ' + layer.name)} draggable="${!!(editing && containsSelection)}" ${canReceive ? '' : 'disabled'}><span class="layer-selection-mark" data-filled="${containsSelection}"></span></button>
+      </div>${expanded ? `<div role="group">${items.map((item) => objectRow(item, 2, tree, true, false)).join('')}</div>` : ''}
     </div>`;
   });
   return `<div class="layers-panel"><div class="layer-tree" role="tree" aria-label="Layers">${layerRows.join('')}</div>

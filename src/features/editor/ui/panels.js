@@ -5,6 +5,7 @@ import {
   panelPreset,
   DEFAULT_DOCK_WIDTH,
 } from '../../../domain/workspace/panels.js';
+import { createPanelDragPreview, nativeDockHit } from './panel-drag.js';
 const KEY = 'ivo:workspace-panels:1';
 const finite = (value, fallback) => (Number.isFinite(value) ? value : fallback);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -38,6 +39,7 @@ export function installWorkspacePanels(
     wrapOptionsShown = () => false,
     initialState,
     openExternal,
+    dragExternal,
     splitSurface = null,
     presets,
     onError = () => {},
@@ -103,6 +105,52 @@ export function installWorkspacePanels(
   drop.hidden = true;
   drop.setAttribute('aria-hidden', 'true');
   editor.append(drop);
+  const nativeGuide = document.createElement('div');
+  nativeGuide.className = 'native-panel-dock-guide';
+  nativeGuide.hidden = true;
+  nativeGuide.setAttribute('aria-hidden', 'true');
+  document.body.append(nativeGuide);
+  function dockPaletteAt({ action, kind, x, y, id }) {
+    if (action === 'failed') {
+      if (gesture?.nativeId === id) end(true);
+      onError(new Error('Could not open the floating panel.'));
+      return false;
+    }
+    nativeGuide.hidden = true;
+    if (action === 'clear' || !allowed() || !panels.has(kind)) return false;
+    if (action === 'hide') {
+      if (!saved.closed.includes(kind)) saved.closed.push(kind);
+      apply();
+      store();
+      return true;
+    }
+    const target = nativeDockHit(surface(), groups, x, y, nativeGuide, action === 'preview');
+    if (!target) return false;
+    if (action === 'preview') return true;
+    if (action !== 'drop') return false;
+    saved.closed = saved.closed.filter((item) => item !== kind);
+    if (target.type === 'tabs') {
+      const tabs = saved.groups
+        .find((item) => item.id === target.id)
+        .tabs.filter((item) => item !== kind);
+      const at = tabs.indexOf(target.before);
+      saved = movePanel(saved, kind, target.id, at < 0 ? tabs.length : at);
+    } else {
+      saved = movePanel(saved, kind, null, 0, { floating: false });
+      const placed = groupFor(kind);
+      const next = saved.groups.filter((item) => item !== placed);
+      const at = next.findIndex((item) => item.id === target.id);
+      next.splice(at < 0 ? next.length : at + Number(target.type === 'below'), 0, placed);
+      saved.groups = next;
+    }
+    selectedGroup = groupFor(kind).id;
+    editor.classList.add('show-properties');
+    onSelect(kind);
+    apply();
+    store();
+    onRender();
+    return true;
+  }
   function apply() {
     const bounds = size(),
       used = new Set(),
@@ -221,13 +269,20 @@ export function installWorkspacePanels(
     if (!gesture) return;
     const previous = gesture;
     gesture = null;
-    if (cancel) saved = previous.before;
+    if (cancel && previous.nativeId) dragExternal({ phase: 'cancel', id: previous.nativeId });
+    if (cancel) {
+      saved = previous.before;
+      if (previous.nativeKind) {
+        selectedGroup = previous.previousGroup;
+        onSelect(groupTarget().active);
+      }
+    }
     clearDrop();
     previous.ghost?.remove();
     previous.target.classList.remove('context-tab-dragging');
     delete editor.dataset.panelGesture;
     try {
-      previous.target.releasePointerCapture(previous.pointerId);
+      previous.capture.releasePointerCapture(previous.pointerId);
     } catch {}
     apply();
     if (!cancel) {
@@ -249,6 +304,7 @@ export function installWorkspacePanels(
       target = event.target.closest(
         '.canvas-panel-microbar,.workspace-panel-resize,[data-canvas-panel]',
       );
+    const previousGroup = selectedGroup;
     selectedGroup = group?.id || selectedGroup;
     if (kind === 'resize') {
       target.dataset.pointerFocus = '';
@@ -259,8 +315,12 @@ export function installWorkspacePanels(
     gesture = {
       kind,
       groupId: group?.id,
+      previousGroup,
       panelKind,
       target,
+      capture: kind === 'tab' ? editor : target,
+      strip: element?.querySelector('.context-panel-header').getBoundingClientRect(),
+      grip: target.getBoundingClientRect(),
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
@@ -270,7 +330,7 @@ export function installWorkspacePanels(
       ghost: null,
     };
     try {
-      target.setPointerCapture(event.pointerId);
+      gesture.capture.setPointerCapture(event.pointerId);
     } catch {}
     editor.dataset.panelGesture = kind;
   }
@@ -322,6 +382,51 @@ export function installWorkspacePanels(
       if (!g.moved && Math.hypot(dx, dy) < 4) return;
       event.preventDefault();
       g.moved = true;
+      const lone = g.kind === 'move' && group.tabs.filter(local);
+      if (dragExternal && (g.kind === 'tab' || lone?.length === 1 || g.nativeId)) {
+        const strip = g.strip;
+        const within =
+          event.clientX >= strip.left - 6 &&
+          event.clientX < strip.right + 6 &&
+          event.clientY >= strip.top - 8 &&
+          event.clientY < strip.bottom + 8;
+        if (g.nativeId || (!within && !hit(event))) {
+          if (!g.nativeId) {
+            g.nativeId = crypto.randomUUID();
+            g.nativeKind = g.panelKind || lone[0];
+            // The source keeps capture even after the dock hides the torn tab.
+            g.capture = editor;
+            try {
+              editor.setPointerCapture(g.pointerId);
+            } catch {}
+            const gripX = clamp(g.x - g.grip.left, 4, 230);
+            const gripY = clamp(g.y - g.grip.top + (g.kind === 'tab' ? 14 : 0), 3, 39);
+            select(g.nativeKind);
+            onRender();
+            g.ghost?.remove();
+            g.ghost = createPanelDragPreview(template, panels.get(g.nativeKind));
+            g.ghost.id = 'ivo-panel-lift-' + g.nativeId;
+            g.ghost.style.left = event.clientX - gripX + 'px';
+            g.ghost.style.top = event.clientY - gripY + 'px';
+            g.gripX = gripX;
+            g.gripY = gripY;
+            dragExternal({
+              phase: 'start',
+              id: g.nativeId,
+              kind: g.nativeKind,
+              x: event.screenX,
+              y: event.screenY,
+              gripX,
+              gripY,
+            });
+          } else {
+            g.ghost.style.left = event.clientX - g.gripX + 'px';
+            g.ghost.style.top = event.clientY - g.gripY + 'px';
+            dragExternal({ phase: 'move', id: g.nativeId, x: event.screenX, y: event.screenY });
+          }
+          return;
+        }
+      }
       if (g.kind === 'tab' && !g.ghost) {
         g.ghost = document.createElement('div');
         g.ghost.className = 'context-tab-drag-preview';
@@ -370,6 +475,14 @@ export function installWorkspacePanels(
   listen(window, 'pointerup', (event) => {
     const g = gesture;
     if (!g || event.pointerId !== g.pointerId) return;
+    if (g.nativeId) {
+      dragExternal({ phase: 'drop', id: g.nativeId, x: event.screenX, y: event.screenY });
+      g.nativeId = null;
+      // The native utility acknowledges its first layout, even on a quick release.
+      g.ghost = null;
+      end(true);
+      return;
+    }
     if (!g.moved) {
       const kind = g.panelKind;
       end(true);
@@ -427,6 +540,26 @@ export function installWorkspacePanels(
     end();
   });
   listen(window, 'pointercancel', () => end(true));
+  listen(window, 'lostpointercapture', (event) => {
+    if (
+      gesture?.nativeId &&
+      event.pointerId === gesture.pointerId &&
+      event.target === gesture.capture
+    )
+      end(true);
+  });
+  listen(
+    window,
+    'keydown',
+    (event) => {
+      if (gesture?.nativeId && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        end(true);
+      }
+    },
+    { capture: true },
+  );
   listen(window, 'blur', () => {
     end(true);
     closeMenu();
@@ -802,6 +935,7 @@ export function installWorkspacePanels(
   apply();
   onSelect(saved.groups[0].active);
   return {
+    dockPaletteAt,
     isExternal: (kind) => external.has(kind),
     setExternal(kinds) {
       if (external.size === kinds.length && kinds.every((kind) => external.has(kind))) return false;
@@ -848,6 +982,7 @@ export function installWorkspacePanels(
       closeMenu();
       controller.abort();
       observer.disconnect();
+      nativeGuide.remove();
       drop.remove();
       dock.remove();
       for (const element of groups.values()) element.remove();

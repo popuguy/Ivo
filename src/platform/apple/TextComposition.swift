@@ -204,8 +204,16 @@ public final class TextCompositionEngine {
   func fail(_ message: String) -> NSError {
     NSError(domain: "Ivo.TextComposition", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
   }
+  private static let hexadecimal = Array("0123456789abcdef".utf8)
   func digest(_ bytes: Data) -> String {
-    SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+    // Glyph identities also use this path. Format the digest in one buffer.
+    var hex: [UInt8] = []
+    hex.reserveCapacity(64)
+    for byte in SHA256.hash(data: bytes) {
+      hex.append(Self.hexadecimal[Int(byte >> 4)])
+      hex.append(Self.hexadecimal[Int(byte & 15)])
+    }
+    return String(decoding: hex, as: UTF8.self)
   }
   func finite(_ value: Double, _ minimum: Double, _ maximum: Double) -> Bool {
     value.isFinite && value >= minimum && value <= maximum
@@ -1713,9 +1721,11 @@ public final class TextCompositionEngine {
             positions = positions.map { $0.applying(matrix) }
           }
           let edges = Array(Set(indices + [source.location + source.length])).sorted()
+          let nextEdge = Dictionary(uniqueKeysWithValues: zip(edges, edges.dropFirst()))
+          var outlineIDs: [CGGlyph: String] = [:]
           var rows: [[String: Any]] = try (0..<n).map { i in
             let a = indices[i]
-            let b = edges.first(where: { $0 > a }) ?? source.location + source.length
+            let b = nextEdge[a] ?? source.location + source.length
             var row: [String: Any] = [
               "glyph": Int(glyphs[i]), "index": a, "end": b,
               "position": [
@@ -1731,7 +1741,13 @@ public final class TextCompositionEngine {
               "sourceRanges": logicalRanges(a, b, request.spans),
             ]
             if request.includeVectors == true {
-              let key = vectorIdentity(font: font, glyph: glyphs[i], request: request)
+              let glyph = glyphs[i]
+              let key: String
+              if let cached = outlineIDs[glyph] { key = cached }
+              else {
+                key = vectorIdentity(font: font, glyph: glyph, request: request)
+                outlineIDs[glyph] = key
+              }
               if let path = try vectorPath(font: font, glyph: glyphs[i], id: key) {
                 row["vector"] = key
                 vectors[key] = path
@@ -2015,6 +2031,27 @@ public final class TextCompositionEngine {
     let request = try JSONDecoder().decode(Request.self, from: input)
     variableInstances.removeAll(keepingCapacity: true)
     let fonts = try validate(request)
+    let inputDigest = digest(input)
+    var result: [String: Any] = [
+      "protocol": request.protocol, "mode": request.mode, "requestDigest": inputDigest,
+      "sourceDigest": request.sourceDigest,
+      "os": ProcessInfo.processInfo.operatingSystemVersionString, "backend": "CoreText-system",
+      "resources": request.resources.map {
+        ["id": $0.id, "digest": $0.digest, "postscript": $0.postscript]
+      },
+    ]
+    if request.mode == "measure-lines-proof" {
+      // A candidate measurement owns neither a frozen layout nor a PDF token.
+      // The source and byte digest still identify every measured alternative.
+      result["measurements"] = try measureCandidates(request, fonts: fonts)
+      result["spans"] = request.spans.map { span -> [String: Any] in
+        ["kind": span.kind, "logicalStart": span.logicalStart, "logicalEnd": span.logicalEnd,
+         "start": span.start, "end": span.end]
+      }
+      let output = try JSONSerialization.data(withJSONObject: result)
+      try require(output.count <= 32_000_000, "Composition result exceeds bounds")
+      return output
+    }
     var canonical = try JSONSerialization.jsonObject(with: input) as! [String: Any]
     canonical["resources"] = request.resources.map {
       ["id": $0.id, "digest": $0.digest, "postscript": $0.postscript]
@@ -2022,7 +2059,6 @@ public final class TextCompositionEngine {
     let token =
       "ct1-" + digest(try JSONSerialization.data(withJSONObject: canonical, options: [.sortedKeys]))
     if let snapshot = snapshots[token] {
-      let inputDigest = digest(input)
       if inputDigest == snapshot.requestDigest { return snapshot.responseData }
       // Only the envelope digest changes when registered font bytes are elided. Keep
       // immutable geometry serialized instead of rebuilding thousands of JSON rows.
@@ -2035,47 +2071,31 @@ public final class TextCompositionEngine {
         range.upperBound..<(range.upperBound + 64), with: Data(inputDigest.utf8))
       return output
     }
-    var result: [String: Any] = [
-      "protocol": request.protocol, "mode": request.mode, "requestDigest": digest(input),
-      "sourceDigest": request.sourceDigest,
-      "os": ProcessInfo.processInfo.operatingSystemVersionString, "backend": "CoreText-system",
-      "resources": request.resources.map {
-        ["id": $0.id, "digest": $0.digest, "postscript": $0.postscript]
-      },
+    let (lines, rows, diagnostics, vectors) = try compose(request, fonts: fonts)
+    result["token"] = token
+    result["layout"] = [
+      "lines": rows, "coveredLength": lines.last?.end ?? 0,
+      "textLength": request.text.utf16.count,
     ]
-    var retained: [FrozenLine] = []
-    if request.mode == "measure-lines-proof" {
-      result["measurements"] = try measureCandidates(request, fonts: fonts)
-    } else {
-      let (lines, rows, diagnostics, vectors) = try compose(request, fonts: fonts)
-      retained = lines
-      result["token"] = token
-      result["layout"] = [
-        "lines": rows, "coveredLength": lines.last?.end ?? 0,
-        "textLength": request.text.utf16.count,
-      ]
-      result["diagnostics"] = diagnostics
-      if request.includeVectors == true { result["vectors"] = vectors }
-    }
+    result["diagnostics"] = diagnostics
+    if request.includeVectors == true { result["vectors"] = vectors }
     result["spans"] = canonical["spans"]
     let output = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
     try require(output.count <= 32_000_000, "Composition result exceeds bounds")
-    if request.mode != "measure-lines-proof" {
-      let cost =
-        output.count * 2 + request.text.utf8.count * 8
-        + request.resources.reduce(0) { $0 + (fontCache[$1.digest]?.bytes ?? 0) }
-      while snapshotOrder.count >= 16 || snapshotBytes + cost > 64_000_000 {
-        guard let first = snapshotOrder.first else { break }
-        snapshotOrder.removeFirst()
-        snapshotBytes -= snapshots.removeValue(forKey: first)?.cost ?? 0
-      }
-      try require(cost <= 64_000_000, "Composition snapshot exceeds bounds")
-      snapshots[token] = Snapshot(
-        text: request.text as NSString, frames: request.frames, lines: retained, responseData: output, requestDigest: digest(input),
-        cost: cost)
-      snapshotOrder.append(token)
-      snapshotBytes += cost
+    let cost =
+      output.count * 2 + request.text.utf8.count * 8
+      + request.resources.reduce(0) { $0 + (fontCache[$1.digest]?.bytes ?? 0) }
+    while snapshotOrder.count >= 16 || snapshotBytes + cost > 64_000_000 {
+      guard let first = snapshotOrder.first else { break }
+      snapshotOrder.removeFirst()
+      snapshotBytes -= snapshots.removeValue(forKey: first)?.cost ?? 0
     }
+    try require(cost <= 64_000_000, "Composition snapshot exceeds bounds")
+    snapshots[token] = Snapshot(
+      text: request.text as NSString, frames: request.frames, lines: lines, responseData: output, requestDigest: inputDigest,
+      cost: cost)
+    snapshotOrder.append(token)
+    snapshotBytes += cost
     return output
   }
 

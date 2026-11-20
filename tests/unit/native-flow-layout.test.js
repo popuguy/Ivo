@@ -171,6 +171,114 @@ function port() {
   };
   return { compose, calls };
 }
+
+function independentDocument(count = 2) {
+  const doc = fixture({ width: 300, height: 60 });
+  doc.id = 'credits';
+  const frame = doc.blocks[0],
+    flow = doc.textFlows[0];
+  for (let i = 1; i < count; i++) {
+    const id = 'frame-' + i,
+      textFlowId = 'flow-' + i;
+    doc.blocks.push({ ...frame, id, textFlowId });
+    doc.textFlows.push({
+      ...structuredClone(flow),
+      id: textFlowId,
+      frameIds: [id],
+      html: 'Independent credit ' + i,
+    });
+  }
+  return doc;
+}
+
+test('a magazine edit recomposes only the changed sources across immutable snapshots', async () => {
+  const doc = independentDocument(24),
+    native = port();
+  const options = { ...native, editorSession: {} };
+  const before = await composeNativeTextFlows(doc, options);
+  assert.equal(native.calls.length, 24);
+  const edit = structuredClone(doc);
+  edit.textFlows[2].html += ' updated';
+  edit.textFlows[23].html += ' also updated';
+  const after = await composeNativeTextFlows(edit, options);
+  assert.deepEqual(
+    native.calls.slice(24).map((r) => r.id),
+    ['flow-2', 'flow-23'],
+  );
+  for (const [i, frame] of doc.blocks.entries()) {
+    if (i !== 2 && i !== 23)
+      assert.equal(after.fragments.get(frame.id), before.fragments.get(frame.id));
+  }
+  assert.deepEqual(after, await composeNativeTextFlows(structuredClone(edit), port()));
+});
+
+test('reusable editor ink is fenced by fonts, styles, geometry, pagination and editor ownership', async () => {
+  const cases = [
+    (doc) => {
+      doc.id = 'another-document';
+    },
+    (_doc, options) => {
+      options.editorSession = {};
+    },
+    (_doc, options) => {
+      options.compose = port().compose;
+    },
+    (_doc, options) => {
+      options.allowPages = false;
+    },
+    (_doc, options) => {
+      options.assets = [{ id: 'another-font', font: { family: 'Other' }, data: 'new' }];
+    },
+    (doc) => {
+      doc.blocks[0].w++;
+    },
+    (doc) => {
+      doc.pages[0].height++;
+    },
+    (doc) => {
+      doc.publishing.paragraphStyles[0].attributes.fontSize = 21;
+    },
+    (doc) => {
+      doc.textFlows[0].automaticPages = true;
+    },
+    (doc) => {
+      doc.blocks.push({
+        id: 'outside',
+        type: 'polygon',
+        pageId: 'page-a',
+        x: 500,
+        y: 500,
+        w: 15,
+        h: 20,
+        textWrap: normalizeTextWrap({ mode: 'bounds' }),
+      });
+    },
+  ];
+  for (const change of cases) {
+    const doc = independentDocument(),
+      options = { ...port(), editorSession: {} };
+    doc.publishing = {
+      parents: [],
+      paragraphStyles: [{ id: 'body', attributes: { fontSize: 14 } }],
+    };
+    doc.textFlows[1].style.paragraphStyle = 'body';
+    const before = await composeNativeTextFlows(doc, options);
+    const next = structuredClone(doc);
+    next.textFlows[0].html += ' edited';
+    change(next, options);
+    const after = await composeNativeTextFlows(next, options);
+    assert.notEqual(after.fragments.get('frame-1'), before.fragments.get('frame-1'));
+    assert.deepEqual(
+      after,
+      await composeNativeTextFlows(structuredClone(next), {
+        ...options,
+        ...port(),
+        editorSession: undefined,
+      }),
+    );
+  }
+});
+
 test('native driver preserves authored source/objects, returns SVG and canonical column provenance, caches semantic results', async () => {
   const doc = fixture(),
     before = structuredClone(doc),

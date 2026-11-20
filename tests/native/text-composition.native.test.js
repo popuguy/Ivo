@@ -336,7 +336,11 @@ test(
     const req = await request('café e\u0301 words');
     req.mode = 'measure-lines-proof';
     req.candidates = [{ start: 0, end: req.text.length }];
-    assert((await service.compose(req)).measurements[0].width > 0);
+    const measured = await service.compose(req);
+    assert(measured.measurements[0].width > 0);
+    assert.deepEqual(measured.spans, req.spans);
+    assert.equal(measured.sourceDigest, req.sourceDigest);
+    assert.equal(measured.token, undefined);
     req.candidates = [{ start: 0, end: 6 }];
     await assert.rejects(service.compose(req), /grapheme boundary/);
     req.mode = 'explicit-lines-proof';

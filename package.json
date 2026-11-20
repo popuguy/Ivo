@@ -90,7 +90,8 @@
     "pretest:native-controls": "node scripts/reference-art.mjs",
     "test:text-wrap": "electron tests/runtime/text-wrap/runner.mjs",
     "pretest:text-wrap": "node scripts/reference-art.mjs",
-    "test:responsiveness": "npm run build && electron tests/runtime/responsiveness/runner.mjs"
+    "test:responsiveness": "npm run build && electron tests/runtime/responsiveness/runner.mjs",
+    "test:release-input": "npm run build && node scripts/build-native-text.mjs && node scripts/qualify-desktop-input.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

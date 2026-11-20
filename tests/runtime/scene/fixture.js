@@ -151,6 +151,13 @@ try {
     assetCount === 1 && doc.blocks.at(-1).parentId === mask.id,
     'Workspace-level paste did not insert inside mask',
   );
+  const imageFrame = host.querySelector(
+    `[data-object="${doc.blocks.at(-1).id}"] .canvas-image-frame`,
+  );
+  assert(
+    imageFrame && getComputedStyle(imageFrame).backgroundColor === 'rgba(0, 0, 0, 0)',
+    'Placed artwork must let underlying layers show through its alpha channel',
+  );
   // Source data belongs to the asset backend, outside the scene payload.
   doc.blocks.at(-1).src = '';
   const geometry = JSON.stringify(doc.blocks);

@@ -1,6 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCompositionSession } from '../../src/features/editor/text/composition-session.js';
+
+test('continuous typing can paint a completed generation without accepting its geometry', async () => {
+  for (const interruption of ['none', 'other flow', 'non-typing edit', 'lost writer']) {
+    const doc = { pages: [], blocks: [], textFlows: [{ html: 'one' }] };
+    const paints = [],
+      accepted = [];
+    let release,
+      writer = true;
+    const session = createCompositionSession({
+      getDocument: () => doc,
+      scope: () => writer,
+      compose: async (snapshot) => {
+        if (snapshot.textFlows[0].html === 'one')
+          await new Promise((resolve) => {
+            release = resolve;
+          });
+        return snapshot.textFlows[0].html;
+      },
+      onTypingPreview: (ink, flow) => paints.push([ink, flow]),
+      onResult: (plan) => accepted.push(plan),
+      onError: assert.fail,
+    });
+    session.request(doc, { typingFlow: 'body' });
+    await Promise.resolve();
+    doc.textFlows[0].html = 'two';
+    if (interruption === 'lost writer') writer = false;
+    session.request(doc, {
+      typingFlow:
+        interruption === 'other flow'
+          ? 'aside'
+          : interruption === 'non-typing edit'
+            ? undefined
+            : 'body',
+    });
+    doc.textFlows[0].html = 'three';
+    writer = true;
+    session.request(doc, { typingFlow: 'body' });
+    release();
+    await session.flush();
+    assert.deepEqual(accepted, ['three']);
+    assert.deepEqual(paints, interruption === 'none' ? [['one', 'body']] : []);
+    session.destroy();
+  }
+});
 test('native layout never applies an obsolete edit; queued superseded edits do no work', async () => {
   let doc = { pages: [], blocks: [], textFlows: [{ html: 'first' }] },
     release;

@@ -59,3 +59,39 @@ export function arrangeObjects(doc, ids, command) {
   }
   return changed;
 }
+
+/** Move one item relative to a sibling without disturbing interleaved blocks owned by other groups. */
+export function reorderSibling(doc, sourceId, targetId, above) {
+  const source = doc.blocks.find((item) => item.id === sourceId);
+  const target = doc.blocks.find((item) => item.id === targetId);
+  if (
+    !source ||
+    !target ||
+    source === target ||
+    !objectAvailable(doc, source) ||
+    source.parentId !== target.parentId ||
+    source.pageId !== target.pageId ||
+    layerFor(doc, source).id !== layerFor(doc, target).id
+  )
+    return false;
+  const layerId = layerFor(doc, source).id;
+  const slots = [],
+    siblings = [];
+  for (const [index, item] of doc.blocks.entries()) {
+    if (
+      item.parentId === source.parentId &&
+      item.pageId === source.pageId &&
+      layerFor(doc, item).id === layerId
+    ) {
+      slots.push(index);
+      if (item !== source) siblings.push(item);
+    }
+  }
+  // Document order is back to front; Layers displays the reverse.
+  siblings.splice(siblings.indexOf(target) + Number(above), 0, source);
+  if (siblings.every((item, index) => doc.blocks[slots[index]] === item)) return false;
+  slots.forEach((slot, index) => {
+    doc.blocks[slot] = siblings[index];
+  });
+  return true;
+}

@@ -1,6 +1,7 @@
 /** Geometry/source fence; camera and save bookkeeping never schedule composition. */
 export function compositionLayoutKey(doc) {
   return JSON.stringify([
+    doc.id,
     doc.textFlows || [],
     doc.blocks.map(({ locked: _locked, ...geometry }) => geometry),
     doc.pages,
@@ -8,6 +9,7 @@ export function compositionLayoutKey(doc) {
     doc.publishing?.characterStyles,
     doc.publishing?.layers?.map(({ locked: _locked, ...geometry }) => geometry),
     doc.publishing?.parents,
+    doc.publishing?.baselineGrid,
     doc.textWrapPreferences,
   ]);
 }
@@ -17,6 +19,7 @@ export function createCompositionSession({
   getDocument,
   compose,
   onResult,
+  onTypingPreview,
   onError,
   scope = () => true,
 }) {
@@ -24,6 +27,9 @@ export function createCompositionSession({
     requested = '',
     work = null,
     queued = null,
+    typingRun = 0,
+    lastTypingFlow,
+    lastScope,
     delivering = false;
   const generation = () => {
     const doc = getDocument();
@@ -31,12 +37,14 @@ export function createCompositionSession({
   };
   async function run() {
     while (alive && queued) {
-      const { key, snapshot, options } = queued;
+      const { key, snapshot, options, run } = queued;
       queued = null;
       if (requested !== key || generation() !== key) continue;
       try {
         const result = await compose(snapshot, options);
-        if (alive && requested === key && generation() === key) {
+        if (!alive) return;
+        const current = generation();
+        if (requested === key && current === key) {
           delivering = true;
           try {
             onResult(result, snapshot);
@@ -44,6 +52,11 @@ export function createCompositionSession({
           } finally {
             delivering = false;
           }
+        } else if (options.typingFlow && queued?.run === run && queued.key === current) {
+          // A newer key may arrive during every composition in a fast sequence.
+          // Offer the exact finished ink while reserving model/geometry delivery
+          // for the current generation. Only consecutive typing in one flow qualifies.
+          onTypingPreview?.(result, options.typingFlow);
         }
       } catch (error) {
         if (alive && requested === key && generation() === key) onError(error);
@@ -63,12 +76,17 @@ export function createCompositionSession({
   }
   function request(doc, options = {}) {
     if (!alive || delivering) return;
-    const key = JSON.stringify([compositionLayoutKey(doc), scope()]);
+    const currentScope = scope();
+    const key = JSON.stringify([compositionLayoutKey(doc), currentScope]);
     if (key === requested) return;
     requested = key;
+    if (!options.typingFlow || options.typingFlow !== lastTypingFlow || currentScope !== lastScope)
+      typingRun++;
+    lastTypingFlow = options.typingFlow;
+    lastScope = currentScope;
     // Replacing this slot releases the previous snapshot immediately. A long
     // native request must not retain one cloned document for every keystroke.
-    queued = { key, snapshot: structuredClone(doc), options };
+    queued = { key, snapshot: structuredClone(doc), options, run: typingRun };
     start();
   }
   return {
