@@ -1,4 +1,5 @@
 import { normalizePanelPresets, savePanelPreset } from '../domain/workspace/panel-presets.js';
+import { isDrawingTool } from '../domain/workspace/state.js';
 import { normalizeChrome } from '../domain/workspace/chrome.js';
 import {
   normalizeLayoutCatalog,
@@ -13,6 +14,7 @@ export function createWorkspacePreferences({
   windowId = 'main',
 } = {}) {
   const scope = encodeURIComponent(String(vaultId)),
+    toolKey = 'ivo:drawing-tool:1:' + scope,
     panelKey = 'ivo:panel-presets:1:' + scope,
     catalogKey = 'ivo:workspace-layouts:1:' + scope,
     chromeKey = 'ivo:workspace-chrome:1:' + scope + ':' + encodeURIComponent(String(windowId));
@@ -32,6 +34,13 @@ export function createWorkspacePreferences({
   };
   return Object.freeze({
     catalog,
+    readDrawingTool() {
+      const value = storage.getItem(toolKey);
+      return isDrawingTool(value) ? value : null;
+    },
+    writeDrawingTool(value) {
+      if (isDrawingTool(value)) storage.setItem(toolKey, value);
+    },
     panelPresets: () => normalizePanelPresets(read(panelKey)),
     savePanelPreset: (name, layout) => {
       const value = savePanelPreset(read(panelKey), name, layout);

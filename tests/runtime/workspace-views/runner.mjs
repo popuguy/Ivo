@@ -1,4 +1,9 @@
 import { app, BrowserWindow, protocol, net } from 'electron';
+import {
+  prepareBackgroundTest,
+  testWindowOptions,
+  focusTestWindow,
+} from '../helpers/background.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,6 +11,7 @@ import path from 'node:path';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const profile = await mkdtemp(path.join(tmpdir(), 'ivo-workspace-views-'));
 app.setPath('userData', profile);
+prepareBackgroundTest(app);
 app.on('window-all-closed', () => {});
 protocol.registerSchemesAsPrivileged([
   {
@@ -21,13 +27,15 @@ app
       if (!target.startsWith(root + path.sep)) return new Response('Forbidden', { status: 403 });
       return net.fetch(pathToFileURL(target).href);
     });
-    const window = new BrowserWindow({
-      enableLargerThanScreen: true,
-      show: true,
-      width: 1500,
-      height: 850,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
-    });
+    const window = new BrowserWindow(
+      testWindowOptions({
+        enableLargerThanScreen: true,
+        show: true,
+        width: 1500,
+        height: 850,
+        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+      }),
+    );
     let settled = false;
     const timer = setTimeout(() => void finish(1, { error: 'Workspace views timeout' }), 60000);
     async function finish(code, result) {
@@ -82,8 +90,7 @@ app
       'ivo-workspace-views-test://app/tests/runtime/workspace-views/fixture.html' +
         (process.env.IVO_REVIEW_DIR ? '?capture=1' : ''),
     );
-    window.focus();
-    window.webContents.focus();
+    focusTestWindow(window);
   })
   .catch((error) => {
     console.error(error);

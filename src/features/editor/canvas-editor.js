@@ -379,6 +379,8 @@ export function mountCanvasEditor(host, options) {
     },
     allowed: () => !busy && !composing && !dialogOpen(),
     initialState: options.panelLayout,
+    openExternal: globalThis.ivoNative?.palettes?.open,
+    splitSurface: options.parentMode ? null : options.splitPanelSurface,
     onCommand: (name) => command(name),
     wrapOptionsShown: () => state.propertyDisclosures?.wrapPanel !== false,
     commandEnabled: (name) => {
@@ -492,6 +494,7 @@ export function mountCanvasEditor(host, options) {
     const hadVertex = !!selectedVertex;
     selectedVertex = null;
     state.tool = name;
+    options.onChooseTool?.(name);
     if (hadVertex) renderPanel();
     editor.dataset.tool = name;
     renderTools();
@@ -925,10 +928,13 @@ export function mountCanvasEditor(host, options) {
     const selectedObjects = objects(),
       panelEntries = workspacePanels
         .entries()
-        .filter(({ content }) => !visibleOnly || !content.hidden),
+        .filter(
+          ({ kind, content }) =>
+            !visibleOnly || !content.hidden || workspacePanels.isExternal(kind),
+        ),
       index = panelEntries.some(({ kind }) => kind === 'links') ? options.index?.() : undefined;
     for (const { kind, content } of panelEntries) {
-      if (kind === 'text-wrap' && content.hidden) {
+      if (kind === 'text-wrap' && content.hidden && !workspacePanels.isExternal(kind)) {
         content.replaceChildren();
         panelHTML.delete(content);
         continue;
@@ -1610,7 +1616,7 @@ export function mountCanvasEditor(host, options) {
       ? view.activePage
       : doc().pages[0].id;
     state.inside = sceneObject(doc(), view.inside) ? view.inside : null;
-    state.tool = activeTextId ? 'text' : view.tool || 'select';
+    state.tool = activeTextId ? 'text' : options.workspaceTool?.() || view.tool || 'select';
     pendingMarks = view.pendingMarks || {};
     pendingTextPosition = Object.keys(pendingMarks).length
       ? (view.textSelection?.focus.index ?? null)
@@ -3773,7 +3779,8 @@ export function mountCanvasEditor(host, options) {
     viewport,
     'wheel',
     (event) => {
-      if (!ownsInput()) return;
+      // Scrolling a neighboring page moves its own camera without taking the insertion point.
+      if (busy || parentEditor || dialogOpen() || !canWrite()) return;
       event.preventDefault();
       const delta = wheelDelta(event, {
         width: viewport.clientWidth,
@@ -4442,6 +4449,13 @@ export function mountCanvasEditor(host, options) {
   });
   return {
     command,
+    adoptWorkspaceTool() {
+      const name = options.workspaceTool?.();
+      if (!name || state.tool === name || !options.editing || activeTextId) return;
+      state.tool = name;
+      renderTools();
+      renderSelection(true);
+    },
     textCommandTarget() {
       const target = document.activeElement,
         item = object();
@@ -4489,6 +4503,31 @@ export function mountCanvasEditor(host, options) {
       if (style) delete style.dataset.family;
       syncTextStyle();
       requestFrame();
+    },
+    setExternalPanels(kinds) {
+      if (!alive || !workspacePanels.setExternal(kinds)) return;
+      renderPanel({ visibleOnly: true });
+    },
+    paletteSurface(kind) {
+      if (!alive || !ownsInput() || host.closest('[inert]') || busy || composing || dialogOpen())
+        return null;
+      const view = captureView();
+      return {
+        content: workspacePanels.entries().find((entry) => entry.kind === kind)?.content,
+        title: doc().title,
+        scope: JSON.stringify([
+          options.sessionId,
+          doc().id,
+          doc().version,
+          options.editing,
+          state.activePage,
+          state.selection,
+          state.activeLayer,
+          view.activeTextId,
+          view.textSelection?.anchor?.index,
+          view.textSelection?.focus?.index,
+        ]),
+      };
     },
     getPanelLayout: () => workspacePanels.getState(),
     setPanelLayout: (layout) => workspacePanels.restore(layout),

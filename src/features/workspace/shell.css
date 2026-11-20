@@ -1186,3 +1186,85 @@ body.sidebar-collapsed .workspace-sidebar-resize {
   width: 11px;
   height: 11px;
 }
+
+.split-control-surface {
+  display: none;
+}
+@media (min-width: 761px) {
+  /* The shell is the fixed-position containing block for its tool and inspector rails.
+     Controls stay under the editor that handles them, even across a vertical split. */
+  .page-workspace.split-controls {
+    contain: layout;
+    --split-tool-track: 0px;
+    --split-dock-track: 0px;
+  }
+  .split-controls.split-has-tools {
+    --split-tool-track: 44px;
+  }
+  .split-controls > .split-control-surface {
+    display: block;
+    position: absolute;
+    inset: var(--workspace-header-height) 0 0;
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .split-controls > .workspace-layout {
+    padding-inline: var(--split-tool-track) var(--split-dock-track);
+    background: var(--workspace-chrome-background);
+  }
+  .split-controls .workspace-pane {
+    container-type: normal;
+  }
+  .split-controls .workspace-view [data-canvas-host] > .scene-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split-controls
+    .workspace-view:not(.active)
+    [data-canvas-host]
+    > .scene-editor
+    > :is(.canvas-tools, .canvas-panel-dock, .context-panel-group, .workspace-panel-menu) {
+    display: none;
+  }
+  .split-controls [data-canvas-host] > .scene-editor > .canvas-tools,
+  .split-controls [data-canvas-host] > .scene-editor > .canvas-panel-dock {
+    position: fixed;
+    z-index: 12;
+    top: var(--workspace-header-height);
+    bottom: 0;
+  }
+  .split-controls [data-canvas-host] > .scene-editor > .canvas-tools {
+    left: 0;
+    width: var(--split-tool-track);
+  }
+  .split-controls [data-canvas-host] > .scene-editor > .canvas-panel-dock {
+    right: 0;
+    width: var(--context-panel-width);
+  }
+  .split-controls
+    [data-canvas-host]
+    > .scene-editor
+    > :is(
+      .context-panel-group[data-floating='true'],
+      .workspace-panel-menu,
+      .context-tab-drag-preview,
+      .workspace-dock-target
+    ) {
+    position: fixed;
+    margin-top: var(--workspace-header-height);
+  }
+}
+@media (min-width: 1051px) {
+  .split-controls.split-has-dock {
+    --split-dock-track: var(--split-dock-width);
+  }
+}
+
+/* Preserve the canvas bounds when another native document takes the shared tools. */
+.passive-document-window
+  .workspace-view
+  [data-canvas-host]
+  > .scene-editor
+  > :is(.canvas-tools, .canvas-panel-dock, .context-panel-group, .workspace-panel-menu) {
+  visibility: hidden;
+  pointer-events: none;
+}

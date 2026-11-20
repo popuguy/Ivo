@@ -4,6 +4,12 @@ Stacked tabs are paused at Paul's request on 18 November 2026. They have no acti
 
 The workspace extends the existing Obsidian-style shell while keeping Ivo's page editor inside each document tab. Reference behavior comes from Obsidian's official [tabs and linked views documentation](https://obsidian.md/help/tabs). This increment does not claim exact native motion, hardware timing or every Obsidian view/plugin.
 
+## Editing with splits
+
+Side-by-side and stacked document panes share one drawing toolbar and inspector dock at the workspace edges. Click a page or its header to make that document the target for Properties, Pages, Layers and keyboard commands. The selected drawing tool follows the active editing pane. Ivo remembers an explicit tool choice in local device preferences for that vault. A saved text insertion point takes precedence when resuming typing. Two-finger scrolling and pinch zoom over another page move that page's camera while preserving the current editing target.
+
+The controls remain connected to the active editor's handlers. Changing panes retains both canvases, and panel layout lives in workspace preferences. At phone widths the workspace presents the active pane on its own. The navigation fixture checks pointer hit targets, fixed rail positions in horizontal and nested vertical splits, a Pages edit and undo, tool selection, and independent scrolling during text editing.
+
 ## Retained stacked-tab implementation (inactive)
 
 Right-click a tab or open its view-options menu and choose **Stack tabs**. The group's documents become horizontally sliding, retained views. Vertical document spines identify the compressed views and activate/reveal them. Normal tab selection reveals the chosen view; horizontal scrolling lets several documents remain visible. **Unstack tabs** restores the ordinary single-view group. Splits and stacked groups can coexist. Mode, tab/pin order, active views and individual document/graph cameras persist and belong to saved workspaces.

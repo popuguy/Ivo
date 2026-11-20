@@ -11,6 +11,7 @@ import {
   NATIVE_TEXT_ACCELERATORS,
   nativeTextMenuState,
 } from '../src/domain/text/native-commands.js';
+import { installFloatingPalettes } from './floating-palettes.mjs';
 import { createDocumentClipboard } from './document-clipboard.mjs';
 import { createSystemFonts } from './system-fonts.mjs';
 import {
@@ -23,6 +24,7 @@ import {
   dialog,
   Menu,
   screen,
+  session,
   clipboard,
   ClipboardItem,
   systemPreferences,
@@ -83,11 +85,15 @@ const records = new Map(),
 let registry,
   manager,
   resourceHandler,
+  palettes,
   textCompositionBridge,
   quitting = false;
 const activeRecord = () =>
   records.get(BrowserWindow.getFocusedWindow()?.webContents.id) ||
-  [...records.values()].filter((r) => !r.window.isDestroyed()).at(-1);
+  palettes?.forWindow(BrowserWindow.getFocusedWindow()) ||
+  [...records.values()]
+    .filter((r) => !r.window.isDestroyed())
+    .sort((a, b) => (b.focusedAt || 0) - (a.focusedAt || 0))[0];
 function owner(event) {
   const record = records.get(event.sender.id);
   if (
@@ -133,6 +139,18 @@ else {
         );
         return new Response(result.body, { status: result.status, headers });
       };
+      const paletteSession = session.fromPartition('ivo-palettes');
+      paletteSession.protocol.handle('ivo', resourceHandler);
+      paletteSession.setPermissionRequestHandler((_contents, _permission, done) => done(false));
+      paletteSession.setPermissionCheckHandler(() => false);
+      palettes = installFloatingPalettes({
+        owner,
+        preload: path.join(project, 'desktop/palette-preload.cjs'),
+        url: origin + '/palette.html',
+        session: paletteSession,
+        documents: () => records.values(),
+        onMenuChange: installMenu,
+      });
       const methods = new Set([
         'loadDocuments',
         'saveDocument',
@@ -242,6 +260,7 @@ else {
             if (!record.silent || record.focusOnReady) await record.group.lease.request(record);
           } else record.ready = true;
           record.presentable = true;
+          palettes.refresh(record);
           showWindow(record, { inactive: record.silent && !record.focusOnReady });
           record.resolveReady?.();
           record.resolveReady = null;
@@ -856,6 +875,7 @@ function createWindow(
   });
   window.on('focus', () => {
     record.focusedAt = Date.now();
+    palettes.activate(record);
     installMenu();
     if (entry) {
       registry.setOpen(entry.id, true).catch(() => {});
@@ -863,6 +883,7 @@ function createWindow(
         group.lease
           .request(record)
           .then(() => {
+            palettes.refresh(record);
             if (record === activeRecord() && !record.nativeDialogOpen) applyHistory(record);
           })
           .catch((error) => report(record, error));
@@ -905,6 +926,10 @@ function createWindow(
     for (const [token, pending] of lateWindowAcks)
       if (pending === record) lateWindowAcks.delete(token);
     records.delete(contentsId);
+    palettes.release(
+      record,
+      [...records.values()].filter((other) => other.vault && !other.window.isDestroyed()),
+    );
     if (entry) {
       group.lease.remove(record);
       group.windows.delete(record);
@@ -1232,6 +1257,10 @@ function showDragPreview(record) {
 }
 
 function sendCommand(name) {
+  if (name === 'close-tab' && palettes?.focused()) {
+    palettes.focused().window.close();
+    return;
+  }
   const record = activeRecord();
   if (!record) return;
   if (record.nativeDialogOpen) {
@@ -1329,7 +1358,7 @@ function applyHistory(record) {
 }
 function installMenu() {
   const record = activeRecord(),
-    nativeFields = record?.nativeDialogOpen,
+    nativeFields = record?.nativeDialogOpen || palettes?.focused()?.editing,
     hasVault = !!record?.vault;
   const compositionPreferences = {
     label: 'Preferences',
@@ -1384,7 +1413,11 @@ function installMenu() {
             accelerator: 'CmdOrCtrl+O',
             click: () => sendCommand('quick-switcher'),
           },
-          { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => sendCommand('close-tab') },
+          {
+            label: palettes?.focused() ? 'Close Panel' : 'Close Tab',
+            accelerator: 'CmdOrCtrl+W',
+            click: () => sendCommand('close-tab'),
+          },
           {
             label: 'Reopen Closed Tab',
             enabled: hasVault,

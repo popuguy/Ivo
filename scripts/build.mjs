@@ -7,7 +7,14 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 await prepareReferenceArt();
 await rm(new URL('../dist/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('../dist/', import.meta.url), { recursive: true });
-for (const item of ['index.html', 'pdf.html', 'manifest.webmanifest', 'src', 'public'])
+for (const item of [
+  'index.html',
+  'pdf.html',
+  'palette.html',
+  'manifest.webmanifest',
+  'src',
+  'public',
+])
   await cp(new URL('../' + item, import.meta.url), new URL('../dist/' + item, import.meta.url), {
     recursive: true,
   });

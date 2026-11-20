@@ -1,5 +1,11 @@
 # Verification
 
+## Shared panels and desktop document focus
+
+The 20 November desktop review build is `release/2026-11-20-shared-panels/Ivo-darwin-arm64/Ivo.app`. Background Electron fixtures cover horizontal and vertical splits, panel hit targets and placement, shared tool selection, independent cameras, an undoable change to a single document, and restoration. The real Mac window suite uses disposable documents and opens all five inspector panels. It moves a panel past the document window edge, checks the control at the pointer coordinates, enters a page width through the keyboard, undoes the change, and verifies the stored documents. It also checks that a stale action cannot lock an object in a newly active document, that selecting a page updates Properties, and that closing a focused utility window preserves its document.
+
+The visual reference for independent palette windows and the remaining multi-display and dialog work are recorded in the [panel guide](workspace-panels.md#separate-desktop-windows). This workspace change adds no text-parity credit.
+
 ## Leading-aware Shape and Jump Object wrapping — 20 November 2026
 
 Both native composers preserve the frame’s first-baseline rule on entry and the paragraph’s leading when Jump Object interrupts existing text. Tests cover fractional leading, exact-edge contact, a tall blocker with a small search budget, and a competing Next Column wrap. The hidden editor changes the object’s wrap mode with a lowered, vertically scaled word in linked text and checks source, placement, undo and redo. An independent reader checks two printed PDFs with a raised, vertically scaled italic word. All 100 words are selectable in both. Shape uses the space inside the triangle’s bounding box and Jump Object clears the entire row before text resumes below it.

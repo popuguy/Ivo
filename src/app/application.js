@@ -8,6 +8,8 @@ import {
   nativeTextCommand,
   matchesNativeTextCommand,
 } from '../domain/text/native-commands.js';
+import { installSplitControls } from '../features/workspace/split-controls.js';
+import { installDesktopPalettes } from '../features/editor/ui/desktop-palettes.js';
 import { createInstalledFontLibrary } from '../features/editor/assets/installed-fonts.js';
 import { prepareVaultFonts } from '../rendering/text/fonts.js';
 import { dialogMarkup, installDialogDismissal } from '../shared/ui/dialog.js';
@@ -141,6 +143,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     titleComposing = false,
     pendingTabRestore = null;
   let workspacePreferences,
+    workspaceTool = null,
     sidebarController = null,
     preferredSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
   const titleWaiters = [];
@@ -160,7 +163,8 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   let toastTimer, linkResolve;
   const panes = new Map(),
     paneGroups = new Map();
-  let layoutController = null,
+  let splitControls = null,
+    layoutController = null,
     rendering = false,
     mirrorScheduled = false;
   let panelLayout;
@@ -186,6 +190,9 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       updateNativeHistory();
     },
   });
+  const desktopPalettes = installDesktopPalettes(globalThis.ivoNative?.palettes, () =>
+    initialized ? canvasHandle : null,
+  );
   function chromeState() {
     return normalizeChrome({
       sidebarWidth: preferredSidebarWidth,
@@ -235,6 +242,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     }
     panes.clear();
     paneGroups.clear();
+    splitControls?.destroy();
     layoutController?.destroy();
     layoutController = null;
     sidebarController?.destroy();
@@ -668,6 +676,8 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         !titleComposing &&
         !canvasHandle?.getState().composing,
     });
+    splitControls?.destroy();
+    splitControls = installSplitControls(root.querySelector('.page-workspace'));
     layoutController?.destroy();
     layoutController = installWorkspaceLayout(root.querySelector('.workspace-layout'), {
       createPane: (id) => {
@@ -793,6 +803,15 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         sessionId: tab.id,
         panelLayout,
         panelPresets: workspacePreferences,
+        splitPanelSurface: splitControls.surface,
+        workspaceTool: () => workspaceTool,
+        onChooseTool(name) {
+          if (!windowLease || workspace.active !== tab.id || workspaceTool === name) return;
+          workspaceTool = name;
+          try {
+            workspacePreferences.writeDrawingTool(name);
+          } catch {}
+        },
         onPanelLayout: (layout) => {
           panelLayout = normalizePanels(layout);
           for (const other of panes.values())
@@ -887,6 +906,10 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   }
   function updatePaneRoles() {
     const groupId = activeGroup(workspace).id;
+    splitControls?.bind(
+      panes.get(workspace.active)?.element.querySelector('[data-canvas-host] > .scene-editor'),
+      workspace.groups.length > 1,
+    );
     for (const group of workspace.groups) {
       const owner = paneGroups.get(group.id);
       if (!owner) continue;
@@ -1034,8 +1057,11 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     activeId = tab.docId || '';
     editing = tab.editing === true;
     const pane = panes.get(workspace.active);
+    const previous = canvasHandle;
     canvasHandle = pane?.tabId === tab.id ? pane.canvas : null;
+    if (canvasHandle && previous !== canvasHandle) canvasHandle.adoptWorkspaceTool();
     graphHandle = pane?.tabId === tab.id ? pane.graph : null;
+    desktopPalettes.refresh();
     history.replaceState(
       null,
       '',
@@ -2253,7 +2279,6 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   }
   for (const name of ['pointerdown', 'focusin', 'click'])
     root.addEventListener(name, activatePaneFromEvent, { capture: true });
-  root.addEventListener('wheel', activatePaneFromEvent, { capture: true, passive: false });
   document.addEventListener('keydown', (event) => {
     if (handleFieldTab(event)) return;
     if (
@@ -2697,6 +2722,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     });
   }
   function updateNativeHistory() {
+    desktopPalettes.refresh();
     if (!globalThis.ivoNative?.updateHistory) return;
     const target = document.activeElement,
       field = target?.matches('input,textarea'),
@@ -2878,12 +2904,17 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
           if (changedIds.has(pane.docId) || pane.graph) pane.key = null;
       }
       windowLease = true;
+      try {
+        workspaceTool = workspacePreferences.readDrawingTool();
+      } catch {}
       if (initialized) {
         adoptTab();
+        canvasHandle?.adoptWorkspaceTool();
         render();
       }
     } finally {
       windowRefreshing = false;
+      desktopPalettes.refresh();
       root.inert = !windowLease;
     }
     if (windowLease && initialized) {
@@ -3009,6 +3040,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         windowId: windowInfo?.windowId || 'main',
       });
       try {
+        workspaceTool = workspacePreferences.readDrawingTool();
         applyChrome(workspacePreferences.readChrome());
       } catch (error) {
         toast(error.message);
@@ -3068,6 +3100,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     } catch (error) {
       initialized = false;
       windowLease = false;
+      desktopPalettes.refresh();
       for (const pane of panes.values()) {
         pane.canvas?.destroy();
         pane.graph?.destroy();
@@ -3075,6 +3108,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       panes.clear();
       paneGroups.clear();
       canvasHandle = graphHandle = null;
+      splitControls?.destroy();
       layoutController?.destroy();
       sidebarController?.destroy();
       root.inert = false;

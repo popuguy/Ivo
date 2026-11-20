@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld('ivoNative', {
       ),
     ),
   ),
+  palettes: Object.freeze({
+    open: (kind, point) => ipcRenderer.invoke('ivo:palette-open', kind, point),
+    revealDialog: () => ipcRenderer.send('ivo:palette-dialog'),
+    publish: (value) => ipcRenderer.send('ivo:palette-publish', value),
+    onConfiguration: (fn) =>
+      ipcRenderer.on('ivo:palette-configuration', (_event, value) => fn(value)),
+    onAction: (fn) => ipcRenderer.on('ivo:palette-dispatch', (_event, value) => fn(value)),
+  }),
   windows: Object.freeze({
     info: () => ipcRenderer.invoke('ivo:windows', 'info'),
     ready: () => ipcRenderer.invoke('ivo:windows', 'ready'),

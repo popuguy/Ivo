@@ -6,6 +6,7 @@ import { openVault } from '../../../desktop/vault.mjs';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
 import { createPDFSnapshot } from '../../../src/features/export/pdf-plan.js';
+import { layersFor } from '../../../src/domain/documents/publishing.js';
 
 const directory = process.env.IVO_WINDOW_TEST_DIR,
   stage = process.env.IVO_WINDOW_TEST_STAGE;
@@ -161,6 +162,244 @@ async function edit(window, text) {
       ),
     'Canonical text commit',
   );
+}
+async function verifyFloatingPalette(first, originalId) {
+  const lock = '[data-layer-toggle="locked"]:not(:disabled)',
+    palettes = () =>
+      BrowserWindow.getAllWindows().filter((item) =>
+        item.webContents.getURL().startsWith('ivo://app/palette.html'),
+      ),
+    activeDocument = (win) =>
+      execute(
+        win,
+        "document.querySelector('.workspace-view.active [data-document-title]')?.dataset.documentTitle",
+      ),
+    documents = () => execute(first, 'ivoNative.store.loadDocuments()');
+  first.webContents.send('ivo:command', 'new-document-right');
+  const rightId = await wait(async () => {
+    const id = await activeDocument(first);
+    return id && id !== originalId && id;
+  }, 'Second document in split');
+  const right = (await documents()).find((doc) => doc.id === rightId),
+    original = (await documents()).find((doc) => doc.id === originalId);
+  assert.ok(right && original);
+  const locked = async (firstLocked, rightLocked) => {
+    const stored = await documents();
+    return [
+      [originalId, firstLocked],
+      [rightId, rightLocked],
+    ].every(([id, value]) => layersFor(stored.find((doc) => doc.id === id))[0].locked === value);
+  };
+  const openPalette = async (win) => {
+    assert.equal(await execute(win, "ivoNative.palettes.open('layers')"), true);
+    const palette = await wait(() => palettes()[0], 'Native Layers window');
+    await wait(
+      () => !palette.webContents.isLoading() && palette.isVisible(),
+      'Floating Layers ready',
+    );
+    return palette;
+  };
+  const palette = await openPalette(first);
+  assert.notEqual(palette.webContents.session, first.webContents.session);
+  assert.equal(await execute(palette, 'typeof window.ivoNative'), 'undefined');
+  assert.equal(await execute(palette, 'typeof window.ivoPalette.act'), 'function');
+  assert.equal(palette.isModal(), false);
+  assert.equal(palette.getParentWindow(), null);
+  assert.equal(palettes().length, 1);
+  const showTarget = (doc, state) =>
+    wait(
+      () =>
+        execute(
+          palette,
+          `document.querySelector('[data-palette-context]')?.textContent.includes(${JSON.stringify(doc.title)}) &&
+      document.querySelector(${JSON.stringify(lock)})?.getAttribute('aria-pressed') === '${state}'`,
+        ),
+      'Layers reflecting ' + doc.title,
+    );
+  const toggle = () => execute(palette, `document.querySelector(${JSON.stringify(lock)}).click()`);
+  await showTarget(right, false);
+  // A real utility window can extend beyond its source document's content bounds.
+  const previous = first.getBounds(),
+    box = palette.getBounds();
+  first.setBounds({ ...previous, width: 600 });
+  const source = first.getContentBounds();
+  palette.setPosition(source.x + source.width - Math.floor(box.width / 2), source.y + 24);
+  await wait(() => {
+    const placed = palette.getBounds();
+    return placed.x + placed.width > source.x + source.width;
+  }, 'Layers outside the document window');
+  first.setBounds(previous);
+
+  // Keyboard focus in the utility must leave the split's active document writable.
+  palette.focus();
+  assert.equal((await execute(first, 'ivoNative.windows.info()')).active, true);
+  await toggle();
+  await wait(() => locked(false, true), 'Only the right document locked');
+  await showTarget(right, true);
+  const savedAction = await execute(
+    palette,
+    `ivoPalette.initial().then(({view}) => ({
+    revision:view.revision, index:Number(document.querySelector(${JSON.stringify(lock)}).dataset.paletteControl), type:'click'
+  }))`,
+  );
+  assert.ok(savedAction.revision && Number.isInteger(savedAction.index));
+
+  await focus(first);
+  await execute(first, `document.querySelector('[data-document-title="${originalId}"]').focus()`);
+  await wait(async () => (await activeDocument(first)) === originalId, 'Left split activation');
+  if (
+    !(await execute(first, "!!document.querySelector('.workspace-view.active .scene-editing')"))
+  ) {
+    first.webContents.send('ivo:command', 'toggle-edit');
+  }
+  await showTarget(original, false);
+  await execute(palette, 'ivoPalette.act(' + JSON.stringify(savedAction) + ')');
+  await toggle();
+  await wait(() => locked(true, true), 'Fresh action applied while old split input was discarded');
+  await showTarget(original, true);
+  await execute(
+    first,
+    `ivoNative.windows.open({tab:{id:'palette-native-target',kind:'document',docId:${JSON.stringify(rightId)},editing:true}})`,
+  );
+  const detached = await wait(() => windows().find((item) => item !== first), 'Detached document');
+  await ready(detached);
+  await focus(detached);
+  await showTarget(right, true);
+  assert.equal(await openPalette(detached), palette, 'Opening Layers twice duplicated its window');
+  await toggle();
+  await wait(() => locked(true, false), 'Detached document received the shared action');
+
+  await execute(palette, "document.querySelector('[data-palette-dock]').click()");
+  await wait(() => palette.isDestroyed(), 'Docking closed the separate Layers window');
+  await wait(
+    () =>
+      execute(
+        detached,
+        "!!document.querySelector('.workspace-view.active [data-canvas-panel=layers]')",
+      ),
+    'Layers returned to the active dock',
+  );
+  const reopened = await openPalette(detached);
+  reopened.close();
+  await wait(() => reopened.isDestroyed(), 'Native close dismissed Layers');
+  assert.equal(palettes().length, 0);
+  assert.ok(await locked(true, false), 'Docking or closing changed an authored layer');
+  await verifyInspectorPalettes(detached, right, original, palettes);
+  console.log('IVO_NATIVE_PALETTE:PASS');
+}
+
+async function verifyInspectorPalettes(win, target, neighbor, palettes) {
+  const openTabMenu = async (kind, readySelector) => {
+    await focus(win);
+    win.webContents.send('ivo:command', 'show-panel-' + kind);
+    const tab = `.workspace-view.active [data-canvas-panel="${kind}"]`;
+    await wait(
+      () =>
+        execute(win, `!!document.querySelector(${JSON.stringify(tab)})?.getClientRects().length`),
+      'Visible ' + kind + ' tab',
+    );
+    const existing = new Set(palettes());
+    await execute(
+      win,
+      `document.querySelector(${JSON.stringify(tab)}).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));document.querySelector('[data-workspace-action=external]').click()`,
+    );
+    const panel = await wait(
+      () => palettes().find((item) => !existing.has(item)),
+      kind + ' detached via tab',
+    );
+    await wait(
+      () => execute(panel, `!!document.querySelector(${JSON.stringify(readySelector)})`),
+      kind + ' controls',
+    );
+    return panel;
+  };
+  const props = await openTabMenu('properties', '[data-page-prop=width]'),
+    pages = await openTabMenu('pages', '[data-select-page]'),
+    links = await openTabMenu('links', '[data-canvas-command=link]'),
+    wrap = await openTabMenu('text-wrap', '[data-text-wrap-mode]');
+  assert.equal(palettes().length, 4);
+  assert.equal(await execute(wrap, "document.querySelectorAll('[data-text-wrap-mode]').length"), 5);
+  assert.ok(
+    await execute(
+      links,
+      "document.body.textContent.includes('Outgoing links') && document.body.textContent.includes('Backlinks')",
+    ),
+  );
+
+  const size = target.pages[0].width,
+    firstPage = target.pages[0].id;
+  const widths = async (expected) => {
+    const docs = await execute(win, 'ivoNative.store.loadDocuments()');
+    return (
+      docs.find((doc) => doc.id === target.id).pages[0].width === expected &&
+      docs.find((doc) => doc.id === neighbor.id).pages[0].width === neighbor.pages[0].width
+    );
+  };
+  props.focus();
+  assert.equal(
+    await execute(
+      props,
+      `(() => {
+      const field = document.querySelector('[data-page-prop=width]');
+      field.scrollIntoView({block:'nearest'});
+      const {left, top, width, height} = field.getBoundingClientRect();
+      return width > 0 && height > 0 && document.elementFromPoint(left + width / 2, top + height / 2) === field;
+    })()`,
+    ),
+    true,
+    'Properties must expose an actual pointer target in a narrow utility window',
+  );
+  await execute(
+    props,
+    "const widthField=document.querySelector('[data-page-prop=width]');widthField.focus();widthField.select()",
+  );
+  await props.webContents.insertText(String(size + 24));
+  await execute(props, 'document.activeElement.blur()');
+  await wait(() => widths(size + 24), 'Properties committed the page width to the active document');
+  const undo = Menu.getApplicationMenu().getMenuItemById('undo');
+  await wait(() => undo.enabled, 'Undo from a focused Properties panel');
+  undo.click();
+  await wait(() => widths(size), 'Undo restored page width');
+
+  await execute(pages, "document.querySelector('[data-canvas-command=add-page]').click()");
+  await wait(
+    () => execute(pages, "document.querySelectorAll('[data-select-page]').length === 2"),
+    'Pages created a second page',
+  );
+  await wait(
+    () => execute(props, "document.querySelector('[data-property-page]')?.selectedIndex === 1"),
+    'Properties showed the newly created page',
+  );
+  await execute(pages, `document.querySelector('[data-select-page="${firstPage}"]').click()`);
+  await wait(
+    () =>
+      execute(
+        props,
+        `document.querySelector('[data-property-page]')?.value === ${JSON.stringify(firstPage)}`,
+      ),
+    'Properties followed Pages navigation',
+  );
+  const tabs = await execute(win, "document.querySelectorAll('.document-tab').length");
+  wrap.focus();
+  await wait(() => BrowserWindow.getFocusedWindow() === wrap, 'Text Wrap keyboard focus');
+  const close = Menu.getApplicationMenu()
+    .items.flatMap((item) => item.submenu?.items || [])
+    .find((item) => item.accelerator === 'CmdOrCtrl+W');
+  assert.ok(close, 'Close Tab menu shortcut');
+  close.click();
+  await wait(() => wrap.isDestroyed(), 'Close shortcut docked the focused palette');
+  assert.equal(await execute(win, "document.querySelectorAll('.document-tab').length"), tabs);
+  assert.equal(palettes().length, 3);
+  const before = pages.getBounds(),
+    position = props.getPosition();
+  props.setPosition(position[0] + 12, position[1] + 8);
+  await wait(
+    () => props.getPosition().some((value, axis) => value !== position[axis]),
+    'Moving Properties independently',
+  );
+  assert.deepEqual(pages.getBounds(), before, 'Moving Properties moved Pages');
+  for (const panel of [props, pages, links]) panel.close();
+  await wait(() => !palettes().length, 'Remaining utility windows closed independently');
 }
 let expected;
 if (stage === '1') {
@@ -538,6 +777,7 @@ void (async () => {
         (await execute(first, 'ivoNative.store.loadAssets()'))[0].data,
         expected.assetData,
       );
+      await verifyFloatingPalette(first, expected.docId);
       assert.equal(dialogs.length, 0, JSON.stringify(dialogs));
       console.log('IVO_NATIVE_WINDOWS_STAGE_2:PASS');
       app.quit();

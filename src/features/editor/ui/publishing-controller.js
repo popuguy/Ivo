@@ -439,7 +439,7 @@ export function installPublishingControls(
     closePopover();
     if (!textState()) return;
     const trigger =
-      anchor ||
+      (anchor?.getClientRects().length ? anchor : null) ||
       editor.querySelector('.canvas-type-options') ||
       editor.querySelector('.canvas-contextual-bar [data-canvas-command="type-options"]');
     if (!trigger) return;

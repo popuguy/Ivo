@@ -37,6 +37,8 @@ Next composition dependencies: authored letter/glyph justification constraints, 
 
 ## Input, objects and workspace
 
+Desktop splits share one visible drawing toolbar and inspector dock. Activating another document or native window retargets floating Properties, Pages, Layers, Links and Text Wrap. Scrolling a neighboring canvas keeps the current document active. The [panel guide](../workspace-panels.md#separate-desktop-windows) covers tear-off, docking and platform behavior.
+
 The [text-interaction core](../text-interaction-core.md) owns linked-flow drag ranges, direction/affinity, Unicode/paragraph navigation, double-click word/paragraph behavior, explicit regular/italic overrides and native command scope. Text is edited directly in its page frames; the old bottom Document text pane is removed. Bare-newline insertion inherits surrounding typography. Partial italics, fresh paint, save/reopen and literal leading-space paste have regressions. Source/CSS normalization must never create a phantom edit on entry or selection.
 
 Ordinary typing, selected-range replacement, grapheme deletion, paragraph joins/splits, soft returns and literal Tab now use shared rich-text operations. Window-independent checks exercise the operation itself and desktop editor checks cover linked pages, undo and input-method commit/cancel. Word deletion, composed visual-line deletion, Mac and Windows text navigation, and ordinary list-item edits now share the same history. Native numbered/bulleted composition, nested structural edits and physical input qualification remain open.

@@ -1,4 +1,6 @@
 import { uid } from '../documents/model.js';
+export const isDrawingTool = (value) =>
+  ['select', 'direct', 'text', 'rectangle', 'polygon', 'hand'].includes(value);
 const safeId = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(value);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 export function emptyTab() {
@@ -47,8 +49,7 @@ export function normalizeWorkspace(value, documents) {
         );
         selectionBudget -= next.selection.length;
       }
-      if (['select', 'direct', 'text', 'rectangle', 'polygon', 'hand'].includes(state.tool))
-        next.tool = state.tool;
+      if (isDrawingTool(state.tool)) next.tool = state.tool;
       const c = state.camera;
       if (
         c &&

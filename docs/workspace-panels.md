@@ -1,6 +1,6 @@
 # Nonmodal workspace panels
 
-Properties, Pages, Layers and Links can be independent groups, tabbed together, stacked in the right dock or floated within the document view. Narrow micro-bars, compact rectangular tabs and sourced artwork follow the desktop publishing reference. The [publishing foundation](publishing-foundation.md) records the current InDesign-inspired controls and remaining visual/interaction parity work.
+Properties, Pages, Layers, Links and Text Wrap can be independent groups, tabbed together, stacked in the right dock or floated within the document view. Narrow micro-bars, compact rectangular tabs and sourced artwork follow the desktop publishing reference. The [publishing foundation](publishing-foundation.md) records the current InDesign-inspired controls and remaining visual/interaction parity work.
 
 ## Organize panels
 
@@ -8,7 +8,15 @@ Drag an individual panel tab onto another group's tab strip to join/reorder it, 
 
 The dock stacks its groups vertically. Resize its inner-left edge, or a floating group's lower-right corner. Arrow keys resize a focused control one screen pixel; Shift-arrow ten. Context tabs support Left/Right/Home/End; keyboard Context Menu/Shift-F10 exposes tab organization. Escape cancels a drag, as do pointer cancellation and window blur. Pointer resizing does not retain the keyboard focus highlight. Floating bounds remain reachable after a smaller window; narrow views expose dock groups as an overlay through **Properties**.
 
-Collapse hides the selected group. Its X closes the group; a tab context menu can close only that panel. The status-area Properties control restores hidden groups, and native Window menu entries restore individual panels. A remaining panel's context menu also offers closed panels. Closed groups and tabs are removed from painting and pointer/accessibility targets. The default dock is 296 CSS pixels; existing saved widths remain respected and narrow tab strips scroll. The right dock and floating groups stay inside the same document view; left/bottom docks, separately adjustable dock-stack proportions, external panel windows and native multi-monitor behavior remain extensions.
+Collapse hides the selected group. Its X closes the group; a tab context menu can close only that panel. The status-area Properties control restores hidden groups, and native Window menu entries restore individual panels. A remaining panel's context menu also offers closed panels. Closed groups and tabs are removed from painting and pointer/accessibility targets. The default dock is 254 CSS pixels; existing saved widths remain respected and narrow tab strips scroll. Embedded groups stay inside the workspace. Left and bottom docks and separately adjustable dock-stack proportions remain future work.
+
+## Separate desktop windows
+
+On desktop, right-click a panel tab and choose **Move to separate window**, or drag the tab past the document window’s edge and release. Moving a single-panel group's bar past the edge also detaches it. Drag the native title bar to place the panel on another part of the desktop. **Dock**, the window close button and the close-window shortcut return it to the workspace. Reopening a panel during the same session recalls its window bounds.
+
+A floating panel shows the active document’s name. Clicking a document, including a detached document, changes the target. Focusing a palette field keeps that document active. Other document windows relinquish the visible drawing and inspection controls. A graph, library or blocking dialog has no editable inspector target. Changes from an obsolete selection or document are discarded before they can enter undo or reach the vault. The standalone panel receives drawn controls and revision-bound actions through a dedicated preload. Only the workspace owns selection, commands, history and saving.
+
+Browser and iOS builds use embedded panels. Moving several tabs as a single external stack, restoring external windows after quitting, and independently floating document dialogs remain future work.
 
 ## Presets and saved workspaces
 
@@ -18,10 +26,18 @@ Context layouts also belong to named [workspaces](workspace-layouts.md). Changin
 
 ## Ownership and evidence
 
-`domain/workspace/panels.js` normalizes a unique partition of four context panels, a separate closed-panel list (view version 3), and regrouping/presets. Older view layouts gain Layers without dropping their previous organization. `panel-presets.js` owns named catalog semantics. Profile persistence belongs to `storage/workspace-preferences.js`. `features/editor/ui/panels.js` retains/moves panel containers; the page canvas and live on-page text input nodes stay connected. Source, selection/camera and document history have separate owners. These view changes do not require a document/archive migration.
+`domain/workspace/panels.js` normalizes a unique partition of five context panels, a separate closed-panel list (view version 3), and regrouping/presets. Older view layouts gain Layers without dropping their previous organization. `panel-presets.js` owns named catalog semantics. Profile persistence belongs to `storage/workspace-preferences.js`. `features/editor/ui/panels.js` retains/moves panel containers; the page canvas and live on-page text input nodes stay connected. Source, selection/camera and document history have separate owners. These view changes do not require a document/archive migration.
 
 The interaction follows Adobe's documented [panel/group moving, docking and workspace workflow](https://helpx.adobe.com/illustrator/using/customizing-workspace.html). No new icon/cursor artwork was drawn. Exact vendor timing, complete Illustrator docking and final styling are not claimed.
 
 `npm run test:workspace` covers pointer/keyboard resizing, focus, float/move/dock, Escape rollback, live source/caret retention, absence of the retired bottom editor, context-tab navigation, identical authored content/camera and remount persistence. `npm run test:workspace-views` covers independent tab tear-off/regrouping, dock-stack presets, named preset save/load, retained neighbor/source DOM, cancellation, and failure-safe view persistence. Domain tests cover malformed layouts, unique panel ownership, legacy migration, scoped catalogs and source-free snapshots. All runtime profiles/vaults are temporary.
 
 Shared iPhone/iPad assets include this code. Physical touch/Pencil, accessibility, IME and device performance still require full Xcode/device testing.
+
+## Desktop window references
+
+InDesign lets a panel float by dragging its tab out of a dock. Tabs can join another group, while dragging the top title bar moves a stack together. The application tracks the frontmost document and its selection, and exposes separate events for a selection change and a change to a selected object's attributes. This distinction matters when two documents are visible. A palette field needs keyboard focus while the selected object in the active document remains its edit target. [InDesign panel gestures](https://helpx.adobe.com/indesign/desktop/get-started/settings-and-preferences/customize-panels.html) · [InDesign application and selection](https://developer.adobe.com/indesign/uxp/dom/api/a/application/)
+
+DesignCraft gives each floating group a stable window identity and supports embedded panels on hosts that embed viewports. Its second document view has an independent camera. After drawing it, DesignCraft restores the pane the user last pressed in. Floating panels forward application shortcuts, and a blocking dialog suspends panel input. These are separate decisions about placement, document focus and keyboard focus. [Floating groups](https://github.com/storytold/designcraft/blob/63138e56421514040330243d9d9d0b58ea4e1f96/crates/ui-egui/src/panel_docking.rs#L34-L46) · [Focused view](https://github.com/storytold/designcraft/blob/63138e56421514040330243d9d9d0b58ea4e1f96/crates/ui-egui/src/app.rs#L252-L304) · [Panel input](https://github.com/storytold/designcraft/blob/63138e56421514040330243d9d9d0b58ea4e1f96/crates/ui-egui/src/panel_docking.rs#L1051-L1100)
+
+Electron gives desktop palettes their own screen coordinates through a BrowserWindow. A macOS child window follows its parent when the parent moves. A modal child appears as a sheet and disables its parent. A palette that should stay on a second display while the user switches documents therefore needs an independent window and an explicit active document target. [Electron window ownership and platform differences](https://www.electronjs.org/docs/latest/api/browser-window#parent-and-child-windows)

@@ -37,6 +37,8 @@ export function installWorkspacePanels(
     onCommand = () => {},
     wrapOptionsShown = () => false,
     initialState,
+    openExternal,
+    splitSurface = null,
     presets,
     onError = () => {},
     onChange = () => {},
@@ -79,6 +81,8 @@ export function installWorkspacePanels(
     tab.setAttribute('aria-controls', content.id);
     panels.set(tab.dataset.canvasPanel, { tab, content });
   }
+  let external = new Set();
+  const local = (kind) => !saved.closed.includes(kind) && !external.has(kind);
   let saved;
   try {
     saved = normalizePanels(initialState || JSON.parse(localStorage.getItem(KEY)));
@@ -89,7 +93,11 @@ export function installWorkspacePanels(
     menu = null,
     menuButton = null,
     selectedGroup = saved.groups[0].id;
-  const size = () => ({ w: editor.clientWidth, h: editor.clientHeight });
+  const surface = () => (splitSurface?.clientWidth ? splitSurface : editor);
+  const size = () => {
+    const bounds = surface();
+    return { w: bounds.clientWidth, h: bounds.clientHeight };
+  };
   const drop = document.createElement('div');
   drop.className = 'workspace-dock-target';
   drop.hidden = true;
@@ -98,9 +106,7 @@ export function installWorkspacePanels(
   function apply() {
     const bounds = size(),
       used = new Set(),
-      visible = saved.groups.filter(
-        (group) => !group.collapsed && group.tabs.some((kind) => !saved.closed.includes(kind)),
-      );
+      visible = saved.groups.filter((group) => !group.collapsed && group.tabs.some(local));
     editor.classList.toggle(
       'panel-floating',
       !!visible.length && visible.every((group) => group.floating),
@@ -124,7 +130,7 @@ export function installWorkspacePanels(
       const parent = value.floating ? editor : dock;
       if (element.parentElement !== parent) parent.append(element);
       element.dataset.floating = String(value.floating);
-      element.hidden = value.collapsed || value.tabs.every((kind) => saved.closed.includes(kind));
+      element.hidden = value.collapsed || !value.tabs.some(local);
       element.classList.toggle('context-group-collapsed', value.collapsed);
       const rect = panelBounds(value.rect, bounds),
         tabs = element.querySelector('.canvas-panel-tabs'),
@@ -147,11 +153,11 @@ export function installWorkspacePanels(
         value.active = value.tabs.find((kind) => !saved.closed.includes(kind)) || value.tabs[0];
       for (const [index, kind] of value.tabs.entries()) {
         const item = panels.get(kind),
-          active = kind === value.active;
+          active = kind === (local(value.active) ? value.active : value.tabs.find(local));
         if (tabs.children[index] !== item.tab)
           tabs.insertBefore(item.tab, tabs.children[index] || null);
         if (item.content.parentElement !== element) element.append(item.content);
-        item.tab.hidden = saved.closed.includes(kind);
+        item.tab.hidden = !local(kind);
         item.tab.setAttribute('aria-selected', String(active));
         item.tab.tabIndex = active ? 0 : -1;
         item.content.hidden = !active || item.tab.hidden || element.hidden;
@@ -237,7 +243,7 @@ export function installWorkspacePanels(
     prepare();
     end(true);
     const element = groups.get(group?.id),
-      origin = editor.getBoundingClientRect(),
+      origin = surface().getBoundingClientRect(),
       box = element?.getBoundingClientRect(),
       before = structuredClone(saved),
       target = event.target.closest(
@@ -324,7 +330,7 @@ export function installWorkspacePanels(
         g.target.classList.add('context-tab-dragging');
       }
       if (g.ghost) {
-        const origin = editor.getBoundingClientRect();
+        const origin = surface().getBoundingClientRect();
         g.ghost.style.transform = `translate3d(${event.clientX - origin.x - 30}px,${event.clientY - origin.y - 12}px,0)`;
       }
       clearDrop();
@@ -346,7 +352,7 @@ export function installWorkspacePanels(
         }
         const target = hit(event, g.kind === 'move' ? g.groupId : null);
         if (target) groups.get(target.id).classList.add('context-panel-drop');
-        else drop.hidden = event.clientX < editor.getBoundingClientRect().right - 24;
+        else drop.hidden = event.clientX < surface().getBoundingClientRect().right - 24;
       } else if (g.kind === 'resize') {
         if (group.floating)
           group.rect = panelBounds({ ...g.rect, w: g.rect.w + dx, h: g.rect.h + dy }, bounds);
@@ -374,10 +380,27 @@ export function installWorkspacePanels(
       }
       return;
     }
+    const outside =
+      event.clientX < 0 ||
+      event.clientY < 0 ||
+      event.clientX >= window.innerWidth ||
+      event.clientY >= window.innerHeight;
+    const group = saved.groups.find((item) => item.id === g.groupId);
+    const loneTab = group?.tabs.filter(local);
+    if (
+      outside &&
+      openExternal &&
+      (g.kind === 'tab' || (g.kind === 'move' && loneTab?.length === 1))
+    ) {
+      const kind = g.panelKind || loneTab[0];
+      end(true);
+      void openExternal(kind, { x: event.screenX, y: event.screenY }).catch(onError);
+      return;
+    }
     if (g.kind === 'move' || g.kind === 'tab') {
       const target = hit(event, g.kind === 'move' ? g.groupId : null),
         group = saved.groups.find((value) => value.id === g.groupId),
-        origin = editor.getBoundingClientRect();
+        origin = surface().getBoundingClientRect();
       if (target) {
         const tabs = [...groups.get(target.id).querySelectorAll('[data-canvas-panel]')],
           before = tabs.findIndex(
@@ -439,7 +462,7 @@ export function installWorkspacePanels(
     menu.setAttribute('aria-label', 'Save panel preset');
     menu.innerHTML =
       '<label>Panel preset name<input name="preset-name" maxlength="80" autocomplete="off"></label><p>Saving an existing name updates that preset.</p><div role="alert"></div><button type="submit">Save preset</button>';
-    const box = editor.getBoundingClientRect();
+    const box = surface().getBoundingClientRect();
     Object.assign(menu.style, {
       left: Math.max(0, Math.min(event.clientX - box.left, box.width - 240)) + 'px',
       top: Math.max(0, Math.min(event.clientY - box.top, box.height - 160)) + 'px',
@@ -503,6 +526,7 @@ export function installWorkspacePanels(
             ['dock-panel', 'Dock this panel separately'],
           ]
         : []),
+      ...(openExternal ? [['external', 'Move to separate window']] : []),
       ['close-panel', 'Close ' + PANEL_LABELS[kind || group.active]],
       ['close-group', 'Close tab group'],
       ...saved.closed.map((member) => ['show/' + member, 'Show ' + PANEL_LABELS[member]]),
@@ -543,7 +567,7 @@ export function installWorkspacePanels(
     editor.append(menu);
     menuButton = event.target.closest('[data-panel-menu]');
     menuButton?.setAttribute('aria-expanded', 'true');
-    const box = editor.getBoundingClientRect();
+    const box = surface().getBoundingClientRect();
     const anchor = menuButton?.getBoundingClientRect();
     const { width, height } = menu.getBoundingClientRect();
     menu.style.left =
@@ -578,7 +602,11 @@ export function installWorkspacePanels(
       if (group) selectedGroup = group.dataset.contextGroup;
       if (event.target.closest('[data-panel-menu]')) {
         if (menuButton && menuButton.contains(event.target)) closeMenu();
-        else menuAt(event, groupTarget().active);
+        else
+          menuAt(
+            event,
+            local(groupTarget().active) ? groupTarget().active : groupTarget().tabs.find(local),
+          );
         return;
       }
       if (action) {
@@ -587,6 +615,10 @@ export function installWorkspacePanels(
         closeMenu();
         if (!allowed()) return;
         prepare();
+        if (action === 'external') {
+          void openExternal(kind).catch(onError);
+          return;
+        }
         if (action.startsWith('command/')) {
           Promise.resolve(onCommand(action.slice(8))).catch(onError);
           return;
@@ -709,7 +741,7 @@ export function installWorkspacePanels(
       event.stopPropagation();
       prepare();
       const group = groupFor(tab.dataset.canvasPanel),
-        openTabs = group.tabs.filter((kind) => !saved.closed.includes(kind)),
+        openTabs = group.tabs.filter(local),
         index = openTabs.indexOf(tab.dataset.canvasPanel),
         next =
           openTabs[
@@ -766,9 +798,17 @@ export function installWorkspacePanels(
   });
   const observer = new ResizeObserver(apply);
   observer.observe(editor);
+  if (splitSurface) observer.observe(splitSurface);
   apply();
   onSelect(saved.groups[0].active);
   return {
+    isExternal: (kind) => external.has(kind),
+    setExternal(kinds) {
+      if (external.size === kinds.length && kinds.every((kind) => external.has(kind))) return false;
+      external = new Set(kinds);
+      apply();
+      return true;
+    },
     entries: () => [...panels].map(([kind, { content }]) => ({ kind, content })),
     select,
     toggleFloating: floating,
@@ -779,6 +819,10 @@ export function installWorkspacePanels(
       store();
     },
     show(kind) {
+      if (kind && external.has(kind)) {
+        void openExternal(kind).catch(onError);
+        return;
+      }
       if (kind) saved.closed = saved.closed.filter((k) => k !== kind);
       else if (saved.closed.length === panels.size)
         saved.closed = saved.closed.filter((k) => k !== 'properties');

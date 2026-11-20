@@ -1,6 +1,7 @@
 /* Interface colors belong to editor chrome. Artboards, text runs and layer colors
    remain owned by the document. Dialogs are portaled outside the scene editor. */
 .scene-editor,
+.palette-surface,
 .publishing-style-dialog {
   --panel-bg: #f0f0f0;
   --panel-tab: #e6e6e6;

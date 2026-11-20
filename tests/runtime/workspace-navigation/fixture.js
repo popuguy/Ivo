@@ -110,6 +110,35 @@ function activate(pane) {
   pointer('pointerdown', el, r.x + 14, r.y + 14);
   pointer('pointerup', el, r.x + 14, r.y + 14);
 }
+function checkSharedControls() {
+  const shown = (selector) =>
+    [...document.querySelectorAll(selector)].filter((element) => element.getClientRects().length);
+  const tools = shown('.canvas-tools');
+  const docks = shown('.canvas-panel-dock');
+  assert(tools.length === 1 && docks.length === 1, 'Split must show one set of tools and panels');
+  const left = tools[0].getBoundingClientRect();
+  const right = docks[0].getBoundingClientRect();
+  const shell = document.querySelector('.page-workspace').getBoundingClientRect();
+  assert(
+    Math.abs(left.left - shell.left) < 1 &&
+      Math.abs(right.right - shell.right) < 1 &&
+      Math.abs(right.bottom - shell.bottom) < 1 &&
+      Math.abs(left.top - right.top) < 1,
+    'Tools and panels moved inside the active pane: ' + JSON.stringify({ left, right, shell }),
+  );
+  for (const element of [
+    tools[0].querySelector('button'),
+    docks[0].querySelector('[role=tab]:not([hidden])'),
+  ]) {
+    const box = element.getBoundingClientRect();
+    assert(
+      element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)),
+      'Shared controls are covered',
+    );
+  }
+  assert(active().contains(docks[0]), 'Visible inspector belongs to a passive editor');
+  return right.x;
+}
 async function replaceText(value) {
   await command('document-text');
   await wait(() => source()?.isContentEditable);
@@ -195,6 +224,8 @@ try {
           narrowFocusLayout: true,
           pendingMediaOwner: true,
           independentCameras: true,
+          sharedControlsInHorizontalAndVerticalSplits: true,
+          passiveScrollKeepsActiveDocument: true,
           historyBranchAndViewRestoration: true,
           dividerPointerKeyboardCancellation: true,
           crossPaneTabTransfer: true,
@@ -292,12 +323,59 @@ try {
       'Navigating the right pane rebuilt its neighbor',
     );
     await command('toggle-edit');
+    const panelX = checkSharedControls();
+    await command('show-panel-pages');
+    const addPage = active().querySelector(
+      '.canvas-panel-content:not([hidden]) [data-canvas-command=add-page]',
+    );
+    assert(addPage?.getClientRects().length, 'Shared Pages inspector did not open');
+    const alphaPages = documents.get('nav-a').pages.length;
+    const betaPages = documents.get('nav-b').pages.length;
+    addPage.click();
+    await close();
+    assert(
+      documents.get('nav-b').pages.length === betaPages + 1 &&
+        documents.get('nav-a').pages.length === alphaPages,
+      'Shared Pages inspector edited the wrong document',
+    );
+    await command('undo');
+    await wait(() => !right.querySelector('.scene-editor').inert);
+    right.querySelector('[data-canvas-command=tool-direct]').click();
+    assert(
+      right.querySelector('.scene-editor').dataset.tool === 'direct',
+      'Active direct selection was not chosen',
+    );
+    first.querySelector('.view-header').click();
+    await tick();
+    assert(
+      first.querySelector('[data-canvas-command=tool-direct]').getAttribute('aria-pressed') ===
+        'true',
+      'Explicit drawing tool did not follow the active document',
+    );
+    first.querySelector('[data-canvas-command=tool-select]').click();
+    assert(checkSharedControls() === panelX, 'Inspector jumped when the left pane was activated');
+    activate(right);
+    await tick();
     await replaceText('Beta edited in its pane.');
     await close();
     assert(
       documents.get('nav-a').textFlows[0].html.includes('Alpha original notes.') &&
         documents.get('nav-b').textFlows[0].html.includes('Beta edited in its pane.'),
       'Editing the second document changed the first',
+    );
+    const passiveViewport = first.querySelector('.canvas-viewport');
+    const previousTransform = firstWorld.style.transform;
+    const focused = document.activeElement;
+    passiveViewport.dispatchEvent(
+      new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 26 }),
+    );
+    await tick();
+    assert(
+      firstWorld.style.transform !== previousTransform &&
+        active() === right &&
+        focused === document.activeElement &&
+        checkSharedControls() === panelX,
+      'Scrolling the neighboring page stole the active inspector or input focus',
     );
     const viewport = active().querySelector('.canvas-viewport');
     viewport.dispatchEvent(
@@ -679,6 +757,7 @@ try {
       panes().length === 3 && document.querySelector('.workspace-split[data-axis=column]'),
       'Nested split down failed',
     );
+    checkSharedControls();
     await command('go-back');
     await tick();
     assert(title() === 'Beta', 'Fresh split unexpectedly inherited navigation history');

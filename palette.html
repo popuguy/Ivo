@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Ivo</title>
+    <link rel="stylesheet" href="./src/styles/index.css" />
+    <link rel="stylesheet" href="./src/styles/floating-palette.css" />
+  </head>
+  <body class="palette-window">
+    <main class="palette-surface">
+      <section class="canvas-properties context-panel-group">
+        <header>
+          <span data-palette-context></span
+          ><button type="button" data-palette-dock title="Return panel to the document window">
+            Dock
+          </button>
+        </header>
+        <div class="canvas-panel-content" aria-live="off"></div>
+      </section>
+    </main>
+    <script type="module" src="./src/platform/floating-palette.js"></script>
+  </body>
+</html>
