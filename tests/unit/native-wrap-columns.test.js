@@ -71,6 +71,10 @@ test('native wrapping source admission preserves unsupported source and exact ge
   styled.paragraphs[0].align = 'center';
   styled.runs[0].horizontalScale = 125;
   styled.runs[0].features = { smcp: true };
+  styled.runs = [
+    { ...styled.runs[0], end: 5 },
+    { ...styled.runs[0], start: 5, font: 'other', size: 30 },
+  ];
   validateNativeWrapping(styled, columns);
   for (const mutate of [
     (s) => {
@@ -81,18 +85,6 @@ test('native wrapping source admission preserves unsupported source and exact ge
     },
     (s) => {
       s.text = 'With\ttabs\u2029';
-    },
-    (s) => {
-      s.runs = [
-        { ...s.runs[0], end: 5 },
-        { ...s.runs[0], start: 5, size: 30 },
-      ];
-    },
-    (s) => {
-      s.runs = [
-        { ...s.runs[0], end: 5 },
-        { ...s.runs[0], start: 5, font: 'other' },
-      ];
     },
   ]) {
     const candidate = structuredClone(source);

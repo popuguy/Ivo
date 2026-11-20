@@ -3431,13 +3431,15 @@ dialog li {
 }
 
 .scene-editing[data-tool='select'][data-option='true'] .canvas-object:hover,
-.scene-editing[data-tool='select'][data-option='true'][data-gesture='object-press'] .canvas-viewport,
+.scene-editing[data-tool='select'][data-option='true'][data-gesture='object-press']
+  .canvas-viewport,
 .scene-editor[data-gesture='move'][data-copying='true'] .canvas-viewport,
 .scene-editor[data-gesture='move'][data-copying='true'] .canvas-viewport * {
   cursor: var(--cursor-move-copy, copy) !important;
 }
 .scene-editing[data-tool='direct'][data-option='true'] .canvas-object:hover,
-.scene-editing[data-tool='direct'][data-option='true'][data-gesture='object-press'] .canvas-viewport,
+.scene-editing[data-tool='direct'][data-option='true'][data-gesture='object-press']
+  .canvas-viewport,
 .scene-editor[data-tool='direct'][data-gesture='move'][data-copying='true'] .canvas-viewport,
 .scene-editor[data-tool='direct'][data-gesture='move'][data-copying='true'] .canvas-viewport * {
   cursor: var(--cursor-direct-move-copy, copy) !important;

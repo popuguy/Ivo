@@ -342,16 +342,9 @@ try {
       nativeFlow = nativeDocument.textFlows[0];
     enableNativeComposition(nativeDocument, nativeFlow, 'single-line');
     const nativeBefore = JSON.stringify(nativeDocument);
-    let nativeError = '';
-    try {
-      validateNativeFlowSource(nativeDocument, nativeFlow);
-    } catch (error) {
-      nativeError = error.message;
-    }
     assert(
-      /native wrapping with mixed font metrics/i.test(nativeError),
-      'Native preview did not explicitly reject unsupported mixed-metric wrapping before worker execution: ' +
-        nativeError,
+      validateNativeFlowSource(nativeDocument, nativeFlow).sourceHTML === source,
+      'Mixed-face native wrap projection lost authored source',
     );
     assert(
       JSON.stringify(nativeDocument) === nativeBefore,

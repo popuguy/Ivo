@@ -524,17 +524,134 @@ test('tiny wrapped paragraph costs agree with exhaustive rectangular paths', () 
   }
 });
 
-test('mixed metrics are explicitly unsupported with stable tolerance and arrival order', () => {
-  const input = measuredWords([3, 3]);
-  for (const field of ['ascent', 'descent', 'advance', 'capHeight', 'xHeight', 'leading']) {
-    const measurements = structuredClone(input.measurements);
-    measurements[1][field] += 0.1;
-    assert.equal(
-      chooseWrappedParagraphFlow({ ...input, measurements }).reason,
-      'mixed-metrics',
-      field,
+test('a larger run in a later fragment settles the whole row, including after a frame break', () => {
+  for (const mode of ['single-line', 'paragraph'])
+    for (const automatic of [true, false]) {
+      const input = measuredWords(Array(8).fill(20));
+      input.mode = mode;
+      input.columns = [{ width: 100, height: 130, obstacles: [rectangle(37, 0, 65, 125)] }];
+      for (const row of input.measurements)
+        if (row.start <= 3 && row.end > 3) {
+          row.ascent = 20;
+          row.advance = automatic ? 28 : 14;
+        }
+      const result = chooseWrappedParagraphFlow(input);
+      const y = automatic ? 38 : 24;
+      assert.equal(result.status, 'fit');
+      assert.deepEqual(
+        result.lines.map((line) => line.baseline),
+        [10, 10, y, y, y + 14, y + 14, y + 28, y + 28],
+      );
+      assert.equal(result.lines[2].ascent, 20);
+      assert.equal(result.lines[3].left, 65);
+      const split = chooseWrappedParagraphFlow({
+        ...input,
+        columns: [{ ...input.columns[0], height: 20 }, input.columns[0]],
+      });
+      assert.deepEqual(
+        split.lines.slice(2, 4).map((l) => [l.frame, l.baseline]),
+        [
+          [1, 20],
+          [1, 20],
+        ],
+      );
+      assert.deepEqual(
+        chooseWrappedParagraphFlow({ ...input, measurements: [...input.measurements].reverse() })
+          .lines,
+        result.lines,
+      );
+    }
+});
+test('a larger next fragment cannot evict a valid short row from its frame', () => {
+  const input = measuredWords([14, 22]);
+  input.columns = [
+    { width: 72, height: 17, obstacles: [rectangle(30, 0, 42, 100)] },
+    { width: 100, height: 90 },
+  ];
+  for (const row of input.measurements)
+    if (row.end === 2) {
+      row.ascent = 24;
+      row.advance = 30;
+    }
+  for (const mode of ['single-line', 'paragraph']) {
+    const result = chooseWrappedParagraphFlow({ ...input, mode });
+    assert.equal(result.status, 'fit');
+    assert.deepEqual(
+      result.lines.map((l) => [l.end, l.frame, l.baseline]),
+      [
+        [1, 0, 10],
+        [2, 1, 24],
+      ],
     );
   }
+});
+test('a taller following run clears the object without taking an earlier short line with it', () => {
+  const input = measuredWords([14, 22]);
+  input.columns = [
+    {
+      width: 72,
+      height: 100,
+      obstacles: [rectangle(30, 0, 42, 100), rectangle(0, 16, 72, 53)],
+    },
+  ];
+  for (const row of input.measurements)
+    if (row.end === 2) {
+      row.ascent = 24;
+      row.advance = 30;
+    }
+  for (const mode of ['single-line', 'paragraph']) {
+    const result = chooseWrappedParagraphFlow({ ...input, mode });
+    assert.equal(result.status, 'fit');
+    assert.deepEqual(
+      result.lines.map((line) => [line.end, line.baseline]),
+      [
+        [1, 10],
+        [2, 77],
+      ],
+    );
+  }
+});
+
+test('three fragments share the final run’s ascent and both mixed-row budgets remain binding', () => {
+  const input = measuredWords([17, 17, 17, 17, 17]);
+  input.columns = [
+    {
+      width: 90,
+      height: 90,
+      obstacles: [rectangle(20, 0, 35, 90), rectangle(55, 0, 70, 90)],
+    },
+  ];
+  for (const row of input.measurements)
+    if (row.start <= 2 && row.end > 2) {
+      row.ascent = 23;
+      row.advance = 32;
+    }
+  for (const mode of ['single-line', 'paragraph']) {
+    const result = chooseWrappedParagraphFlow({ ...input, mode });
+    assert.equal(result.status, 'fit');
+    assert.deepEqual(
+      result.lines.map((line) => [line.left, line.baseline]),
+      [
+        [0, 23],
+        [35, 23],
+        [70, 23],
+        [0, 37],
+        [35, 37],
+      ],
+    );
+    assert.equal(
+      chooseWrappedParagraphFlow({ ...input, mode, maxStates: 2 }).reason,
+      'state-budget',
+    );
+    assert.equal(
+      chooseWrappedParagraphFlow({ ...input, mode, maxCandidates: 10 }).reason,
+      'candidate-budget',
+    );
+  }
+});
+
+test('subpixel noise in uniform metrics preserves stable placements and work counts', () => {
+  const input = measuredWords([3, 3]);
   input.measurements[1].ascent += 0.0000005;
   const a = chooseWrappedParagraphFlow(input),
     b = chooseWrappedParagraphFlow({ ...input, measurements: [...input.measurements].reverse() });

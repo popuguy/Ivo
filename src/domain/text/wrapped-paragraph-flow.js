@@ -1,3 +1,4 @@
+import { fitMixedWrapRow, indexWrapRowMetrics } from './mixed-wrap-rows.js';
 import {
   adjustWordSpacing,
   normalizeWordSpacingPolicy,
@@ -232,7 +233,7 @@ function firstBaseline(column, metrics) {
   );
 }
 
-/** Uniform-metric paragraph composition around immutable exclusion paths.
+/** Paragraph composition around immutable exclusion paths.
  * Rows own ordered fragments; leaving a fragment consumes its full available
  * segment even when the selected break is ragged. Mandatory breaks end the row.
  * Preparation and search yield cooperatively; only the terminal value is a fit. */
@@ -284,7 +285,7 @@ export function* wrappedParagraphFlowSteps({
     candidates,
   });
   if (geometryBudget) return failed('geometry-budget');
-  if (mixed) return failed('mixed-metrics');
+  const rowProfiles = mixed ? yield* indexWrapRowMetrics(measurements, metricFields) : null;
   if (!metrics) return failed('no-feasible-path');
   const hyphens = lineHyphenation(opportunities, hyphenation, mode, style.align);
   const initial = {
@@ -300,6 +301,7 @@ export function* wrappedParagraphFlowSteps({
     },
     bands = new Map(),
     checkpoint = function* () {
+      if (budget) return false;
       if (++candidates > maxCandidates) {
         budget = 'candidate-budget';
         return false;
@@ -307,8 +309,9 @@ export function* wrappedParagraphFlowSteps({
       if (candidates % 1024 === 0) yield { states, candidates };
       return true;
     },
-    fitsAt = function* (state) {
-      for (let frame = state.cursor.frame; frame < frames.length; frame++) {
+    fragmentFits = function* (state, metrics, sameRowOnly = false, limit = end) {
+      const stop = sameRowOnly ? state.cursor.frame + 1 : frames.length;
+      for (let frame = state.cursor.frame; frame < stop; frame++) {
         const column = frames[frame],
           offset = firstBaseline(column, metrics),
           left = style.leftIndent + (state.end === start ? style.firstLineIndent : 0),
@@ -325,9 +328,10 @@ export function* wrappedParagraphFlowSteps({
           baseline = state.cursor.baseline + (state.mandatory ? metrics.advance : 0);
           after = state.mandatory ? null : state.after;
         }
+        const naturalBaseline = baseline;
         while (baseline + metrics.descent <= column.height) {
           if (!(yield* checkpoint())) return [];
-          const key = frame + ':' + baseline + ':' + left;
+          const key = [frame, baseline, left, metrics.ascent, metrics.descent].join(':');
           let band = bands.get(key);
           if (!band) {
             if (column.cooperativeBand) yield { stage: 'geometry', states, candidates };
@@ -350,6 +354,7 @@ export function* wrappedParagraphFlowSteps({
             if (bands.size === 4096) bands.delete(bands.keys().next().value);
             bands.set(key, band);
           }
+          if (sameRowOnly && (band.nextColumn || !band.segments.length)) return [];
           if (band.nextColumn) break;
           if (!band.segments.length) {
             if (band.contourBlocked) {
@@ -392,7 +397,7 @@ export function* wrappedParagraphFlowSteps({
             const available = [];
             for (const measured of edges.get(state.end)) {
               if (!(yield* checkpoint())) return [];
-              if (measured.minimumWidth > width + EPS) continue;
+              if (measured.end > limit || measured.minimumWidth > width + EPS) continue;
               const spacing = measured.wordSpacing
                 ? adjustWordSpacing(
                     measured,
@@ -419,7 +424,12 @@ export function* wrappedParagraphFlowSteps({
                 ...(spacing ? { wordSpacing: spacing } : {}),
               };
               line.cost = paragraphLineCost(line, measured.end === end);
-              available.push({ line, after: segment.right, mandatory: measured.mandatory });
+              available.push({
+                line,
+                after: segment.right,
+                mandatory: measured.mandatory,
+                clearance: baseline - naturalBaseline,
+              });
             }
             if (available.length) {
               if (segment !== band.segments.at(-1)) return available;
@@ -430,6 +440,7 @@ export function* wrappedParagraphFlowSteps({
               );
             }
           }
+          if (sameRowOnly) return [];
           if (metrics.advance === 0) {
             if (after !== null) {
               after = null;
@@ -443,20 +454,21 @@ export function* wrappedParagraphFlowSteps({
       }
       return [];
     },
-    child = (state, choice) => ({
-      end: choice.line.end,
-      beforeRow: choice.line.continuesRow ? state.beforeRow : state.hyphens,
-      hyphens: hyphens.countAfter(
-        choice.line.continuesRow ? state.beforeRow : state.hyphens,
-        choice.line.end,
-      ),
-      cursor: { frame: choice.line.frame, baseline: choice.line.baseline },
-      after: choice.after,
-      mandatory: choice.mandatory,
-      cost: state.cost + choice.line.cost,
-      line: choice.line,
-      parent: state,
-    }),
+    child = (state, choice) =>
+      choice.completed ?? {
+        end: choice.line.end,
+        beforeRow: choice.line.continuesRow ? state.beforeRow : state.hyphens,
+        hyphens: hyphens.countAfter(
+          choice.line.continuesRow ? state.beforeRow : state.hyphens,
+          choice.line.end,
+        ),
+        cursor: { frame: choice.line.frame, baseline: choice.line.baseline },
+        after: choice.after,
+        mandatory: choice.mandatory,
+        cost: state.cost + choice.line.cost,
+        line: choice.line,
+        parent: state,
+      },
     better = (candidate, previous) =>
       !previous ||
       candidate.cost < previous.cost ||
@@ -480,6 +492,23 @@ export function* wrappedParagraphFlowSteps({
         candidates,
       };
     };
+  const claimState = () => {
+    if (++states <= maxStates) return true;
+    budget = 'state-budget';
+    return false;
+  };
+  function* fitsAt(state) {
+    if (!rowProfiles) return yield* fragmentFits(state, metrics);
+    return yield* fitMixedWrapRow(state, rowProfiles, {
+      fragmentFits,
+      child,
+      checkpoint,
+      claimState,
+      end,
+      mode,
+      wordSpacing,
+    });
+  }
   let seed = initial;
   while (seed.end < end) {
     const fitting = yield* fitsAt(seed);

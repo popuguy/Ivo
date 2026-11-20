@@ -579,20 +579,32 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
     await settle();
     const editWord = wordRange('word040');
     await select(editWord.start, editWord.end);
+    const beforeSize = geometry(),
+      beforeSizeHTML = doc.textFlows[0].html,
+      editsBeforeSize = commits;
+    await property('fontSize', 22);
+    verifyCoverage();
+    assert(
+      painted().request.runs.some((run) => run.size === 22) &&
+        doc.textFlows[0].html !== beforeSizeHTML &&
+        commits === editsBeforeSize + 1 &&
+        geometry() !== beforeSize,
+      'Mixed-size wrapped edit did not update source and native ink together',
+    );
+    const afterSize = geometry();
+    await editor.command('undo');
+    await settle();
+    assert(
+      doc.textFlows[0].html === beforeSizeHTML && geometry() === beforeSize,
+      'Undo changed mixed-size wrap geometry',
+    );
+    await editor.command('redo');
+    await settle();
+    assert(geometry() === afterSize, 'Redo lost mixed-size wrap geometry');
     const beforeRejected = documentContent(doc),
       beforeRejectedHTML = doc.textFlows[0].html,
       beforeRejectedCommits = commits,
       beforeRejectedHistory = history.size;
-    await property('fontSize', 22);
-    assert(
-      documentContent(doc) === beforeRejected &&
-        doc.textFlows[0].html === beforeRejectedHTML &&
-        commits === beforeRejectedCommits &&
-        history.size === beforeRejectedHistory,
-      'Rejected mixed-metric wrapped source edit changed canonical source/history',
-    );
-    assert(notices.length, 'Mixed-metric native wrap rejection was not explained');
-    notices.length = 0;
     await editor.command('document-text');
     await settle();
     const tabWord = wordRange('word040');
@@ -730,6 +742,7 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
     assert(!notices.length, 'Unexpected native wrapped-flow notice: ' + notices.join('; '));
     return {
       nativeWrappedCenteredStyleUndoReopen: true,
+      nativeMixedSizeWrapEditUndoRedo: true,
       nativeObjectWrap: true,
       nativeSameBaselineFragments: true,
       nativeWholeWrappedRowNavigation: true,

@@ -765,7 +765,9 @@ print(String(data: summaryData, encoding: .utf8)!)
     enableNativeComposition(nativeWrapDocument, nativeWrapDocument.textFlows[0], 'paragraph');
     const styledFlow = nativeWrapDocument.textFlows[0];
     styledFlow.html =
-      '<p data-ivo-align="center" data-ivo-wordspace="80:115:180">' + wrapSource + '</p>';
+      '<p data-ivo-align="center" data-ivo-wordspace="80:115:180">' +
+      wrapSource.replace('word035', '<i><span data-ivo-size="22">word035</span></i>') +
+      '</p>';
     markTypographyVersion(nativeWrapDocument);
     const nativeWrapSnapshot = createPDFSnapshot(
         [nativeWrapDocument],
@@ -802,6 +804,16 @@ print(String(data: summaryData, encoding: .utf8)!)
         call.request.id === nativeWrapDocument.textFlows[0].id,
     );
     assert.equal(nativeWrapPlan.request.protocol, 5);
+    assert(
+      nativeWrapPlan.request.runs.some(
+        (run) =>
+          run.size === 22 &&
+          nativeWrapPlan.request.resources.some(
+            (face) => face.id === run.font && face.postscript === 'CMUSerif-Italic',
+          ),
+      ),
+      'Export lost the size or face of the styled word beside the wrapped object',
+    );
     assert.equal(nativeWrapPlan.request.paragraphs[0].wordSpacing.desired, 115);
     assert(nativeWrapPlan.result.layout.lines.every((line) => line.wordSpacing.percentage === 115));
     for (const [i, line] of nativeWrapPlan.result.layout.lines.entries()) {

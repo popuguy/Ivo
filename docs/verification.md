@@ -1,5 +1,11 @@
 # Verification
 
+## Canvas cursor and mixed typography around objects — 20 November 2026
+
+A browser input check follows the Selection cursor from empty page through text-frame hover, press, drag and release. Repeated plain motion also checks for redundant cursor updates. A separate desktop check holds pointer capture across a linked-text selection and checks the I-beam.
+
+Mixed-run layout checks cover automatic and fixed leading, two and three fragments on a line, competing frame and obstacle clearances, reversed measurement order and work limits. An editor fixture changes the size of a selected word, verifies changed vector geometry and restores it with Undo and Redo. The PDF fixture wraps a larger italic word in a justified-spacing document and checks ink clearance and selectable source in the exported file.
+
 ## Previously saved long single-line notes — 19 November 2026
 
 A single pasted nonbreaking space or optional break could send a previously readable long single-line flow through a paragraph search that exceeded its limits. The compatible native single-line route now renders these notes. A hidden editor test opens more than 12,000 characters in a single frame and checks its visible lines, retained source, overset suffix and zero history writes. The paragraph composer and explicitly authored spacing/keep rules continue to enforce their original limits.

@@ -17,7 +17,7 @@ export function nativeWrapColumns(document, columns) {
   }));
 }
 
-/** Until row metrics can settle across fragments, reject unsupported edits synchronously. */
+/** Reject unsupported geometry and character ink before an edit changes the flow. */
 export function validateNativeWrapping(source, columns) {
   if (!columns.some((column) => column.obstacles?.length)) return;
   if (
@@ -31,21 +31,5 @@ export function validateNativeWrapping(source, columns) {
   for (const paragraph of source.paragraphs) {
     if (source.text.slice(paragraph.start, paragraph.end).includes('\t'))
       throw new UnsupportedComposition('native wrapping with tab characters');
-    const runs = source.runs.filter(
-        (run) => run.start < paragraph.end && run.end > paragraph.start,
-      ),
-      metrics = (run) =>
-        JSON.stringify([
-          run.font,
-          run.size,
-          run.leading,
-          run.autoLeading,
-          run.baselineShift || 0,
-          run.verticalScale ?? 100,
-        ]);
-    if (runs.some((run) => metrics(run) !== metrics(runs[0])))
-      throw new UnsupportedComposition(
-        'native wrapping with mixed font metrics within a paragraph',
-      );
   }
 }
