@@ -1,4 +1,5 @@
 import { CURRENT_ARCHIVE_VERSION } from '../../../src/domain/documents/capabilities.js';
+import { verifyFindChange } from './find-change.js';
 import { verifyFlowCaretGeometry } from './flow-geometry.js';
 import { verifyTextDecorations } from './decorations.js';
 import { verifyNativeTextFormatting } from './native-format.js';
@@ -23,6 +24,7 @@ const wait = async (predicate) => {
   throw new Error('Timed out waiting for application state');
 };
 try {
+  await verifyFindChange();
   await verifyClipboardWhitespace();
   verifyNativeTextFormatting();
   await verifyTextDecorations();
@@ -485,6 +487,7 @@ try {
     'IVO_TEXT_RESULT:' +
       JSON.stringify({
         ok: true,
+        editorialFindChange: true,
         unifiedUndo: true,
         selectionBookmarks: true,
         liveRangeFormatting: true,

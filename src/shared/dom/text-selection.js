@@ -216,9 +216,8 @@ export function logicalText(root) {
     for (let i = 0; i < segment.node.length; i++) chars[segment.start + i] = segment.node.data[i];
   return chars.join('');
 }
-export function textParagraphRanges(element) {
-  const map = textPositions(element),
-    ranges = [];
+export function textParagraphRanges(element, map = textPositions(element)) {
+  const ranges = [];
   const blocks = [...element.querySelectorAll('p,div,li,h1,h2,h3,h4,h5,h6,blockquote')].filter(
     (node) => !node.querySelector('p,div,li,h1,h2,h3,h4,h5,h6,blockquote'),
   );

@@ -1923,6 +1923,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         ...(tab.kind === 'document'
           ? [
               { id: 'toggle-edit', label: editing ? 'Reading view' : 'Editing view' },
+              { id: 'find-change', label: 'Find/Change…', enabled: canvasMenu.canvasEditing },
               { id: 'history', label: 'Open version history' },
               { id: 'rename', label: 'Rename…' },
               { id: 'insert-link', label: 'Insert document link…' },
@@ -1941,6 +1942,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       choice === 'toggle-smart-guides' ||
       choice === 'toggle-panels' ||
       choice === 'wrap-preferences' ||
+      choice === 'find-change' ||
       choice === 'show-contextual' ||
       choice.startsWith('show-panel-')
     ) {

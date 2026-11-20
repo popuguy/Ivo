@@ -1,3 +1,4 @@
+import { verifyNativeFindChange } from './find-change.js';
 import { verifyThreadedDeletion } from '../flow-selection/threaded-deletion.js';
 import { createInteractiveTextPort } from '../../../src/rendering/text/retained-geometry.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
@@ -371,6 +372,7 @@ try {
       'Unequal-width paragraph opt-in changed authored source or geometry',
     );
     assert(!notices.length, 'Supported unequal paragraph geometry was rejected');
+    await verifyNativeFindChange({ editor, host, flow, seam: column(a.id).end });
     // The remainder retains its original single-line input/history baseline.
     calls.length = measurements.length = 0;
     await choose('single-line');

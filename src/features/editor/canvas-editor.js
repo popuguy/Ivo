@@ -5,6 +5,8 @@ import { reflectPropertyFormatting } from './ui/publishing-properties.js';
 import { globalIndex as flowIndexAtPoint } from '../../rendering/text/flow-source.js';
 import { patchComposedFrame } from './text/composed-frame.js';
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
+import { createFindChangePanel } from './ui/find-change-panel.js';
+import { findTextSources, findSelection } from './text/find-change.js';
 import { textClipboardHTML } from './text/clipboard.js';
 import { ensureTextWrapFlows } from '../../domain/documents/text-wrap.js';
 import { reflectTextWrapControls } from './ui/text-wrap-properties.js';
@@ -303,6 +305,72 @@ export function mountCanvasEditor(host, options) {
     }),
     tooltips = installTooltips(editor),
     marqueeElement = host.querySelector('.canvas-marquee');
+  function findFragment(id, flow) {
+    if (flow?.composition && nativePlanKey !== compositionLayoutKey(doc())) return null;
+    return flowPlan.fragments.get(id);
+  }
+  const findChange = createFindChangePanel({
+    host: editor,
+    allowed: () =>
+      ownsInput() && canWrite() && options.editing && !busy && !composing && !dialogOpen(),
+    context() {
+      const item = object();
+      if (!item || !['text', 'quote'].includes(item.type)) return {};
+      const flow = textFlowForFrame(doc(), item);
+      const bookmark = captureView().textSelection;
+      const start = Math.min(bookmark?.anchor.index || 0, bookmark?.focus.index || 0);
+      const end = Math.max(bookmark?.anchor.index || 0, bookmark?.focus.index || 0);
+      const html = flow?.html ?? item.html ?? '';
+      return { id: flow?.id || item.id, html, ...findSelection(html, start, end) };
+    },
+    sources: () =>
+      findTextSources(doc(), findFragment, (flow) => flowPlan.status.get(flow.id)?.overset),
+    reveal(owner, match) {
+      const frame =
+        owner.frames.find((item) => {
+          const part = flowPlan.fragments.get(item.id);
+          return part && part.start <= match.start && part.end > match.start;
+        }) || owner.frames.at(-1);
+      focusText(frame.id);
+      const element = activeText();
+      if (!element) return;
+      const point = (index, affinity) => ({ path: [], offset: 0, index, kind: 'text', affinity });
+      const range = { anchor: point(match.start, 'forward'), focus: point(match.end, 'backward') };
+      const key = 'ivo-find-match';
+      CSS.highlights?.delete(key);
+      if (frame.textFlowId) {
+        flowSelection.set(range);
+        flowSelection.revealFocus(range.focus);
+      } else {
+        restoreTextSelection(element, range);
+        const domRange = rangeFromBookmark(element, range);
+        if (domRange) {
+          if (globalThis.Highlight) CSS.highlights?.set(key, new Highlight(domRange));
+          const bounds = domRange.getBoundingClientRect(),
+            visible = viewport.getBoundingClientRect();
+          const dx =
+            Math.max(0, visible.left + 12 - bounds.left) ||
+            Math.min(0, visible.right - 12 - bounds.right);
+          const dy =
+            Math.max(0, visible.top + 12 - bounds.top) ||
+            Math.min(0, visible.bottom - 12 - bounds.bottom);
+          if (dx || dy)
+            cameraTo({ ...state.camera, x: state.camera.x + dx, y: state.camera.y + dy });
+        }
+      }
+      rememberTextSelection();
+    },
+    change(changes, label) {
+      CSS.highlights?.delete('ivo-find-match');
+      mutate(() => {
+        for (const { frameId, html } of changes) writeText(sceneObject(doc(), frameId), html);
+      }, label);
+    },
+    finished(focus) {
+      CSS.highlights?.delete('ivo-find-match');
+      if (focus) (activeText() || viewport).focus({ preventScroll: true });
+    },
+  });
   const workspacePanels = installWorkspacePanels(editor, {
     prepare() {
       finishGesture();
@@ -1551,6 +1619,7 @@ export function mountCanvasEditor(host, options) {
     publishingControls.prepareLegacyFonts();
   }
   function deactivate() {
+    findChange.close();
     flowSelection?.cancel();
     if (composing) return false;
     finishGesture(true);
@@ -2614,6 +2683,13 @@ export function mountCanvasEditor(host, options) {
         document.execCommand(type, false, value);
         syncText(text);
         finishText();
+      }
+      return;
+    }
+    if (name === 'find-change') {
+      if (options.editing && canWrite()) {
+        finishText();
+        findChange.open();
       }
       return;
     }
@@ -3694,6 +3770,17 @@ export function mountCanvasEditor(host, options) {
       composing
     )
       return;
+    if (
+      options.editing &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === 'f'
+    ) {
+      event.preventDefault();
+      void command('find-change');
+      return;
+    }
     if (contextMenu) {
       const buttons = [...contextMenu.querySelectorAll('button:not(:disabled)')];
       if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
@@ -4423,6 +4510,7 @@ export function mountCanvasEditor(host, options) {
       );
     },
     destroy() {
+      findChange.close();
       finishGesture();
       endTextEditing();
       alive = false;

@@ -1,0 +1,67 @@
+.canvas-find-change {
+  position: absolute;
+  top: 18px;
+  right: min(22px, 3%);
+  z-index: 80;
+  box-sizing: border-box;
+  width: min(352px, calc(100% - 20px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  gap: 9px;
+  color: var(--ink);
+  background: var(--paper, white);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 5px 20px #0002;
+  font: 12px var(--interface-font, system-ui);
+}
+.canvas-find-change header {
+  font-size: 14px;
+  font-weight: 600;
+}
+.canvas-find-change > label {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 65px minmax(0, 1fr);
+  gap: 8px;
+}
+.canvas-find-change input[type='text'],
+.canvas-find-change select,
+.canvas-find-change button {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font: inherit;
+  color: inherit;
+  background: var(--paper, white);
+}
+.canvas-find-change .find-options,
+.canvas-find-change .find-actions,
+.canvas-find-change footer {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.canvas-find-change .find-options {
+  gap: 12px;
+}
+.canvas-find-change .find-options label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.canvas-find-change button:disabled {
+  opacity: 0.45;
+}
+.canvas-find-change footer {
+  justify-content: space-between;
+}
+::highlight(ivo-find-match) {
+  background: Highlight;
+  color: HighlightText;
+}

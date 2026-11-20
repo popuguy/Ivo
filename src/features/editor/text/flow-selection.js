@@ -870,6 +870,8 @@ export function installFlowSelection(
   );
   return {
     selection: current,
+    set,
+    revealFocus,
     lineDeletionRange,
     sync,
     hit,

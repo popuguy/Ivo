@@ -1288,6 +1288,7 @@ function applyHistory(record) {
     ...Object.keys(PANEL_LABELS).map((kind) => ['show-panel-' + kind, canvas.canvasView]),
     ['show-contextual', canvas.canShowContextual],
     ['wrap-preferences', canvas.canvasEditing],
+    ['find-change', canvas.canvasEditing],
   ];
   for (const [id, enabled] of panelCommands) {
     const item = menu?.getMenuItemById(id);
@@ -1430,6 +1431,14 @@ function installMenu() {
           { role: 'cut' },
           { role: 'copy' },
           { role: 'paste' },
+          { type: 'separator' },
+          {
+            id: 'find-change',
+            label: 'Find/Change…',
+            enabled: false,
+            accelerator: 'CmdOrCtrl+F',
+            click: () => sendCommand('find-change'),
+          },
         ],
       },
       {
