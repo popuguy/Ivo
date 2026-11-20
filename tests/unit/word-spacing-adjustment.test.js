@@ -5,6 +5,7 @@ import {
   normalizeWordSpacingPolicy,
   wordSpacingMeasurement,
 } from '../../src/domain/text/word-spacing-adjustment.js';
+import { chooseWrappedParagraphFlow } from '../../src/domain/text/wrapped-paragraph-flow.js';
 import { chooseParagraphFlow, paragraphFlowSteps } from '../../src/domain/text/paragraph-flow.js';
 import { createParagraphComposer } from '../../src/rendering/text/paragraph-composition.js';
 
@@ -402,7 +403,6 @@ test('unqualified source/profile combinations reject before backend I/O and malf
     { ...source, paragraphs: [{ ...source.paragraphs[0], wordSpacing: null }] },
   ])
     await assert.rejects(composer.compose(invalid, columns));
-  await assert.rejects(composer.compose(source, [{ ...columns[0], obstacles: [{}] }]), /wrapped/);
   assert.equal(backend.calls.length, 0);
   let invalidBatch = true;
   const retrying = createParagraphComposer(async (request) => {
@@ -480,4 +480,46 @@ test('a heavily expanded soft-return row is preferred over manufacturing letter-
   ]);
   assert.equal(legacy.policy, 'ragged-right-quadratic-v1');
   assert.equal(Object.hasOwn(legacy, 'wordSpacingPlan'), false);
+});
+
+test('wrap fits custom spacing against each side of an object and honors a single-line minimum when possible', () => {
+  const blocker = {
+    mode: 'bounds',
+    side: 'both',
+    bounds: { left: 40, top: 0, right: 67, bottom: 30 },
+    polygons: [
+      [
+        { x: 40, y: 0 },
+        { x: 67, y: 0 },
+        { x: 67, y: 30 },
+        { x: 40, y: 30 },
+      ],
+    ],
+  };
+  const base = input(
+    3,
+    [row(0, 1, 38, 10), row(0, 2, 44, 10), row(1, 2, 28, 10), row(1, 3, 40, 10), row(2, 3, 28, 10)],
+    {
+      columns: [{ ...columns[0], obstacles: [blocker] }],
+      mode: 'single-line',
+      layout: { align: 'justify-all' },
+    },
+  );
+  const fit = chooseWrappedParagraphFlow(base);
+  assert.equal(fit.status, 'fit');
+  assert.deepEqual(
+    fit.lines.slice(0, 2).map((l) => [l.end, l.left, l.wordSpacing.visibleWidth]),
+    [
+      [1, 0, 40],
+      [2, 67, 33],
+    ],
+  );
+  assert.equal(fit.lines[0].baseline, fit.lines[1].baseline);
+  const forced = chooseWrappedParagraphFlow({
+    ...base,
+    measurements: base.measurements.filter((r) => r.start !== 0 || r.end === 2),
+  });
+  assert.equal(forced.lines[0].end, 2);
+  assert.equal(forced.lines[0].wordSpacing.diagnostic.kind, 'word-spacing-outside-minimum');
+  assert.equal(forced.lines[0].wordSpacing.visibleWidth, 40);
 });

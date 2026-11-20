@@ -201,14 +201,14 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
     const start = part.start + part.node.data.indexOf(word);
     return { start, end: start + word.length };
   }
-  function verifyCoverage({ complete = true } = {}) {
+  function verifyCoverage({ complete = true, protocol = 3 } = {}) {
     const { request, result } = painted(),
       lines = result.layout.lines;
     assert(
-      request.protocol === 3 && request.mode === 'planned-lines-proof',
-      'Wrapped source did not use protocol-3 native plans',
+      request.protocol === protocol && request.mode === 'planned-lines-proof',
+      'Wrapped source did not use the expected native placement protocol',
     );
-    assert(result.protocol === 3, 'Native wrap changed its result protocol');
+    assert(result.protocol === protocol, 'Native wrap changed its result protocol');
     let end = 0;
     for (const [index, line] of lines.entries()) {
       const placement = request.placements[index];
@@ -609,6 +609,81 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
     assert(notices.length, 'Unsupported native wrapped tab rejection was not explained');
     notices.length = 0;
     editor.destroy();
+    // A centered paragraph changes spacing through Properties while its original
+    // source and horizontally scaled run continue through two linked frames.
+    const styled = doc.textFlows[0];
+    styled.html =
+      '<p data-ivo-align="center"><span data-ivo-hscale="125" data-ivo-smcp="true">word000</span> ' +
+      words(65).split(' ').slice(1).join(' ') +
+      '</p>';
+    history = createDocumentHistory();
+    commits = changes = 0;
+    mount();
+    await settle();
+    verifyCoverage({ protocol: 4 });
+    await editor.command('document-text');
+    await settle();
+    const spacingRange = wordRange('word020');
+    await select(spacingRange.start);
+    const beforeSpacing = geometry();
+    const button = host.querySelector('button[data-canvas-command="word-spacing"]');
+    assert(button && !button.disabled, 'Wrapped text lacks the Word Spacing command');
+    button.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, pointerId: 90, button: 0 }),
+    );
+    button.click();
+    await tick();
+    const dialog = document
+      .querySelector('dialog[open] [data-word-spacing-apply]')
+      ?.closest('dialog');
+    assert(dialog, 'Wrapped text did not open Word Spacing');
+    for (const [name, value] of Object.entries({ minimum: 80, desired: 140, maximum: 200 })) {
+      const field = dialog.querySelector(`[data-word-spacing-field="${name}"]`);
+      field.value = String(value);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    dialog.querySelector('[data-word-spacing-apply]').click();
+    await settle();
+    verifyCoverage({ protocol: 5 });
+    const centered = wrappedPair().row.fragments;
+    const [leftSegment, rightSegment] = centered.map(
+      (line) => painted().request.placements[line.placementIndex],
+    );
+    assert(
+      Math.abs(
+        centered[0].originX + centered[0].visibleWidth - leftSegment.left - leftSegment.width,
+      ) < 0.001 &&
+        Math.abs(centered[1].originX - rightSegment.left) < 0.001 &&
+        leftSegment.left + leftSegment.width <= 150 &&
+        rightSegment.left >= 250,
+      'Centered ink did not meet the exclusion edges',
+    );
+    assert(
+      painted().request.runs.some((run) => run.horizontalScale === 125 && run.features?.smcp) &&
+        painted().result.layout.lines.every(
+          (line) => Math.abs(line.wordSpacing.percentage - 140) < 0.001,
+        ),
+      'Wrapped character or word spacing was lost',
+    );
+    assert(commits === 1 && history.size === 1, 'Changing wrapped spacing added extra history');
+    const afterSpacing = geometry(),
+      styledHTML = doc.textFlows[0].html;
+    await editor.command('undo');
+    await settle();
+    assert(geometry() === beforeSpacing, 'Undo lost the original centered placement');
+    await editor.command('redo');
+    await settle();
+    assert(geometry() === afterSpacing, 'Redo changed the centered fragment positions');
+    await save({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+    editor.destroy();
+    doc = validateImport(await load()).documents[0];
+    mount();
+    await settle();
+    assert(
+      doc.textFlows[0].html === styledHTML && geometry() === afterSpacing,
+      'Reopening changed wrapped text styling or glyph placement',
+    );
+    editor.destroy();
     // A read-only view may display a real native prefix but cannot create automatic pages.
     doc = createSceneDocument('Passive native wrapped continuation', { width: 500, height: 300 });
     const passiveFrame = insertObject(doc, 'text', doc.pages[0].id, {
@@ -654,6 +729,7 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
     );
     assert(!notices.length, 'Unexpected native wrapped-flow notice: ' + notices.join('; '));
     return {
+      nativeWrappedCenteredStyleUndoReopen: true,
       nativeObjectWrap: true,
       nativeSameBaselineFragments: true,
       nativeWholeWrappedRowNavigation: true,

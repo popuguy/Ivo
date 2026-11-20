@@ -3,6 +3,7 @@ import { FIRST_BASELINES } from './frame-composition.js';
 import { paragraphLayout } from './paragraph-layout.js';
 import {
   adjustWordSpacing,
+  paragraphLineCost,
   normalizeWordSpacingPolicy,
   wordSpacingMeasurement,
   wordSpacingMinimumWidth,
@@ -299,17 +300,7 @@ export function* paragraphFlowSteps({
             wordSpacing,
           );
           if (line) {
-            line.cost =
-              1 +
-              measured.penalty +
-              (line.wordSpacing?.badness !== null && line.wordSpacing?.badness !== undefined
-                ? line.wordSpacing.badness
-                : line.end === end
-                  ? 0
-                  : 100 *
-                    ((line.width - (line.wordSpacing?.scoreWidth ?? line.naturalWidth)) /
-                      line.width) **
-                      2);
+            line.cost = paragraphLineCost(line, line.end === end);
             available.push(line);
           }
         }
@@ -338,7 +329,11 @@ export function* paragraphFlowSteps({
   // still find a different sequence of mixed-metric alternatives.
   let seed = initial;
   while (seed.end < end) {
-    const line = (yield* fitsAt(seed))[0];
+    const fitting = yield* fitsAt(seed);
+    const line =
+      (mode === 'single-line' && wordSpacing
+        ? fitting.find((candidate) => candidate.wordSpacing.percentage >= wordSpacing.minimum)
+        : null) ?? fitting[0];
     if (budget) return failed(budget);
     if (!line) break;
     if (++states > maxStates) return failed('state-budget');

@@ -850,9 +850,27 @@ public final class TextCompositionEngine {
       adjustable: gaps + Array(hangingStart..<contentEnd), gapCount: gaps.count,
       hangingStart: hangingStart, nominalSpaceWidth: nominal)
   }
-  func wordSpaceCapacities(_ shape: WordSpaceShape, naturalWidth: Double, policy: WordSpacing)
-    -> [String: Any]
-  {
+  // One painted cluster has no internal position at which to distribute space.
+  // In particular a trailing source space must not count as a second cluster.
+  func canSpreadGlyphs(_ line: CTLine, shape: WordSpaceShape) -> Bool {
+    guard shape.gapCount == 0, shape.hangingStart - shape.start > 1 else { return false }
+    var first: CFIndex?
+    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+      let count = CTRunGetGlyphCount(run)
+      var indices = [CFIndex](repeating: 0, count: count)
+      var advances = [CGSize](repeating: .zero, count: count)
+      CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+      CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
+      for i in 0..<count where indices[i] < shape.hangingStart && advances[i].width > 0 {
+        if let first = first, first != indices[i] { return true }
+        first = indices[i]
+      }
+    }
+    return false
+  }
+  func wordSpaceCapacities(
+    _ shape: WordSpaceShape, line: CTLine, naturalWidth: Double, policy: WordSpacing
+  ) -> [String: Any] {
     // The exact native font's transformed U+0020 advances are the affine slope;
     // tracking stays additive and trailing spaces do not contribute visible width.
     func width(_ percent: Double) -> Double {
@@ -862,6 +880,7 @@ public final class TextCompositionEngine {
       "minimumWidth": width(policy.minimum), "desiredWidth": width(policy.desired),
       "maximumWidth": width(policy.maximum), "eligibleGaps": shape.gapCount,
       "nominalSpaceWidth": shape.nominalSpaceWidth,
+      "canSpreadGlyphs": canSpreadGlyphs(line, shape: shape),
     ]
   }
   func wordSpacedLine(
@@ -1151,12 +1170,36 @@ public final class TextCompositionEngine {
         try validateWordSpaceDirection(line)
         let shape = try wordSpaceShape(
           attributed, text: string, start: candidate.start, contentEnd: end)
-        row["wordSpacing"] = wordSpaceCapacities(shape, naturalWidth: measuredWidth, policy: policy)
+        row["wordSpacing"] = wordSpaceCapacities(
+          shape, line: line, naturalWidth: measuredWidth, policy: policy)
       }
       rows[index] = row
     }
     return rows
   }
+  // Centered text hugs the interruption at the outer fragments of an occupied
+  // row. A lone fragment and any interior fragments center in their own space.
+  func horizontalFlush(
+    _ alignment: String, last: Bool, placements: [Placement]?, index: Int,
+    paragraph: Paragraph?
+  ) -> CGFloat {
+    guard alignment == "center" || (alignment == "justify-center" && last) else {
+      let right = alignment == "right" || alignment == "end" || (alignment == "justify-right" && last)
+      return right ? 1 : 0
+    }
+    guard let placements = placements, let paragraph = paragraph else { return 0.5 }
+    let own = placements[index]
+    func sameRow(_ neighbor: Placement) -> Bool {
+      neighbor.frame == own.frame && abs(neighbor.baseline - own.baseline) <= 0.000001
+    }
+    let before = index > 0 && placements[index - 1].end > paragraph.start
+      && sameRow(placements[index - 1])
+    let after = index + 1 < placements.count && own.end < paragraph.end
+      && sameRow(placements[index + 1])
+    if before == after { return 0.5 }
+    return after ? 1 : 0
+  }
+
   func compose(_ request: Request, fonts: [String: CGFont]) throws -> (
     [FrozenLine], [[String: Any]], [String], [[String: String]]
   ) {
@@ -1305,6 +1348,7 @@ public final class TextCompositionEngine {
             collapseTrailing: adjustsToArea, offset: indent)
           var fallback = false
           if justified && nominal == 0 && visibleWidth > 0.000001 && visibleWidth < bodyArea,
+            canSpreadGlyphs(original, shape: shape),
             let expanded = justifyFixedPair(
               attributed, text: canonicalString, shape: shape, line: line,
               width: visibleWidth, target: bodyArea, offset: indent)
@@ -1347,11 +1391,9 @@ public final class TextCompositionEngine {
           width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
           visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
         }
-        let flush: CGFloat =
-          alignment == "center" || (alignment == "justify-center" && paragraphLastLine)
-          ? 0.5
-          : alignment == "right" || alignment == "end"
-            || (alignment == "justify-right" && paragraphLastLine) ? 1 : 0
+        let flush = horizontalFlush(
+          alignment, last: paragraphLastLine, placements: request.placements, index: output.count,
+          paragraph: paragraph)
         let originX = indent + CTLineGetPenOffsetForFlush(line, flush, bodyArea)
         let bodyWidth = visibleWidth
         if let hyphen = hyphen {

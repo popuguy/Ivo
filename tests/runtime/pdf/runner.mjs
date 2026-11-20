@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { inspectFont } from '../../../src/domain/text/fonts.js';
+import { markTypographyVersion } from '../../../src/domain/documents/capabilities.js';
 import { setTextWrap } from '../../../src/domain/documents/text-wrap.js';
 import { prepareBackgroundTest } from '../helpers/background.mjs';
 import { execFile } from 'node:child_process';
@@ -762,6 +763,10 @@ print(String(data: summaryData, encoding: .utf8)!)
     const wrapPDFInspection = JSON.parse(inspectedWrap.stdout);
     const nativeWrapDocument = structuredClone(wrapDoc);
     enableNativeComposition(nativeWrapDocument, nativeWrapDocument.textFlows[0], 'paragraph');
+    const styledFlow = nativeWrapDocument.textFlows[0];
+    styledFlow.html =
+      '<p data-ivo-align="center" data-ivo-wordspace="80:115:180">' + wrapSource + '</p>';
+    markTypographyVersion(nativeWrapDocument);
     const nativeWrapSnapshot = createPDFSnapshot(
         [nativeWrapDocument],
         [asset],
@@ -796,7 +801,23 @@ print(String(data: summaryData, encoding: .utf8)!)
         call.request.mode === 'planned-lines-proof' &&
         call.request.id === nativeWrapDocument.textFlows[0].id,
     );
-    assert.equal(nativeWrapPlan.request.protocol, 3);
+    assert.equal(nativeWrapPlan.request.protocol, 5);
+    assert.equal(nativeWrapPlan.request.paragraphs[0].wordSpacing.desired, 115);
+    assert(nativeWrapPlan.result.layout.lines.every((line) => line.wordSpacing.percentage === 115));
+    for (const [i, line] of nativeWrapPlan.result.layout.lines.entries()) {
+      const previous = nativeWrapPlan.result.layout.lines[i - 1],
+        next = nativeWrapPlan.result.layout.lines[i + 1];
+      if (next?.baseline === line.baseline)
+        assert(
+          Math.abs(
+            line.originX +
+              line.visibleWidth -
+              (nativeWrapPlan.request.placements[i].left + line.availableWidth),
+          ) < 0.001,
+        );
+      if (previous?.baseline === line.baseline)
+        assert(Math.abs(line.originX - nativeWrapPlan.request.placements[i].left) < 0.001);
+    }
     assert(
       nativeWrapPlan.result.layout.lines.some(
         (line, index, lines) => index && line.baseline === lines[index - 1].baseline,

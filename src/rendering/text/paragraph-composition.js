@@ -326,8 +326,6 @@ export function createParagraphComposer(measure) {
         if (paragraph.wordSpacing) {
           if (request.protocol !== 5)
             throw new UnsupportedComposition('word spacing without native protocol 5');
-          if (columns.some((column) => column.obstacles?.length))
-            throw new UnsupportedComposition('word spacing with wrapped fragments');
           const issue = wordSpacingSourceError(paragraph.text);
           if (issue) throw new UnsupportedComposition(issue);
           if (

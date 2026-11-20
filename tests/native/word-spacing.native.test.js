@@ -6,6 +6,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createParagraphComposer } from '../../src/rendering/text/paragraph-composition.js';
+import { validateWordSpacingResult } from '../../src/rendering/text/word-spacing-result.js';
 import { buildNativeText } from '../../scripts/build-native-text.mjs';
 import { createTextComposition } from '../../desktop/text-composition.mjs';
 
@@ -637,5 +639,94 @@ print(String(data: try JSONSerialization.data(withJSONObject: ["text": text, "ro
       );
     assert.deepEqual(req, before);
     assert.deepEqual((await service.compose(req)).layout, result.layout);
+  },
+);
+
+test(
+  'centered fragments follow occupied rows, and isolated letters keep their own advance',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    for (const count of [1, 2, 3, 4]) {
+      const req = await request('X '.repeat(count) + '\u2029', { align: 'center' });
+      req.placements = Array.from({ length: count }, (_, i) => ({
+        end: i === count - 1 ? req.text.length : (i + 1) * 2,
+        frame: 0,
+        baseline: 22,
+        left: i * 100,
+        width: 70,
+      }));
+      const lines = (await service.compose(req)).layout.lines;
+      assert.equal(lines.length, count);
+      for (const [i, line] of lines.entries()) {
+        const factor = count === 1 ? 0.5 : i === 0 ? 1 : i === count - 1 ? 0 : 0.5;
+        close(line.originX, i * 100 + (70 - line.visibleWidth) * factor);
+        close(line.carets[0].primary, line.originX);
+      }
+      if (count === 2) {
+        req.paragraphs[0].align = 'justify-center';
+        const last = (await service.compose(req)).layout.lines[1];
+        close(last.originX, 100, 'Centered final fragment on a split row');
+        req.placements[1].baseline += 24;
+        const lone = (await service.compose(req)).layout.lines[1];
+        close(lone.originX, 100 + (70 - lone.visibleWidth) / 2, 'Centered final on its own row');
+      }
+    }
+    for (const sample of ['a ', 'a\u0301 ', 'ff ']) {
+      const req = await request(sample + '\u2029', { align: 'justify-all' });
+      const [metric] = await measure(service, req);
+      const line = (await service.compose(req)).layout.lines[0];
+      // One cluster (including a substituted ligature) has no interior advance.
+      const count = nonspaces(req, line).filter((g) => g.advance[0] > 0).length;
+      assert.equal(metric.wordSpacing.canSpreadGlyphs, count > 1);
+      assert.equal(line.wordSpacing.fallback, count > 1 ? 'single-word' : null);
+      close(line.visibleWidth, count > 1 ? req.placements[0].width : metric.width);
+    }
+  },
+);
+
+test(
+  'a word split around an object retains its generated hyphen and source under custom justification',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    const req = await request('typesetting for 12\u00a0pt\u2029', {
+      align: 'justify',
+      policy: { minimum: 80, desired: 125, maximum: 160 },
+    });
+    delete req.placements;
+    req.hyphenationPoints = [4, 7];
+    const [part] = await measure(service, req, [{ start: 0, end: 4, offset: 0 }]);
+    const left = part.width + 2,
+      right = left + 45;
+    const obstacle = {
+      mode: 'bounds',
+      side: 'both',
+      bounds: { left, right, top: 0, bottom: 100 },
+      polygons: [
+        [
+          { x: left, y: 0 },
+          { x: right, y: 0 },
+          { x: right, y: 100 },
+          { x: left, y: 100 },
+        ],
+      ],
+    };
+    const columns = req.frames.map((f) => ({ ...f, obstacles: [obstacle] }));
+    const composer = createParagraphComposer((q) => service.compose(q));
+    for (const mode of ['single-line', 'paragraph']) {
+      const plan = await composer.compose(req, columns, { mode });
+      const placed = { ...req, placements: plan.placements };
+      const result = await service.compose(placed);
+      validateWordSpacingResult(result, placed, plan.wordSpacingPlan);
+      const [before, after] = result.layout.lines;
+      assert.equal(before.end, 4);
+      assert.equal(after.start, 4);
+      assert.equal(before.baseline, after.baseline);
+      assert.equal(result.layout.coveredLength, req.text.length);
+      close(before.originX + before.visibleWidth, left);
+      close(after.originX, right);
+      assert(glyphs(before).some((g) => g.index === 4 && g.end === 4 && g.generated));
+    }
   },
 );

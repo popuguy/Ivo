@@ -1,3 +1,11 @@
+import {
+  adjustWordSpacing,
+  normalizeWordSpacingPolicy,
+  wordSpacingMeasurement,
+  wordSpacingMinimumWidth,
+  paragraphLineCost,
+  WORD_SPACING_COST_POLICY,
+} from './word-spacing-adjustment.js';
 import { lineHyphenation } from './line-hyphenation.js';
 import { textWrapBand } from '../geometry/text-wrap.js';
 import { TEXT_WRAP_MODES, TEXT_WRAP_SIDES } from '../documents/text-wrap.js';
@@ -24,6 +32,7 @@ function* prepare(input) {
     mode,
     maxStates,
     maxCandidates,
+    wordSpacing,
   } = input;
   if (
     !integer(start) ||
@@ -185,12 +194,18 @@ function* prepare(input) {
       ranges[field].maximum = Math.max(ranges[field].maximum, row[field]);
       if (ranges[field].maximum - ranges[field].minimum > EPS) mixed = true;
     }
+    const spacing = wordSpacing ? wordSpacingMeasurement(row, wordSpacing) : null;
+    const minimumWidth = spacing
+      ? wordSpacingMinimumWidth({ ...row, wordSpacing: spacing }, style.align)
+      : row.width;
     const maximumWidth = widest - (row.start === start ? style.firstLineIndent : 0);
-    if (b <= nextMandatory[a] && row.width <= maximumWidth + EPS)
+    if (b <= nextMandatory[a] && minimumWidth <= maximumWidth + EPS)
       edges.get(row.start).push({
         start: row.start,
         end: row.end,
         width: row.width,
+        minimumWidth,
+        ...(spacing ? { wordSpacing: spacing } : {}),
         penalty: points[b].penalty,
         mandatory: points[b].mandatory,
       });
@@ -199,7 +214,7 @@ function* prepare(input) {
   const minimumWidths = new Map();
   for (const [position, choices] of edges) {
     choices.sort((a, b) => b.end - a.end);
-    minimumWidths.set(position, Math.min(...choices.map((row) => row.width)));
+    minimumWidths.set(position, Math.min(...choices.map((row) => row.minimumWidth)));
   }
   return { style, frames, points, edges, minimumWidths, metrics, mixed, geometryBudget: false };
 }
@@ -236,7 +251,10 @@ export function* wrappedParagraphFlowSteps({
   maxCandidates = 1000000,
   hyphenation,
   priorHyphens = 0,
+  wordSpacing: inputWordSpacing,
 }) {
+  const wordSpacing = normalizeWordSpacingPolicy(inputWordSpacing);
+  const costPolicy = wordSpacing ? WORD_SPACING_COST_POLICY : policy;
   const prepared = yield* prepare({
       start,
       end,
@@ -249,6 +267,7 @@ export function* wrappedParagraphFlowSteps({
       mode,
       maxStates,
       maxCandidates,
+      wordSpacing,
     }),
     { style, frames, points, edges, minimumWidths, metrics, mixed, geometryBudget } = prepared;
   let states = 1,
@@ -256,7 +275,7 @@ export function* wrappedParagraphFlowSteps({
     budget = null;
   const failed = (reason) => ({
     status: 'unfit',
-    policy,
+    policy: costPolicy,
     mode,
     start,
     end,
@@ -373,7 +392,17 @@ export function* wrappedParagraphFlowSteps({
             const available = [];
             for (const measured of edges.get(state.end)) {
               if (!(yield* checkpoint())) return [];
-              if (measured.width > width + EPS) continue;
+              if (measured.minimumWidth > width + EPS) continue;
+              const spacing = measured.wordSpacing
+                ? adjustWordSpacing(
+                    measured,
+                    width,
+                    style.align,
+                    measured.end === end,
+                    wordSpacing.desired,
+                  )
+                : null;
+              if (measured.wordSpacing && !spacing) continue;
               const line = {
                 start: measured.start,
                 end: measured.end,
@@ -387,11 +416,9 @@ export function* wrappedParagraphFlowSteps({
                 descent: metrics.descent,
                 advance: metrics.advance,
                 penalty: measured.penalty,
-                cost:
-                  1 +
-                  measured.penalty +
-                  (measured.end === end ? 0 : 100 * ((width - measured.width) / width) ** 2),
+                ...(spacing ? { wordSpacing: spacing } : {}),
               };
+              line.cost = paragraphLineCost(line, measured.end === end);
               available.push({ line, after: segment.right, mandatory: measured.mandatory });
             }
             if (available.length) {
@@ -442,7 +469,7 @@ export function* wrappedParagraphFlowSteps({
       for (let current = state; current.line; current = current.parent) lines.push(current.line);
       return {
         status: 'fit',
-        policy,
+        policy: costPolicy,
         mode,
         start,
         end,
@@ -455,7 +482,11 @@ export function* wrappedParagraphFlowSteps({
     };
   let seed = initial;
   while (seed.end < end) {
-    const choice = (yield* fitsAt(seed))[0];
+    const fitting = yield* fitsAt(seed);
+    const choice =
+      (mode === 'single-line' && wordSpacing
+        ? fitting.find((candidate) => candidate.line.wordSpacing.percentage >= wordSpacing.minimum)
+        : null) ?? fitting[0];
     if (budget) return failed(budget);
     if (!choice) break;
     if (++states > maxStates) return failed('state-budget');

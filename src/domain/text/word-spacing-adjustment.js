@@ -21,7 +21,8 @@ export function wordSpacingMeasurement(row, policy) {
     !measured ||
     typeof measured !== 'object' ||
     Array.isArray(measured) ||
-    Object.keys(measured).some((field) => !fields.includes(field)) ||
+    Object.keys(measured).some((field) => field !== 'canSpreadGlyphs' && !fields.includes(field)) ||
+    ('canSpreadGlyphs' in measured && typeof measured.canSpreadGlyphs !== 'boolean') ||
     fields.some((field) => !finite(measured[field])) ||
     !Number.isSafeInteger(measured.eligibleGaps) ||
     measured.eligibleGaps > row.end - row.start ||
@@ -40,7 +41,7 @@ export function wordSpacingMeasurement(row, policy) {
     if (Math.abs(measured[width] - expected) > Math.max(EPSILON, Math.abs(expected) * 2e-7))
       throw Error('Native word-spacing measurement does not match its source percentages.');
   }
-  return Object.fromEntries(fields.map((field) => [field, measured[field]]));
+  return { ...measured };
 }
 
 /** The preference minimum is soft. Zero font-space is an owned admitted floor,
@@ -65,11 +66,12 @@ export function adjustWordSpacing(row, availableWidth, alignment, last, desiredP
         ? measured.minimumWidth
         : measured.desiredWidth;
   if (floor > availableWidth + 0.000001) return null;
-  const fallback =
+  const underfilledWord =
       justified &&
       measured.eligibleGaps === 0 &&
       row.width > 0.000001 &&
       row.width < availableWidth,
+    fallback = underfilledWord && measured.canSpreadGlyphs !== false,
     target =
       justified && measured.eligibleGaps > 0
         ? availableWidth
@@ -99,7 +101,7 @@ export function adjustWordSpacing(row, availableWidth, alignment, last, desiredP
     justified: justified || target < measured.desiredWidth,
     fallback: fallback ? 'single-word' : null,
     ratio,
-    badness: fallback
+    badness: underfilledWord
       ? 10000
       : (justified && measured.eligibleGaps > 0) || target < measured.desiredWidth
         ? badness
@@ -116,4 +118,13 @@ export function adjustWordSpacing(row, availableWidth, alignment, last, desiredP
           ? { kind: 'word-spacing-outside-maximum', amount: above, percentage }
           : null,
   };
+}
+
+/** Compare line alternatives using the space actually available to that fragment. */
+export function paragraphLineCost(line, last) {
+  const spacing = line.wordSpacing;
+  const raggedness = last
+    ? 0
+    : 100 * ((line.width - (spacing?.scoreWidth ?? line.naturalWidth)) / line.width) ** 2;
+  return 1 + line.penalty + (spacing?.badness ?? raggedness);
 }

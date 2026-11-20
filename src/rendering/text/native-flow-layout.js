@@ -602,7 +602,6 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
       !paragraph.wordSpacing &&
       paragraph.align?.startsWith('justify') &&
       /[\u00a0\u202f]/u.test(content) &&
-      !wrapped &&
       !wordSpacingSourceError(content) &&
       !source.runs.some(
         (run) => run.start < paragraph.end && run.end > paragraph.start && run.tracking < 0,
@@ -614,7 +613,6 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
       source.protocol = 5;
     }
     if (wordSpacingSettings(paragraph.wordSpacing)) {
-      if (wrapped) throw new UnsupportedComposition('word spacing with wrapped fragments');
       const issue = wordSpacingSourceError(source.text.slice(paragraph.start, paragraph.end));
       if (issue) throw new UnsupportedComposition(issue);
       if (
