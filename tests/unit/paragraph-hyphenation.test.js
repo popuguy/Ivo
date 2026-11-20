@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { englishHyphenationPoints } from '../../src/domain/text/english-hyphenation.js';
+import { dictionaryHyphenationPoints } from '../../src/domain/text/dictionary-hyphenation.js';
 import { chooseParagraphFlow } from '../../src/domain/text/paragraph-flow.js';
 import { chooseWrappedParagraphFlow } from '../../src/domain/text/wrapped-paragraph-flow.js';
 import { retainedHyphenCount } from '../../src/domain/text/line-hyphenation.js';
@@ -10,14 +10,17 @@ import { archiveVersion, markTypographyVersion } from '../../src/domain/document
 
 test('word length, prefix, suffix, capitals and last word filter only dictionary positions', () => {
   const text = 'Typesetting typesetting.';
-  assert.deepEqual(englishHyphenationPoints(text, { hyphenCapitals: false }), [16, 19]);
-  assert.deepEqual(englishHyphenationPoints(text, { hyphenLastWord: false }), [4, 7]);
-  assert.deepEqual(englishHyphenationPoints(text, { hyphenWordLength: 12 }), []);
-  assert.deepEqual(englishHyphenationPoints(text, { hyphenAfterFirst: 5 }), [7, 19]);
-  assert.deepEqual(englishHyphenationPoints(text, { hyphenBeforeLast: 5 }), []);
-  assert.deepEqual(englishHyphenationPoints('representation', { hyphenBeforeLast: 5 }), [5, 8]);
-  assert.deepEqual(englishHyphenationPoints('representation', { hyphenAfterFirst: 5 }), [5, 8, 10]);
-  assert.deepEqual(englishHyphenationPoints('Typesetting  🌿.', { hyphenLastWord: false }), []);
+  assert.deepEqual(dictionaryHyphenationPoints(text, { hyphenCapitals: false }), [16, 19]);
+  assert.deepEqual(dictionaryHyphenationPoints(text, { hyphenLastWord: false }), [4, 7]);
+  assert.deepEqual(dictionaryHyphenationPoints(text, { hyphenWordLength: 12 }), []);
+  assert.deepEqual(dictionaryHyphenationPoints(text, { hyphenAfterFirst: 5 }), [7, 19]);
+  assert.deepEqual(dictionaryHyphenationPoints(text, { hyphenBeforeLast: 5 }), []);
+  assert.deepEqual(dictionaryHyphenationPoints('representation', { hyphenBeforeLast: 5 }), [5, 8]);
+  assert.deepEqual(
+    dictionaryHyphenationPoints('representation', { hyphenAfterFirst: 5 }),
+    [5, 8, 10],
+  );
+  assert.deepEqual(dictionaryHyphenationPoints('Typesetting  🌿.', { hyphenLastWord: false }), []);
 });
 const measured = (start, end, width) => ({
   start,

@@ -40,3 +40,7 @@ The 18 November text-control correction maps the exact locally installed InDesig
 ## American English hyphenation
 
 Ivo ships the patterns and exceptions from `hyph-en-us.tex` with their original copyright and redistribution notice in `src/domain/text/dictionaries/en-us.js`. The data works offline. [TeX hyphenation project](https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex)
+
+## Additional offline hyphenation dictionaries
+
+British English, Spanish, Italian and monotonic Modern Greek use patterns and exceptions from [tex-hyphen revision 5684c0f](https://github.com/hyphenation/tex-hyphen/tree/5684c0f51c0b81133db2efbe60a408b4155a3ff5/hyph-utf8/tex/generic/hyph-utf8/patterns/tex). Each generated data module in `src/domain/text/dictionaries` retains its authors’ copyright and MIT permission notice. The editor uses its own matching and source-position logic.
