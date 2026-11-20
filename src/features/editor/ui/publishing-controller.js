@@ -1,3 +1,9 @@
+import {
+  openHyphenationForm,
+  hyphenationStyleFields,
+  readHyphenationStyle,
+} from './hyphenation-dialog.js';
+import { HYPHENATION_DEFAULTS } from '../../../domain/text/hyphenation.js';
 import { PARAGRAPH_STARTS } from '../../../domain/text/paragraph-keep-policy.js';
 import { uniformWrapOffset } from '../../../domain/geometry/wrap-contour.js';
 import { PANEL_KINDS } from '../../../domain/workspace/panels.js';
@@ -85,7 +91,7 @@ export function installPublishingControls(
       );
   let popover = null,
     wordSpacingDialog = null,
-    keepDialog = null,
+    paragraphDialog = null,
     fontWork = Promise.resolve(),
     fontPending = 0,
     preparedLegacy = '';
@@ -167,16 +173,19 @@ export function installPublishingControls(
     const item = objects()[0];
     return doc().textFlows?.find((flow) => flow.id === item?.textFlowId && flow.composition);
   }
-  function openKeepOptions() {
+  function openParagraphOptions(name) {
     preserveRange();
     const flow = nativeTextFlow(),
       summary = textState();
-    if (!flow || !summary || keepDialog?.open) return;
+    if (!flow || !summary || paragraphDialog?.open) return;
     const source = flow.html,
       target = fontSelection();
     closePopover();
     closeWordSpacingDialog();
-    const dialog = openKeepOptionsForm(form, summary, (patch) => {
+    const isKeep = name === 'keep-options';
+    const title = isKeep ? 'Keep Options' : 'Hyphenation';
+    const openForm = isKeep ? openKeepOptionsForm : openHyphenationForm;
+    const dialog = openForm(form, summary, (patch) => {
       const current = nativeTextFlow();
       if (
         !dialogAllowed?.() ||
@@ -184,15 +193,15 @@ export function installPublishingControls(
         current?.html !== source ||
         target !== fontSelection()
       )
-        throw Error('The text selection changed. Reopen Keep Options for the current text.');
-      if (Object.keys(patch).length) applyTextSettings(patch, 'Keep Options');
+        throw Error(`The text selection changed. Reopen ${title} for the current text.`);
+      if (Object.keys(patch).length) applyTextSettings(patch, title);
       render();
     });
-    keepDialog = dialog;
+    paragraphDialog = dialog;
     dialog.addEventListener(
       'close',
       () => {
-        if (keepDialog === dialog) keepDialog = null;
+        if (paragraphDialog === dialog) paragraphDialog = null;
       },
       { once: true },
     );
@@ -299,6 +308,10 @@ export function installPublishingControls(
           .filter(
             (key) =>
               settings[key] !== undefined &&
+              !(
+                Object.hasOwn(HYPHENATION_DEFAULTS, key) &&
+                HYPHENATION_DEFAULTS[key] === settings[key]
+              ) &&
               !(key === 'paragraphStart' && settings[key] === 'anywhere') &&
               !(key === 'keepNextLines' && settings[key] === 1) &&
               !(
@@ -333,6 +346,7 @@ export function installPublishingControls(
     const styleOptions = nativeTextFlow()
       ? [...keepFields, ['noBreak', 'No Break', [false, true]]]
       : [];
+    const showHyphenation = kind === 'paragraph' && nativeTextFlow();
     const keepControls = styleOptions
       .map(
         ([key, label, values]) =>
@@ -349,7 +363,7 @@ export function installPublishingControls(
         )
         .join(
           '',
-        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
+        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}${showHyphenation ? hyphenationStyleFields(attributes) : ''}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
         kind === 'paragraph'
           ? `<label>Word spacing<select name="wordSpacingMode" data-style-word-spacing-mode>${[
               ['inherit', 'Inherited'],
@@ -376,6 +390,7 @@ export function installPublishingControls(
       }`,
       (data) => {
         const next = { ...attributes };
+        if (showHyphenation) readHyphenationStyle(data, next);
         for (const key of ['fontSize', 'leading', 'tracking'])
           if (data.get(key) === '') delete next[key];
           else next[key] = Number(data.get(key));
@@ -455,7 +470,7 @@ export function installPublishingControls(
   listen(editor, 'pointerdown', (event) => {
     if (
       event.target.closest(
-        '[data-highlight-color],[data-type-feature],[data-canvas-command="word-spacing"],[data-canvas-command="keep-options"],[data-property-step],[data-paragraph-align],[data-font-style],[data-property-disclosure],[data-property-presets]',
+        '[data-highlight-color],[data-type-feature],[data-canvas-command="word-spacing"],[data-canvas-command="keep-options"],[data-canvas-command="hyphenation-options"],[data-property-step],[data-paragraph-align],[data-font-style],[data-property-disclosure],[data-property-presets]',
       )
     ) {
       preserveRange();
@@ -884,8 +899,8 @@ export function installPublishingControls(
         openType(anchor);
         return true;
       }
-      if (name === 'keep-options') {
-        openKeepOptions();
+      if (name === 'keep-options' || name === 'hyphenation-options') {
+        openParagraphOptions(name);
         return true;
       }
       if (name === 'word-spacing') {
@@ -1012,7 +1027,7 @@ export function installPublishingControls(
     destroy() {
       closePopover();
       closeWordSpacingDialog();
-      keepDialog?.close();
+      paragraphDialog?.close();
       controller.abort();
     },
   };

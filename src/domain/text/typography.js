@@ -1,3 +1,8 @@
+import {
+  HYPHENATION_ATTRIBUTES,
+  HYPHENATION_DEFAULTS,
+  validHyphenationAttribute,
+} from './hyphenation.js';
 import { PARAGRAPH_STARTS } from './paragraph-keep-policy.js';
 import { normalizeWordSpacing } from './word-spacing.js';
 
@@ -60,6 +65,7 @@ export const TEXT_DEFAULTS = Object.freeze({
   firstLineIndent: 0,
   wordSpacing: 'normal',
   hyphenate: false,
+  ...HYPHENATION_DEFAULTS,
   keepTogether: false,
   keepBoundaryLines: false,
   keepWithNext: false,
@@ -113,6 +119,7 @@ export const PARAGRAPH_FIELDS = Object.freeze({
   firstLineIndent: 'first',
   wordSpacing: 'wordspace',
   hyphenate: 'hyphens',
+  ...HYPHENATION_ATTRIBUTES,
   keepTogether: 'keep',
   keepBoundaryLines: 'keepedges',
   keepWithNext: 'next',
@@ -170,6 +177,7 @@ const bounds = {
 };
 
 export function validTextAttribute(name, value) {
+  if (name.startsWith('hyp') && name !== 'hyphens') return validHyphenationAttribute(name, value);
   if (name === 'pstart') return Object.hasOwn(PARAGRAPH_STARTS, value) ? value : null;
   if (name === 'nextlines') return /^[1-5]$/.test(value) ? String(value) : null;
   if (name === 'wordspace') {

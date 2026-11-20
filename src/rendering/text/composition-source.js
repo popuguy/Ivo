@@ -1,3 +1,4 @@
+import { HYPHENATION_DEFAULTS } from '../../domain/text/hyphenation.js';
 import { englishHyphenationPoints } from '../../domain/text/english-hyphenation.js';
 import { blankParagraphBreak } from './insertion.js';
 import { textIndexMap } from '../../shared/dom/text-selection.js';
@@ -20,6 +21,7 @@ const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
     ...PARAGRAPH_KEEP_FIELDS,
     'wordSpacing',
     'hyphenate',
+    ...Object.keys(HYPHENATION_DEFAULTS),
   ],
   supportedFields = new Set([
     'textStyle',
@@ -282,7 +284,9 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
             .filter(
               (key) =>
                 (key !== 'wordSpacing' || token.style[key] !== 'normal') &&
-                (key !== 'hyphenate' || token.style.hyphenate),
+                (key !== 'hyphenate' || token.style.hyphenate) &&
+                (!Object.hasOwn(HYPHENATION_DEFAULTS, key) ||
+                  token.style[key] !== HYPHENATION_DEFAULTS[key]),
             )
             .map((key) => [key, token.style[key]]),
         ),
@@ -304,7 +308,7 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
       )
     )
       throw new UnsupportedComposition('automatic hyphenation in mixed writing systems');
-    for (const relative of englishHyphenationPoints(content)) {
+    for (const relative of englishHyphenationPoints(content, paragraph)) {
       const at = paragraph.start + relative;
       while (noBreakRanges[rangeIndex]?.end <= at) rangeIndex++;
       if (!(noBreakRanges[rangeIndex]?.start <= at)) hyphenationPoints.push(at);

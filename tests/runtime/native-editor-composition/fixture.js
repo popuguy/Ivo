@@ -699,6 +699,32 @@ try {
         host.querySelector(`[data-flow-frame="${frame.id}"] use[href$="-${generated.vector}"]`),
         'Generated ink did not reach the editor',
       );
+      const beforeOptions = history.size;
+      host.querySelector('[data-canvas-command="hyphenation-options"]').click();
+      const form = document.querySelector('dialog[aria-label="Hyphenation"] form');
+      assert(form?.elements.hyphenate.checked, 'Missing active Hyphenation dialog');
+      form.elements.hyphenLastWord.click();
+      form.elements.hyphenLimit.value = '1';
+      form.elements.hyphenLimit.dispatchEvent(new Event('input', { bubbles: true }));
+      form.requestSubmit();
+      await settle();
+      assert(
+        !form.closest('dialog')?.open,
+        'Hyphenation options failed: ' + form.querySelector('[role=alert]').textContent,
+      );
+      assert(history.size === beforeOptions + 1, 'Hyphenation preferences must undo together');
+      const saved = validateImport({
+        schemaVersion: archiveVersion([doc]),
+        documents: [doc],
+        assets: [],
+      }).documents[0];
+      assert(
+        saved.canvasVersion === 14 && !latest().request.hyphenationPoints?.length,
+        'Saved last-word setting did not recompose both frames',
+      );
+      await editor.command('undo');
+      await settle();
+      assert(latest().request.hyphenationPoints?.length, 'Undo did not restore dictionary breaks');
       await editor.command('document-text');
       await settle();
       selectWord(word);

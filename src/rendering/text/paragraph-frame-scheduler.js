@@ -1,3 +1,4 @@
+import { retainedHyphenCount } from '../../domain/text/line-hyphenation.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
 import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-flow.js';
@@ -41,13 +42,32 @@ export async function fitFrameParagraphs(
   };
   const fit = async (
     paragraph,
-    { cursor, previousAfter = 0, sourceStart = 0, onlyFrame, role = 'ordinary' },
+    {
+      cursor,
+      previousAfter = 0,
+      sourceStart = 0,
+      retainedLines = [],
+      onlyFrame,
+      role = 'ordinary',
+    },
   ) => {
     fitProbes++;
     if (role !== 'ordinary') keepProbes++;
     if (states >= maxStates || candidates >= maxCandidates) failed('flow decision budget');
     if (cursor.frame >= columns.length)
       return { status: 'unfit', reason: 'no-feasible-path', states: 0, candidates: 0 };
+    const priorHyphens =
+      retainedLines.length && paragraph.automatic?.length
+        ? retainedHyphenCount(
+            retainedLines,
+            new Set(
+              paragraph.opportunities
+                .filter((p) => p.automatic || p.authoredHyphen)
+                .map((p) => p.index),
+            ),
+            paragraph.hyphenation.hyphenLimit,
+          )
+        : 0;
     const entry = paragraph.entry,
       layout = sourceStart
         ? { ...paragraph.layout, firstLineIndent: 0, paragraphBefore: 0 }
@@ -63,6 +83,8 @@ export async function fitFrameParagraphs(
           sourceStart,
           onlyFrame ?? null,
           paragraph.keep,
+          paragraph.hyphenation,
+          priorHyphens,
           ...(paragraph.wordSpacing ? [paragraph.wordSpacing, WORD_SPACING_COST_POLICY] : []),
         ]),
       ownColumns = onlyFrame === undefined ? columns : columns.slice(0, onlyFrame + 1);
@@ -81,6 +103,8 @@ export async function fitFrameParagraphs(
         cursor,
         previousAfter,
         mode,
+        hyphenation: paragraph.hyphenation,
+        priorHyphens,
         retainOversetPrefix:
           (paragraph.hasNoBreak ||
             paragraph.automatic?.length ||

@@ -1,3 +1,4 @@
+import { customHyphenation } from '../../domain/text/hyphenation.js';
 import { INSERT_CHARACTERS } from '../../domain/text/native-commands.js';
 import { PANEL_LABELS } from '../../domain/workspace/panels.js';
 import { reflectPropertyFormatting } from './ui/publishing-properties.js';
@@ -550,6 +551,8 @@ export function mountCanvasEditor(host, options) {
     const root = document.createElement('div');
     root.innerHTML = html || '';
     const summary = summarizeTextStyle(root, doc(), effectiveTextStyle(doc(), settings));
+    if (customHyphenation(summary.values, summary.mixed))
+      throw Error('Hyphenation options require native composition in this text flow.');
     if (summary.values.noBreak || summary.mixed.includes('noBreak'))
       throw Error('No Break requires native composition in this text flow.');
     if (
@@ -1310,7 +1313,9 @@ export function mountCanvasEditor(host, options) {
       );
     } else if (
       hasNativeTextSettings(doc()) ||
-      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart|keepedges|nobreak)\s*=/i.test(canonical)
+      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart|keepedges|nobreak|hyp(?:word|first|last|limit|zone|caps|final))\s*=/i.test(
+        canonical,
+      )
     )
       validateLegacyTextSettings(canonical, textFlow?.style || item);
     if (element?.classList.contains('canvas-flow-input') && !textFlow?.composition)
@@ -1624,6 +1629,9 @@ export function mountCanvasEditor(host, options) {
       )
         message =
           'Choose native composition for this text flow before applying extended paragraph keeps.';
+      if (customHyphenation(settings))
+        message =
+          'Choose native composition for this text flow before applying hyphenation options.';
       if (settings.noBreak)
         message = 'Choose native composition for this text flow before applying No Break.';
       if (wordSpacingSettings(settings.wordSpacing ?? 'normal'))

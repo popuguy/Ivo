@@ -1,3 +1,4 @@
+import { lineHyphenationOptions } from '../../domain/text/line-hyphenation.js';
 import { chooseParagraphBreaks } from '../../domain/text/paragraph-breaks.js';
 import { UnsupportedComposition } from './composition-source.js';
 import { paragraphLayout, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
@@ -42,7 +43,11 @@ function opportunities(text, base, ranges, scan) {
     const mandatory = /[\n\r\u2028\u2029]/.test(match[0]);
     // The space owns its break. Protecting a trailing space binds the next word.
     if (!mandatory && ranges[scan.index]?.start <= owner && index < text.length) continue;
-    points.push({ index, mandatory });
+    points.push({
+      index,
+      mandatory,
+      ...(/^[\u00ad\u2010-]$/.test(match[0]) ? { authoredHyphen: true } : {}),
+    });
   }
   if (points.at(-1).index !== text.length) points.push({ index: text.length });
   points.at(-1).mandatory = true;
@@ -224,11 +229,20 @@ export function createParagraphComposer(measure) {
         Array.isArray(options) ||
         ![Object.prototype, null].includes(Object.getPrototypeOf(options)) ||
         Object.keys(options).some(
-          (key) => !['mode', 'paragraphKeeps', 'noBreakRanges', 'limits'].includes(key),
+          (key) =>
+            !['mode', 'paragraphKeeps', 'paragraphHyphenation', 'noBreakRanges', 'limits'].includes(
+              key,
+            ),
         )
       )
         throw Error('Invalid paragraph composition options.');
-      const { mode = 'paragraph', paragraphKeeps, noBreakRanges = [], limits = {} } = options;
+      const {
+        mode = 'paragraph',
+        paragraphKeeps,
+        paragraphHyphenation,
+        noBreakRanges = [],
+        limits = {},
+      } = options;
       if (!['paragraph', 'single-line'].includes(mode)) throw Error('Invalid native fitting mode.');
       if (!limits || typeof limits !== 'object' || Array.isArray(limits))
         throw Error('Invalid paragraph work limits.');
@@ -291,12 +305,18 @@ export function createParagraphComposer(measure) {
         throw new UnsupportedComposition('paragraph keeps without planned physical frames');
       if (request.protocol >= 2 && request.paragraphs?.length !== paragraphs.length)
         throw Error('Native paragraph metadata does not cover its source.');
+      if (
+        paragraphHyphenation !== undefined &&
+        (!Array.isArray(paragraphHyphenation) || paragraphHyphenation.length !== paragraphs.length)
+      )
+        throw Error('Hyphenation options must cover all paragraphs.');
       let rangeIndex = 0;
       for (const [index, paragraph] of paragraphs.entries()) {
         while (noBreakRanges[rangeIndex]?.end <= paragraph.start) rangeIndex++;
         paragraph.hasNoBreak =
           noBreakRanges[rangeIndex]?.start < paragraph.start + paragraph.text.length;
         paragraph.keep = keeps[index];
+        paragraph.hyphenation = lineHyphenationOptions(paragraphHyphenation?.[index]);
         const authored = request.paragraphs?.[index];
         if (Object.hasOwn(authored ?? {}, 'wordSpacing') && request.protocol !== 5)
           throw new UnsupportedComposition('word spacing without native protocol 5');

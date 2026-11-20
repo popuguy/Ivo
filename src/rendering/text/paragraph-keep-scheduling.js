@@ -119,6 +119,7 @@ export async function scheduleParagraphKeeps(
             plan: await fit(paragraph, {
               cursor,
               previousAfter,
+              retainedLines: prefix,
               sourceStart: prefix.at(-1)?.end ?? 0,
               role: prefix.length ? 'next-tail' : 'ordinary',
             }),

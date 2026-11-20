@@ -342,7 +342,15 @@ export function nativeSourceBoundary(source, index) {
   if (!Number.isFinite(found)) throw Error('Native layout lost a canonical source boundary.');
   return found;
 }
-async function decideParagraph(request, columns, compose, mode, paragraphKeeps, noBreakRanges) {
+async function decideParagraph(
+  request,
+  columns,
+  compose,
+  mode,
+  paragraphKeeps,
+  noBreakRanges,
+  paragraphHyphenation,
+) {
   let composer = paragraphSessions.get(compose);
   if (!composer) {
     // Measurements have their own validated paragraph cache. Keeping raw batch
@@ -351,7 +359,12 @@ async function decideParagraph(request, columns, compose, mode, paragraphKeeps, 
     composer = createParagraphComposer(compose);
     paragraphSessions.set(compose, composer);
   }
-  return composer.compose(request, columns, { mode, paragraphKeeps, noBreakRanges });
+  return composer.compose(request, columns, {
+    mode,
+    paragraphKeeps,
+    noBreakRanges,
+    paragraphHyphenation,
+  });
 }
 
 const flowKeeps = (source) =>
@@ -752,6 +765,7 @@ export async function composeNativeTextFlows(
             flow.composition.composer,
             flowKeeps(source),
             source.noBreakRanges,
+            source.paragraphs.map(({ hyphenLimit, hyphenZone }) => ({ hyphenLimit, hyphenZone })),
           )
         : null;
     let result, columns;

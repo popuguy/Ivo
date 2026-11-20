@@ -1,3 +1,4 @@
+import { lineHyphenation } from './line-hyphenation.js';
 import { FIRST_BASELINES } from './frame-composition.js';
 import { paragraphLayout } from './paragraph-layout.js';
 import {
@@ -205,6 +206,8 @@ export function* paragraphFlowSteps({
   maxStates = 100000,
   maxCandidates = 1000000,
   wordSpacing: inputWordSpacing,
+  hyphenation,
+  priorHyphens = 0,
 }) {
   const wordSpacing = normalizeWordSpacingPolicy(inputWordSpacing),
     costPolicy = wordSpacing ? WORD_SPACING_COST_POLICY : policy;
@@ -222,9 +225,7 @@ export function* paragraphFlowSteps({
     maxCandidates,
     wordSpacing,
   });
-  const automaticEnds = new Set(
-    opportunities.filter((point) => point?.automatic === true).map((point) => point.index),
-  );
+  const hyphens = lineHyphenation(opportunities, hyphenation, mode, style.align);
 
   let states = 1,
     candidates = 0,
@@ -239,7 +240,14 @@ export function* paragraphFlowSteps({
       states,
       candidates,
     }),
-    initial = { end: start, cursor: { ...cursor }, cost: 0, parent: null, line: null },
+    initial = {
+      hyphens: priorHyphens,
+      end: start,
+      cursor: { ...cursor },
+      cost: 0,
+      parent: null,
+      line: null,
+    },
     result = (state) => {
       const lines = [];
       for (let current = state; current.line; current = current.parent) lines.push(current.line);
@@ -305,28 +313,13 @@ export function* paragraphFlowSteps({
             available.push(line);
           }
         }
-        if (available.length) {
-          // Single-line ragged text keeps a complete word ending within the
-          // half-inch hyphenation zone. Authored breaks remain eligible.
-          if (
-            mode === 'single-line' &&
-            !style.align.startsWith('justify') &&
-            automaticEnds.has(available[0].end)
-          ) {
-            const intact = available.find(
-              (line) =>
-                !automaticEnds.has(line.end) &&
-                line.width - (line.wordSpacing?.visibleWidth ?? line.naturalWidth) <= 36,
-            );
-            if (intact) return [intact];
-          }
-          return available;
-        }
+        if (available.length) return hyphens.candidates(available, state.hyphens);
       }
       return [];
     },
     child = (state, line) => ({
       end: line.end,
+      hyphens: hyphens.countAfter(state.hyphens, line.end),
       cursor: { frame: line.frame, baseline: line.baseline },
       cost: state.cost + line.cost,
       parent: state,
@@ -377,7 +370,7 @@ export function* paragraphFlowSteps({
           continue;
         }
         const bucket = buckets.get(next.end),
-          key = next.cursor.frame + ':' + next.cursor.baseline,
+          key = next.cursor.frame + ':' + next.cursor.baseline + ':' + next.hyphens,
           previous = bucket.get(key);
         if (!better(next, previous)) continue;
         if (!previous && ++states > maxStates) return failed('state-budget');

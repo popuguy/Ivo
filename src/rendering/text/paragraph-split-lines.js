@@ -27,6 +27,7 @@ export async function fitSplitParagraph(paragraph, { fit, cursor, previousAfter,
     fit(paragraph, {
       cursor: destination,
       previousAfter: retained.length || destination.baseline === null ? 0 : previousAfter,
+      retainedLines: retained,
       sourceStart: retained.at(-1)?.end ?? 0,
       role: 'split-lines',
     });

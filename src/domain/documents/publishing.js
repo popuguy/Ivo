@@ -1,3 +1,4 @@
+import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
 import { uid } from './model.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS, validTextAttribute } from '../text/typography.js';
 import { markTypographyVersion } from './capabilities.js';
@@ -137,6 +138,8 @@ export function saveTextStyle(
     if (
       !attr ||
       ['cstyle', 'pstyle'].includes(attr) ||
+      (Object.hasOwn(HYPHENATION_DEFAULTS, key) &&
+        typeof value !== typeof HYPHENATION_DEFAULTS[key]) ||
       validTextAttribute(attr, String(value)) === null
     )
       throw new Error('Invalid style property: ' + key);

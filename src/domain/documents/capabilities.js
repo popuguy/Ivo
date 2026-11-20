@@ -1,7 +1,8 @@
+import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 14;
-export const CURRENT_CANVAS_VERSION = 13;
+export const CURRENT_ARCHIVE_VERSION = 15;
+export const CURRENT_CANVAS_VERSION = 14;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -172,6 +173,24 @@ export function hasNoBreak(doc) {
   );
 }
 
+const hyphenationMarkup = new RegExp(
+  '\\bdata-ivo-(?:' + Object.values(HYPHENATION_ATTRIBUTES).join('|') + ')\\s*=',
+  'i',
+);
+export function hasHyphenationSettings(doc) {
+  return (
+    doc.canvasVersion === 14 ||
+    hasAuthoredTextSetting(
+      doc,
+      (settings) =>
+        Object.keys(HYPHENATION_ATTRIBUTES).some(
+          (key) => settings?.[key] !== undefined || settings?.textOverrides?.[key] !== undefined,
+        ),
+      (html) => hyphenationMarkup.test(html || ''),
+    )
+  );
+}
+
 export function hasNativeTextSettings(doc) {
   return (
     doc.canvasVersion >= 9 ||
@@ -179,7 +198,8 @@ export function hasNativeTextSettings(doc) {
     hasExtendedKeeps(doc) ||
     hasParagraphStarts(doc) ||
     hasSplitLineKeeps(doc) ||
-    hasNoBreak(doc)
+    hasNoBreak(doc) ||
+    hasHyphenationSettings(doc)
   );
 }
 
@@ -197,6 +217,7 @@ function hasAuthoredTextSetting(doc, owns, markup) {
 }
 
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasHyphenationSettings)) return 15;
   if (documents.some(hasNoBreak)) return 14;
   if (documents.some(hasSplitLineKeeps)) return 13;
   if (documents.some(hasParagraphStarts)) return 12;
@@ -217,6 +238,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasHyphenationSettings(document)) {
+    document.canvasVersion = 14;
+    return document;
+  }
   if (hasNoBreak(document)) {
     document.canvasVersion = 13;
     return document;

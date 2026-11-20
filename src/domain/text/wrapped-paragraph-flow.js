@@ -1,3 +1,4 @@
+import { lineHyphenation } from './line-hyphenation.js';
 import { textWrapBand } from '../geometry/text-wrap.js';
 import { TEXT_WRAP_MODES, TEXT_WRAP_SIDES } from '../documents/text-wrap.js';
 import { FIRST_BASELINES } from './frame-composition.js';
@@ -233,6 +234,8 @@ export function* wrappedParagraphFlowSteps({
   retainOversetPrefix = false,
   maxStates = 100000,
   maxCandidates = 1000000,
+  hyphenation,
+  priorHyphens = 0,
 }) {
   const prepared = yield* prepare({
       start,
@@ -264,7 +267,10 @@ export function* wrappedParagraphFlowSteps({
   if (geometryBudget) return failed('geometry-budget');
   if (mixed) return failed('mixed-metrics');
   if (!metrics) return failed('no-feasible-path');
+  const hyphens = lineHyphenation(opportunities, hyphenation, mode, style.align);
   const initial = {
+      hyphens: priorHyphens,
+      beforeRow: priorHyphens,
       end: start,
       cursor: { ...cursor },
       after: null,
@@ -388,7 +394,14 @@ export function* wrappedParagraphFlowSteps({
               };
               available.push({ line, after: segment.right, mandatory: measured.mandatory });
             }
-            if (available.length) return available;
+            if (available.length) {
+              if (segment !== band.segments.at(-1)) return available;
+              return hyphens.candidates(
+                available,
+                after !== null ? state.beforeRow : state.hyphens,
+                (choice) => choice.line,
+              );
+            }
           }
           if (metrics.advance === 0) {
             if (after !== null) {
@@ -405,6 +418,11 @@ export function* wrappedParagraphFlowSteps({
     },
     child = (state, choice) => ({
       end: choice.line.end,
+      beforeRow: choice.line.continuesRow ? state.beforeRow : state.hyphens,
+      hyphens: hyphens.countAfter(
+        choice.line.continuesRow ? state.beforeRow : state.hyphens,
+        choice.line.end,
+      ),
       cursor: { frame: choice.line.frame, baseline: choice.line.baseline },
       after: choice.after,
       mandatory: choice.mandatory,
@@ -475,7 +493,11 @@ export function* wrappedParagraphFlowSteps({
             ':' +
             next.after +
             ':' +
-            next.mandatory,
+            next.mandatory +
+            ':' +
+            next.hyphens +
+            ':' +
+            next.beforeRow,
           bucket = buckets.get(next.end),
           previous = bucket.get(key);
         if (!better(next, previous)) continue;

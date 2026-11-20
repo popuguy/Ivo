@@ -1,3 +1,4 @@
+import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
 import { migrateArchive } from './migrations.js';
 import { BLOCK_TYPES, ID_PATTERN, LIMITS } from './constants.js';
 import { attribute, decodeEntities } from '../text/html.js';
@@ -13,6 +14,7 @@ import {
   hasParagraphStarts,
   hasSplitLineKeeps,
   hasNoBreak,
+  hasHyphenationSettings,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -210,6 +212,11 @@ function typography(input, out, label) {
     if (input[key] === undefined) continue;
     const valid = validTextAttribute(attr, String(input[key]));
     if (valid === null) fail(`${label}.${key} has an invalid typography value`);
+    if (
+      Object.hasOwn(HYPHENATION_DEFAULTS, key) &&
+      typeof input[key] !== typeof HYPHENATION_DEFAULTS[key]
+    )
+      fail(`${label}.${key} has an invalid type`);
     if (key === 'keepNextLines' && !Number.isInteger(input[key]))
       fail(`${label}.${key} must be an integer`);
     if (
@@ -313,6 +320,11 @@ function validateArchive(payload, parentTemplate) {
       fail(`${label} requires frame-composition archive schema 7`);
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
+    if (
+      hasHyphenationSettings(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 14) || payload.schemaVersion < 15)
+    )
+      fail('Paragraph hyphenation settings require canvas 14 and archive 15');
     if (hasNoBreak(doc) && (!supportedCanvas(doc.canvasVersion, 13) || payload.schemaVersion < 14))
       fail(`${label} requires No Break archive 14 / canvas 13`);
     if (

@@ -297,6 +297,7 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
               .map(([k, label]) => num(k, item[k] || 0, label + ' · pt'))
               .join('')}</div>` +
             check('hyphenate', item.hyphenate, 'Hyphenate') +
+            (nativeFlow ? button('hyphenation-options', 'Hyphenation…') : '') +
             check('keepTogether', item.keepTogether, 'Keep paragraph together') +
             check('keepWithNext', item.keepWithNext, 'Keep with next') +
             (nativeFlow

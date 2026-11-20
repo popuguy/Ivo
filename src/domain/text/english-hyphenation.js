@@ -1,3 +1,4 @@
+import { HYPHENATION_DEFAULTS } from './hyphenation.js';
 import { patterns, exceptions } from './dictionaries/en-us.js';
 
 let dictionary;
@@ -48,21 +49,30 @@ function wordBreaks(word) {
     }
   }
   const breaks = [];
-  for (let i = 2; i <= word.length - 2; i++) if (weights[i + 1] % 2) breaks.push(i);
+  for (let i = 1; i < word.length; i++) if (weights[i + 1] % 2) breaks.push(i);
   return breaks;
 }
 
 /** Absolute UTF-16 boundaries within this paragraph. An explicit discretionary
  * hyphen gives its author control over that word. Skip unsupported word forms
  * whole so a partial Latin match never splits a combining mark or identifier. */
-export function englishHyphenationPoints(text) {
+export function englishHyphenationPoints(text, settings = {}) {
   const points = [];
   const words =
     /[\p{L}\p{M}\p{N}_\u00ad\u2060\ufeff]+(?:['’][\p{L}\p{M}\p{N}_\u00ad\u2060\ufeff]+)*/gu;
-  for (const match of text.matchAll(words)) {
-    if (!/^[a-z]{5,128}$/i.test(match[0])) continue;
+  const policy = { ...HYPHENATION_DEFAULTS, ...settings };
+  const matches = Array.from(text.matchAll(words));
+  if (!policy.hyphenLastWord) matches.pop();
+  for (const match of matches) {
+    if (
+      match[0].length < policy.hyphenWordLength ||
+      !/^[a-z]{2,128}$/i.test(match[0]) ||
+      (!policy.hyphenCapitals && /^[A-Z]/.test(match[0]))
+    )
+      continue;
     for (const at of wordBreaks(match[0].toLowerCase())) {
-      if (at >= 2 && at <= match[0].length - 2) points.push(match.index + at);
+      if (at >= policy.hyphenAfterFirst && at <= match[0].length - policy.hyphenBeforeLast)
+        points.push(match.index + at);
     }
   }
   return points;
