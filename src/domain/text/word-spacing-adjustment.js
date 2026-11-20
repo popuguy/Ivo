@@ -1,7 +1,11 @@
 import { fitJustification, justificationWidth } from './justification-fit.js';
 import { wordSpacingSettings, wordSpacingValue } from './word-spacing.js';
 
-export const WORD_SPACING_COST_POLICY = 'word-spacing-adjustment-cubic-v1';
+export function wordSpacingCostPolicy(settings) {
+  return settings?.glyphDesired !== undefined
+    ? 'three-axis-width-demerits-v1'
+    : 'word-spacing-adjustment-cubic-v1';
+}
 const EPSILON = 0.0001,
   fields = ['minimumWidth', 'desiredWidth', 'maximumWidth', 'eligibleGaps', 'nominalSpaceWidth'],
   finite = (value) => Number.isFinite(value) && value >= 0 && value <= 1000000;

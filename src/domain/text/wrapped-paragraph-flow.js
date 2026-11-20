@@ -5,7 +5,7 @@ import {
   wordSpacingMeasurement,
   wordSpacingMinimumWidth,
   paragraphLineCost,
-  WORD_SPACING_COST_POLICY,
+  wordSpacingCostPolicy,
 } from './word-spacing-adjustment.js';
 import { lineHyphenation } from './line-hyphenation.js';
 import { nextWrapRowTop, textWrapBand } from '../geometry/text-wrap.js';
@@ -256,7 +256,7 @@ export function* wrappedParagraphFlowSteps({
   wordSpacing: inputWordSpacing,
 }) {
   const wordSpacing = normalizeWordSpacingPolicy(inputWordSpacing);
-  const costPolicy = wordSpacing ? WORD_SPACING_COST_POLICY : policy;
+  const costPolicy = wordSpacing ? wordSpacingCostPolicy(wordSpacing) : policy;
   const prepared = yield* prepare({
       start,
       end,

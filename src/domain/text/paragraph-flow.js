@@ -7,7 +7,7 @@ import {
   normalizeWordSpacingPolicy,
   wordSpacingMeasurement,
   wordSpacingMinimumWidth,
-  WORD_SPACING_COST_POLICY,
+  wordSpacingCostPolicy,
 } from './word-spacing-adjustment.js';
 
 const integer = (value) => Number.isSafeInteger(value) && value >= 0,
@@ -213,7 +213,7 @@ export function* paragraphFlowSteps({
   priorHyphens = 0,
 }) {
   const wordSpacing = normalizeWordSpacingPolicy(inputWordSpacing),
-    costPolicy = wordSpacing ? WORD_SPACING_COST_POLICY : policy;
+    costPolicy = wordSpacing ? wordSpacingCostPolicy(wordSpacing) : policy;
   const { style, frames, points, edges } = yield* inputs({
     start,
     end,

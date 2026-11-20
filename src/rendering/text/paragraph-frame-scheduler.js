@@ -6,7 +6,7 @@ import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-f
 import { UnsupportedComposition } from './composition-source.js';
 import { paragraphStartLocations } from './paragraph-start-locations.js';
 import { scheduleParagraphKeeps } from './paragraph-keep-scheduling.js';
-import { WORD_SPACING_COST_POLICY } from '../../domain/text/word-spacing-adjustment.js';
+import { wordSpacingCostPolicy } from '../../domain/text/word-spacing-adjustment.js';
 
 const MAX_LINES = 2048;
 const frameShape = (column) => ({
@@ -91,7 +91,9 @@ export async function fitFrameParagraphs(
           paragraph.keep,
           paragraph.hyphenation,
           priorHyphens,
-          ...(paragraph.wordSpacing ? [paragraph.wordSpacing, WORD_SPACING_COST_POLICY] : []),
+          ...(paragraph.wordSpacing
+            ? [paragraph.wordSpacing, wordSpacingCostPolicy(paragraph.wordSpacing)]
+            : []),
         ]),
       ownColumns = onlyFrame === undefined ? columns : columns.slice(0, onlyFrame + 1);
     let chosen = entry.decisions.get(key);
@@ -215,7 +217,9 @@ export async function fitFrameParagraphs(
     policy: paragraphs.some((paragraph) => paragraph.wordSpacing)
       ? mode === 'single-line'
         ? 'native-fragment-word-spacing-greedy-v1'
-        : WORD_SPACING_COST_POLICY
+        : wordSpacingCostPolicy(
+            paragraphs.find((p) => p.wordSpacing?.glyphDesired !== undefined)?.wordSpacing,
+          )
       : mode === 'single-line'
         ? 'native-fragment-greedy-v1'
         : 'ragged-right-quadratic-v1',

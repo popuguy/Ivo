@@ -62,6 +62,14 @@ export function fitJustification(row, area, alignment, last, policy) {
   }
   const visibleWidth = justificationWidth(row.width, spaces, letters, word, letter, glyph);
   if (word < -0.00001 || visibleWidth > area + 0.000001) return null;
+  // Rate the change relative to this fragment's width. A short line with
+  // very little flexible space must still be distinguishable from one that
+  // misses a preferred boundary by a fraction of a point. Crossing the
+  // combined minimum adds one full-width demerit but remains possible.
+  const delta = (target - desired) / area;
+  const outside =
+    Math.max(0, measured.minimumWidth - target, target - measured.maximumWidth) / area;
+  const belowMinimum = target + 0.000001 < measured.minimumWidth;
   return {
     fitsMinimum: area + 0.000001 >= measured.minimumWidth,
     percentage: Math.max(0, word),
@@ -74,7 +82,7 @@ export function fitJustification(row, area, alignment, last, policy) {
     ratio,
     visibleWidth,
     scoreWidth: visibleWidth,
-    badness: full || condense ? Math.min(10000, 100 * ratio ** 3) : null,
+    badness: full || condense ? 100 * (delta ** 2 + outside ** 2 + Number(belowMinimum)) : null,
     diagnostic:
       ratio > 1
         ? {

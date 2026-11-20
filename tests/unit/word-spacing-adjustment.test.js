@@ -570,3 +570,53 @@ test('nine-field fitting first uses ordinary spaces, then shares expansion with 
   assert.equal(final.glyphPercentage, 100);
   assert.equal(adjustWordSpacing(measurement, 12, 'justify', false, settings), null);
 });
+
+test('both single-line planners admit a longer row within its combined minimum even when its solved words are below 80%', () => {
+  const p = {
+    minimum: 80,
+    desired: 100,
+    maximum: 125,
+    letterMinimum: -5,
+    letterDesired: 0,
+    letterMaximum: 12,
+    glyphMinimum: 96,
+    glyphDesired: 100,
+    glyphMaximum: 104,
+  };
+  function measured(start, end, width, word, letter) {
+    return {
+      ...row(start, end, width, word),
+      wordSpacing: {
+        eligibleGaps: word ? 1 : 0,
+        nominalSpaceWidth: word,
+        letterBasis: letter,
+        minimumWidth: (width - word * 0.2 - letter * 0.05) * 0.96,
+        desiredWidth: width,
+        maximumWidth: (width + word * 0.25 + letter * 0.12) * 1.04,
+        physicalMinimum: (width - word - letter * 0.05) * 0.96,
+      },
+    };
+  }
+  const req = input(
+    3,
+    [
+      measured(0, 1, 60, 4, 12),
+      measured(0, 2, 105, 5, 25),
+      measured(1, 3, 65, 3, 14),
+      measured(2, 3, 22, 0, 5),
+    ],
+    { wordSpacing: p, mode: 'single-line', columns: [{ ...columns[0], obstacles: [] }] },
+  );
+  for (const choose of [chooseParagraphFlow, chooseWrappedParagraphFlow]) {
+    const fit = choose(req);
+    assert.equal(fit.lines[0].end, 2);
+    assert.ok(fit.lines[0].wordSpacing.percentage < 80);
+    assert.equal(fit.lines[0].wordSpacing.fitsMinimum, true);
+  }
+  const mild = adjustWordSpacing(measured(0, 2, 93, 2, 4), 100, 'justify', false, p);
+  const veryLoose = adjustWordSpacing(measured(0, 2, 48, 2, 4), 100, 'justify', false, p);
+  assert.ok(veryLoose.badness > mild.badness);
+  assert.equal(adjustWordSpacing(measured(0, 2, 48, 2, 4), 100, 'justify', true, p).badness, null);
+  const emergency = adjustWordSpacing(measured(0, 2, 110, 10, 6), 100, 'justify', false, p);
+  assert.ok(emergency && emergency.badness >= 100);
+});
