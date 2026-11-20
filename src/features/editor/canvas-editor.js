@@ -1993,6 +1993,8 @@ export function mountCanvasEditor(host, options) {
         finishGesture(true);
         return false;
       }
+    if (g.copying) editor.dataset.copying = 'true';
+    else delete editor.dataset.copying;
     g.id = g.ids[0];
     g.baseline = structuredClone(doc());
     g.original =
@@ -2101,6 +2103,10 @@ export function mountCanvasEditor(host, options) {
       renderSelection();
     }
   }
+  function updateCopyModifier(pressed) {
+    if (pressed && !editor.hasAttribute('data-option')) editor.dataset.option = 'true';
+    else if (!pressed && editor.hasAttribute('data-option')) delete editor.dataset.option;
+  }
   function startGesture(event, kind, extra = {}) {
     finishGesture();
     finishText();
@@ -2113,7 +2119,7 @@ export function mountCanvasEditor(host, options) {
       camera: { ...state.camera },
       ...extra,
     };
-    editor.dataset.gesture = kind;
+    editor.dataset.gesture = kind === 'move' ? 'object-press' : kind;
     if (kind === 'move')
       for (const item of objects()) {
         const el = world.querySelector(`[data-page="${CSS.escape(item.pageId)}"]`);
@@ -2150,7 +2156,7 @@ export function mountCanvasEditor(host, options) {
       event.preventDefault();
       return;
     }
-    editor.dataset.option = String(event.altKey);
+    updateCopyModifier(event.altKey);
     const position = pointer(event);
     if (event.pointerType === 'touch' && !pointers.size) touchBeforeIds = state.selection.slice();
     if (event.pointerType === 'touch') pointers.set(event.pointerId, position);
@@ -2324,7 +2330,8 @@ export function mountCanvasEditor(host, options) {
     });
   }
   function pointerMove(event) {
-    editor.dataset.option = String(event.altKey);
+    updateCopyModifier(event.altKey);
+    if (!gesture && !pinch && !draft && !pointers.size) return;
     const pos = pointer(event);
     if (pointers.has(event.pointerId)) pointers.set(event.pointerId, pos);
     if (pinch && pointers.size === 2) {
@@ -2411,12 +2418,12 @@ export function mountCanvasEditor(host, options) {
     const dx = (pos.x - g.start.x) / state.camera.zoom,
       dy = (pos.y - g.start.y) / state.camera.zoom;
     if (!g.moved && Math.hypot(pos.x - g.start.x, pos.y - g.start.y) < 3) return;
-    g.moved = true;
-    editor.classList.add('is-dragging');
-    if (g.kind === 'move') {
-      if (!moveMode(g, !!event.altKey)) return;
-      editor.dataset.copying = String(g.copying);
+    if (!g.moved) {
+      g.moved = true;
+      editor.dataset.gesture = g.kind;
+      editor.classList.add('is-dragging');
     }
+    if (g.kind === 'move' && !moveMode(g, !!event.altKey)) return;
     const baseline = g.baseline || g.before;
     if (g.ids?.length > 1) {
       const selected = selectionRoots(baseline, g.ids),
@@ -3719,7 +3726,7 @@ export function mountCanvasEditor(host, options) {
       command('keep-options');
       return;
     }
-    editor.dataset.option = String(event.altKey);
+    updateCopyModifier(event.altKey);
     if (['Alt', 'Shift'].includes(event.key) && replayMoveModifiers(event)) {
       event.preventDefault();
       return;
@@ -4051,7 +4058,7 @@ export function mountCanvasEditor(host, options) {
     options.onViewChange?.();
   });
   listen(window, 'keyup', (event) => {
-    editor.dataset.option = String(event.altKey);
+    updateCopyModifier(event.altKey);
     if (['Alt', 'Shift'].includes(event.key) && replayMoveModifiers(event)) event.preventDefault();
     if (event.key === ' ') {
       space = false;

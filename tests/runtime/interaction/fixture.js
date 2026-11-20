@@ -94,8 +94,23 @@ try {
   const originalX = a.x,
     element = host.querySelector(`[data-object="${a.id}"]`),
     r = element.getBoundingClientRect();
+  const surface = host.querySelector('.scene-editor');
+  surface.style.setProperty('--cursor-select', 'default');
+  surface.style.setProperty('--cursor-move', 'move');
+  const cursorChanges = new MutationObserver(() => {});
+  cursorChanges.observe(surface, { attributes: true, attributeFilter: ['data-option'] });
+  for (let i = 0; i < 12; i++) send('pointermove', element, r.x + 5 + i, r.y + 5, { buttons: 0 });
+  assert(cursorChanges.takeRecords().length === 0, 'Plain hover repeatedly invalidated the cursor');
+  cursorChanges.disconnect();
   send('pointerdown', element, r.x + 5, r.y + 5);
+  assert(getComputedStyle(viewport).cursor === 'default', 'Clicking a frame announced a drag');
+  send('pointermove', viewport, r.x + 6, r.y + 5);
+  assert(
+    getComputedStyle(viewport).cursor === 'default',
+    'A sub-threshold move changed the tool cursor',
+  );
   send('pointermove', viewport, r.x + 25, r.y + 15);
+  assert(getComputedStyle(viewport).cursor === 'move', 'A real drag lost its move cursor');
   send('pointerup', viewport, r.x + 25, r.y + 15);
   assert(Math.abs(a.x - originalX - 20 / z) < 1e-8, 'Selected group did not move together');
   assert(commits === 1, 'Group move must be one undo entry');

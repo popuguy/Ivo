@@ -539,6 +539,7 @@ export function installFlowSelection(
     if (!drag) return;
     const old = drag;
     drag = null;
+    delete viewport.dataset.selectingText;
     if (cancel) nativeHint = null;
     cancelAnimationFrame(scrolling);
     scrolling = 0;
@@ -582,6 +583,7 @@ export function installFlowSelection(
       last: { x: event.clientX, y: event.clientY },
     };
     viewport.setPointerCapture(pointerId);
+    viewport.dataset.selectingText = '';
     set(initial);
   }
   listen(

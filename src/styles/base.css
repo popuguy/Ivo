@@ -2719,12 +2719,6 @@ button {
 .scene-editor[data-tool='direct'] .canvas-viewport {
   cursor: var(--cursor-direct-select, default);
 }
-.scene-editor[data-tool='select'] .canvas-object:hover {
-  cursor: var(--cursor-move, default);
-}
-.scene-editor[data-tool='direct'] .canvas-object:hover {
-  cursor: var(--cursor-direct-move, default);
-}
 .scene-editor[data-tool='text'] .canvas-viewport {
   cursor: var(--cursor-type, text);
 }
@@ -2786,6 +2780,10 @@ button {
 .scene-editor[data-gesture='resize'] .canvas-viewport,
 .scene-editor[data-gesture='resize'] .canvas-viewport * {
   cursor: var(--active-resize-cursor, default) !important;
+}
+.scene-editor .canvas-viewport[data-selecting-text],
+.scene-editor .canvas-viewport[data-selecting-text] * {
+  cursor: var(--cursor-text-edit, text) !important;
 }
 .scene-editor[data-tool='text'] .canvas-text * {
   cursor: var(--cursor-text-edit, text);
@@ -3432,12 +3430,14 @@ dialog li {
   overflow: auto;
 }
 
-.scene-editor[data-tool='select'][data-option='true'] .canvas-object:hover,
+.scene-editing[data-tool='select'][data-option='true'] .canvas-object:hover,
+.scene-editing[data-tool='select'][data-option='true'][data-gesture='object-press'] .canvas-viewport,
 .scene-editor[data-gesture='move'][data-copying='true'] .canvas-viewport,
 .scene-editor[data-gesture='move'][data-copying='true'] .canvas-viewport * {
   cursor: var(--cursor-move-copy, copy) !important;
 }
-.scene-editor[data-tool='direct'][data-option='true'] .canvas-object:hover,
+.scene-editing[data-tool='direct'][data-option='true'] .canvas-object:hover,
+.scene-editing[data-tool='direct'][data-option='true'][data-gesture='object-press'] .canvas-viewport,
 .scene-editor[data-tool='direct'][data-gesture='move'][data-copying='true'] .canvas-viewport,
 .scene-editor[data-tool='direct'][data-gesture='move'][data-copying='true'] .canvas-viewport * {
   cursor: var(--cursor-direct-move-copy, copy) !important;

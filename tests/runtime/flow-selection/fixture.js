@@ -220,7 +220,27 @@ try {
     const source = JSON.stringify(doc),
       from = charPoint(a.id),
       to = charPoint(c.id, true);
-    await window.textCoreTest.drag(from, to);
+    const surface = host.querySelector('.canvas-viewport');
+    surface.style.setProperty('--cursor-text-edit', 'text');
+    surface.style.setProperty('--cursor-type', 'crosshair');
+    const dragCursors = [];
+    const recordCursor = (event) => {
+      if (event.buttons && surface.hasPointerCapture(event.pointerId))
+        dragCursors.push(getComputedStyle(surface).cursor);
+    };
+    window.addEventListener('pointermove', recordCursor, true);
+    try {
+      await window.textCoreTest.drag(from, to);
+    } finally {
+      window.removeEventListener('pointermove', recordCursor, true);
+    }
+    assert(
+      dragCursors.length &&
+        dragCursors.every((value) => value === 'text') &&
+        !surface.hasAttribute('data-selecting-text'),
+      'Captured cross-page text selection changed cursor',
+    );
+
     await tick();
     const input = host.querySelector('.canvas-flow-input'),
       range = captureTextSelection(input);
