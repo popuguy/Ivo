@@ -3,6 +3,7 @@ import {
   HYPHENATION_DEFAULTS,
   validHyphenationAttribute,
 } from './hyphenation.js';
+import { BASELINE_ALIGNMENT } from './baseline-grid.js';
 import { PARAGRAPH_STARTS } from './paragraph-keep-policy.js';
 import { normalizeWordSpacing } from './word-spacing.js';
 
@@ -72,6 +73,7 @@ export const TEXT_DEFAULTS = Object.freeze({
   keepNextLines: 1,
   keepWithPrevious: false,
   paragraphStart: 'anywhere',
+  baselineAlignment: 'none',
   widows: 2,
   orphans: 2,
   direction: 'ltr',
@@ -126,6 +128,7 @@ export const PARAGRAPH_FIELDS = Object.freeze({
   keepNextLines: 'nextlines',
   keepWithPrevious: 'previous',
   paragraphStart: 'pstart',
+  baselineAlignment: 'gridalign',
   widows: 'widows',
   orphans: 'orphans',
   direction: 'dir',
@@ -216,6 +219,7 @@ export function validTextAttribute(name, value) {
       : /^#[0-9a-f]{6}$/i.test(value)
         ? value.toLowerCase()
         : null;
+  if (name === 'gridalign') return BASELINE_ALIGNMENT.includes(value) ? value : null;
   if (name === 'align') return ALIGNMENTS.includes(value) ? value : null;
   if (
     [

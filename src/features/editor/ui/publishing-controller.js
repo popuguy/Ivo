@@ -3,6 +3,10 @@ import {
   hyphenationStyleFields,
   readHyphenationStyle,
 } from './hyphenation-dialog.js';
+import {
+  baselineGridSettings,
+  BASELINE_GRID_DEFAULTS,
+} from '../../../domain/text/baseline-grid.js';
 import { markTypographyVersion } from '../../../domain/documents/capabilities.js';
 import { HYPHENATION_DEFAULTS } from '../../../domain/text/hyphenation.js';
 import { PARAGRAPH_STARTS } from '../../../domain/text/paragraph-keep-policy.js';
@@ -727,6 +731,18 @@ export function installPublishingControls(
         const key = t.dataset.textWrapPref,
           value = t.type === 'checkbox' ? t.checked : t.value;
         mutate(() => setTextWrapPreferences(doc(), { [key]: value }), 'Text wrap preferences');
+        return;
+      }
+      if (t.dataset.baselineGridSetting) {
+        if (!nativeComposition) throw Error('Set document baseline grids in the native app.');
+        const settings = baselineGridSettings({
+          ...(doc().publishing?.baselineGrid || BASELINE_GRID_DEFAULTS),
+          [t.dataset.baselineGridSetting]: t.valueAsNumber,
+        });
+        mutate(() => {
+          enablePublishing(doc()).baselineGrid = settings;
+          markTypographyVersion(doc());
+        }, 'Document baseline grid');
         return;
       }
       if (t.dataset.frameProp && objects().length === 1) {

@@ -1,3 +1,4 @@
+import { BASELINE_ALIGNMENT } from '../../domain/text/baseline-grid.js';
 import { lineHyphenationOptions } from '../../domain/text/line-hyphenation.js';
 import { chooseParagraphBreaks } from '../../domain/text/paragraph-breaks.js';
 import { UnsupportedComposition } from './composition-source.js';
@@ -229,9 +230,14 @@ export function createParagraphComposer(measure) {
         ![Object.prototype, null].includes(Object.getPrototypeOf(options)) ||
         Object.keys(options).some(
           (key) =>
-            !['mode', 'paragraphKeeps', 'paragraphHyphenation', 'noBreakRanges', 'limits'].includes(
-              key,
-            ),
+            ![
+              'mode',
+              'paragraphKeeps',
+              'paragraphHyphenation',
+              'baselineAlignment',
+              'noBreakRanges',
+              'limits',
+            ].includes(key),
         )
       )
         throw Error('Invalid paragraph composition options.');
@@ -239,6 +245,7 @@ export function createParagraphComposer(measure) {
         mode = 'paragraph',
         paragraphKeeps,
         paragraphHyphenation,
+        baselineAlignment,
         noBreakRanges = [],
         limits = {},
       } = options;
@@ -310,6 +317,13 @@ export function createParagraphComposer(measure) {
       )
         throw Error('Hyphenation options must cover all paragraphs.');
       let rangeIndex = 0;
+      if (
+        baselineAlignment !== undefined &&
+        (!Array.isArray(baselineAlignment) ||
+          baselineAlignment.length !== paragraphs.length ||
+          baselineAlignment.some((value) => !BASELINE_ALIGNMENT.includes(value)))
+      )
+        throw Error('Invalid paragraph baseline grid alignment.');
       for (const [index, paragraph] of paragraphs.entries()) {
         while (noBreakRanges[rangeIndex]?.end <= paragraph.start) rangeIndex++;
         paragraph.hasNoBreak =
@@ -347,6 +361,7 @@ export function createParagraphComposer(measure) {
             authored.end !== paragraph.start + paragraph.text.length)
         )
           throw Error('Native paragraph metadata does not match its source.');
+        paragraph.baselineAlignment = baselineAlignment?.[index] || 'none';
         paragraph.layout = paragraphLayout(authored);
         if (
           frameFlow &&

@@ -2193,6 +2193,17 @@ dialog .dialog-close {
 .canvas-clip > .canvas-object {
   pointer-events: auto;
 }
+[data-show-baseline-grid] > .canvas-page::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset: var(--baseline-grid-start) 0 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(83, 139, 186, 0.36) 0 var(--baseline-guide-width),
+    transparent var(--baseline-guide-width) var(--baseline-grid-increment)
+  );
+}
 .canvas-text {
   width: calc(100% / var(--text-scale-x, 1));
   height: calc(100% / var(--text-scale-y, 1));

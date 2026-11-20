@@ -1,3 +1,4 @@
+import { BASELINE_GRID_DEFAULTS } from '../../domain/text/baseline-grid.js';
 import { customHyphenation } from '../../domain/text/hyphenation.js';
 import { INSERT_CHARACTERS } from '../../domain/text/native-commands.js';
 import { PANEL_LABELS } from '../../domain/workspace/panels.js';
@@ -434,6 +435,11 @@ export function mountCanvasEditor(host, options) {
   function frame() {
     raf = 0;
     if (!alive) return;
+    if (
+      state.showBaselineGrid &&
+      world.style.getPropertyValue('--baseline-guide-width') !== 1 / state.camera.zoom + 'px'
+    )
+      world.style.setProperty('--baseline-guide-width', 1 / state.camera.zoom + 'px');
     applyPageCamera(world, state.camera);
     applyPageCamera(host.querySelector('.canvas-input-world'), state.camera);
     const label = (state.camera.zoom * 100).toFixed(2) + '%';
@@ -621,6 +627,11 @@ export function mountCanvasEditor(host, options) {
     const summary = summarizeTextStyle(root, doc(), effectiveTextStyle(doc(), settings));
     if (customHyphenation(summary.values, summary.mixed))
       throw Error('Hyphenation options require native composition in this text flow.');
+    if (
+      (summary.values.baselineAlignment && summary.values.baselineAlignment !== 'none') ||
+      summary.mixed.includes('baselineAlignment')
+    )
+      throw Error('Align to Baseline Grid requires a native text composer.');
     if (summary.values.noBreak || summary.mixed.includes('noBreak'))
       throw Error('No Break requires native composition in this text flow.');
     if (
@@ -676,11 +687,20 @@ export function mountCanvasEditor(host, options) {
       blocks: [...doc().pages.flatMap((p) => parentObjects(doc(), p)), ...doc().blocks],
     };
   }
+  function paintBaselineGrid() {
+    const { start, increment } = doc().publishing?.baselineGrid || BASELINE_GRID_DEFAULTS;
+    world.toggleAttribute('data-show-baseline-grid', !!state.showBaselineGrid);
+    if (state.showBaselineGrid)
+      world.style.setProperty('--baseline-guide-width', 1 / state.camera.zoom + 'px');
+    world.style.setProperty('--baseline-grid-start', start + 'px');
+    world.style.setProperty('--baseline-grid-increment', increment + 'px');
+  }
   function paint() {
     sceneRevision++;
     updateFlowPlan();
     setSelectionState(state.selection);
     selectionDirty = true;
+    paintBaselineGrid();
     world.innerHTML = positions()
       .map(
         (p) =>
@@ -3293,6 +3313,11 @@ export function mountCanvasEditor(host, options) {
   });
   listen(host, 'change', (event) => {
     const el = event.target;
+    if (el.matches('[data-show-baseline-grid]')) {
+      state.showBaselineGrid = el.checked;
+      paintBaselineGrid();
+      return;
+    }
     if (el.matches('[data-flow-composer]')) {
       void setFlowComposer(el.value);
       return;

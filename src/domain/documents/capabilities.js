@@ -121,9 +121,28 @@ export function hasWordSpacing(doc) {
   return doc.canvasVersion === 9 || hasAuthoredTextSetting(doc, owns, markup);
 }
 
+export function hasBaselineGrid(doc) {
+  return (
+    doc.publishing?.baselineGrid !== undefined ||
+    hasAuthoredTextSetting(
+      doc,
+      (settings) =>
+        settings?.baselineAlignment !== undefined ||
+        settings?.textOverrides?.baselineAlignment !== undefined,
+      (html) => {
+        if (!/\bdata-ivo-gridalign\s*=/i.test(html || '')) return false;
+        for (const [tag] of html.matchAll(/<[^>]+>/g))
+          if (attribute(tag, 'data-ivo-gridalign') !== null) return true;
+        return false;
+      },
+    )
+  );
+}
+
 export function hasJustification(doc) {
   return (
     doc.canvasVersion === 15 ||
+    hasBaselineGrid(doc) ||
     [
       ...(doc.blocks || []),
       ...(doc.publishing?.parents || []).flatMap((parent) => parent.blocks || []),
@@ -222,6 +241,7 @@ export function hasHyphenationSettings(doc) {
 export function hasNativeTextSettings(doc) {
   return (
     doc.canvasVersion >= 9 ||
+    hasBaselineGrid(doc) ||
     hasWordSpacing(doc) ||
     hasExtendedKeeps(doc) ||
     hasParagraphStarts(doc) ||

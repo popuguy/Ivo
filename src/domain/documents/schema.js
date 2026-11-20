@@ -1,3 +1,4 @@
+import { baselineGridSettings } from '../text/baseline-grid.js';
 import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
 import { migrateArchive } from './migrations.js';
 import { BLOCK_TYPES, ID_PATTERN, LIMITS } from './constants.js';
@@ -325,7 +326,7 @@ function validateArchive(payload, parentTemplate) {
       hasJustification(doc) &&
       (!supportedCanvas(doc.canvasVersion, 15) || payload.schemaVersion < 16)
     )
-      fail('Advanced justification settings require canvas 15 and archive 16');
+      fail('Advanced justification and baseline grid settings require canvas 15 and archive 16');
     if (
       hasHyphenationSettings(doc) &&
       (!supportedCanvas(doc.canvasVersion, 14) || payload.schemaVersion < 15)
@@ -690,6 +691,9 @@ function validateArchive(payload, parentTemplate) {
       normalized.publishing = {
         version: 1,
         layers,
+        ...(p.baselineGrid === undefined
+          ? {}
+          : { baselineGrid: baselineGridSettings(p.baselineGrid) }),
         paragraphStyles: styleList('paragraphStyles'),
         characterStyles: styleList('characterStyles'),
         parents: [],

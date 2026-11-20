@@ -23,6 +23,7 @@ const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
     ...PARAGRAPH_LAYOUT_FIELDS,
     ...PARAGRAPH_KEEP_FIELDS,
     'wordSpacing',
+    'baselineAlignment',
     'hyphenate',
     ...Object.keys(HYPHENATION_DEFAULTS),
   ],
@@ -291,6 +292,7 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
           paragraphFields
             .filter(
               (key) =>
+                (key !== 'baselineAlignment' || token.style[key] !== 'none') &&
                 (key !== 'wordSpacing' || token.style[key] !== 'normal') &&
                 (key !== 'hyphenate' || token.style.hyphenate) &&
                 (!Object.hasOwn(HYPHENATION_DEFAULTS, key) ||

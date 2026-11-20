@@ -313,6 +313,16 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
                 ) +
                 check('keepWithPrevious', item.keepWithPrevious, 'Keep with previous') +
                 choose(
+                  'baselineAlignment',
+                  item.baselineAlignment || 'none',
+                  [
+                    ['none', 'Do Not Align'],
+                    ['all', 'All Lines'],
+                    ['first', 'First Line Only'],
+                  ],
+                  'Align to Baseline Grid',
+                ) +
+                choose(
                   'paragraphStart',
                   item.paragraphStart ?? 'anywhere',
                   Object.entries(PARAGRAPH_STARTS),

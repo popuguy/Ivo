@@ -106,6 +106,7 @@ public final class TextCompositionEngine {
     let firstBaseline: String?
     let minimumFirstBaseline: Double?
     let verticalAlign: String?
+    let baselineGrid: Bool?
   }
   struct Candidate: Decodable {
     let start: Int
@@ -283,6 +284,10 @@ public final class TextCompositionEngine {
           || (frame.verticalAlign == "justify"
             && ["planned-lines-proof", "measure-lines-proof"].contains(request.mode)),
         "Unsupported vertical alignment")
+      if frame.baselineGrid == true {
+        try require((frame.verticalAlign ?? "top") == "top" && ["planned-lines-proof", "measure-lines-proof"].contains(request.mode),
+          "Document baseline grids require a top-aligned planned frame")
+      }
     }
     try require(!request.spans.isEmpty && request.spans.count <= 30_000, "Invalid source map")
     var logical = 0
@@ -1655,7 +1660,7 @@ public final class TextCompositionEngine {
         }
         if placement != nil {
           try require(
-            baseline + ((frame.verticalAlign ?? "top") == "top" ? Double(descent) : 0)
+            baseline + ((frame.verticalAlign ?? "top") == "top" && frame.baselineGrid != true ? Double(descent) : 0)
               <= frame.height + 0.000001,
             "Planned line exceeds frame height")
         } else if baseline + Double(descent) > frame.height {

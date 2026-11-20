@@ -568,6 +568,20 @@ function blocker(doc, mode = 'bounds') {
   doc.blocks.push(object);
   return object;
 }
+test('baseline grid holds unsupported wrap or vertical alignment at source preflight', () => {
+  const doc = fixture({ composer: 'paragraph', width: 120, height: 100 });
+  const flow = doc.textFlows[0];
+  flow.style.baselineAlignment = 'all';
+  const frame = doc.blocks[0];
+  frame.frameOptions = { verticalAlign: 'justify' };
+  assert.throws(() => validateNativeFlowSource(doc, flow), /combining baseline grid alignment/);
+  frame.frameOptions.verticalAlign = 'top';
+  blocker(doc);
+  assert.throws(() => validateNativeFlowSource(doc, flow), /wrapping objects/);
+  frame.ignoreTextWrap = true;
+  assert.doesNotThrow(() => validateNativeFlowSource(doc, flow));
+});
+
 test('native wrapping keeps same-row source fragments and invalidates moved obstacles without remeasuring fonts', async () => {
   for (const composer of ['paragraph', 'single-line']) {
     const doc = fixture({

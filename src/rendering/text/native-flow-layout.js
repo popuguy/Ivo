@@ -1,3 +1,5 @@
+import { baselineGridSettings } from '../../domain/text/baseline-grid.js';
+import { hasBaselineGrid } from '../../domain/documents/capabilities.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { compositionSource, UnsupportedComposition } from './composition-source.js';
 import { composedSVG } from './composed-svg.js';
@@ -280,11 +282,13 @@ function fontResolver(assets) {
 }
 
 /** Unscaled, inset column slots; physical frame geometry and authored source remain unchanged. */
-export function nativeFlowColumns(doc, flow) {
+export function nativeFlowColumns(doc, flow, useGrid = false) {
   const result = [];
+  const byId = new Map(doc.blocks.map((block) => [block.id, block]));
+  const grid = useGrid ? baselineGridSettings(doc.publishing?.baselineGrid) : null;
   const pageNumbers = new Map(doc.pages.map((page, index) => [page.id, index + 1]));
   for (const frameId of flow.frameIds) {
-    const frame = doc.blocks.find((b) => b.id === frameId);
+    const frame = byId.get(frameId);
     if (!frame || frame.textFlowId !== flow.id)
       throw Error('The native text flow has a missing frame.');
     const f = frame.frameOptions || {},
@@ -308,12 +312,29 @@ export function nativeFlowColumns(doc, flow) {
       throw Error('Frame insets, columns or text scaling leave an invalid native text area.');
     if (f.verticalAlign && !['top', 'center', 'bottom', 'justify'].includes(f.verticalAlign))
       throw new UnsupportedComposition('unknown vertical frame alignment');
+    let localGrid;
+    if (grid) {
+      let pageY = f.insetTop || 0;
+      const visited = new Set();
+      for (let owner = frame; owner; owner = byId.get(owner.parentId)) {
+        if (visited.has(owner.id))
+          throw Error('Baseline grid frame has a circular group ancestry.');
+        visited.add(owner.id);
+        if (owner.rotation)
+          throw new UnsupportedComposition(
+            'document baseline grids in rotated text frames or groups',
+          );
+        pageY += owner.y || 0;
+      }
+      localGrid = { start: (grid.start - pageY) / sy, increment: grid.increment / sy };
+    }
     for (let i = 0; i < count; i++) {
       const id = frame.id + '-column-' + i;
       if (id.length > 120) throw Error('The native text column identity exceeds its bounds.');
       result.push({
         id,
         frameId,
+        ...(localGrid ? { grid: localGrid } : {}),
         pageId: frame.pageId,
         pageNumber: pageNumbers.get(frame.pageId),
         textScale: frame.textScale || { x: 1, y: 1 },
@@ -336,16 +357,19 @@ export function nativeFlowColumns(doc, flow) {
   return result;
 }
 const transportFrames = (columns) =>
-  columns.map(({ id, width, height, firstBaseline, minimumFirstBaseline, verticalAlign }) => ({
-    id,
-    width,
-    height,
-    ...(firstBaseline ? { firstBaseline } : {}),
-    minimumFirstBaseline,
-    verticalAlign,
-  }));
-function compositionColumns(doc, flow) {
-  const columns = nativeFlowColumns(doc, flow);
+  columns.map(
+    ({ id, width, height, firstBaseline, minimumFirstBaseline, verticalAlign, grid }) => ({
+      id,
+      width,
+      height,
+      ...(firstBaseline ? { firstBaseline } : {}),
+      minimumFirstBaseline,
+      ...(grid ? { baselineGrid: true } : {}),
+      verticalAlign,
+    }),
+  );
+function compositionColumns(doc, flow, useGrid) {
+  const columns = nativeFlowColumns(doc, flow, useGrid);
   return documentHasObjectWrap(doc) ? nativeWrapColumns(doc, columns) : columns;
 }
 
@@ -377,6 +401,7 @@ async function decideParagraph(
   paragraphKeeps,
   noBreakRanges,
   paragraphHyphenation,
+  baselineAlignment,
 ) {
   let composer = paragraphSessions.get(compose);
   if (!composer) {
@@ -391,6 +416,7 @@ async function decideParagraph(
     paragraphKeeps,
     noBreakRanges,
     paragraphHyphenation,
+    baselineAlignment,
   });
 }
 
@@ -525,7 +551,7 @@ function fragmentsFor(source, result, columns, flow, fragments, prefix) {
           // Center and Bottom align the last baseline. Descenders can print
           // below the frame while its sides, page bounds and authored masks still clip.
           bottomOverhang:
-            column.verticalAlign === 'top'
+            column.verticalAlign === 'top' && !column.grid
               ? 0
               : lines.reduce(
                   (extent, line) =>
@@ -575,6 +601,9 @@ function semanticKey(doc, allowPages) {
     doc.pages,
     doc.publishing?.paragraphStyles,
     doc.publishing?.characterStyles,
+    hasBaselineGrid(doc)
+      ? [doc.publishing?.baselineGrid, doc.blocks.map((b) => [b.id, b.parentId, b.y, b.rotation])]
+      : null,
     documentHasObjectWrap(doc)
       ? [doc.blocks, doc.publishing?.parents, doc.publishing?.layers, doc.textWrapPreferences]
       : null,
@@ -613,10 +642,14 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     fontFor: fonts.fontFor,
     authoredHTML: flow.html,
   });
-  const columns = compositionColumns(doc, flow),
+  const useGrid = source.paragraphs.some(
+    (paragraph) => paragraph.baselineAlignment && paragraph.baselineAlignment !== 'none',
+  );
+  const columns = compositionColumns(doc, flow, useGrid),
     wrapped = columns.some((column) => column.obstacles?.length),
     required =
       flow.composition?.composer === 'paragraph' ||
+      useGrid ||
       columns.some((column) => column.verticalAlign === 'justify') ||
       wrapped ||
       source.paragraphs.some((p) => p.hyphenate) ||
@@ -632,6 +665,12 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
+  if (useGrid && columns.some((column) => column.verticalAlign !== 'top'))
+    throw new UnsupportedComposition(
+      'combining baseline grid alignment with a vertically centered, bottom-aligned or justified frame',
+    );
+  if (useGrid && wrapped)
+    throw new UnsupportedComposition('baseline grid alignment in text flows with wrapping objects');
   const planned = selectParagraphPlan(required, source);
   normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
@@ -807,11 +846,16 @@ export async function composeNativeTextFlows(
             flowKeeps(source),
             source.noBreakRanges,
             source.paragraphs.map(({ hyphenLimit, hyphenZone }) => ({ hyphenLimit, hyphenZone })),
+            source.paragraphs.map((p) => p.baselineAlignment || 'none'),
           )
         : null;
     let result, columns;
     for (let attempt = 0; attempt <= 128; attempt++) {
-      columns = compositionColumns(projection, flow);
+      columns = compositionColumns(
+        projection,
+        flow,
+        initial.some((column) => column.grid),
+      );
       const input = {
         ...request,
         frames: transportFrames(columns),

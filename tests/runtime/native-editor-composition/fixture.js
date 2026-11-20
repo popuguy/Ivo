@@ -26,6 +26,7 @@ import { validateImport } from '../../../src/domain/documents/schema.js';
 import { verifyParagraphProjection } from './paragraph-projection.js';
 import { verifyNativeParagraphEditing } from './paragraph-editing.js';
 import { verifyUnequalParagraphFlow } from './unequal-paragraph-flow.js';
+import { verifyBaselineGrid } from './baseline-grid.js';
 import { verifyNativeWrappedFlow } from './native-wrapped-flow.js';
 import { verifyNativeCharacterProjection } from './character-projection.js';
 import { verifyNativeCharacterEditing } from './native-character-editing.js';
@@ -77,6 +78,7 @@ try {
     paragraphEditing = {},
     unequalParagraphFlow = {},
     nativeWrappedFlow = {},
+    nativeBaselineGrid = {},
     nativeCharacterEditing = {},
     nativeParagraphKeeps = {},
     nativeWordSpacing = {},
@@ -619,6 +621,7 @@ try {
       save: window.nativeEditorTest.save,
       load: window.nativeEditorTest.load,
     });
+    nativeBaselineGrid = await verifyBaselineGrid({ host, compose: native.compose });
     nativeCharacterEditing = await verifyNativeCharacterEditing({
       host,
       compose: native.compose,
@@ -1103,6 +1106,7 @@ try {
       ...paragraphEditing,
       ...unequalParagraphFlow,
       ...nativeWrappedFlow,
+      ...nativeBaselineGrid,
       ...nativeCharacterEditing,
       ...nativeParagraphKeeps,
       ...nativeWordSpacing,

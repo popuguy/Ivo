@@ -1,3 +1,4 @@
+import { nextGridBaseline } from './baseline-grid.js';
 import { lineHyphenation } from './line-hyphenation.js';
 import { FIRST_BASELINES } from './frame-composition.js';
 import { paragraphLayout } from './paragraph-layout.js';
@@ -67,6 +68,10 @@ function* inputs({
       !column ||
       !finite(column.width, 1, 14400) ||
       !finite(column.height, 1, 14400) ||
+      (column.grid !== undefined &&
+        (!Number.isFinite(column.grid?.start) ||
+          !Number.isFinite(column.grid?.increment) ||
+          column.grid.increment <= 0)) ||
       (column.firstBaseline !== undefined && !FIRST_BASELINES.includes(column.firstBaseline)) ||
       (column.minimumFirstBaseline !== undefined &&
         !finite(column.minimumFirstBaseline, 0, 14400)) ||
@@ -160,6 +165,7 @@ function placement(
   previousAfter,
   last,
   wordSpacing,
+  baselineAlignment,
 ) {
   const left = style.leftIndent + (first ? style.firstLineIndent : 0),
     width = column.width - left - style.rightIndent;
@@ -168,16 +174,20 @@ function placement(
     : null;
   if (width < 1 || (measured.wordSpacing ? !spacing : measured.width > width + 0.000001))
     return null;
-  const nextBaseline =
+  const naturalBaseline =
     baseline === null
       ? firstBaseline(column, measured)
       : baseline + measured.advance + (first ? previousAfter + style.paragraphBefore : 0);
-  if (nextBaseline + measured.descent > column.height) return null;
+  const aligned =
+    baselineAlignment === 'all' || (baselineAlignment === 'first' && measured.start === 0);
+  const nextBaseline =
+    aligned && column.grid ? nextGridBaseline(naturalBaseline, column.grid) : naturalBaseline;
+  if (nextBaseline + (column.grid ? 0 : measured.descent) > column.height + 0.000001) return null;
   return {
     start: measured.start,
     end: measured.end,
     frame,
-    baseline: nextBaseline,
+    baseline: Math.min(nextBaseline, column.height),
     left,
     width,
     naturalWidth: measured.width,
@@ -206,6 +216,7 @@ export function* paragraphFlowSteps({
   previousAfter = 0,
   mode = 'paragraph',
   retainOversetPrefix = false,
+  baselineAlignment = 'none',
   maxStates = 100000,
   maxCandidates = 1000000,
   wordSpacing: inputWordSpacing,
@@ -300,6 +311,7 @@ export function* paragraphFlowSteps({
             previousAfter,
             measured.end === end,
             wordSpacing,
+            baselineAlignment,
           );
           if (line) {
             line.cost = paragraphLineCost(line, line.end === end);

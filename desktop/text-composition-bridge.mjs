@@ -43,7 +43,15 @@ const fields = {
     'variations',
   ],
   resource: ['id', 'digest', 'postscript', 'data'],
-  frame: ['id', 'width', 'height', 'firstBaseline', 'minimumFirstBaseline', 'verticalAlign'],
+  frame: [
+    'id',
+    'width',
+    'height',
+    'firstBaseline',
+    'minimumFirstBaseline',
+    'verticalAlign',
+    'baselineGrid',
+  ],
   candidate: ['start', 'end', 'offset'],
   paragraph: [
     'start',

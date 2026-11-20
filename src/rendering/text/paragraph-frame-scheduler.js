@@ -11,6 +11,7 @@ import { wordSpacingCostPolicy } from '../../domain/text/word-spacing-adjustment
 const MAX_LINES = 2048;
 const frameShape = (column) => ({
   width: column.width,
+  ...(column.grid ? { grid: column.grid } : {}),
   height: column.height,
   firstBaseline: column.firstBaseline || 'ascent',
   minimumFirstBaseline: column.minimumFirstBaseline || 0,
@@ -90,6 +91,7 @@ export async function fitFrameParagraphs(
           onlyFrame ?? null,
           paragraph.keep,
           paragraph.hyphenation,
+          paragraph.baselineAlignment,
           priorHyphens,
           ...(paragraph.wordSpacing
             ? [paragraph.wordSpacing, wordSpacingCostPolicy(paragraph.wordSpacing)]
@@ -110,6 +112,7 @@ export async function fitFrameParagraphs(
         layout,
         cursor,
         previousAfter,
+        baselineAlignment: paragraph.baselineAlignment,
         mode,
         hyphenation: paragraph.hyphenation,
         priorHyphens,

@@ -1,3 +1,4 @@
+import { BASELINE_GRID_DEFAULTS } from '../../../domain/text/baseline-grid.js';
 import { effectiveTextStyle } from '../../../domain/documents/publishing.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
@@ -89,13 +90,30 @@ export function propertiesContent({
       )
       .join('');
     const pageSelect = `<select data-property-page aria-label="Go to page">${doc.pages.map((p, i) => `<option value="${esc(p.id)}" ${p.id === activePage.id ? 'selected' : ''}>${i + 1} · ${esc(p.name)}</option>`).join('')}</select>`;
+    const grid = doc.publishing?.baselineGrid || BASELINE_GRID_DEFAULTS;
+    const gridDisabled = nativeComposition ? disabled : 'disabled';
+    const gridControls =
+      nativeComposition || doc.publishing?.baselineGrid
+        ? section(
+            'Baseline Grid',
+            field(
+              'Start from top of page · pt',
+              `<input type="number" min="0" max="14400" step="any" data-baseline-grid-setting="start" value="${grid.start}" aria-label="Baseline grid start in points" ${gridDisabled}>`,
+            ) +
+              field(
+                'Increment Every · pt',
+                `<input type="number" min="1" max="2000" step="any" data-baseline-grid-setting="increment" value="${grid.increment}" aria-label="Baseline grid increment in points" ${gridDisabled}>`,
+              ) +
+              `<label class="publishing-check"><input type="checkbox" data-show-baseline-grid ${state.showBaselineGrid ? 'checked' : ''}>Show Baseline Grid</label>`,
+          )
+        : '';
     const pageAction = (cmd, name, art, enabled) =>
       `<button data-canvas-command="${cmd}" aria-label="${name}" data-tooltip="${name}" ${enabled ? '' : 'disabled'}>${icon(art)}</button>`;
     return `<div class="indesign-properties"><div class="canvas-panel-heading">No Selection</div>${section(
       'Document',
       field('Name', `<input data-scene-meta="title" value="${esc(doc.title)}" ${disabled}>`) +
         `<div class="property-transform-grid">${dimensions}</div>`,
-    )}${section('Page', `<div class="property-page-row">${pageSelect}${parentMode ? '' : pageAction('add-page', 'Create new page', 'panel-new', editing && doc.pages.length < 128) + pageAction('delete-page', 'Delete selected page', 'panel-trash', editing && doc.pages.length > 1)}</div><button class="property-wide-action" data-canvas-command="show-pages">Edit Page</button>`)}
+    )}${section('Page', `<div class="property-page-row">${pageSelect}${parentMode ? '' : pageAction('add-page', 'Create new page', 'panel-new', editing && doc.pages.length < 128) + pageAction('delete-page', 'Delete selected page', 'panel-trash', editing && doc.pages.length > 1)}</div><button class="property-wide-action" data-canvas-command="show-pages">Edit Page</button>`)}${gridControls}
     ${section('Quick Actions', `<button class="property-wide-action" data-canvas-command="image" ${disabled}>Import File</button>`)}
     </div>`;
   }

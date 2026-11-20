@@ -1,3 +1,4 @@
+import { baselineGridFixture } from '../../fixtures/text/baseline-grid.js';
 import { verifyPortableTypeSpecimens } from './portable-type.mjs';
 import { createHash } from 'node:crypto';
 import { inspectFont } from '../../../src/domain/text/fonts.js';
@@ -909,6 +910,21 @@ print(String(data: summaryData, encoding: .utf8)!)
       ]);
       alignedWrapPDFs[alignment] = JSON.parse(inspected.stdout);
     }
+    const gridDocument = baselineGridFixture({ aligned: true }).doc;
+    const gridPDF = await renderPDF(createPDFSnapshot([gridDocument], [], gridDocument.id), {
+      project: root,
+    });
+    assert.deepEqual(gridPDF.manifest.warnings, []);
+    const gridFile = path.join(output, 'native-document-baseline-grid.pdf');
+    await writeFile(gridFile, gridPDF.bytes);
+    const gridInspection = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      path.join(root, 'tests/runtime/pdf/inspect-baseline-grid.swift'),
+      gridFile,
+    ]);
+    const documentBaselineGridPDF = JSON.parse(gridInspection.stdout);
     // Keep the composite Box/Shape proof above. Exercise signed ink in its own Box layout.
     const boxDocument = structuredClone(nativeWrapDocument);
     setTextWrap(boxDocument, [clippedImage.id], { mode: 'none' });
@@ -1029,6 +1045,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           nativeWrappedTextSourceAndExclusion: true,
           nativeWrapPDFInspection,
           alignedWrapPDFs,
+          documentBaselineGridPDF,
           nativeBoxInkPDFInspection,
           signedWrapPDFs,
           browserJumpInspection,
