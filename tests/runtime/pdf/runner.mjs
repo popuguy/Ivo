@@ -16,8 +16,7 @@ import {
   enableNativeComposition,
 } from '../../../src/domain/documents/text-flows.js';
 import { app, ipcMain, nativeImage } from 'electron';
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -51,7 +50,8 @@ const insertObject = (doc, type, options = {}) => {
 };
 const root = fileURLToPath(new URL('../../..', import.meta.url)),
   output = path.resolve(root, '../work/pdf-export/runtime');
-const profile = await mkdtemp(path.join(tmpdir(), 'ivo-pdf-'));
+const profile = process.argv[2];
+if (!profile) throw Error('Start the isolated PDF suite with npm run test:pdf.');
 prepareBackgroundTest(app);
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
@@ -870,13 +870,11 @@ print(String(data: summaryData, encoding: .utf8)!)
         2,
       ),
     );
-    await rm(profile, { recursive: true, force: true });
     compositionBridge.close();
     app.exit(0);
   })
-  .catch(async (error) => {
+  .catch((error) => {
     console.error(error);
     compositionBridge?.close();
-    await rm(profile, { recursive: true, force: true }).catch(() => {});
     app.exit(1);
   });

@@ -28,7 +28,7 @@
     "test:text": "electron tests/runtime/text/runner.mjs",
     "pretest:text": "node scripts/reference-art.mjs",
     "test:browser-storage": "electron tests/runtime/browser-storage/runner.mjs",
-    "test:pdf": "npm run build && electron tests/runtime/pdf/runner.mjs",
+    "test:pdf": "npm run build && node tests/runtime/pdf/launch.mjs",
     "test:templates": "electron tests/runtime/template/runner.mjs",
     "pretest:templates": "node scripts/reference-art.mjs",
     "test:workspace": "electron tests/runtime/workspace/runner.mjs",
