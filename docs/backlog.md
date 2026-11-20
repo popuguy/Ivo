@@ -1,5 +1,15 @@
 # Ivo implementation backlog
 
+## Remaining text work
+
+- **Line breaks and spacing.** Set minimum and maximum letter spacing and glyph width for justified text. Balance spacing against hyphenation across a paragraph. Add dictionaries beyond US English.
+- **Page layout.** Add baseline grids, decimal and right-aligned tabs with leaders, wrapping to image outlines, and wrapping in vertically aligned frames. Refine where sloped edges meet a line.
+- **Type and input.** Finish variable fonts, font fallback, right-to-left and East Asian composition. Exercise selection, typing, menus, keyboard shortcuts and undo with real keyboards, touch and language input methods.
+- **Structured text.** Finish nested lists and numbering, tables, anchored objects, text on paths, and footnotes and endnotes.
+- **Long documents and publishing.** Complete Find/Change and proofing, cross-references, contents and indexes, then accessible PDF and preflight. Check reflow and export on long mixed-layout documents.
+
+The [current development state](development/STATE.md) tracks the estimate across all 66 included capabilities. The [text programme](indesign/text-parity-programme.md) lists the individual features and acceptance criteria.
+
 ## Editing engine priorities
 
 1. Extend [document text operations](text-interaction-core.md#document-text-operations) to nested-list indentation, custom bullets, numbering and native list composition. Certify physical keyboard, accessibility, IME and touch input on the supported devices. The desktop editor now handles word and visual-line deletion, page navigation and flat list-item splits and joins.
@@ -12,13 +22,13 @@ The [Mac desktop benchmark](verification.md#desktop-editing-responsiveness--19-n
 
 Remaining performance qualification includes physical input and IME, iPhone/iPad, cold font loading, long single paragraphs, complex scripts and larger documents under simultaneous repagination. Measure those cases separately. Expand the retained geometry path to additional script contexts only with cold native equality checks.
 
-[Native word spacing](native-word-spacing.md) now integrates atomic paragraph preferences, measured space capacities, soft-bound justification/final-line condensation, source-correct carets, styles, full-paragraph rich paste, history and PDF. The unchanged 66-capability engineering estimate is **~35%**. Next: authored letter/glyph constraints and hyphenation, then the remaining keeps/grids, advanced wraps/shaping and structured/editorial systems. The full paragraph objective, special spaces/scripts and physical devices remain qualification work.
+[Native word spacing](native-word-spacing.md) now integrates atomic paragraph preferences, measured space capacities, soft-bound justification/final-line condensation, source-correct carets, styles, full-paragraph rich paste, history and PDF. Letter and glyph spacing constraints remain open. The full paragraph objective, special spaces/scripts and physical devices remain qualification work.
 
 [Native PDF source encoding](native-pdf-encoding.md) now preserves ordinary ASCII ligature copying/search in PDFKit through conservative existing-ActualText mappings, with unchanged drawing/font streams. Ambiguous literal/ASCII uses preserve original output and report compatibility limits. This is confined to owned native layers; generic imported-PDF repair and broader publication/accessibility remain open. This publication correction left the then-current full-scope estimate at ~33%.
 
-[Native paragraph keeps and section starts](native-paragraph-keeps.md) cover whole paragraphs, chains of headings, one to five following lines, backward joins, and starts in the next column, frame, page, odd page or even page. Minimum first/last lines of a split paragraph, baseline grids and broader magazine-layout combinations remain open. The full-scope estimate is ~39%.
+[Native paragraph keeps and section starts](native-paragraph-keeps.md) cover whole paragraphs, chains of headings, one to five following lines, backward joins, and starts in the next column, frame, page, odd page or even page. Opening and closing line counts also work in linked native frames. Baseline grids and broader magazine-layout combinations remain open.
 
-[Native character shaping](native-character-shaping.md) integrates baseline shift, horizontal/vertical scale and exact-face `dlig/smcp/onum/tnum/zero/frac/ordn/salt` with source-preserving editing, native geometry and PDF. Advanced wrapped characters, off-frame ink and wider language/font shaping remain open; eligible PDFKit ligature search is corrected by the later encoding stage. Paragraph keeps and word spacing are integrated in the later milestones above. The unchanged 66-capability engineering estimate is ~31%.
+[Native character shaping](native-character-shaping.md) integrates baseline shift, horizontal/vertical scale and exact-face `dlig/smcp/onum/tnum/zero/frac/ordn/salt` with source-preserving editing, native geometry and PDF. Advanced wrapped characters, off-frame ink and wider language/font shaping remain open; eligible PDFKit ligature search is corrected by the later encoding stage. Paragraph keeps and word spacing are integrated in the later milestones above.
 
 Updated 19 November 2026. This is the ordered working list for Paul's requested features. New review notes enter here; they do not require an immediate detour or a complete design document. Build a usable increment and verify it on isolated data. Paul has explicitly authorized continuing through this list without waiting for a review after every step; his next large check-in comes after the backlog work. The application remains a linked-document editor for Mac, iPhone and iPad, with professional composition and a mandatory interactive knowledge graph.
 
@@ -26,7 +36,7 @@ Status meanings: **Foundation** works in a bounded first implementation; **Next*
 
 [Native object wrapping](native-object-wrap.md) now connects native Paragraph/Single-line rows with mixed faces, point sizes and leading to Box/Shape/Jump/Next exclusions, one logical navigation row, actual source/history and selectable PDF. Contour interiors no longer skip usable space; a shared interval sweep accelerates both composers. Ordinary Shape and Jump Object accept shifted and vertically scaled run ink and preserve the physical row’s leading. Remaining wrap work includes subpoint shape boundaries, transformed text inside inverted contours, tabs, vertical alignment, image outlines and custom paths, and device checks. See the [current estimate](development/STATE.md).
 
-[Native frame scheduling](native-flow-scheduling.md) now fits unequal widths/heights with exact native line metrics and one owned break/baseline/area plan shared by editor input and PDF. Geometry-only changes reuse font measurements, preparation/search yield bounded work, and rejected final responses can retry without cached corruption. Native wrap exclusions remain the next composition priority, followed by complete justification/hyphenation, keeps/grids, advanced shaping, structured/editorial content and device qualification. This advances the same broad engineering estimate to ~26% without changing the 66-capability scope.
+[Native frame scheduling](native-flow-scheduling.md) now fits unequal widths/heights with exact native line metrics and one owned break/baseline/area plan shared by editor input and PDF. Geometry-only changes reuse font measurements, preparation/search yield bounded work, and rejected final responses can retry without cached corruption. Native wrap exclusions now use this scheduler. The remaining composition work is listed above.
 
 **18 November priority adjustment: object text wrapping enables representative user fixtures.** [The first usable increment](object-text-wrap.md) implements five modes, box/polygon/frame contours, offsets/sides/inverse, ignore/stack/hidden-layer policy and actual page editing/selection/PDF/source/history integration. Complete image-alpha/path/custom contours and native composition around exclusions remain high priority ahead of unrelated UI work. Do not make user-created layouts a prerequisite for implementing the features needed to create them. All remaining wrap policies and qualification are listed in that contract.
 
