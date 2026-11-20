@@ -61,6 +61,9 @@ export function englishHyphenationPoints(text, settings = {}) {
   const words =
     /[\p{L}\p{M}\p{N}_\u00ad\u2060\ufeff]+(?:['’][\p{L}\p{M}\p{N}_\u00ad\u2060\ufeff]+)*/gu;
   const policy = { ...HYPHENATION_DEFAULTS, ...settings };
+  // The English composer treats Before Last as a minimum fragment length at
+  // either end. After First can independently require a longer opening.
+  const minimumPrefix = Math.max(policy.hyphenAfterFirst, policy.hyphenBeforeLast);
   const matches = Array.from(text.matchAll(words));
   if (!policy.hyphenLastWord) matches.pop();
   for (const match of matches) {
@@ -71,7 +74,7 @@ export function englishHyphenationPoints(text, settings = {}) {
     )
       continue;
     for (const at of wordBreaks(match[0].toLowerCase())) {
-      if (at >= policy.hyphenAfterFirst && at <= match[0].length - policy.hyphenBeforeLast)
+      if (at >= minimumPrefix && at <= match[0].length - policy.hyphenBeforeLast)
         points.push(match.index + at);
     }
   }

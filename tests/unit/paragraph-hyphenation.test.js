@@ -14,7 +14,9 @@ test('word length, prefix, suffix, capitals and last word filter only dictionary
   assert.deepEqual(englishHyphenationPoints(text, { hyphenLastWord: false }), [4, 7]);
   assert.deepEqual(englishHyphenationPoints(text, { hyphenWordLength: 12 }), []);
   assert.deepEqual(englishHyphenationPoints(text, { hyphenAfterFirst: 5 }), [7, 19]);
-  assert.deepEqual(englishHyphenationPoints(text, { hyphenBeforeLast: 5 }), [4, 16]);
+  assert.deepEqual(englishHyphenationPoints(text, { hyphenBeforeLast: 5 }), []);
+  assert.deepEqual(englishHyphenationPoints('representation', { hyphenBeforeLast: 5 }), [5, 8]);
+  assert.deepEqual(englishHyphenationPoints('representation', { hyphenAfterFirst: 5 }), [5, 8, 10]);
   assert.deepEqual(englishHyphenationPoints('Typesetting  🌿.', { hyphenLastWord: false }), []);
 });
 const measured = (start, end, width) => ({
