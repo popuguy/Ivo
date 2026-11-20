@@ -27,6 +27,9 @@ test('local dictionaries keep language-specific breaks at the authored Unicode p
   const points = (word, lang) =>
     dictionaryHyphenationPoints(word, {}, () => dictionaryForLanguage(lang));
   assert.deepEqual(points('composición', 'es-MX'), [3, 5, 7]);
+  assert.deepEqual(points('типографика', 'ru'), [2, 4, 7, 9]);
+  assert.deepEqual(points('IŞIKLANDIRMA', 'tr-TR'), [4, 7, 10]);
+  assert.deepEqual(points('İstanbul', 'tr'), [2, 5]);
   assert.deepEqual(points('tipografia', 'it-IT'), [2, 4, 7]);
   assert.deepEqual(points('τυπογραφία', 'el-GR'), [2, 4, 7]);
   assert.deepEqual(points('organisation', 'en-GB'), [2, 5, 8]);

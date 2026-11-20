@@ -3,12 +3,16 @@ import * as us from './dictionaries/en-us.js';
 import * as british from './dictionaries/en-gb.js';
 import * as spanish from './dictionaries/es.js';
 import * as italian from './dictionaries/it.js';
+import * as russian from './dictionaries/ru.js';
+import * as turkish from './dictionaries/tr.js';
 import * as greek from './dictionaries/el-monoton.js';
 
 const englishLetters = /^[a-z]+$/;
 const dictionaries = {
   'en-us': { data: us, letters: englishLetters },
   'en-gb': { data: british, letters: englishLetters, left: 2, right: 3 },
+  ru: { data: russian, letters: /^[а-яё]+$/, left: 2, right: 2 },
+  tr: { data: turkish, letters: /^[abcçdefgğhıijklmnoöprsştuüvyzâîû]+$/, left: 2, right: 2 },
   es: { data: spanish, letters: /^[a-záéíóúüñ]+$/, left: 2, right: 2 },
   it: { data: italian, letters: /^[a-zàèéìíîòóùú]+$/, left: 2, right: 2 },
   el: { data: greek, letters: /^[α-ωάέήίόύώϊϋΐΰ]+$/, left: 1, right: 1 },
