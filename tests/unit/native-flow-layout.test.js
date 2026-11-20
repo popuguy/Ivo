@@ -195,9 +195,13 @@ test('a magazine edit recomposes only the changed sources across immutable snaps
   const doc = independentDocument(24),
     native = port();
   const options = { ...native, editorSession: {} };
+  doc.publishing = { layers: [{ id: 'credits-layer', name: 'Credits' }] };
   const before = await composeNativeTextFlows(doc, options);
   assert.equal(native.calls.length, 24);
   const edit = structuredClone(doc);
+  // Locking an object changes editing permission, never the positions of glyphs.
+  edit.blocks[1].locked = false;
+  edit.publishing.layers[0].locked = true;
   edit.textFlows[2].html += ' updated';
   edit.textFlows[23].html += ' also updated';
   const after = await composeNativeTextFlows(edit, options);

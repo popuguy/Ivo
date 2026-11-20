@@ -612,6 +612,7 @@ function semanticKey(doc, allowPages) {
 const assetSignature = (assets) =>
   assets.filter((a) => a.font).flatMap((a) => [a.id, a.data, JSON.stringify(a.font)]);
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
+const layoutProperties = ({ locked: _locked, ...properties }) => properties;
 
 function selectParagraphPlan(required, source) {
   if (!required && !hasAuthoredBreakCharacters(source.text)) return false;
@@ -759,8 +760,8 @@ export async function composeNativeTextFlows(
       ? JSON.stringify([
           allowPages,
           doc.pages,
-          doc.blocks,
-          doc.publishing,
+          doc.blocks.map(layoutProperties),
+          { ...doc.publishing, layers: doc.publishing?.layers?.map(layoutProperties) },
           doc.textWrapPreferences,
           doc.textFlows.map(({ html: _text, ...settings }) => settings),
         ])

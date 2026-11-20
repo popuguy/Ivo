@@ -448,6 +448,11 @@ void (async () => {
         check(action, report[action], median, p95);
         if (pageEnd) check('Page-end ' + action, pageEnd[action], 65, 100);
       }
+      if (magazine)
+        assert.ok(
+          report.insert.samples[0].ms <= 135,
+          'First magazine edit after using Layers exceeded 135 ms',
+        );
       assert.ok(burst.whileTyping >= 2, 'Glyphs must advance during sustained typing');
       const gap = composer === 'browser' ? 90 : 135;
       assert.ok(
