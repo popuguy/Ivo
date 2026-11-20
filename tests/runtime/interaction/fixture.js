@@ -95,8 +95,9 @@ try {
     element = host.querySelector(`[data-object="${a.id}"]`),
     r = element.getBoundingClientRect();
   const surface = host.querySelector('.scene-editor');
-  surface.style.setProperty('--cursor-select', 'default');
-  surface.style.setProperty('--cursor-move', 'move');
+  // Exercise the public web build's cursor fallbacks even on a machine with local artwork.
+  surface.style.removeProperty('--cursor-select');
+  surface.style.removeProperty('--cursor-move');
   const cursorChanges = new MutationObserver(() => {});
   cursorChanges.observe(surface, { attributes: true, attributeFilter: ['data-option'] });
   for (let i = 0; i < 12; i++) send('pointermove', element, r.x + 5 + i, r.y + 5, { buttons: 0 });

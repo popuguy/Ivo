@@ -2767,11 +2767,11 @@ button {
 }
 .scene-editor[data-gesture='move'] .canvas-viewport,
 .scene-editor[data-gesture='move'] .canvas-viewport * {
-  cursor: var(--cursor-move, default) !important;
+  cursor: var(--cursor-move, move) !important;
 }
 .scene-editor[data-tool='direct'][data-gesture='move'] .canvas-viewport,
 .scene-editor[data-tool='direct'][data-gesture='move'] .canvas-viewport * {
-  cursor: var(--cursor-direct-move, default) !important;
+  cursor: var(--cursor-direct-move, move) !important;
 }
 .scene-editor[data-gesture='vertex'] .canvas-viewport,
 .scene-editor[data-gesture='vertex'] .canvas-viewport * {
