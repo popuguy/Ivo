@@ -66,6 +66,16 @@ test('native wrapping source admission preserves unsupported source and exact ge
     columns = [{ width: 300, height: 200, verticalAlign: 'top', obstacles: [{ mode: 'bounds' }] }],
     before = structuredClone(source);
   validateNativeWrapping(source, columns);
+  assert.throws(
+    () => validateNativeWrapping(source, [{ ...columns[0], verticalAlign: 'justify' }]),
+    /vertical Justify in a column with wrapping objects/,
+  );
+  assert.doesNotThrow(() =>
+    validateNativeWrapping(source, [
+      { ...columns[0], verticalAlign: 'justify', obstacles: [] },
+      columns[0],
+    ]),
+  );
   assert.deepEqual(source, before);
   const styled = structuredClone(source);
   styled.paragraphs[0].align = 'center';
@@ -100,8 +110,6 @@ test('native wrapping source admission preserves unsupported source and exact ge
   const tabbed = { ...source, text: 'With\ttabs\u2029' };
   assert.throws(() => validateNativeWrapping(tabbed, columns), /tab characters/);
   validateNativeWrapping(tabbed, [{ ...columns[0], obstacles: [] }]);
-  assert.throws(
-    () => validateNativeWrapping(source, [{ ...columns[0], verticalAlign: 'center' }]),
-    /vertically aligned/,
-  );
+  for (const verticalAlign of ['center', 'bottom'])
+    validateNativeWrapping(source, [{ ...columns[0], verticalAlign }]);
 });

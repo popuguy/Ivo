@@ -243,13 +243,23 @@ export function verifyNativeCharacterProjection() {
   const emptyDefault = project('', TEXT_DEFAULTS);
   assert(emptyDefault.protocol === 2, 'Default empty source changed protocol identity');
 
+  const variable = project(
+    '<p><span data-ivo-axes="wght:345">A</span><span data-ivo-axes="wght:345">B</span><span data-ivo-axes="wght:790">C</span></p>',
+  );
+  equal(
+    variable.runs.slice(0, 2).map((run) => [run.start, run.end, run.variations]),
+    [
+      [0, 2, { wght: 345 }],
+      [2, 3, { wght: 790 }],
+    ],
+    'Variable coordinates merged or split the wrong source runs',
+  );
   for (const html of [
     '<p data-ivo-caps="true">Unsupported case mapping</p>',
-    '<p data-ivo-axes="wght:650">Unsupported variation axes</p>',
-    '<p data-ivo-lang="fr-FR">Unsupported shaping language</p>',
+    '<p data-ivo-lang="ar">Unsupported shaping language</p>',
     '<p data-ivo-optical="false">Unsupported optical size policy</p>',
     '<p data-ivo-dir="rtl">Unsupported direction</p>',
-    '<p data-ivo-hyphens="true" data-ivo-lang="fr-FR">Unsupported hyphenation language</p>',
+    '<p data-ivo-hyphens="true" data-ivo-lang="ar">Unsupported hyphenation language</p>',
   ]) {
     let failed = false;
     try {

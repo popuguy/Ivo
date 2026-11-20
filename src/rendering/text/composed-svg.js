@@ -113,11 +113,15 @@ export function composedSVG(
       throw Error('Invalid composed line geometry.');
     const identity =
       plain && line.runs.every((run) => run.textColor) && glyphGeometryIdentity(line.runs);
+    const glyphScale = (line.wordSpacing?.glyphPercentage ?? 100) / 100;
+    if (!Number.isFinite(glyphScale) || glyphScale < 0.5 || glyphScale > 2)
+      throw Error('Invalid justified glyph scale.');
     const cached = identity && plainInk.get(identity);
     if (
       cached &&
       cached.prefix === idPrefix &&
       cached.baseline === line.baseline &&
+      cached.glyphScale === glyphScale &&
       cached.vectors.every((id) => vectors.has(id))
     ) {
       planes[0].push('');
@@ -194,7 +198,7 @@ export function composedSVG(
         used.add(glyph.vector);
         if (rowVectors) rowVectors.add(glyph.vector);
         ink.push(
-          `<use data-glyph-offset="${glyph.index - line.start}" href="#${idPrefix}-${glyph.vector}" transform="translate(${glyph.position[0]} ${line.baseline - glyph.position[1]}) scale(1 -1)" fill="${fill}"/>`,
+          `<use data-glyph-offset="${glyph.index - line.start}" href="#${idPrefix}-${glyph.vector}" transform="translate(${glyph.position[0]} ${line.baseline - glyph.position[1]}) scale(${glyphScale} -1)" fill="${fill}"/>`,
         );
       }
       for (const span of spans)
@@ -242,6 +246,7 @@ export function composedSVG(
     if (identity)
       plainInk.set(identity, {
         prefix: idPrefix,
+        glyphScale,
         baseline: line.baseline,
         vectors: [...rowVectors],
         ink: rowInk,

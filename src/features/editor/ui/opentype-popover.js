@@ -1,3 +1,4 @@
+import { SHIPPED_TEXT_FONT_METADATA } from '../../../rendering/text/font-resources.js';
 import { OPENTYPE_FEATURES, fontFamilyFor } from '../../../domain/text/typography.js';
 import { BUNDLED_FONT_FEATURES } from '../../../domain/text/bundled-font-features.js';
 import { placePopover } from '../../../domain/geometry/popover.js';
@@ -116,8 +117,10 @@ export function createOpenTypePopover(
       list.append(empty);
     }
     if (available) empty?.remove();
-    const font = fonts().find((a) => a.id === values.textStyle)?.font,
-      identity = font?.axes.length ? values.textStyle : '';
+    const font =
+        fonts().find((a) => a.id === values.textStyle)?.font ||
+        SHIPPED_TEXT_FONT_METADATA[values.textStyle],
+      identity = font?.axes?.length ? values.textStyle : '';
     if (axisIdentity !== identity) {
       axisIdentity = identity;
       axes.hidden = !identity;

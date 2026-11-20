@@ -1,3 +1,4 @@
+import { fitJustification, justificationWidth } from './justification-fit.js';
 import { wordSpacingSettings, wordSpacingValue } from './word-spacing.js';
 
 export const WORD_SPACING_COST_POLICY = 'word-spacing-adjustment-cubic-v1';
@@ -17,13 +18,20 @@ export function normalizeWordSpacingPolicy(input) {
  * transformed font advances, with existing tracking preserved independently. */
 export function wordSpacingMeasurement(row, policy) {
   const measured = row.wordSpacing;
+  const advanced = policy.letterDesired !== undefined;
   if (
     !measured ||
     typeof measured !== 'object' ||
     Array.isArray(measured) ||
-    Object.keys(measured).some((field) => field !== 'canSpreadGlyphs' && !fields.includes(field)) ||
+    Object.keys(measured).some(
+      (field) =>
+        field !== 'canSpreadGlyphs' &&
+        !(advanced && ['letterBasis', 'physicalMinimum'].includes(field)) &&
+        !fields.includes(field),
+    ) ||
     ('canSpreadGlyphs' in measured && typeof measured.canSpreadGlyphs !== 'boolean') ||
     fields.some((field) => !finite(measured[field])) ||
+    (advanced && (!finite(measured.letterBasis) || !finite(measured.physicalMinimum))) ||
     !Number.isSafeInteger(measured.eligibleGaps) ||
     measured.eligibleGaps > row.end - row.start ||
     measured.minimumWidth > measured.desiredWidth + EPSILON ||
@@ -32,12 +40,34 @@ export function wordSpacingMeasurement(row, policy) {
     row.width - measured.nominalSpaceWidth < -EPSILON
   )
     throw Error('Native word-spacing measurement has invalid capacities.');
+  if (advanced) {
+    const floor = justificationWidth(
+      row.width,
+      measured.nominalSpaceWidth,
+      measured.letterBasis,
+      0,
+      policy.letterMinimum,
+      policy.glyphMinimum,
+    );
+    if (Math.abs(floor - measured.physicalMinimum) > Math.max(EPSILON, Math.abs(floor) * 2e-7))
+      throw Error('Native justification measurement has an inconsistent physical minimum.');
+  }
   for (const [percent, width] of [
     ['minimum', 'minimumWidth'],
     ['desired', 'desiredWidth'],
     ['maximum', 'maximumWidth'],
   ]) {
-    const expected = row.width + measured.nominalSpaceWidth * (policy[percent] / 100 - 1);
+    const suffix = percent[0].toUpperCase() + percent.slice(1);
+    const expected = advanced
+      ? justificationWidth(
+          row.width,
+          measured.nominalSpaceWidth,
+          measured.letterBasis,
+          policy[percent],
+          policy['letter' + suffix],
+          policy['glyph' + suffix],
+        )
+      : row.width + measured.nominalSpaceWidth * (policy[percent] / 100 - 1);
     if (Math.abs(measured[width] - expected) > Math.max(EPSILON, Math.abs(expected) * 2e-7))
       throw Error('Native word-spacing measurement does not match its source percentages.');
   }
@@ -48,7 +78,8 @@ export function wordSpacingMeasurement(row, policy) {
  * not an inferred universal InDesign limit; negative space tracking is gated. */
 export function wordSpacingMinimumWidth(row, alignment) {
   return alignment.startsWith('justify')
-    ? Math.max(0, row.width - row.wordSpacing.nominalSpaceWidth)
+    ? (row.wordSpacing.physicalMinimum ??
+        Math.max(0, row.width - row.wordSpacing.nominalSpaceWidth))
     : row.wordSpacing.desiredWidth;
 }
 
@@ -56,7 +87,11 @@ export function wordSpacingMinimumWidth(row, alignment) {
  * use desired spacing; justified final rows may condense down to their measured
  * preference minimum. Soft returns are nonfinal and justify normally.
  * Zero-gap justified rows preserve the existing native single-word fallback. */
-export function adjustWordSpacing(row, availableWidth, alignment, last, desiredPercentage = 100) {
+export function adjustWordSpacing(row, availableWidth, alignment, last, desiredPolicy = 100) {
+  if (desiredPolicy?.letterDesired !== undefined)
+    return fitJustification(row, availableWidth, alignment, last, desiredPolicy);
+  const desiredPercentage =
+    typeof desiredPolicy === 'number' ? desiredPolicy : desiredPolicy.desired;
   const measured = row.wordSpacing,
     paragraphJustified = alignment.startsWith('justify'),
     justified = paragraphJustified && (!last || alignment === 'justify-all'),
@@ -93,6 +128,7 @@ export function adjustWordSpacing(row, availableWidth, alignment, last, desiredP
   if (!Number.isFinite(percentage))
     throw Error('Word-spacing target exceeds its finite adjustment budget.');
   return {
+    fitsMinimum: availableWidth + 0.000001 >= measured.minimumWidth,
     visibleWidth: fallback ? availableWidth : target,
     scoreWidth: target,
     percentage,

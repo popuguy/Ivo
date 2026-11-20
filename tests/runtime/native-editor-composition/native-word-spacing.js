@@ -446,6 +446,8 @@ export async function verifyNativeWordSpacing({
     const unchanged = documentContent(doc),
       size = history.size,
       rejected = await namedStyleDialog();
+    rejected.querySelector('[name="wordSpacing-letterMaximum"]').value = 15;
+    rejected.querySelector('[name="wordSpacing-glyphMaximum"]').value = 105;
     rejected.querySelector('button[type="submit"]').click();
     await settle();
     assert(
@@ -819,9 +821,69 @@ export async function verifyNativeWordSpacing({
       'Unsupported negative tracking word spacing',
       '<p data-ivo-tracking="-20">Rejected gap words</p>',
     );
+    ownFixture(
+      'Three-axis paragraph justification',
+      '<p>Selected words</p><p>Ordinary neighbor.</p>',
+    );
+    mount();
+    await settle();
+    const originalLimits = geometry();
+    await selectWord('Selected');
+    const settingsDialog = await openDialog();
+    values(settingsDialog, [80, 100, 125]);
+    for (const [key, value] of Object.entries({
+      letterMinimum: -5,
+      letterDesired: 8,
+      letterMaximum: 18,
+      glyphMinimum: 95,
+      glyphDesired: 105,
+      glyphMaximum: 112,
+    }))
+      settingsDialog.querySelector('[name="' + key + '"]').value = value;
+    settingsDialog.querySelector('[data-word-spacing-apply]').click();
+    await settle();
+    const justified = verifyProtocol(6),
+      expandedLimits = geometry();
+    assert(
+      commits === 1 &&
+        history.size === 1 &&
+        !mark(1) &&
+        mark(0) === '80:100:125|-5:8:18|95:105:112',
+      'Nine-field Apply did not produce one isolated paragraph edit.',
+    );
+    assert(
+      justified.result.layout.lines[0].wordSpacing.letterPercentage === 8 &&
+        justified.result.layout.lines[0].wordSpacing.glyphPercentage === 105 &&
+        host.querySelector('svg[data-composed-text] use[transform*="scale(1.05 -1)"]'),
+      'The editor lost selected letter spacing or glyph expansion.',
+    );
+    assert(
+      archiveVersion([doc]) === 16 && doc.canvasVersion === 15,
+      'Paragraph justification is missing its format boundary.',
+    );
+    await save({ schemaVersion: 16, documents: [doc], assets: [] });
+    await editor.command('undo');
+    await settle();
+    assert(
+      verifyProtocol(3) && !mark(0) && geometry() === originalLimits,
+      'Justification undo lost exact native geometry.',
+    );
+    await editor.command('redo');
+    await settle();
+    assert(geometry() === expandedLimits, 'Justification redo lost its fitted geometry.');
+    editor.destroy();
+    doc = validateImport(await load()).documents[0];
+    resetOwner();
+    mount();
+    await settle();
+    assert(
+      verifyProtocol(6) && geometry() === expandedLimits && commits === 0,
+      'Reopening archive16 lost its fitted geometry.',
+    );
     await verifyNamedStyles();
     await verifyRichPaste();
     return {
+      nativeNineFieldJustificationAndColdReopen: true,
       nativeWordSpacingProperties: true,
       nativeWordSpacingParagraphIsolation: true,
       nativeWordSpacingDesiredGapsAndStruts: true,

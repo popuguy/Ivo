@@ -94,6 +94,49 @@ test('word-spacing transport5 owns one bounded ordered policy and rejects downgr
       }),
     );
 });
+test('three-axis justification cannot use old snapshots or borrow another paragraph’s settings', () => {
+  const wordSpacing = {
+    minimum: 80,
+    desired: 100,
+    maximum: 125,
+    letterMinimum: -5,
+    letterDesired: 0,
+    letterMaximum: 18,
+    glyphMinimum: 95,
+    glyphDesired: 100,
+    glyphMaximum: 105,
+  };
+  const p = { start: 0, end: 4, wordSpacing },
+    fitted = {
+      end: 4,
+      frame: 0,
+      baseline: 15,
+      left: 0,
+      width: 50,
+      wordPercent: 117,
+      letterPercent: 0,
+      glyphPercent: 100,
+    },
+    input = {
+      ...request(),
+      protocol: 6,
+      mode: 'planned-lines-proof',
+      paragraphs: [p],
+      placements: [fitted],
+    };
+  assert.equal(validateCompositionRequest(input), input);
+  for (const change of [
+    { protocol: 5 },
+    { paragraphs: [{ start: 0, end: 4 }] },
+    { placements: [{ end: 4, frame: 0, baseline: 15, left: 0, width: 50 }] },
+    { placements: [{ ...fitted, glyphPercent: 110 }] },
+    { paragraphs: [{ ...p, wordSpacing: { ...wordSpacing, glyphMinimum: 49 } }] },
+    { paragraphs: [{ ...p, wordSpacing: { ...wordSpacing, letterDesired: 19 } }] },
+    { paragraphs: [{ ...p, wordSpacing: { ...wordSpacing, glyphMaximum: undefined } }] },
+  ])
+    assert.throws(() => validateCompositionRequest({ ...input, ...change }));
+});
+
 test('character transport requires protocol4 and strict bounded scalar/feature values', () => {
   const paragraph = {
       start: 0,

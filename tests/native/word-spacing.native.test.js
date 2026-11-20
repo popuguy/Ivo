@@ -10,6 +10,7 @@ import { createParagraphComposer } from '../../src/rendering/text/paragraph-comp
 import { validateWordSpacingResult } from '../../src/rendering/text/word-spacing-result.js';
 import { buildNativeText } from '../../scripts/build-native-text.mjs';
 import { createTextComposition } from '../../desktop/text-composition.mjs';
+import { improveNativePDFEncoding } from '../../desktop/native-pdf-encoding.mjs';
 
 const mac = { skip: process.platform !== 'darwin' },
   hash = (bytes) => createHash('sha256').update(bytes).digest('hex'),
@@ -727,6 +728,87 @@ test(
       close(before.originX + before.visibleWidth, left);
       close(after.originX, right);
       assert(glyphs(before).some((g) => g.index === 4 && g.end === 4 && g.generated));
+    }
+  },
+);
+
+test(
+  'nine-field fitting retains live carets, stable line height and searchable scaled PDF ink',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    const policy = {
+      minimum: 85,
+      desired: 100,
+      maximum: 115,
+      letterMinimum: -5,
+      letterDesired: 5,
+      letterMaximum: 18,
+      glyphMinimum: 92,
+      glyphDesired: 105,
+      glyphMaximum: 112,
+    };
+    const req = await request('Lina Office Type AB CD nice wider words\u2029', {
+      align: 'justify',
+      policy,
+    });
+    req.protocol = 6;
+    req.frames[0].width = 110;
+    delete req.placements;
+    const composer = createParagraphComposer((q) => service.compose(q));
+    const plan = await composer.compose(req, req.frames, { mode: 'paragraph' });
+    const placed = { ...req, placements: plan.placements };
+    const result = await service.compose(placed);
+    validateWordSpacingResult(result, placed, plan.wordSpacingPlan);
+    const lines = result.layout.lines;
+    assert.ok(lines.length > 1);
+    for (const line of lines) {
+      assert.ok(line.wordSpacing.glyphPercentage >= policy.glyphMinimum);
+      assert.equal(line.advance, 24);
+      const visibleEnd = req.text.slice(line.start, line.end).trimEnd().length + line.start;
+      close(
+        line.carets.find((c) => c.index === visibleEnd).primary,
+        line.originX + line.visibleWidth,
+      );
+    }
+    for (const line of lines.slice(0, -1)) close(line.visibleWidth, 110);
+    assert.equal(lines.at(-1).wordSpacing.letterPercentage, 5);
+    assert.equal(lines.at(-1).wordSpacing.glyphPercentage, 105);
+    const output = await mkdtemp(path.join(tmpdir(), 'ivo-justified-pdf-'));
+    t.after(() => rm(output, { recursive: true, force: true }));
+    const file = path.join(output, 'text.pdf');
+    const publication = await improveNativePDFEncoding(
+      Buffer.from((await service.pdf(result.token)).data, 'base64'),
+    );
+    await writeFile(file, publication.bytes);
+    const script = path.join(output, 'inspect.swift');
+    await writeFile(
+      script,
+      `import PDFKit
+let page = PDFDocument(url:URL(fileURLWithPath:CommandLine.arguments[1]))!.page(at:0)!
+let text = page.string ?? ""
+let positions = ["L","O","T","A","C","n","w"].map { letter in
+  return page.selection(for:(text as NSString).range(of:letter))!.bounds(for:page).minX
+}
+print(String(data:try JSONSerialization.data(withJSONObject:["text":text,"positions":positions]),encoding:.utf8)!)
+`,
+    );
+    const { stdout } = await exec('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(output, 'modules'),
+      script,
+      file,
+    ]);
+    const data = JSON.parse(stdout);
+    assert.equal(data.text.replace(/\s/gu, ''), req.text.replace(/\s/gu, ''));
+    for (const [i, needle] of ['L', 'O', 'T', 'A', 'C', 'n', 'w'].entries()) {
+      const start = req.text.indexOf(needle);
+      const atom = lines.flatMap(glyphs).find((g) => g.index === start);
+      assert.ok(
+        Math.abs(data.positions[i] - atom.position[0]) < 0.15,
+        needle + ' PDF ' + data.positions[i] + ' vs editor ' + atom.position[0],
+      );
     }
   },
 );

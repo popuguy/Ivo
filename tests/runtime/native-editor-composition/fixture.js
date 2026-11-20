@@ -560,7 +560,7 @@ try {
       beforeUnsupportedHistory = history.size,
       language = host.querySelector('[data-object-prop="language"]');
     assert(language, 'The language control is absent from native text properties');
-    language.value = 'fr';
+    language.value = 'ja';
     language.dispatchEvent(new Event('change', { bubbles: true }));
     await settle();
     const unsupportedDifferences = [];
@@ -647,13 +647,18 @@ try {
       load: window.nativeEditorTest.load,
       capture: (name = 'native-word-spacing') => window.nativeEditorTest.capture(name),
     });
-    for (const mode of ['single-line', 'paragraph']) {
+    for (const [mode, language, word] of [
+      ['single-line', 'en-US', 'typesetting'],
+      ['paragraph', 'en-US', 'typesetting'],
+      ['single-line', 'es', 'composición'],
+      ['paragraph', 'it', 'tipografia'],
+      ['single-line', 'ru', 'типографика'],
+      ['paragraph', 'tr', 'ışıklandırma'],
+    ]) {
       doc = createSceneDocument('Narrow caption', { width: 400, height: 300 });
-      const word = 'typesetting',
-        html =
-          mode === 'paragraph'
-            ? '<p data-ivo-wordspace="80:110:150" data-ivo-align="justify">' + word + '</p>'
-            : '<p>' + word + '</p>';
+      const attrs =
+        mode === 'paragraph' ? ' data-ivo-wordspace="80:110:150" data-ivo-align="justify"' : '';
+      const html = '<p data-ivo-lang="' + language + '"' + attrs + '>' + word + '</p>';
       const frame = insertObject(doc, 'text', doc.pages[0].id, {
         x: 30,
         y: 30,
@@ -750,6 +755,65 @@ try {
       );
       editor.destroy();
     }
+    doc = createSceneDocument('Variable typeface in the editor');
+    const specimen = insertObject(doc, 'text', doc.pages[0].id, {
+      x: 30,
+      y: 30,
+      w: 280,
+      h: 100,
+      textStyle: 'geist',
+      fontSize: 24,
+      html: '<p>Rhythm</p>',
+    });
+    enableNativeComposition(
+      doc,
+      startTextFlow(doc, specimen.id, { automaticPages: false }),
+      'paragraph',
+    );
+    history = createDocumentHistory();
+    mount();
+    await settle();
+    const plainSpecimen = latest().result.layout.lines[0].runs[0].glyphs[0];
+    const disclosure = host.querySelector('[data-property-disclosure="character"]');
+    if (!disclosure.closest('details').open) disclosure.click();
+    host.querySelector('.property-extra-actions [data-canvas-command="type-options"]').click();
+    const slider = host.querySelector('[data-variation-axis="wght"]');
+    assert(
+      slider?.min === '100' && slider.max === '900',
+      'The shipped Geist weight axis is absent',
+    );
+    slider.value = '735.5';
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    assert(
+      latest().request.runs[0].variations?.wght === 735.5,
+      'Changing the weight slider did not reach native composition',
+    );
+    const heavy = latest().result.layout.lines[0].runs[0].glyphs[0];
+    assert(
+      heavy.vector !== plainSpecimen.vector && heavy.advance[0] > plainSpecimen.advance[0],
+      'Changing weight did not change the specimen',
+    );
+    const savedSpecimen = validateImport({
+      schemaVersion: archiveVersion([doc]),
+      documents: [doc],
+      assets: [],
+    }).documents[0];
+    await editor.command('undo');
+    await settle();
+    assert(
+      latest().result.layout.lines[0].runs[0].glyphs[0].vector === plainSpecimen.vector,
+      'Undo did not restore the original weight',
+    );
+    editor.destroy();
+    doc = savedSpecimen;
+    mount();
+    await settle();
+    assert(
+      latest().result.layout.lines[0].runs[0].glyphs[0].vector === heavy.vector,
+      'Reopening changed the saved font instance',
+    );
+    editor.destroy();
     doc = createSceneDocument('Native automatic pages', { width: 400, height: 260 });
     const a = insertObject(doc, 'text', doc.pages[0].id, {
       x: 30,

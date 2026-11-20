@@ -389,7 +389,7 @@ test(
     req.frames[0] = { id: 'first', width: 200, height: 100, verticalAlign: 'bottom' };
     const bottomResult = await service.compose(req),
       bottom = bottomResult.layout.lines[0];
-    assert(Math.abs(bottom.baseline + bottom.descent - 100) < 1e-8);
+    assert(Math.abs(bottom.baseline - 100) < 1e-8);
     req.frames[0].verticalAlign = 'center';
     const center = (await service.compose(req)).layout.lines[0];
     assert(Math.abs(center.baseline - (normal.baseline + bottom.baseline) / 2) < 1e-8);

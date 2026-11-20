@@ -1,5 +1,9 @@
 # Document and vault formats
 
+Authored **Justification** settings with letter-spacing or glyph-scaling limits use **archive 16 / canvas 15**. The paragraph, named style, direct override or inline `data-ivo-wordspace` value stores three triples as `wordMin:desired:max|letterMin:desired:max|glyphMin:desired:max` in percent. An existing word-only triple retains its original format and behavior. A document that has used the new capability keeps its version after removing the setting. Derived line breaks, actual per-line percentages and glyph positions stay out of the document.
+
+The same archive 16 / canvas 15 capability permits native text frames to store `frameOptions.verticalAlign = "justify"` and an optional `frameOptions.paragraphSpacingLimit` from 0 through 2,000 pt. A missing limit means zero. Each column distributes its extra vertical space at composition time. The limit can stay with a frame when its alignment changes. Import rejects active vertical Justify on a legacy flow or an unthreaded object. Existing Top, Center and Bottom documents retain their original format.
+
 Authored paragraph hyphenation preferences use **archive 15 / canvas 14**. Each setting is optional and can be inherited from a paragraph style. The existing Hyphenate switch alone retains its previous format. Generated hyphens and line-ending counts are derived during composition.
 
 Character **No Break** (`noBreak`, markup `data-ivo-nobreak`) uses **archive 14 / canvas 13**, including named styles and explicit resets. Its selected spaces remain ordinary source characters. Split-line activation (`keepBoundaryLines`, markup `data-ivo-keepedges`) uses **archive 13 / canvas 12**, including an explicit off value. Existing `orphans` and `widows` counts alone retain their earlier format. Paragraph starts use **archive 12 / canvas 11**. Extended paragraph keeps use **archive 11 / canvas 10**. Authored paragraph word spacing uses **archive 10 / canvas 9**. Authored object text wrap uses **archive 9 / canvas 8**. Explicit native text composition uses **archive 8 / canvas 7**. Authored first-baseline policies use **archive 7 / canvas 6**. Other publishing documents remain **archive 6 / canvas 5**; canonical linked-text documents without the newer capabilities remain **archive 5 / canvas 4**. Older representations remain readable. The native folder manifest is **version 1**; browser IndexedDB is **version 4**. These versions describe different boundaries and must not be advanced together without a reason.
@@ -16,6 +20,12 @@ Character **No Break** (`noBreak`, markup `data-ivo-nobreak`) uses **archive 14 
 | 8       | Explicit native flow composition authority/policy, canvas 7                                                        |
 | 9       | Object text wrap, frame ignore-wrap and document/layer wrap policy, canvas 8                                       |
 | 10      | Atomic paragraph word-spacing preferences, including explicit normal/reset, canvas 9                               |
+| 11      | Extended paragraph keeps, canvas 10                                                                                |
+| 12      | Paragraph starts, canvas 11                                                                                        |
+| 13      | Split-line keep controls, canvas 12                                                                                |
+| 14      | Character No Break, canvas 13                                                                                      |
+| 15      | Paragraph hyphenation preferences, canvas 14                                                                       |
+| 16      | Paragraph letter spacing, glyph scaling and vertical frame justification, canvas 15                                |
 
 A document has a stable ID and version, editable title, timestamps, tags/aliases, objects and (for current scenes) pages. A text flow has its own stable ID, rich HTML, ordered frame IDs, style, continuation policy and ownership of automatically generated pages. Frames hold geometry and a reference to their text flow; they do not duplicate its source. Images reference original assets. Polygon masks form a validated, bounded parent tree. Application extension data is namespaced and bounded; unknown extension namespaces survive validation.
 

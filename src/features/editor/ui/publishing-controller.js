@@ -3,6 +3,7 @@ import {
   hyphenationStyleFields,
   readHyphenationStyle,
 } from './hyphenation-dialog.js';
+import { markTypographyVersion } from '../../../domain/documents/capabilities.js';
 import { HYPHENATION_DEFAULTS } from '../../../domain/text/hyphenation.js';
 import { PARAGRAPH_STARTS } from '../../../domain/text/paragraph-keep-policy.js';
 import { uniformWrapOffset } from '../../../domain/geometry/wrap-contour.js';
@@ -31,17 +32,17 @@ import {
   saveTextStyle,
 } from '../../../domain/documents/publishing.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../../../domain/text/typography.js';
-import {
-  DEFAULT_WORD_SPACING,
-  normalizeWordSpacing,
-  wordSpacingSettings,
-} from '../../../domain/text/word-spacing.js';
+import { DEFAULT_WORD_SPACING, wordSpacingSettings } from '../../../domain/text/word-spacing.js';
 import { prepareFont } from '../assets/font-import.js';
 import { dialogMarkup, installDialogDismissal } from '../../../shared/ui/dialog.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { createOpenTypePopover } from './opentype-popover.js';
 import { openKeepOptionsForm } from './keep-options-dialog.js';
-import { createWordSpacingDialog } from './word-spacing-dialog.js';
+import {
+  createWordSpacingDialog,
+  justificationFields,
+  readJustificationField,
+} from './word-spacing-dialog.js';
 
 /** Publishing controls use the same transaction/history owner as canvas edits. */
 export function installPublishingControls(
@@ -69,6 +70,7 @@ export function installPublishingControls(
     refreshSystemFonts,
     prepareDocumentFonts,
     canPrepareFonts,
+    nativeComposition,
     ensureFontVariant,
     fontSelection,
     applyTextSettings,
@@ -170,6 +172,7 @@ export function installPublishingControls(
     wordSpacingDialog = null;
   }
   function nativeTextFlow() {
+    if (!nativeComposition) return null;
     const item = objects()[0];
     return doc().textFlows?.find((flow) => flow.id === item?.textFlowId && flow.composition);
   }
@@ -239,7 +242,7 @@ export function installPublishingControls(
               .map((item) => item.id)
               .join('|')
         )
-          throw Error('The text selection changed. Reopen Word Spacing for the current text.');
+          throw Error('The text selection changed. Reopen Justification for the current text.');
         const result = applyTextProperty('wordSpacing', value);
         if (result !== false) render();
         return result;
@@ -346,7 +349,7 @@ export function installPublishingControls(
     const styleOptions = nativeTextFlow()
       ? [...keepFields, ['noBreak', 'No Break', [false, true]]]
       : [];
-    const showHyphenation = kind === 'paragraph' && nativeTextFlow();
+    const nativeParagraphOptions = kind === 'paragraph' && nativeTextFlow();
     const keepControls = styleOptions
       .map(
         ([key, label, values]) =>
@@ -363,9 +366,9 @@ export function installPublishingControls(
         )
         .join(
           '',
-        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}${showHyphenation ? hyphenationStyleFields(attributes) : ''}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
-        kind === 'paragraph'
-          ? `<label>Word spacing<select name="wordSpacingMode" data-style-word-spacing-mode>${[
+        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}${nativeParagraphOptions ? hyphenationStyleFields(attributes) : ''}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
+        nativeParagraphOptions
+          ? `<label>Justification<select name="wordSpacingMode" data-style-word-spacing-mode>${[
               ['inherit', 'Inherited'],
               ['normal', 'Normal'],
               ['custom', 'Custom'],
@@ -374,23 +377,12 @@ export function installPublishingControls(
                 ([value, label]) =>
                   `<option value="${value}" ${spacingMode === value ? 'selected' : ''}>${label}</option>`,
               )
-              .join(
-                '',
-              )}</select></label><div class="canvas-geometry" style="grid-template-columns:repeat(3,minmax(0,1fr))">${[
-              ['minimum', 'Minimum'],
-              ['desired', 'Desired'],
-              ['maximum', 'Maximum'],
-            ]
-              .map(
-                ([key, label]) =>
-                  `<label>${label} · %<input type="number" min="0" max="1000" step="any" name="wordSpacing-${key}" data-style-word-spacing-field value="${spacing[key]}"></label>`,
-              )
-              .join('')}</div>`
+              .join('')}</select></label>${justificationFields(spacing, false, true)}`
           : ''
       }`,
       (data) => {
         const next = { ...attributes };
-        if (showHyphenation) readHyphenationStyle(data, next);
+        if (nativeParagraphOptions) readHyphenationStyle(data, next);
         for (const key of ['fontSize', 'leading', 'tracking'])
           if (data.get(key) === '') delete next[key];
           else next[key] = Number(data.get(key));
@@ -403,17 +395,16 @@ export function installPublishingControls(
             next[key] = value;
           }
         }
-        if (kind === 'paragraph') {
+        if (nativeParagraphOptions) {
           const mode = data.get('wordSpacingMode');
           if (mode === 'inherit') delete next.wordSpacing;
           else
             next.wordSpacing =
               mode === 'normal'
                 ? 'normal'
-                : normalizeWordSpacing(
-                    ['minimum', 'desired', 'maximum']
-                      .map((key) => data.get('wordSpacing-' + key))
-                      .join(':'),
+                : readJustificationField(
+                    (key) => data.get('wordSpacing-' + key),
+                    spacing.glyphDesired !== undefined,
                   );
           if (next.wordSpacing !== attributes.wordSpacing && !nativeTextFlow())
             throw Error('Choose a text flow with native composition before editing word spacing.');
@@ -743,6 +734,11 @@ export function installPublishingControls(
           value = t.type === 'number' ? Number(t.value) : t.value;
         if (t.type === 'number' && (!Number.isFinite(value) || value < 0 || value > 2000))
           throw new Error('Choose a valid frame value.');
+        if (
+          ((key === 'verticalAlign' && value === 'justify') || key === 'paragraphSpacingLimit') &&
+          !nativeTextFlow()
+        )
+          throw new Error('Choose a native text composer to use vertical Justify.');
         if (key === 'strokeWidth' && value > 100)
           throw new Error('Use a stroke weight between 0 and 100 pt.');
         if (key === 'columns' && (!Number.isInteger(value) || value < 1 || value > 40))
@@ -766,6 +762,11 @@ export function installPublishingControls(
             } else candidate.firstBaseline ||= 'ascent';
           } else enablePublishing(doc());
           objects()[0].frameOptions = candidate;
+          if (
+            candidate.verticalAlign === 'justify' ||
+            candidate.paragraphSpacingLimit !== undefined
+          )
+            markTypographyVersion(doc());
         }, 'Text frame options');
       }
     }),

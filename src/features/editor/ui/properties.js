@@ -128,11 +128,12 @@ export function propertiesContent({
     transformProperties(item, state, movePage),
     isText && styleProperties(item, doc, state),
     appearanceProperties(item),
-    isText && textProperties(item, fonts, systemFonts, state, !!flow?.composition),
+    isText &&
+      textProperties(item, fonts, systemFonts, state, nativeComposition && !!flow?.composition),
     alignControls(),
     showsContextualWrap(selectedObjects, selectedVertex) &&
       textWrapControls(selectedObjects, { editing, state }),
-    isText && frameProperties(item, state),
+    isText && frameProperties(item, state, !!flow?.composition && nativeComposition),
     section(
       'Quick Actions',
       arrangeControls(false) +

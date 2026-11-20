@@ -1,5 +1,7 @@
 import {
   DEFAULT_WORD_SPACING,
+  JUSTIFICATION_GROUPS,
+  spacingField,
   normalizeWordSpacing,
   wordSpacingSettings,
 } from '../../../domain/text/word-spacing.js';
@@ -11,24 +13,56 @@ const fields = [
   ['maximum', 'Maximum'],
 ];
 
+export function justificationFields(settings, mixed, style = false) {
+  return JUSTIFICATION_GROUPS.map(
+    ({ label, prefix, min, max, defaults }) =>
+      '<fieldset class="justification-group"><legend>' +
+      label +
+      '</legend><div class="canvas-geometry">' +
+      fields
+        .map(([axis, caption], i) => {
+          const key = spacingField(prefix, axis);
+          const value = mixed && mixed.has(key) ? '' : (settings[key] ?? defaults[i]);
+          return `<label class="canvas-field"><span>${caption} · %</span><input type="number" min="${min}" max="${max}" step="any" name="${style ? 'wordSpacing-' : ''}${key}" aria-label="${caption} ${label.toLowerCase()}" ${style ? 'data-style-word-spacing-field' : prefix ? 'data-justification-field' : 'data-word-spacing-field="' + key + '"'} value="${value}" ${value === '' ? 'placeholder="Mixed"' : ''}></label>`;
+        })
+        .join('') +
+      '</div></fieldset>',
+  ).join('');
+}
+
+export function readJustificationField(get, preserveAdvanced = false) {
+  const values = JUSTIFICATION_GROUPS.map(({ prefix }) =>
+    fields.map(([axis]) => get(spacingField(prefix, axis))).join(':'),
+  );
+  const full = normalizeWordSpacing(values.join('|'));
+  return !preserveAdvanced && full.endsWith('|0:0:0|100:100:100') ? full.split('|')[0] : full;
+}
+
 /** Values are edited locally; only Apply or Reset invokes one document command. */
 export function createWordSpacingDialog({ summary, apply, onClose }) {
   const dialog = document.createElement('dialog'),
     controller = new AbortController(),
     mixed = summary.mixed.includes('wordSpacing'),
-    settings = wordSpacingSettings(summary.values.wordSpacing ?? 'normal') || DEFAULT_WORD_SPACING;
+    samples = (summary.justificationValues || [summary.values.wordSpacing]).map(
+      (value) => wordSpacingSettings(value ?? 'normal') || DEFAULT_WORD_SPACING,
+    ),
+    settings = samples[0],
+    mixedFields = new Set();
+  if (mixed) {
+    for (const { prefix, defaults } of JUSTIFICATION_GROUPS)
+      for (const [i, [axis]] of fields.entries()) {
+        const key = spacingField(prefix, axis);
+        if (
+          samples.some((sample) => (sample[key] ?? defaults[i]) !== (settings[key] ?? defaults[i]))
+        )
+          mixedFields.add(key);
+      }
+  }
   dialog.className = 'modal publishing-style-dialog publishing-word-spacing-dialog';
-  dialog.setAttribute('aria-label', 'Word Spacing');
+  dialog.setAttribute('aria-label', 'Justification');
   dialog.dataset.mixed = String(mixed);
   dialog.innerHTML = dialogMarkup(
-    `<h2>Word Spacing</h2><div class="canvas-geometry" style="grid-template-columns:repeat(3,minmax(0,1fr))">${fields
-      .map(
-        ([key, label]) =>
-          `<label class="canvas-field"><span>${label} · %</span><input type="number" min="0" max="1000" step="any" data-word-spacing-field="${key}" name="${key}" aria-label="${label} word spacing" ${mixed ? 'placeholder="Mixed"' : `value="${settings[key]}"`}></label>`,
-      )
-      .join(
-        '',
-      )}</div><p role="alert" data-word-spacing-error></p><div class="publishing-inline-actions"><button type="button" class="button-outline" data-word-spacing-reset>Reset</button><button type="submit" class="button-outline" data-word-spacing-apply>Apply</button></div>`,
+    `<h2>Justification</h2>${justificationFields(settings, mixedFields)}<p role="alert" data-word-spacing-error></p><div class="publishing-inline-actions"><button type="button" class="button-outline" data-word-spacing-reset>Reset</button><button type="submit" class="button-outline" data-word-spacing-apply>Apply</button></div>`,
   );
   const form = dialog.querySelector('form'),
     alert = dialog.querySelector('[role="alert"]');
@@ -39,7 +73,7 @@ export function createWordSpacingDialog({ summary, apply, onClose }) {
     target.addEventListener(type, callback, { signal: controller.signal });
   function error(message = '') {
     alert.textContent = message;
-    for (const input of form.querySelectorAll('[data-word-spacing-field]')) {
+    for (const input of form.querySelectorAll('input[type=number]')) {
       if (message) input.setAttribute('aria-invalid', 'true');
       else input.removeAttribute('aria-invalid');
     }
@@ -79,10 +113,9 @@ export function createWordSpacingDialog({ summary, apply, onClose }) {
     event.preventDefault();
     if (closed || pending) return;
     try {
-      const value = normalizeWordSpacing(
-        fields
-          .map(([key]) => form.querySelector(`[data-word-spacing-field="${key}"]`).value)
-          .join(':'),
+      const value = readJustificationField(
+        (key) => form.elements.namedItem(key).value,
+        samples.some((sample) => sample.glyphDesired !== undefined),
       );
       void commit(value);
     } catch (failure) {

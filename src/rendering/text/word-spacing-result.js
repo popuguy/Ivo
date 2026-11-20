@@ -120,9 +120,31 @@ function validatePlan(request, plan) {
     const paragraph = paragraphs[paragraphIndex];
     if (!paragraph || placement.end > paragraph.end) fail('crosses an authored paragraph');
     const shape = sourceShape(request.text, start, placement.end);
+    const advanced = paragraph.policy?.glyphDesired !== undefined;
+    if (advanced) {
+      if (
+        request.protocol !== 6 ||
+        !nonnegative(placement.wordPercent) ||
+        !Number.isFinite(placement.letterPercent) ||
+        placement.letterPercent < -100 ||
+        !Number.isFinite(placement.glyphPercent) ||
+        placement.glyphPercent < paragraph.policy.glyphMinimum ||
+        placement.glyphPercent > paragraph.policy.glyphMaximum
+      )
+        fail('has invalid justification placement percentages');
+    } else if (
+      ['wordPercent', 'letterPercent', 'glyphPercent'].some((key) => own(placement, key))
+    ) {
+      fail('has justification percentages on an inactive placement');
+    }
     if (paragraph.policy) {
       if (
-        !exactFields(selected, planFields) ||
+        !exactFields(
+          selected,
+          paragraph.policy.glyphDesired === undefined
+            ? planFields
+            : [...planFields, 'letterPercentage', 'glyphPercentage'],
+        ) ||
         selected.start !== start ||
         selected.end !== placement.end ||
         !nonnegative(selected.visibleWidth) ||
@@ -137,6 +159,7 @@ function validatePlan(request, plan) {
         (full && !selected.justified) ||
         (!(paragraph.align || 'left').startsWith('justify') && selected.justified) ||
         (!full &&
+          paragraph.policy.glyphDesired === undefined &&
           selected.justified &&
           (selected.eligibleGaps === 0 ||
             selected.percentage > paragraph.policy.desired + 0.000001)) ||
@@ -145,6 +168,7 @@ function validatePlan(request, plan) {
       )
         fail('has an inconsistent measured adjustment regime');
       if (
+        paragraph.policy.glyphDesired === undefined &&
         selected.eligibleGaps === 0 &&
         Math.abs(selected.percentage - paragraph.policy.desired) > 0.000001
       )
@@ -169,9 +193,9 @@ function validatePlan(request, plan) {
 export function validateWordSpacingResult(result, request, plan) {
   if (
     !request ||
-    request.protocol !== 5 ||
+    ![5, 6].includes(request.protocol) ||
     typeof request.text !== 'string' ||
-    result?.protocol !== 5 ||
+    result?.protocol !== request.protocol ||
     result.sourceDigest !== request.sourceDigest ||
     !Array.isArray(result.layout?.lines)
   )
@@ -204,7 +228,13 @@ export function validateWordSpacingResult(result, request, plan) {
     }
     const actual = line.wordSpacing;
     if (
-      !exactFields(actual, fields, ['collapsedTrailingStart']) ||
+      !exactFields(
+        actual,
+        paragraph.policy.glyphDesired === undefined
+          ? fields
+          : [...fields, 'letterPercentage', 'glyphPercentage'],
+        ['collapsedTrailingStart'],
+      ) ||
       !validMetadata(actual) ||
       typeof actual.offPreference !== 'boolean' ||
       actual.eligibleGaps !== shape.eligibleGaps ||
@@ -215,6 +245,17 @@ export function validateWordSpacingResult(result, request, plan) {
         nominalTolerance(selected.nominalSpaceWidth)
     )
       fail('has invalid or unexpected spacing metadata');
+    if (
+      paragraph.policy.glyphDesired !== undefined &&
+      (!Number.isFinite(actual.letterPercentage) ||
+        !Number.isFinite(actual.glyphPercentage) ||
+        actual.glyphPercentage !== selected.glyphPercentage ||
+        actual.letterPercentage !== selected.letterPercentage ||
+        actual.letterPercentage !== placement.letterPercent ||
+        actual.glyphPercentage !== placement.glyphPercent ||
+        actual.percentage !== placement.wordPercent)
+    )
+      fail('changed its letter or glyph adjustment');
     const tolerance = pointTolerance(selected.visibleWidth);
     if (
       !nonnegative(line.visibleWidth) ||
@@ -236,7 +277,10 @@ export function validateWordSpacingResult(result, request, plan) {
       fail('changed its measured word-space percentage');
     const outside =
       actual.percentage < paragraph.policy.minimum - 0.000001 ||
-      actual.percentage > paragraph.policy.maximum + 0.000001;
+      actual.percentage > paragraph.policy.maximum + 0.000001 ||
+      (paragraph.policy.letterDesired !== undefined &&
+        (actual.letterPercentage < paragraph.policy.letterMinimum - 0.000001 ||
+          actual.letterPercentage > paragraph.policy.letterMaximum + 0.000001));
     if (actual.offPreference !== outside) fail('misreported its authored preference bounds');
     const collapse = actual.justified && shape.trailingStart < shape.contentEnd;
     if (

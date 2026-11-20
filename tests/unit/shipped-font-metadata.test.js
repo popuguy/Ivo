@@ -21,6 +21,7 @@ test('shipped metadata independently matches every exact public font resource', 
         digest: createHash('sha256').update(bytes).digest('hex'),
         postscript: inspected.postscript,
         features: inspected.features,
+        ...(inspected.axes.length ? { axes: inspected.axes } : {}),
       },
       id + ' metadata must be regenerated when its font bytes change',
     );
@@ -29,6 +30,7 @@ test('shipped metadata independently matches every exact public font resource', 
 
 test('shipped IDs and URLs preserve their original byte-resource contract', () => {
   assert.deepEqual(SHIPPED_TEXT_FONT_FILES, {
+    geist: 'geist/Geist-Variable.ttf',
     'cmu-regular': 'cmu-serif/cmunrm.ttf',
     'cmu-italic': 'cmu-serif/cmunti.ttf',
     'cmu-bold': 'cmu-serif/cmunbx.ttf',

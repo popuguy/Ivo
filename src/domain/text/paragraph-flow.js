@@ -71,7 +71,9 @@ function* inputs({
       (column.minimumFirstBaseline !== undefined &&
         !finite(column.minimumFirstBaseline, 0, 14400)) ||
       (column.verticalAlign !== undefined &&
-        !['top', 'center', 'bottom'].includes(column.verticalAlign))
+        !['top', 'center', 'bottom', 'justify'].includes(column.verticalAlign)) ||
+      (column.paragraphSpacingLimit !== undefined &&
+        !finite(column.paragraphSpacingLimit, 0, 200000))
     )
       throw Error('Invalid paragraph-flow column');
     return column;
@@ -162,7 +164,7 @@ function placement(
   const left = style.leftIndent + (first ? style.firstLineIndent : 0),
     width = column.width - left - style.rightIndent;
   const spacing = measured.wordSpacing
-    ? adjustWordSpacing(measured, width, style.align, last, wordSpacing.desired)
+    ? adjustWordSpacing(measured, width, style.align, last, wordSpacing)
     : null;
   if (width < 1 || (measured.wordSpacing ? !spacing : measured.width > width + 0.000001))
     return null;
@@ -332,7 +334,7 @@ export function* paragraphFlowSteps({
     const fitting = yield* fitsAt(seed);
     const line =
       (mode === 'single-line' && wordSpacing
-        ? fitting.find((candidate) => candidate.wordSpacing.percentage >= wordSpacing.minimum)
+        ? fitting.find((candidate) => candidate.wordSpacing.fitsMinimum)
         : null) ?? fitting[0];
     if (budget) return failed(budget);
     if (!line) break;

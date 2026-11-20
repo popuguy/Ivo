@@ -76,6 +76,7 @@ function* prepare(input) {
       !column ||
       !finite(column.width, 1, 14400) ||
       !finite(column.height, 1, 14400) ||
+      (column.alignmentOffset !== undefined && !finite(column.alignmentOffset, 0, column.height)) ||
       (column.firstBaseline !== undefined && !FIRST_BASELINES.includes(column.firstBaseline)) ||
       (column.minimumFirstBaseline !== undefined &&
         !finite(column.minimumFirstBaseline, 0, 14400)) ||
@@ -321,7 +322,7 @@ export function* wrappedParagraphFlowSteps({
         let firstInColumn = frame !== state.cursor.frame || state.cursor.baseline === null;
         let baseline,
           after = null;
-        if (firstInColumn) baseline = offset;
+        if (firstInColumn) baseline = (column.alignmentOffset || 0) + offset;
         else if (!state.line)
           baseline =
             state.cursor.baseline + metrics.advance + previousAfter + style.paragraphBefore;
@@ -330,8 +331,15 @@ export function* wrappedParagraphFlowSteps({
           after = state.mandatory ? null : state.after;
         }
         const naturalBaseline = baseline;
-        let rowTop = firstInColumn ? 0 : after !== null ? state.rowTop : baseline - metrics.advance;
-        while (baseline + metrics.descent <= column.height) {
+        let rowTop = firstInColumn
+          ? column.alignmentOffset || 0
+          : after !== null
+            ? state.rowTop
+            : baseline - metrics.advance;
+        while (
+          baseline + (column.verticalAlign === 'bottom' ? 0 : metrics.descent) <=
+          column.height + EPS
+        ) {
           if (!(yield* checkpoint())) return [];
           const key = [frame, baseline, rowTop, left, metrics.ascent, metrics.descent].join(':');
           let band = bands.get(key);
@@ -344,7 +352,14 @@ export function* wrappedParagraphFlowSteps({
               bottom: Math.max(baseline + metrics.descent, baseline - metrics.ascent + EPS),
             };
             const lineBand = { top: rowTop, bottom: Math.max(baseline, rowTop + EPS) };
-            const slices = { jumpBand: lineBand, shapeBand: lineBand };
+            const aligned = column.verticalAlign === 'center' || column.verticalAlign === 'bottom';
+            const slices = {
+              jumpBand: lineBand,
+              shapeBand: lineBand,
+              boundsBand: aligned ? lineBand : undefined,
+              // A lowered first row cannot jump past a Next Column object.
+              nextColumnBand: aligned ? { top: 0, bottom: baseline } : undefined,
+            };
             band = textWrapBand(column.obstacles, query, slices);
             if (
               !band.segments.length &&
@@ -418,20 +433,17 @@ export function* wrappedParagraphFlowSteps({
               if (!(yield* checkpoint())) return [];
               if (measured.end > limit || measured.minimumWidth > width + EPS) continue;
               const spacing = measured.wordSpacing
-                ? adjustWordSpacing(
-                    measured,
-                    width,
-                    style.align,
-                    measured.end === end,
-                    wordSpacing.desired,
-                  )
+                ? adjustWordSpacing(measured, width, style.align, measured.end === end, wordSpacing)
                 : null;
               if (measured.wordSpacing && !spacing) continue;
               const line = {
                 start: measured.start,
                 end: measured.end,
                 frame,
-                baseline,
+                baseline: Math.min(baseline, column.height),
+                ...(column.obstacles?.length && column.verticalAlign === 'center'
+                  ? { firstBaselineOffset: offset }
+                  : {}),
                 left: segment.left,
                 width,
                 ...(after !== null ? { continuesRow: true } : {}),
@@ -537,7 +549,7 @@ export function* wrappedParagraphFlowSteps({
     const fitting = yield* fitsAt(seed);
     const choice =
       (mode === 'single-line' && wordSpacing
-        ? fitting.find((candidate) => candidate.line.wordSpacing.percentage >= wordSpacing.minimum)
+        ? fitting.find((candidate) => candidate.line.wordSpacing.fitsMinimum)
         : null) ?? fitting[0];
     if (budget) return failed(budget);
     if (!choice) break;

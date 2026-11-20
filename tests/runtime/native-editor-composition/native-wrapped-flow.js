@@ -750,6 +750,173 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
       }
     }
     editor.destroy();
+    doc = createSceneDocument('Vertical placement beside a wrap', { width: 320, height: 260 });
+    const alignedFrame = insertObject(doc, 'text', doc.pages[0].id, {
+      x: 30,
+      y: 30,
+      w: 200,
+      h: 140,
+      textStyle: 'cmu-serif',
+      fontSize: 12,
+      leading: 15,
+      frameOptions: { firstBaseline: 'fixed', minimumFirstBaseline: 12, verticalAlign: 'top' },
+      html: '<p>Cut the pattern along the fold. Set the sleeve, then press the lining.</p>',
+    });
+    const alignedFlow = startTextFlow(doc, alignedFrame.id, { automaticPages: false });
+    const alignedObject = insertObject(doc, 'polygon', doc.pages[0].id, {
+      x: 160,
+      y: 60,
+      w: 60,
+      h: 60,
+      points: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 1, y: 1 },
+        { x: 0, y: 1 },
+      ],
+    });
+    setTextWrap(doc, [alignedObject.id], { mode: 'bounds' });
+    enableNativeComposition(doc, alignedFlow, 'single-line');
+    history = createDocumentHistory();
+    commits = changes = 0;
+    mount();
+    await settle();
+    const alignmentSource = doc.textFlows[0].html;
+    let centeredWrapGeometry;
+    for (const align of ['center', 'bottom']) {
+      const disclosure = host.querySelector('[data-property-disclosure="frame"]');
+      if (!disclosure.parentElement.open) disclosure.click();
+      const select = host.querySelector('[data-frame-prop="verticalAlign"]');
+      select.value = align;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+      verifyCoverage();
+      const { request, result } = painted();
+      const lines = result.layout.lines,
+        last = lines.at(-1),
+        height = request.frames[0].height;
+      assert(
+        request.frames[0].verticalAlign === align && doc.textFlows[0].html === alignmentSource,
+        'Changing frame alignment lost source or configuration',
+      );
+      if (align === 'center') {
+        centeredWrapGeometry = geometry();
+        assert(
+          Math.abs(lines[0].baseline - 12 - (height - last.baseline)) < 0.1,
+          'Wrapped center did not balance its first baseline offset against last baseline',
+        );
+        assert(
+          lines.some((line) => line.availableWidth < 180),
+          'Centered test did not reflow beside the obstacle',
+        );
+      } else {
+        assert(
+          Math.abs(last.baseline - height) < 0.05,
+          'Bottom wrapped frame did not reach its lower baseline',
+        );
+        assert(
+          lines.every((line) => line.availableWidth === request.frames[0].width),
+          'Bottom wrap reused the narrower centered fragments',
+        );
+        const node = host.querySelector('[data-bottom-overhang]'),
+          svg = node?.querySelector('svg');
+        assert(
+          node &&
+            getComputedStyle(svg).overflow === 'visible' &&
+            getComputedStyle(node.parentElement).overflow === 'visible',
+          'Bottom descenders are clipped in the editor',
+        );
+        assert(
+          svg.getBBox().y + svg.getBBox().height > height,
+          'Fixture does not paint a descender below the bottom baseline',
+        );
+      }
+    }
+    await editor.command('undo');
+    await settle();
+    assert(
+      geometry() === centeredWrapGeometry && doc.textFlows[0].html === alignmentSource,
+      'Undo did not restore centered text and its source',
+    );
+    editor.destroy();
+    doc = createSceneDocument('Paragraph spacing in a justified text frame', {
+      width: 320,
+      height: 260,
+    });
+    const justifyFrame = insertObject(doc, 'text', doc.pages[0].id, {
+      x: 20,
+      y: 20,
+      w: 200,
+      h: 140,
+      textStyle: 'cmu-serif',
+      fontSize: 12,
+      leading: 14.4,
+      frameOptions: { firstBaseline: 'fixed', minimumFirstBaseline: 12, verticalAlign: 'top' },
+      html: '<p>cut<br>hem</p><p>sew<br>grading</p>',
+    });
+    const justifyFlow = startTextFlow(doc, justifyFrame.id, { automaticPages: false });
+    enableNativeComposition(doc, justifyFlow, 'single-line');
+    history = createDocumentHistory();
+    commits = changes = 0;
+    mount();
+    await settle();
+    let frameDisclosure = host.querySelector('[data-property-disclosure="frame"]');
+    if (!frameDisclosure.parentElement.open) frameDisclosure.click();
+    const verticalControl = host.querySelector('[data-frame-prop="verticalAlign"]');
+    assert(
+      !verticalControl.querySelector('option[value="justify"]').disabled,
+      'Justify unavailable for native flow',
+    );
+    verticalControl.value = 'justify';
+    verticalControl.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    const checkJustified = (expected) => {
+      const { request, result } = painted();
+      assert(
+        request.mode === 'planned-lines-proof' && request.frames[0].verticalAlign === 'justify',
+        'Justify did not use the native retained plan',
+      );
+      assert(
+        result.layout.coveredLength === request.text.length &&
+          result.layout.lines.length === expected.length &&
+          result.layout.lines.every((l, i) => Math.abs(l.baseline - expected[i]) < 0.05),
+        'Vertical Justify lost exact baselines or source: ' +
+          JSON.stringify(result.layout.lines.map((l) => l.baseline)),
+      );
+    };
+    checkJustified([12, 54.6667, 97.3333, 140]);
+    const spacing = host.querySelector('[data-frame-prop="paragraphSpacingLimit"]');
+    assert(spacing, 'Justify lacks Paragraph Spacing Limit');
+    spacing.value = '12';
+    spacing.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    checkJustified([12, 50.6667, 101.3333, 140]);
+    assert(
+      doc.canvasVersion === 15 && archiveVersion([doc]) === 16,
+      'Justified frame did not claim its archive capability',
+    );
+    const justifiedContent = doc.textFlows[0].html;
+    await save({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] });
+    editor.destroy();
+    doc = validateImport(await load()).documents[0];
+    mount();
+    await settle();
+    checkJustified([12, 50.6667, 101.3333, 140]);
+    assert(
+      doc.textFlows[0].html === justifiedContent &&
+        doc.blocks[0].frameOptions.paragraphSpacingLimit === 12,
+      'Archive reopen discarded justified flow configuration',
+    );
+    const legacyComposer = host.querySelector('[data-flow-composer]');
+    legacyComposer.value = 'browser';
+    legacyComposer.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    assert(
+      doc.textFlows[0].composition?.composer === 'single-line' &&
+        /vertical Justify/.test(notices.pop()),
+      'A switch to the legacy composer silently discarded vertical justification',
+    );
+    editor.destroy();
     // A read-only view may display a real native prefix but cannot create automatic pages.
     doc = createSceneDocument('Passive native wrapped continuation', { width: 500, height: 300 });
     const passiveFrame = insertObject(doc, 'text', doc.pages[0].id, {
@@ -795,6 +962,8 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
     );
     assert(!notices.length, 'Unexpected native wrapped-flow notice: ' + notices.join('; '));
     return {
+      nativeVerticalJustifyParagraphLimitReopen: true,
+      nativeVerticallyAlignedWrapWithInk: true,
       nativeWrappedCenteredStyleUndoReopen: true,
       nativeMixedSizeWrapEditUndoRedo: true,
       nativeBoxWrapCharacterTransforms: true,

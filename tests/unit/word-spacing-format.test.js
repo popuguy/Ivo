@@ -201,3 +201,50 @@ test('folder storage reopens word policy and keeps the previous immutable revisi
   assert.deepEqual(await readFile(path.join(directory, 'atlas.json')), stableManifest);
   assert.equal((await vault.loadDocuments())[0].textFlows[0].style.wordSpacing, '80:100:133');
 });
+
+test('existing archive15 and authored archive16 justification survive a cold load without rewriting older notes', async () => {
+  const old = JSON.parse(
+    await readFile(new URL('../fixtures/legacy/archive-v15.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(validateImport(old), old);
+  const value = '80:100:125|-7.5:0:18|94:100:105.5';
+  for (const configure of [
+    (d) => {
+      d.textFlows[0].style.wordSpacing = value;
+    },
+    (d) => {
+      d.textFlows[0].style.textOverrides = { wordSpacing: value };
+    },
+    (d) => {
+      d.textFlows[0].html = '<p data-ivo-wordspace="' + value + '">Experiment</p>';
+    },
+    (d) => {
+      d.textFlows[0].html =
+        '<p data-ivo-wordspace=' + value.replaceAll('|', '&#124;') + '>Encoded</p>';
+    },
+    (d) => {
+      d.publishing.paragraphStyles = [
+        {
+          id: 'new-justification',
+          name: 'Magazine',
+          basedOn: null,
+          attributes: { wordSpacing: value },
+        },
+      ];
+    },
+  ]) {
+    const archive = structuredClone(old),
+      doc = archive.documents[0];
+    configure(doc);
+    assert.throws(() => validateImport(archive), /archive 16/);
+    markTypographyVersion(doc);
+    archive.schemaVersion = archiveVersion([doc]);
+    assert.equal(archive.schemaVersion, 16);
+    const normalized = validateImport(archive);
+    assert.equal(normalized.documents[0].canvasVersion, 15);
+    assert.deepEqual(validateImport(normalized), normalized);
+    doc.canvasVersion = 14;
+    assert.throws(() => validateImport(archive), /canvas 15/);
+  }
+  assert.deepEqual(validateImport(old), old);
+});

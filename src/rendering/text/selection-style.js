@@ -88,7 +88,14 @@ export function summarizeTextStyle(root, doc, defaults, { range = null, pending 
     if (samples.some((sample) => sample[key] !== first)) mixed.push(key);
     else values[key] = first;
   }
-  return { values, mixed, fonts: [...new Set(samples.map((sample) => sample.textStyle))] };
+  return {
+    values,
+    mixed,
+    ...(mixed.includes('wordSpacing')
+      ? { justificationValues: [...new Set(samples.map((sample) => sample.wordSpacing))] }
+      : {}),
+    fonts: [...new Set(samples.map((sample) => sample.textStyle))],
+  };
 }
 
 /** Patch retained controls without stealing a live field's focus or replacing its DOM. */

@@ -238,7 +238,8 @@ export async function verifyUnequalParagraphFlow({ host, compose, insert, drag, 
       );
       assert(
         line.baseline - line.ascent >= -0.001 &&
-          line.baseline + line.descent <= frame.height + 0.001,
+          line.baseline + (frame.verticalAlign === 'top' ? line.descent : 0) <=
+            frame.height + 0.001,
         'Native unequal line exceeds its column height: ' +
           JSON.stringify({
             frame: line.frame,
@@ -260,13 +261,13 @@ export async function verifyUnequalParagraphFlow({ host, compose, insert, drag, 
     near(own[0][0].baseline, 40, 'Fixed first baseline');
     near(
       own[1][0].baseline - own[1][0].ascent,
-      request.frames[1].height - own[1].at(-1).baseline - own[1].at(-1).descent,
+      request.frames[1].height - own[1].at(-1).baseline,
       'Centered column has unequal top/bottom slack',
     );
     near(
-      own[2].at(-1).baseline + own[2].at(-1).descent,
+      own[2].at(-1).baseline,
       request.frames[2].height,
-      'Bottom-aligned column lost its last descent',
+      'Bottom-aligned column lost its final baseline',
     );
     const runs = lines.flatMap((line) => line.runs);
     assert(

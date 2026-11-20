@@ -169,6 +169,11 @@ const languageChoices = [
   ['de', 'German'],
   ['es', 'Spanish'],
   ['it', 'Italian'],
+  ['el', 'Greek'],
+  ['ru', 'Russian'],
+  ['tr', 'Turkish'],
+  ['cs', 'Czech'],
+  ['hu', 'Hungarian'],
   ['ja', 'Japanese'],
   ['zh', 'Chinese'],
   ['ar', 'Arabic'],
@@ -344,14 +349,15 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
               ],
               'Direction',
             ) +
-            (nativeFlow ? button('keep-options', 'Keep Options…') : '') +
-            button('word-spacing', 'Word Spacing…'),
+            (nativeFlow
+              ? button('keep-options', 'Keep Options…') + button('word-spacing', 'Justification…')
+              : ''),
           state,
         ),
     )
   );
 }
-export function frameProperties(item, state = {}) {
+export function frameProperties(item, state = {}, native = false) {
   const f = item.frameOptions || {};
   return section(
     'Text Frame',
@@ -365,8 +371,15 @@ export function frameProperties(item, state = {}) {
         '</div>' +
         field(
           'Vertical justification',
-          `<select data-frame-prop="verticalAlign" aria-label="Vertical justification">${['top', 'center', 'bottom'].map((v) => `<option value="${v}" ${f.verticalAlign === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`,
+          `<select data-frame-prop="verticalAlign" aria-label="Vertical justification">${['top', 'center', 'bottom', 'justify'].map((v) => `<option value="${v}" ${f.verticalAlign === v ? 'selected' : ''} ${v === 'justify' && !native ? 'disabled title="Choose a native text composer to use Justify"' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select>`,
         ) +
+        (f.verticalAlign === 'justify'
+          ? frameField(
+              'Paragraph Spacing Limit · pt',
+              'paragraphSpacingLimit',
+              f.paragraphSpacingLimit || 0,
+            )
+          : '') +
         field(
           'First baseline offset',
           `<select data-frame-prop="firstBaseline" aria-label="First baseline offset">${[

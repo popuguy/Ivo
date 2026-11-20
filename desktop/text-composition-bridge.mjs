@@ -29,6 +29,7 @@ const fields = {
     'end',
     'font',
     'size',
+    'language',
     'ligatures',
     'tracking',
     'kerning',
@@ -39,6 +40,7 @@ const fields = {
     'horizontalScale',
     'verticalScale',
     'features',
+    'variations',
   ],
   resource: ['id', 'digest', 'postscript', 'data'],
   frame: ['id', 'width', 'height', 'firstBaseline', 'minimumFirstBaseline', 'verticalAlign'],
@@ -55,8 +57,25 @@ const fields = {
     'wordSpacing',
   ],
   wordSpacing: ['minimum', 'desired', 'maximum'],
+  typographyLimits: [
+    'letterMinimum',
+    'letterDesired',
+    'letterMaximum',
+    'glyphMinimum',
+    'glyphDesired',
+    'glyphMaximum',
+  ],
   retainedLine: ['start', 'end', 'availableWidth', 'originX', 'width'],
-  placement: ['end', 'frame', 'baseline', 'left', 'width'],
+  placement: [
+    'end',
+    'frame',
+    'baseline',
+    'left',
+    'width',
+    'wordPercent',
+    'letterPercent',
+    'glyphPercent',
+  ],
   features: ['dlig', 'smcp', 'onum', 'tnum', 'zero', 'frac', 'ordn', 'salt'],
 };
 const plain = (value) =>
@@ -72,7 +91,7 @@ function record(value, allowed) {
 export function validateCompositionRequest(request) {
   record(request, fields.request);
   if (
-    ![1, 2, 3, 4, 5].includes(request.protocol) ||
+    ![1, 2, 3, 4, 5, 6].includes(request.protocol) ||
     (request.protocol === 1 && request.paragraphs !== undefined) ||
     (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
     (request.protocol < 3 && request.placements !== undefined) ||
@@ -91,7 +110,7 @@ export function validateCompositionRequest(request) {
       !['greedy-geometry-proof', 'measure-lines-proof', 'planned-lines-proof'].includes(
         request.mode,
       )) ||
-    (request.protocol === 5 &&
+    (request.protocol >= 5 &&
       !['measure-lines-proof', 'planned-lines-proof'].includes(request.mode))
   )
     throw Error('Invalid text composition paragraph protocol.');
@@ -147,7 +166,7 @@ export function validateCompositionRequest(request) {
           !Number.isSafeInteger(at) ||
           at <= (value[i - 1] ?? 0) ||
           at >= request.text.length ||
-          !/^[a-z]{2}$/i.test(request.text.slice(at - 1, at + 1)),
+          !/[\p{L}\p{M}]\p{L}/u.test(request.text.slice(at - 1, at + 1)),
       )
     )
       throw Error('Invalid automatic hyphenation boundary.');
@@ -170,7 +189,28 @@ export function validateCompositionRequest(request) {
             throw Error('Invalid retained geometry range.');
           retainedStarts.add(row.start);
         }
+        if (
+          shape === 'placement' &&
+          ['wordPercent', 'letterPercent', 'glyphPercent'].some((k) => Object.hasOwn(row, k))
+        ) {
+          if (
+            request.protocol !== 6 ||
+            ![row.wordPercent, row.letterPercent, row.glyphPercent].every(Number.isFinite) ||
+            row.wordPercent < 0 ||
+            row.glyphPercent < 50 ||
+            row.glyphPercent > 200 ||
+            row.letterPercent < -100
+          )
+            throw Error('Invalid justification placement.');
+        }
         if (shape === 'run') {
+          if (
+            Object.hasOwn(row, 'language') &&
+            (typeof row.language !== 'string' ||
+              row.language.length > 63 ||
+              !/^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$/i.test(row.language))
+          )
+            throw Error('Invalid native text language.');
           for (const [key, minimum, maximum] of [
             ['baselineShift', -2000, 2000],
             ['horizontalScale', 10, 1000],
@@ -184,6 +224,18 @@ export function validateCompositionRequest(request) {
                 row[key] > maximum)
             )
               throw Error('Invalid native character protocol or value.');
+          if (Object.hasOwn(row, 'variations')) {
+            if (
+              request.protocol < 4 ||
+              !plain(row.variations) ||
+              Object.keys(row.variations).length > 16 ||
+              Object.entries(row.variations).some(
+                ([tag, value]) =>
+                  !/^[A-Za-z0-9]{4}$/.test(tag) || !Number.isFinite(value) || Math.abs(value) > 1e6,
+              )
+            )
+              throw Error('Invalid variable font coordinates.');
+          }
           if (Object.hasOwn(row, 'features')) {
             if (request.protocol < 4)
               throw Error('Native character features require protocol 4 or 5.');
@@ -193,8 +245,30 @@ export function validateCompositionRequest(request) {
           }
         }
         if (shape === 'paragraph' && Object.hasOwn(row, 'wordSpacing')) {
-          if (request.protocol !== 5) throw Error('Word spacing requires protocol 5.');
-          record(row.wordSpacing, fields.wordSpacing);
+          if (request.protocol < 5) throw Error('Word spacing requires protocol 5.');
+          const advanced = Object.hasOwn(row.wordSpacing ?? {}, 'letterDesired');
+          record(
+            row.wordSpacing,
+            advanced && request.protocol === 6
+              ? [...fields.wordSpacing, ...fields.typographyLimits]
+              : fields.wordSpacing,
+          );
+          if (advanced) {
+            for (const [prefix, min, max] of [
+              ['letter', -100, 500],
+              ['glyph', 50, 200],
+            ]) {
+              const values = ['Minimum', 'Desired', 'Maximum'].map(
+                (key) => row.wordSpacing[prefix + key],
+              );
+              if (
+                values.some((v) => !Number.isFinite(v) || v < min || v > max) ||
+                values[0] > values[1] ||
+                values[1] > values[2]
+              )
+                throw Error('Invalid justification limits.');
+            }
+          }
           const { minimum, desired, maximum } = row.wordSpacing;
           if (
             ![minimum, desired, maximum].every(
@@ -206,13 +280,33 @@ export function validateCompositionRequest(request) {
             throw Error('Invalid native word-spacing percentages.');
         }
         for (const [key, cell] of Object.entries(row)) {
-          if (shape === 'run' && key === 'features')
+          if (shape === 'run' && (key === 'features' || key === 'variations'))
             for (const flag of Object.values(cell)) atom(flag);
           else if (shape === 'paragraph' && key === 'wordSpacing')
             for (const value of Object.values(cell)) atom(value);
           else atom(cell);
         }
       }
+    }
+  }
+  if (request.protocol === 6 && request.placements) {
+    let start = 0,
+      paragraphIndex = 0;
+    for (const placement of request.placements) {
+      while (request.paragraphs[paragraphIndex]?.end <= start) paragraphIndex++;
+      const paragraph = request.paragraphs[paragraphIndex],
+        policy = paragraph?.wordSpacing;
+      if (
+        !paragraph ||
+        placement.end > paragraph.end ||
+        placement.end <= start ||
+        (policy?.glyphDesired !== undefined) !== Object.hasOwn(placement, 'glyphPercent') ||
+        (policy?.glyphDesired !== undefined &&
+          (placement.glyphPercent < policy.glyphMinimum ||
+            placement.glyphPercent > policy.glyphMaximum))
+      )
+        throw Error('Invalid justification placement for its source paragraph.');
+      start = placement.end;
     }
   }
   let serialized;

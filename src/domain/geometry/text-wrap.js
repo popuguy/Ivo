@@ -280,7 +280,11 @@ export function nextWrapRowTop(baseline, step, blockedThrough) {
 }
 
 /** Each wrap mode projects its polygons across the physical row interval it uses. */
-export function textWrapBand(obstacles, band, { jumpBand, shapeBand } = {}) {
+export function textWrapBand(
+  obstacles,
+  band,
+  { jumpBand, shapeBand, boundsBand, nextColumnBand } = {},
+) {
   if (
     !['left', 'right', 'top', 'bottom'].every((key) => Number.isFinite(band[key])) ||
     band.right <= band.left ||
@@ -303,7 +307,11 @@ export function textWrapBand(obstacles, band, { jumpBand, shapeBand } = {}) {
         ? (jumpBand ?? band)
         : obstacle.mode === 'contour' && !obstacle.invert
           ? (shapeBand ?? band)
-          : band;
+          : obstacle.mode === 'bounds' && !obstacle.invert
+            ? (boundsBand ?? band)
+            : obstacle.mode === 'next-column'
+              ? (nextColumnBand ?? band)
+              : band;
     const occupied = merge(
       polygons.flatMap((polygon) => {
         const clipped = clipY(clipY(polygon, slice.top, true), slice.bottom, false);

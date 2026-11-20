@@ -403,7 +403,9 @@ test('columns convert insets/gutters/text scale once and forward baseline policy
   assert.equal(columns[0].firstBaseline, 'cap-height');
   assert.equal(columns[0].verticalAlign, 'bottom');
   frame.frameOptions.verticalAlign = 'justify';
-  assert.throws(() => nativeFlowColumns(doc, doc.textFlows[0]), /justified vertical/);
+  frame.frameOptions.paragraphSpacingLimit = 24;
+  const justified = nativeFlowColumns(doc, doc.textFlows[0]);
+  assert(justified.every((c) => c.verticalAlign === 'justify' && c.paragraphSpacingLimit === 6));
 });
 test('owned automatic pages append/trim without replacing existing objects or changing canonical text', async () => {
   const doc = fixture({ automaticPages: true }),

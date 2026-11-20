@@ -10,6 +10,7 @@ import {
   hasNativeTextComposition,
   hasTextWrap,
   hasWordSpacing,
+  hasJustification,
   hasExtendedKeeps,
   hasParagraphStarts,
   hasSplitLineKeeps,
@@ -321,6 +322,11 @@ function validateArchive(payload, parentTemplate) {
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
     if (
+      hasJustification(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 15) || payload.schemaVersion < 16)
+    )
+      fail('Advanced justification settings require canvas 15 and archive 16');
+    if (
       hasHyphenationSettings(doc) &&
       (!supportedCanvas(doc.canvasVersion, 14) || payload.schemaVersion < 15)
     )
@@ -512,9 +518,19 @@ function validateArchive(payload, parentTemplate) {
             normalized.frameOptions.verticalAlign = enumeration(
               f.verticalAlign,
               key,
-              ['top', 'center', 'bottom'],
+              ['top', 'center', 'bottom', 'justify'],
               'top',
             );
+            if (f.paragraphSpacingLimit !== undefined)
+              normalized.frameOptions.paragraphSpacingLimit = number(
+                f.paragraphSpacingLimit,
+                key,
+                0,
+                2000,
+                0,
+              );
+            if (normalized.frameOptions.verticalAlign === 'justify' && !block.textFlowId)
+              fail(`${key} vertical Justify requires a native text flow`);
             if (f.firstBaseline !== undefined || f.minimumFirstBaseline !== undefined) {
               if (!supportedCanvas(doc.canvasVersion, 6) || payload.schemaVersion < 7)
                 fail(`${key} first-baseline policies require archive 7 / canvas 6`);
@@ -847,6 +863,8 @@ function validateArchive(payload, parentTemplate) {
             frame.textKind !== 'area'
           )
             fail(`${key} has invalid, duplicate or shared frames`);
+          if (frame.frameOptions?.verticalAlign === 'justify' && !composition)
+            fail(`${key} vertical Justify requires a native text flow`);
           frameOwners.add(frameId);
           return frameId;
         });

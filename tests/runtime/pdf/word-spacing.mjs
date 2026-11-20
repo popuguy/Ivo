@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument } from 'pdf-lib';
+import { wordSpacingSettings } from '../../../src/domain/text/word-spacing.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { enablePublishing } from '../../../src/domain/documents/publishing.js';
 import {
@@ -74,6 +75,14 @@ const near = (actual, expected, label, tolerance = 0.001) =>
       text: '  Wide alpha beta  ',
       targets: ['Wide', 'alpha', 'beta'],
     },
+    {
+      name: 'letter-and-glyph',
+      width: 360,
+      policy: '80:100:125|-5:8:18|96:105:112',
+      align: 'left',
+      text: 'Office print editing',
+      targets: ['Office', 'print', 'editing'],
+    },
   ];
 
 function fixture(definition) {
@@ -135,6 +144,7 @@ function selectedWords(composition, frame, definition) {
       baseline: frame.y + line.baseline,
       frame: line.frame,
       caretX: frame.x + caret.primary,
+      scaleX: (line.wordSpacing?.glyphPercentage ?? 100) / 100,
       vector: glyph.vector,
       glyph: glyph.glyph,
     };
@@ -183,7 +193,7 @@ export async function verifyWordSpacingPDF({
           const actual = rendered.glyphs.find((glyph) => glyph.start === word.start);
           near(actual.x, word.localX, 'Frozen word-spaced SVG glyph x');
           near(actual.y, word.localY, 'Frozen word-spaced SVG glyph y');
-          near(actual.a, 1, 'Frozen glyph scale');
+          near(actual.a, word.scaleX, 'Frozen glyph scale');
           near(actual.d, -1, 'Frozen glyph orientation');
           assert(
             actual.width > 0 && actual.height > 0,
@@ -229,7 +239,7 @@ export async function verifyWordSpacingPDF({
         2,
       ),
     );
-    assert.equal(request.protocol, active ? 5 : 4);
+    assert.equal(request.protocol, definition.policy?.includes('|') ? 6 : active ? 5 : 4);
     assert.equal(result.protocol, request.protocol);
     assert.equal(request.mode, 'planned-lines-proof');
     assert.equal(request.sourceHTML, sourceBefore);
@@ -251,14 +261,7 @@ export async function verifyWordSpacingPDF({
         assert.equal(line.wordSpacing, undefined);
         continue;
       }
-      assert.deepEqual(
-        request.paragraphs[0].wordSpacing,
-        Object.fromEntries(
-          definition.policy
-            .split(':')
-            .map((part, i) => [['minimum', 'desired', 'maximum'][i], Number(part)]),
-        ),
-      );
+      assert.deepEqual(request.paragraphs[0].wordSpacing, wordSpacingSettings(definition.policy));
       assert.equal(line.wordSpacing.fallback, null);
       if (line.wordSpacing.justified) {
         near(line.visibleWidth, definition.width, 'Actual justified point width');
@@ -398,6 +401,7 @@ print(String(data: try JSONSerialization.data(withJSONObject: reports, options: 
   }
   return {
     wordSpacingPDFFrozenSnapshots: true,
+    nineFieldJustificationPDF: true,
     wordSpacingPDFNative5RetainedPlans: true,
     wordSpacingPDFDesiredAndCondensedFinal: true,
     wordSpacingPDFSoftBoundsAndReturns: true,

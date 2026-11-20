@@ -523,3 +523,50 @@ test('wrap fits custom spacing against each side of an object and honors a singl
   assert.equal(forced.lines[0].wordSpacing.diagnostic.kind, 'word-spacing-outside-minimum');
   assert.equal(forced.lines[0].wordSpacing.visibleWidth, 40);
 });
+
+test('nine-field fitting first uses ordinary spaces, then shares expansion with letter and glyph room', () => {
+  const settings = {
+    minimum: 80,
+    desired: 100,
+    maximum: 125,
+    letterMinimum: -5,
+    letterDesired: 0,
+    letterMaximum: 12,
+    glyphMinimum: 96,
+    glyphDesired: 100,
+    glyphMaximum: 104,
+  };
+  const measurement = {
+    ...row(0, 11, 56, 8),
+    wordSpacing: {
+      nominalSpaceWidth: 8,
+      eligibleGaps: 3,
+      letterBasis: 27,
+      minimumWidth: (56 - 1.6 - 1.35) * 0.96,
+      desiredWidth: 56,
+      maximumWidth: (56 + 2 + 3.24) * 1.04,
+      physicalMinimum: (56 - 8 - 1.35) * 0.96,
+    },
+  };
+  assert.deepEqual(wordSpacingMeasurement(measurement, settings), measurement.wordSpacing);
+  assert.throws(
+    () =>
+      wordSpacingMeasurement(
+        { ...measurement, wordSpacing: { ...measurement.wordSpacing, physicalMinimum: 1 } },
+        settings,
+      ),
+    /physical minimum/,
+  );
+  const minor = adjustWordSpacing(measurement, 57, 'justify', false, settings);
+  assert.equal(minor.percentage, 112.5);
+  assert.equal(minor.letterPercentage, 0);
+  assert.equal(minor.glyphPercentage, 100);
+  const larger = adjustWordSpacing(measurement, 61, 'justify', false, settings);
+  assert.ok(larger.letterPercentage > 0 && larger.letterPercentage < 12);
+  assert.ok(larger.glyphPercentage > 100 && larger.glyphPercentage < 104);
+  assert.ok(Math.abs(larger.visibleWidth - 61) < 1e-8);
+  const final = adjustWordSpacing(measurement, 61, 'justify', true, settings);
+  assert.equal(final.visibleWidth, 56);
+  assert.equal(final.glyphPercentage, 100);
+  assert.equal(adjustWordSpacing(measurement, 12, 'justify', false, settings), null);
+});

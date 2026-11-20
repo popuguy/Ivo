@@ -171,11 +171,20 @@ export function verifyParagraphProjection() {
     '<p data-ivo-hyphens="true">typesetting <span data-ivo-nobreak="true">typesetting</span> type&shy;setting</p><p>typesetting</p>',
   );
   equal(hyphenated.hyphenationPoints, [4, 7], 'Paragraph, No Break and authored hyphen authority');
+  const multilingual = project(
+    '<p data-ivo-hyphens="true"><span data-ivo-lang="es">ilus<b>tra</b>ción</span> <span data-ivo-lang="it">tipo</span>grafia <span data-ivo-lang="fr">typesetting</span></p>',
+  );
+  equal(
+    multilingual.hyphenationPoints,
+    [4, 7],
+    'Word language must survive formatting boundaries and dictionary gaps',
+  );
+  const accents = project('<p data-ivo-hyphens="true" data-ivo-lang="es">repu\u0301blica</p>');
+  equal(accents.hyphenationPoints, [2, 5, 8], 'Decomposed accents must keep original offsets');
   for (const html of [
     '<p><span data-ivo-align="right">Conflicting inline paragraph</span></p>',
     '<p data-ivo-left="12"><span data-ivo-left="0">Conflicting reset</span></p>',
     '<span data-ivo-pstyle="paragraph-derived">Inline-only named paragraph</span>',
-    '<p data-ivo-hyphens="true" data-ivo-lang="fr-FR">Unsupported hyphenation language</p>',
     '<p>Text <span data-ivo-keepedges="true">inline</span></p>',
     '<p data-ivo-dir="rtl">Unsupported direction</p>',
   ]) {

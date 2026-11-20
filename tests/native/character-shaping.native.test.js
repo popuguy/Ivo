@@ -239,6 +239,43 @@ test(
 );
 
 test(
+  'variable font instances use independent outlines, advances, and cached identities',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t),
+      req = await request('AAAB\u2029', { font: 'geist' }),
+      weights = [330.5, 700, 330.5];
+    req.runs = [
+      ...weights.map((weight, i) => ({
+        ...req.runs[0],
+        start: i,
+        end: i + 1,
+        variations: { wght: weight },
+      })),
+      { ...req.runs[0], start: 3 },
+    ];
+    const result = await service.compose(req),
+      [light, bold, again] = glyphs(result.layout.lines[0]),
+      paths = new Map(result.vectors.map((vector) => [vector.id, vector.pathD]));
+    assert.equal(light.glyph, bold.glyph);
+    assert.notEqual(paths.get(light.vector), paths.get(bold.vector));
+    assert.ok(bold.advance[0] > light.advance[0]);
+    assert.equal(again.vector, light.vector);
+    assert.equal(again.advance[0], light.advance[0]);
+    assert.deepEqual(result.diagnostics, []);
+    assert.deepEqual((await service.compose(req)).vectors, result.vectors);
+    for (const patch of [{ wght: 901 }, { xxxx: 42 }]) {
+      const bad = await request('A\u2029', { font: 'geist', variations: patch });
+      await assert.rejects(service.compose(bad), /axis|coordinate/i);
+    }
+    await assert.rejects(
+      service.compose(await request('A\u2029', { variations: { wght: 700 } })),
+      /axis|coordinate/i,
+    );
+  },
+);
+
+test(
   'scaled glyph paths have separate cache identities and preserve mixed-run source positions',
   mac,
   async (t) => {

@@ -1,44 +1,79 @@
 export const DEFAULT_WORD_SPACING = Object.freeze({ minimum: 80, desired: 100, maximum: 133 });
+export const JUSTIFICATION_GROUPS = Object.freeze([
+  { label: 'Word Spacing', prefix: '', min: 0, max: 1000, defaults: [80, 100, 133] },
+  { label: 'Letter Spacing', prefix: 'letter', min: -100, max: 500, defaults: [0, 0, 0] },
+  { label: 'Glyph Scaling', prefix: 'glyph', min: 50, max: 200, defaults: [100, 100, 100] },
+]);
 const fields = ['minimum', 'desired', 'maximum'];
 const numeric = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 
-/** One atomic source value; `normal` preserves the earlier composer policy. */
+export function spacingField(prefix, field) {
+  return prefix ? prefix + field[0].toUpperCase() + field.slice(1) : field;
+}
+
+/** Older documents store one triple. Explicit letter/glyph limits use three. */
 export function normalizeWordSpacing(value) {
   if (value === 'normal') return value;
-  const parts = typeof value === 'string' ? value.split(':') : null;
-  if (!parts || parts.length !== 3 || parts.some((part) => !numeric.test(part.trim())))
+  const groups = typeof value === 'string' ? value.split('|') : [];
+  if (![1, 3].includes(groups.length))
     throw new TypeError('Word spacing requires minimum, desired and maximum percentages.');
-  const values = parts.map(Number);
-  if (values.some((number) => !Number.isFinite(number) || number < 0 || number > 1000))
-    throw new TypeError('Word spacing percentages must be between 0 and 1000.');
-  if (values[0] > values[1] || values[1] > values[2])
-    throw new TypeError('Word spacing must satisfy minimum ≤ desired ≤ maximum.');
-  return values.map((number) => String(number === 0 ? 0 : number)).join(':');
+  return groups
+    .map((group, index) => {
+      const { min, max } = JUSTIFICATION_GROUPS[index];
+      const label = index ? JUSTIFICATION_GROUPS[index].label : 'Word spacing';
+      const parts = group.split(':');
+      if (parts.length !== 3 || parts.some((part) => !numeric.test(part.trim())))
+        throw new TypeError(label + ' requires minimum, desired and maximum percentages.');
+      const values = parts.map(Number);
+      if (values.some((number) => !Number.isFinite(number) || number < min || number > max))
+        throw new TypeError(label + ' percentages must be between ' + min + ' and ' + max + '.');
+      if (values[0] > values[1] || values[1] > values[2])
+        throw new TypeError(label + ' must satisfy minimum ≤ desired ≤ maximum.');
+      return values.join(':');
+    })
+    .join('|');
 }
-
-/** Native layout receives typed percentages; defaults never activate on read. */
 export function wordSpacingSettings(value = 'normal') {
   const canonical = normalizeWordSpacing(value);
-  return canonical === 'normal'
-    ? null
-    : Object.freeze(
-        Object.fromEntries(
-          canonical.split(':').map((part, index) => [fields[index], Number(part)]),
+  if (canonical === 'normal') return null;
+  return Object.freeze(
+    Object.fromEntries(
+      canonical
+        .split('|')
+        .flatMap((group, i) =>
+          group
+            .split(':')
+            .map((part, j) => [
+              spacingField(JUSTIFICATION_GROUPS[i].prefix, fields[j]),
+              Number(part),
+            ]),
         ),
-      );
+    ),
+  );
 }
-
 export function wordSpacingValue(settings) {
   if (
     !settings ||
     typeof settings !== 'object' ||
-    Array.isArray(settings) ||
-    ![Object.prototype, null].includes(Object.getPrototypeOf(settings)) ||
-    Object.keys(settings).some((field) => !fields.includes(field)) ||
-    fields.some((field) => typeof settings[field] !== 'number')
+    ![Object.prototype, null].includes(Object.getPrototypeOf(settings))
   )
-    throw new TypeError('Word spacing requires three numeric percentages.');
-  return normalizeWordSpacing(fields.map((field) => String(settings[field])).join(':'));
+    throw new TypeError('Word spacing requires three or nine numeric percentages.');
+  const groups = Object.hasOwn(settings, 'letterDesired')
+    ? JUSTIFICATION_GROUPS
+    : JUSTIFICATION_GROUPS.slice(0, 1);
+  if (Object.keys(settings).length !== groups.length * 3)
+    throw new TypeError('Word spacing requires three or nine numeric percentages.');
+  const values = groups.map(({ prefix }) =>
+    fields
+      .map((field) => {
+        const v = settings[spacingField(prefix, field)];
+        if (typeof v !== 'number')
+          throw new TypeError('Word spacing requires numeric percentages.');
+        return v;
+      })
+      .join(':'),
+  );
+  return normalizeWordSpacing(values.join('|'));
 }
 
 /** Conservative shaping scope for the first native word-spacing capability.

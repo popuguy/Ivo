@@ -395,8 +395,8 @@ test('final center/bottom alignment translates owned baselines once and cannot p
     frames = [{ width: 20, height: 100 }],
     top = await composer.compose(req, frames);
   for (const [verticalAlign, expected] of [
-    ['center', 53],
-    ['bottom', 98],
+    ['center', 54],
+    ['bottom', 100],
   ]) {
     const result = await composer.compose(req, [{ ...frames[0], verticalAlign }]);
     assert.equal(result.placements[0].baseline, expected);
@@ -404,6 +404,110 @@ test('final center/bottom alignment translates owned baselines once and cannot p
   }
   assert.deepEqual((await composer.compose(req, frames)).placements, top.placements);
   assert.equal(top.placements[0].baseline, 8);
+});
+
+test('vertically aligned columns recompose around wrap geometry without moving their source or skipping Next Column', async () => {
+  const composer = createParagraphComposer(frameBackend().measure);
+  const req = flowRequest('short\u2029');
+  const rect = {
+    mode: 'bounds',
+    side: 'both',
+    bounds: { left: 0, right: 12, top: 36, bottom: 67 },
+    polygons: [
+      [
+        { x: 0, y: 36 },
+        { x: 12, y: 36 },
+        { x: 12, y: 67 },
+        { x: 0, y: 67 },
+      ],
+    ],
+  };
+  const frame = {
+    width: 30,
+    height: 100,
+    firstBaseline: 'fixed',
+    minimumFirstBaseline: 8,
+    obstacles: [rect],
+  };
+  const view = (plan) =>
+    plan.placements.map(({ baseline, left, width, end, frame }) => ({
+      baseline,
+      left,
+      width,
+      end,
+      frame,
+    }));
+  for (const [verticalAlign, baseline, left] of [
+    ['top', 8, 0],
+    ['center', 54, 12],
+    ['bottom', 100, 0],
+  ]) {
+    const columns = [{ ...frame, verticalAlign }],
+      before = structuredClone(columns);
+    const result = await composer.compose(req, columns, { mode: 'single-line' });
+    assert.deepEqual(view(result), [
+      { baseline, left, width: 30 - left, end: req.text.length, frame: 0 },
+    ]);
+    assert.deepEqual(columns, before);
+    const warm = await composer.compose(req, columns, { mode: 'single-line' });
+    assert.deepEqual(warm.placements, result.placements);
+    assert.equal(warm.work.backendCalls, 0);
+  }
+  for (const verticalAlign of ['center', 'bottom']) {
+    const plan = await composer.compose(
+      req,
+      [
+        { ...frame, verticalAlign, obstacles: [{ ...rect, mode: 'next-column' }] },
+        { width: 30, height: 100 },
+      ],
+      { mode: 'single-line' },
+    );
+    assert.equal(plan.placements.length, 1);
+    assert.equal(plan.placements[0].frame, 0);
+    assert(
+      Math.abs(plan.placements[0].baseline - 36) < 0.05,
+      'Centered or bottom text jumped past a Next Column object',
+    );
+  }
+});
+
+test('vertical Justify spends its paragraph spacing allowance before distributing the remaining space between lines', async () => {
+  const composer = createParagraphComposer(frameBackend().measure);
+  const req = flowRequest('cut\u2028hem\u2029sew\u2028join\u2029');
+  for (const [limit, expected] of [
+    [0, [8, 48, 88, 128]],
+    [12, [8, 44, 92, 128]],
+    [100, [8, 20, 116, 128]],
+  ]) {
+    const cols = [
+      { width: 50, height: 128, verticalAlign: 'justify', paragraphSpacingLimit: limit },
+    ];
+    const result = await composer.compose(req, cols);
+    assert.deepEqual(
+      result.placements.map((l) => l.baseline),
+      expected,
+    );
+    const warm = await composer.compose(req, cols);
+    assert.deepEqual(warm.placements, result.placements);
+    assert.equal(warm.work.backendCalls, 0);
+  }
+  const lone = await composer.compose(flowRequest('grading\u2029'), [
+    { width: 50, height: 128, verticalAlign: 'justify' },
+  ]);
+  assert.equal(lone.placements[0].baseline, 8);
+  const linked = await composer.compose(req, [
+    { width: 50, height: 34, verticalAlign: 'justify' },
+    { width: 50, height: 128 },
+  ]);
+  assert.deepEqual(
+    linked.placements.map((l) => [l.frame, l.baseline]),
+    [
+      [0, 8],
+      [0, 21],
+      [0, 34],
+      [1, 8],
+    ],
+  );
 });
 
 test('invalid exact metric batches are atomic and retryable', async () => {

@@ -991,6 +991,15 @@ export function mountCanvasEditor(host, options) {
     if (composer === 'browser') {
       if (hasNativeTextSettings(doc())) {
         try {
+          if (
+            doc().blocks.some(
+              (frame) =>
+                frame.textFlowId === flow.id && frame.frameOptions?.verticalAlign === 'justify',
+            )
+          )
+            throw Error(
+              'Change vertical Justify to Top, Center or Bottom before switching to the existing layout.',
+            );
           validateLegacyTextSettings(flow.html, flow.style);
         } catch (error) {
           options.onNotify?.(error.message);
@@ -4177,6 +4186,7 @@ export function mountCanvasEditor(host, options) {
     allowed: () => ownsInput() && !busy && !composing,
   });
   const publishingControls = installPublishingControls(editor, {
+    nativeComposition: !!options.textComposition,
     doc,
     state,
     objects,

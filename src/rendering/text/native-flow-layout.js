@@ -85,7 +85,7 @@ function composeRequest(compose, request, wordSpacingPlan) {
     .then(() => compose(request))
     .then((result) => {
       validateResult(result, request);
-      if (request.protocol === 5) validateWordSpacingResult(result, request, wordSpacingPlan);
+      if (request.protocol >= 5) validateWordSpacingResult(result, request, wordSpacingPlan);
       if (cache.entries.get(key) === entry) {
         const cost = geometrySize(result);
         entry.cost += cost;
@@ -125,19 +125,24 @@ async function resource(bytes, id, expectedDigest, expectedPostscript) {
   });
   return value;
 }
-function shippedResource(variant) {
-  if (!shipped.has(variant)) {
+function shippedResource(id) {
+  if (!shipped.has(id)) {
     const pending = (async () => {
-      const response = await fetch(shippedTextFontURL('cmu-' + variant));
-      if (!response.ok) throw Error('The bundled CMU Serif font could not be loaded.');
-      return resource(new Uint8Array(await response.arrayBuffer()), 'cmu-' + variant);
+      const response = await fetch(shippedTextFontURL(id));
+      if (!response.ok) throw Error('The bundled font could not be loaded.');
+      return resource(
+        new Uint8Array(await response.arrayBuffer()),
+        id,
+        SHIPPED_TEXT_FONT_METADATA[id].digest,
+        SHIPPED_TEXT_FONT_METADATA[id].postscript,
+      );
     })();
-    shipped.set(variant, pending);
+    shipped.set(id, pending);
     pending.catch(() => {
-      if (shipped.get(variant) === pending) shipped.delete(variant);
+      if (shipped.get(id) === pending) shipped.delete(id);
     });
   }
-  return shipped.get(variant);
+  return shipped.get(id);
 }
 function assetResource(asset) {
   const prior = assetResources.get(asset);
@@ -170,7 +175,30 @@ function assetResource(asset) {
 function fontResolver(assets) {
   const fonts = assets.filter((a) => a.font && a.mimeType?.startsWith('font/')),
     selected = new Map();
-  const fontFor = (style) => {
+  function selectFace(id, axes, load, style, character) {
+    const coordinates = { ...character.variations };
+    const weight = axes?.find((axis) => axis.tag === 'wght');
+    if (weight && style.bold && coordinates.wght === undefined)
+      coordinates.wght = Math.max(weight.min, Math.min(weight.max, 700));
+    for (const [tag, value] of Object.entries(coordinates)) {
+      const axis = axes?.find((item) => item.tag === tag);
+      if (!axis || value < axis.min || value > axis.max)
+        throw new UnsupportedComposition('the selected font’s ' + tag + ' axis at ' + value);
+    }
+    selected.set(id, load);
+    return Object.keys(coordinates).length ? { id, variations: coordinates } : id;
+  }
+  const fontFor = (style, character) => {
+    if (style.textStyle === 'geist') {
+      if (style.italic) throw new UnsupportedComposition('a portable Geist italic face');
+      return selectFace(
+        'geist',
+        SHIPPED_TEXT_FONT_METADATA.geist.axes,
+        () => shippedResource('geist'),
+        style,
+        character,
+      );
+    }
     if (style.textStyle === 'cmu-serif') {
       const variant = style.bold
           ? style.italic
@@ -180,8 +208,7 @@ function fontResolver(assets) {
             ? 'italic'
             : 'regular',
         id = 'cmu-' + variant;
-      selected.set(id, () => shippedResource(variant));
-      return id;
+      return selectFace(id, [], () => shippedResource(id), style, character);
     }
     const legacy = { serif: 'Georgia', sans: 'Helvetica Neue', display: 'Helvetica Neue' },
       familyName = legacy[style.textStyle],
@@ -201,11 +228,8 @@ function fontResolver(assets) {
           )),
       candidates = alias ? fonts.filter((a) => a.font.family === alias.font.family) : [],
       asset = fontVariantAsset(alias, candidates, style);
-    // Variable default coordinates must never silently stand in for requested bold.
-    if (!asset || (asset.font.axes?.length && (style.bold || style.fontVariations !== 'normal')))
-      throw new UnsupportedComposition('the exact portable selected font face');
-    selected.set(asset.id, () => assetResource(asset));
-    return asset.id;
+    if (!asset) throw new UnsupportedComposition('the exact portable selected font face');
+    return selectFace(asset.id, asset.font.axes, () => assetResource(asset), style, character);
   };
   const featureLabels = {
     dlig: 'discretionary ligatures',
@@ -282,8 +306,8 @@ export function nativeFlowColumns(doc, flow) {
       height > 14400
     )
       throw Error('Frame insets, columns or text scaling leave an invalid native text area.');
-    if (f.verticalAlign && !['top', 'center', 'bottom'].includes(f.verticalAlign))
-      throw new UnsupportedComposition('justified vertical frame alignment');
+    if (f.verticalAlign && !['top', 'center', 'bottom', 'justify'].includes(f.verticalAlign))
+      throw new UnsupportedComposition('unknown vertical frame alignment');
     for (let i = 0; i < count; i++) {
       const id = frame.id + '-column-' + i;
       if (id.length > 120) throw Error('The native text column identity exceeds its bounds.');
@@ -301,6 +325,9 @@ export function nativeFlowColumns(doc, flow) {
         ...(f.firstBaseline ? { firstBaseline: f.firstBaseline } : {}),
         minimumFirstBaseline: (f.minimumFirstBaseline || 0) / sy,
         verticalAlign: f.verticalAlign || 'top',
+        ...(f.verticalAlign === 'justify'
+          ? { paragraphSpacingLimit: (f.paragraphSpacingLimit || 0) / sy }
+          : {}),
       });
     }
   }
@@ -495,6 +522,19 @@ function fragmentsFor(source, result, columns, flow, fragments, prefix) {
         logicalEnd = nativeSourceBoundary(source, nativeEnd);
         return {
           ...column,
+          // Center and Bottom align the last baseline. Descenders can print
+          // below the frame while its sides, page bounds and authored masks still clip.
+          bottomOverhang:
+            column.verticalAlign === 'top'
+              ? 0
+              : lines.reduce(
+                  (extent, line) =>
+                    Math.max(
+                      extent,
+                      line.baseline + Math.max(line.descent, line.inkDescent ?? 0) - column.height,
+                    ),
+                  0,
+                ),
           start,
           end: logicalEnd,
           paint,
@@ -518,7 +558,7 @@ function fragmentsFor(source, result, columns, flow, fragments, prefix) {
       html: parts
         .map(
           (p) =>
-            `<div class="flow-column" data-flow-column="${escapeHTML(p.id)}" style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;overflow:hidden">${p.html}</div>`,
+            `<div class="flow-column native-flow-column" data-flow-column="${escapeHTML(p.id)}"${p.bottomOverhang > 0 ? ' data-bottom-overhang' : ''} style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;--ink-bottom:${p.bottomOverhang}px">${p.html}</div>`,
         )
         .join(''),
     });
@@ -577,11 +617,12 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     wrapped = columns.some((column) => column.obstacles?.length),
     required =
       flow.composition?.composer === 'paragraph' ||
+      columns.some((column) => column.verticalAlign === 'justify') ||
       wrapped ||
       source.paragraphs.some((p) => p.hyphenate) ||
       hasKeeps(source) ||
       source.noBreakRanges?.length ||
-      source.protocol === 5,
+      source.protocol >= 5,
     limit = required ? 10000 : 100000;
   if (
     source.text.length > limit ||
@@ -610,7 +651,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     // spacing authority as an authored policy without adding a document mark.
     if (specialJustification) {
       paragraph.wordSpacing = wordSpacingValue(DEFAULT_WORD_SPACING);
-      source.protocol = 5;
+      source.protocol = Math.max(5, source.protocol);
     }
     if (wordSpacingSettings(paragraph.wordSpacing)) {
       const issue = wordSpacingSourceError(source.text.slice(paragraph.start, paragraph.end));
@@ -728,6 +769,7 @@ export async function composeNativeTextFlows(
             kerning,
             ligatures,
             textColor,
+            language,
             ...character
           }) => ({
             start,
@@ -740,6 +782,7 @@ export async function composeNativeTextFlows(
             kerning,
             ligatures,
             textColor,
+            ...(language && language !== 'en-US' ? { language } : {}),
             ...nativeCharacterStyle(character),
           }),
         ),

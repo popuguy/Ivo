@@ -74,15 +74,14 @@ export function validateParagraphSource(text, noBreakRanges = [], hyphenationPoi
     throw Error('Invalid No Break source ranges.');
   if (!Array.isArray(hyphenationPoints) || hyphenationPoints.length > MAX_POINTS)
     throw new UnsupportedComposition('paragraph hyphenation beyond its bounded source budget');
-  const isLetter = (at) => /[a-z]/i.test(text.charAt(at));
+
   if (
     hyphenationPoints.some(
       (at, i) =>
         !Number.isSafeInteger(at) ||
         at <= (hyphenationPoints[i - 1] ?? 0) ||
         at >= text.length ||
-        !isLetter(at - 1) ||
-        !isLetter(at),
+        !/[\p{L}\p{M}]\p{L}/u.test(text.slice(at - 1, at + 1)),
     )
   )
     throw Error('Invalid automatic hyphenation boundary.');
@@ -318,13 +317,17 @@ export function createParagraphComposer(measure) {
         paragraph.keep = keeps[index];
         paragraph.hyphenation = lineHyphenationOptions(paragraphHyphenation?.[index]);
         const authored = request.paragraphs?.[index];
-        if (Object.hasOwn(authored ?? {}, 'wordSpacing') && request.protocol !== 5)
+        if (Object.hasOwn(authored ?? {}, 'wordSpacing') && request.protocol < 5)
           throw new UnsupportedComposition('word spacing without native protocol 5');
         if (Object.hasOwn(authored ?? {}, 'wordSpacing') && authored.wordSpacing == null)
           throw Error('Native word-spacing policy must contain three percentages.');
         paragraph.wordSpacing = normalizeWordSpacingPolicy(authored?.wordSpacing);
         if (paragraph.wordSpacing) {
-          if (request.protocol !== 5)
+          if (paragraph.wordSpacing.letterDesired !== undefined && request.protocol !== 6)
+            throw new UnsupportedComposition(
+              'letter spacing and glyph scaling without native protocol 6',
+            );
+          if (request.protocol < 5)
             throw new UnsupportedComposition('word spacing without native protocol 5');
           const issue = wordSpacingSourceError(paragraph.text);
           if (issue) throw new UnsupportedComposition(issue);

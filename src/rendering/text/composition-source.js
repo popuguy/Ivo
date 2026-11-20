@@ -1,5 +1,8 @@
 import { HYPHENATION_DEFAULTS } from '../../domain/text/hyphenation.js';
-import { englishHyphenationPoints } from '../../domain/text/english-hyphenation.js';
+import {
+  dictionaryForLanguage,
+  dictionaryHyphenationPoints,
+} from '../../domain/text/dictionary-hyphenation.js';
 import { blankParagraphBreak } from './insertion.js';
 import { textIndexMap } from '../../shared/dom/text-selection.js';
 import { nodeTextStyle } from './selection-style.js';
@@ -24,6 +27,7 @@ const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
     ...Object.keys(HYPHENATION_DEFAULTS),
   ],
   supportedFields = new Set([
+    'language',
     'textStyle',
     'fontSize',
     'bold',
@@ -75,9 +79,9 @@ function sameRunStyle(previous, current) {
   fields.delete('start');
   fields.delete('end');
   for (const field of fields) {
-    if (field === 'features') {
-      const before = previous.features || {},
-        after = current.features || {},
+    if (field === 'features' || field === 'variations') {
+      const before = previous[field] || {},
+        after = current[field] || {},
         tags = new Set([...Object.keys(before), ...Object.keys(after)]);
       if ([...tags].some((tag) => before[tag] !== after[tag])) return false;
     } else if (previous[field] !== current[field]) return false;
@@ -105,6 +109,8 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   };
   const add = (kind, start, end, text, node, priority = 1) => {
     const style = styleAt(node);
+    if (!/^(?:en|es|it|el|ru|tr|cs|hu|fr|de)(?:-[a-z0-9]{1,8})*$/i.test(style.language))
+      throw new UnsupportedComposition('language');
     for (const [key, value] of Object.entries(style))
       if (!supportedFields.has(key) && value !== TEXT_DEFAULTS[key])
         throw new UnsupportedComposition(key);
@@ -240,7 +246,8 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
     if (token.text.length) {
       const style = token.style,
         character = nativeCharacterStyle(style),
-        font = fontFor?.(style);
+        face = fontFor?.(style, character),
+        font = typeof face === 'string' ? face : face?.id;
       if (!font) throw new UnsupportedComposition('the selected font face');
       if (style.noBreak) {
         const previous = noBreakRanges.at(-1);
@@ -263,6 +270,7 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
         highlight: style.highlight,
         language: style.language,
         ...character,
+        ...(face?.variations ? { variations: face.variations } : {}),
       };
       const previous = runs.at(-1);
       if (previous && previous.end === start && sameRunStyle(previous, run)) previous.end = run.end;
@@ -298,17 +306,24 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   if (logical !== logicalLength || root.innerHTML !== sourceHTML)
     throw Error('Text composition changed its source.');
   const hyphenationPoints = [];
-  let rangeIndex = 0;
+  const dictionaryKeys = paragraphs.some((p) => p.hyphenate)
+    ? runs.map((run) => dictionaryForLanguage(run.language))
+    : [];
+  let rangeIndex = 0,
+    runIndex = 0;
   for (const paragraph of paragraphs) {
     if (!paragraph.hyphenate) continue;
     const content = text.slice(paragraph.start, paragraph.end);
-    if (
-      /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]|[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/u.test(
-        content,
-      )
-    )
-      throw new UnsupportedComposition('automatic hyphenation in mixed writing systems');
-    for (const relative of englishHyphenationPoints(content, paragraph)) {
+    const languageAt = (start, end) => {
+      const from = paragraph.start + start,
+        to = paragraph.start + end;
+      while (runs[runIndex].end <= from) runIndex++;
+      const key = dictionaryKeys[runIndex];
+      for (let i = runIndex + 1; runs[i]?.start < to; i++)
+        if (dictionaryKeys[i] !== key) return null;
+      return key;
+    };
+    for (const relative of dictionaryHyphenationPoints(content, paragraph, languageAt)) {
       const at = paragraph.start + relative;
       while (noBreakRanges[rangeIndex]?.end <= at) rangeIndex++;
       if (!(noBreakRanges[rangeIndex]?.start <= at)) hyphenationPoints.push(at);
@@ -316,11 +331,13 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   }
   return {
     ...(hyphenationPoints.length ? { hyphenationPoints } : {}),
-    protocol: paragraphs.some((paragraph) => wordSpacingSettings(paragraph.wordSpacing))
-      ? 5
-      : runs.some(hasNondefaultNativeCharacter)
-        ? 4
-        : 2,
+    protocol: paragraphs.some((paragraph) => paragraph.wordSpacing?.includes('|'))
+      ? 6
+      : paragraphs.some((paragraph) => wordSpacingSettings(paragraph.wordSpacing))
+        ? 5
+        : runs.some(hasNondefaultNativeCharacter)
+          ? 4
+          : 2,
     id,
     mode: 'greedy-geometry-proof',
     // DOM serialization may spell a literal hard space as &nbsp;. Bind the proof

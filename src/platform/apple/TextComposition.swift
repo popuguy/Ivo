@@ -11,8 +11,10 @@ public final class TextCompositionEngine {
     let bytes: Int
     let flags: Int
     let features: Set<String>
+    let axes: [UInt32: ClosedRange<Double>]
   }
   private struct Snapshot {
+    let text: NSString
     let frames: [Frame]
     let lines: [FrozenLine]
     let responseData: Data
@@ -24,6 +26,9 @@ public final class TextCompositionEngine {
     fontBindings: [String: String] = [:]
   private var fontBytes = 0
   private var snapshots: [String: Snapshot] = [:], snapshotOrder: [String] = [], snapshotBytes = 0
+  // Core Text gives named and interpolated instances a new PostScript name.
+  // Bind only names constructed from the exact packaged face for this request.
+  private var variableInstances: [String: (resourceID: String, coordinates: String)] = [:]
   private var vectorCache: [String: String] = [:], vectorOrder: [String] = [], vectorBytes = 0
   private let unsupportedWordSpaceScript = try! NSRegularExpression(
     pattern: "[^\\p{Latin}\\p{Greek}\\p{Cyrillic}\\p{Common}\\p{Inherited}]")
@@ -47,6 +52,7 @@ public final class TextCompositionEngine {
     let end: Int
     let font: String
     let size: Double
+    let language: String?
     let ligatures: Bool
     let tracking: Double
     let kerning: String?
@@ -56,10 +62,11 @@ public final class TextCompositionEngine {
     let baselineShift: Double?
     let horizontalScale: Double?
     let verticalScale: Double?
+    let variations: [String: Double]?
     let features: [String: Bool]?
     enum CodingKeys: String, CodingKey {
-      case start, end, font, size, ligatures, tracking, kerning, textColor, leading, autoLeading
-      case baselineShift, horizontalScale, verticalScale, features
+      case start, end, font, size, language, ligatures, tracking, kerning, textColor, leading, autoLeading
+      case baselineShift, horizontalScale, verticalScale, features, variations
     }
     init(from decoder: Decoder) throws {
       let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -67,6 +74,7 @@ public final class TextCompositionEngine {
       end = try values.decode(Int.self, forKey: .end)
       font = try values.decode(String.self, forKey: .font)
       size = try values.decode(Double.self, forKey: .size)
+      language = try values.decodeIfPresent(String.self, forKey: .language)
       ligatures = try values.decode(Bool.self, forKey: .ligatures)
       tracking = try values.decode(Double.self, forKey: .tracking)
       kerning = try values.decodeIfPresent(String.self, forKey: .kerning)
@@ -84,6 +92,8 @@ public final class TextCompositionEngine {
       verticalScale =
         values.contains(.verticalScale)
         ? try values.decode(Double.self, forKey: .verticalScale) : nil
+      variations = values.contains(.variations)
+        ? try values.decode([String: Double].self, forKey: .variations) : nil
       features =
         values.contains(.features)
         ? try values.decode([String: Bool].self, forKey: .features) : nil
@@ -106,6 +116,8 @@ public final class TextCompositionEngine {
     let minimum: Double
     let desired: Double
     let maximum: Double
+    let letterMinimum, letterDesired, letterMaximum: Double?
+    let glyphMinimum, glyphDesired, glyphMaximum: Double?
   }
   struct Paragraph: Decodable {
     let start: Int
@@ -143,6 +155,7 @@ public final class TextCompositionEngine {
     let baseline: Double
     let left: Double
     let width: Double
+    let wordPercent, letterPercent, glyphPercent: Double?
   }
   struct RetainedLine: Decodable {
     let start: Int
@@ -182,6 +195,8 @@ public final class TextCompositionEngine {
     let descent: Double
     let line: CTLine
     let hyphen: BreakHyphen?
+    let letterOffsets: LetterOffsets
+    let scaleX: Double
     let bodyWidth: Double
     let originX: Double
   }
@@ -199,7 +214,7 @@ public final class TextCompositionEngine {
   func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
     try require(
-      [1, 2, 3, 4, 5].contains(request.protocol)
+      [1, 2, 3, 4, 5, 6].contains(request.protocol)
         && [
           "greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof",
           "planned-lines-proof",
@@ -222,7 +237,7 @@ public final class TextCompositionEngine {
           request.mode),
       "Composition protocol 4 requires greedy, measured or planned lines")
     try require(
-      request.protocol != 5
+      request.protocol < 5
         || ["measure-lines-proof", "planned-lines-proof"].contains(request.mode),
       "Composition protocol 5 requires measured or planned lines")
     try require(
@@ -264,7 +279,9 @@ public final class TextCompositionEngine {
         frame.minimumFirstBaseline == nil || finite(frame.minimumFirstBaseline!, 0, 14400),
         "Invalid minimum first baseline")
       try require(
-        frame.verticalAlign == nil || ["top", "center", "bottom"].contains(frame.verticalAlign!),
+        ["top", "center", "bottom"].contains(frame.verticalAlign ?? "top")
+          || (frame.verticalAlign == "justify"
+            && ["planned-lines-proof", "measure-lines-proof"].contains(request.mode)),
         "Unsupported vertical alignment")
     }
     try require(!request.spans.isEmpty && request.spans.count <= 30_000, "Invalid source map")
@@ -275,12 +292,14 @@ public final class TextCompositionEngine {
       try require(request.protocol >= 3 && ["planned-lines-proof", "measure-lines-proof"].contains(request.mode)
         && points.count <= 1024, "Invalid automatic hyphenation request")
       var previous = 0
-      func letter(_ unit: unichar) -> Bool {
-        (65...90).contains(unit) || (97...122).contains(unit)
+      let boundaries = Set(graphemeBoundaries(request.text))
+      func letter(_ unit: unichar, allowMark: Bool) -> Bool {
+        guard let scalar = UnicodeScalar(unit) else { return false }
+        return CharacterSet.letters.contains(scalar) || (allowMark && CharacterSet.nonBaseCharacters.contains(scalar))
       }
       for at in points {
-        try require(at > previous && at < length && letter(string.character(at: at - 1))
-          && letter(string.character(at: at)), "Invalid automatic hyphenation boundary")
+        try require(at > previous && at < length && boundaries.contains(at) && letter(string.character(at: at - 1), allowMark: true)
+          && letter(string.character(at: at), allowMark: false), "Invalid automatic hyphenation boundary")
         previous = at
       }
     }
@@ -305,7 +324,20 @@ public final class TextCompositionEngine {
         let value = string.substring(
           with: NSRange(location: paragraph.start, length: paragraph.end - paragraph.start))
         if let spacing = paragraph.wordSpacing {
-          try require(request.protocol == 5, "Word spacing requires composition protocol 5")
+          try require(request.protocol >= 5, "Word spacing requires composition protocol 5")
+          if [
+            spacing.letterMinimum, spacing.letterDesired, spacing.letterMaximum,
+            spacing.glyphMinimum, spacing.glyphDesired, spacing.glyphMaximum,
+          ].contains(where: { $0 != nil }) {
+            guard request.protocol == 6,
+              let lmin = spacing.letterMinimum, let ldes = spacing.letterDesired,
+              let lmax = spacing.letterMaximum,
+              let gmin = spacing.glyphMinimum, let gdes = spacing.glyphDesired,
+              let gmax = spacing.glyphMaximum,
+              finite(lmin, -100, 500), finite(ldes, lmin, 500), finite(lmax, ldes, 500),
+              finite(gmin, 50, 200), finite(gdes, gmin, 200), finite(gmax, gdes, 200)
+            else { throw fail("Invalid nine-field justification settings") }
+          }
           try require(
             finite(spacing.minimum, 0, 1000) && finite(spacing.desired, spacing.minimum, 1000)
               && finite(spacing.maximum, spacing.desired, 1000), "Invalid word-spacing preferences")
@@ -386,6 +418,7 @@ public final class TextCompositionEngine {
       !request.resources.isEmpty && request.resources.count <= 16, "Missing font resources")
     var fonts: [String: CGFont] = [:]
     var fontFeatures: [String: Set<String>] = [:]
+    var fontAxes: [String: [UInt32: ClosedRange<Double>]] = [:]
     var totalBytes = 0
     for resource in request.resources {
       try require(
@@ -416,7 +449,7 @@ public final class TextCompositionEngine {
           }
           cached = CachedFont(
             font: font, postscript: resource.postscript, bytes: bytes.count, flags: flags,
-            features: declaredFeatures(ct))
+            features: declaredFeatures(ct), axes: variationBounds(ct))
           while fontOrder.count >= 64 || fontBytes + bytes.count > 64_000_000 {
             guard let oldest = fontOrder.first else { break }
             fontOrder.removeFirst()
@@ -442,6 +475,7 @@ public final class TextCompositionEngine {
       }
       fonts[resource.id] = face.font
       fontFeatures[resource.id] = face.features
+      fontAxes[resource.id] = face.axes
     }
     try require(!request.runs.isEmpty && request.runs.count <= 10_000, "Invalid runs")
     var position = 0
@@ -449,13 +483,26 @@ public final class TextCompositionEngine {
       try require(
         request.protocol >= 4
           || (run.baselineShift == nil && run.horizontalScale == nil && run.verticalScale == nil
-            && run.features == nil),
+            && run.features == nil && run.variations == nil),
         "Character transforms and OpenType settings require composition protocol 4")
       try require(
         (run.baselineShift == nil || finite(run.baselineShift!, -2000, 2000))
           && (run.horizontalScale == nil || finite(run.horizontalScale!, 10, 1000))
           && (run.verticalScale == nil || finite(run.verticalScale!, 10, 1000)),
         "Invalid character transform")
+      if let language = run.language {
+        try require(language.utf8.count < 64 && language.range(of: "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$", options: .regularExpression) != nil, "Invalid native text language")
+      }
+      if let coordinates = run.variations {
+        try require(coordinates.count <= 16, "Too many font axes")
+        for (tag, value) in coordinates {
+          let bytes = Array(tag.utf8)
+          try require(bytes.count == 4 && bytes.allSatisfy {
+            (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0)
+          } && value.isFinite && fontAxes[run.font]?[axisIdentifier(tag)]?.contains(value) == true,
+            "Unsupported font axis or coordinate: " + tag)
+        }
+      }
       if let features = run.features {
         let supported: Set<String> = [
           "dlig", "smcp", "onum", "tnum", "zero", "frac", "ordn", "salt",
@@ -639,6 +686,21 @@ public final class TextCompositionEngine {
     }
     return tags
   }
+  func axisIdentifier(_ tag: String) -> UInt32 {
+    tag.utf8.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+  }
+  func variationBounds(_ font: CTFont) -> [UInt32: ClosedRange<Double>] {
+    var bounds = [UInt32: ClosedRange<Double>]()
+    for axis in CTFontCopyVariationAxes(font) as? [[String: Any]] ?? [] {
+      if let id = axis[kCTFontVariationAxisIdentifierKey as String] as? NSNumber,
+        let min = axis[kCTFontVariationAxisMinimumValueKey as String] as? Double,
+        let max = axis[kCTFontVariationAxisMaximumValueKey as String] as? Double,
+        min.isFinite && max.isFinite && min <= max {
+        bounds[id.uint32Value] = min...max
+      }
+    }
+    return bounds
+  }
   func characterFont(_ run: TextRun, fonts: [String: CGFont]) -> CTFont {
     var transform = CGAffineTransform(
       scaleX: (run.horizontalScale ?? 100) / 100,
@@ -647,6 +709,11 @@ public final class TextCompositionEngine {
       transform.isIdentity
       ? CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, nil, nil)
       : CTFontCreateWithGraphicsFont(fonts[run.font]!, run.size, &transform, nil)
+    var attributes = [String: Any]()
+    if let axes = run.variations, !axes.isEmpty {
+      attributes[kCTFontVariationAttribute as String] = Dictionary(uniqueKeysWithValues:
+        axes.map { (NSNumber(value: axisIdentifier($0.key)), NSNumber(value: $0.value)) })
+    }
     if var features = run.features, !features.isEmpty {
       // InDesign's proportional oldstyle choice combines figure style and width.
       // Some faces have oldstyle glyphs but no proportional alternate.
@@ -661,9 +728,18 @@ public final class TextCompositionEngine {
           kCTFontOpenTypeFeatureValue as String: features[tag]! ? 1 : 0,
         ] as [String: Any]
       }
-      let descriptor = CTFontDescriptorCreateWithAttributes(
-        [kCTFontFeatureSettingsAttribute: settings] as CFDictionary)
+      attributes[kCTFontFeatureSettingsAttribute as String] = settings
+    }
+    if !attributes.isEmpty {
+      let descriptor = CTFontDescriptorCreateWithAttributes(attributes as CFDictionary)
       font = CTFontCreateCopyWithAttributes(font, run.size, nil, descriptor)
+    }
+    if run.variations != nil, let coordinates = CTFontCopyVariation(font) as? [NSNumber: NSNumber],
+      !coordinates.isEmpty {
+      let key = coordinates.keys.sorted { $0.uint32Value < $1.uint32Value }.map {
+        String($0.uint32Value) + "=" + String(coordinates[$0]!.doubleValue.bitPattern)
+      }.joined(separator: ",")
+      variableInstances[CTFontCopyPostScriptName(font) as String] = (run.font, key)
     }
     return font
   }
@@ -763,6 +839,10 @@ public final class TextCompositionEngine {
           NSAttributedString.Key(kCTForegroundColorAttributeName as String): color(
             run.textColor ?? "#252525"),
         ], range: NSRange(location: run.start, length: run.end - run.start))
+      if let language = run.language {
+        attributed.addAttribute(NSAttributedString.Key(kCTLanguageAttributeName as String), value: language,
+          range: NSRange(location: run.start, length: run.end - run.start))
+      }
       if let shift = run.baselineShift, shift != 0 {
         attributed.addAttribute(
           NSAttributedString.Key(kCTBaselineOffsetAttributeName as String), value: shift,
@@ -868,13 +948,107 @@ public final class TextCompositionEngine {
     }
     return false
   }
+  struct FittedJustification {
+    let word, letter, glyph: Double
+    let condensed, letterOutsidePreference: Bool
+  }
+  func fittedJustification(_ placement: Placement?, policy: WordSpacing?) throws
+    -> FittedJustification?
+  {
+    guard let policy, let gmin = policy.glyphMinimum, let gmax = policy.glyphMaximum,
+      let gdes = policy.glyphDesired, let ldes = policy.letterDesired,
+      let lmin = policy.letterMinimum,
+      let lmax = policy.letterMaximum
+    else {
+      if placement?.wordPercent != nil || placement?.letterPercent != nil
+        || placement?.glyphPercent != nil
+      {
+        throw fail("Unexpected advanced justification placement")
+      }
+      return nil
+    }
+    guard let w = placement?.wordPercent, let l = placement?.letterPercent,
+      let g = placement?.glyphPercent,
+      finite(w, 0, 1e9), finite(l, -100, 1e9), finite(g, gmin, gmax)
+    else {
+      throw fail("Missing or invalid justification placement")
+    }
+    return FittedJustification(
+      word: w, letter: l, glyph: g,
+      condensed: w < policy.desired || l < ldes || g < gdes,
+      letterOutsidePreference: l < lmin - 0.000001 || l > lmax + 0.000001)
+  }
+
+  // Boundaries are stored after each eligible shaped cluster. This preserves
+  // ligatures, combining marks, authored tracking and the original font runs.
+  struct LetterOffsets {
+    var ends: [Int] = []
+    var prefix: [Double] = [0]
+    var total: Double { prefix.last ?? 0 }
+    func through(_ source: Int) -> Double {
+      var low = 0, high = ends.count
+      while low < high {
+        let mid = (low + high) / 2
+        if ends[mid] <= source { low = mid + 1 } else { high = mid }
+      }
+      return prefix[low]
+    }
+  }
+  func letterOffsets(
+    _ line: CTLine, shape: WordSpaceShape, text: NSString,
+    generatedHyphen: Bool, percent: Double
+  ) throws -> LetterOffsets {
+    var result = LetterOffsets()
+    if percent == 0 { return result }
+    var clusters: [Int: Double] = [:]
+    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+      let count = CTRunGetGlyphCount(run)
+      let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+      var indices = [CFIndex](repeating: 0, count: count)
+      var widths = [CGSize](repeating: .zero, count: count)
+      CTRunGetStringIndices(run, CFRange(), &indices)
+      CTRunGetAdvances(run, CFRange(), &widths)
+      let space = try fontSpaceAdvance(font)
+      for i in 0..<count where indices[i] < shape.hangingStart && widths[i].width > 0 {
+        let cluster = text.rangeOfComposedCharacterSequence(at: indices[i]).location
+        if clusters[cluster] == nil { clusters[cluster] = space }
+      }
+    }
+    let starts = clusters.keys.sorted()
+    for i in starts.indices {
+      if i + 1 == starts.count && !generatedHyphen { break }
+      result.ends.append(i + 1 < starts.count ? starts[i + 1] : shape.hangingStart)
+      result.prefix.append(result.total + clusters[starts[i]]! * percent / 100)
+    }
+    return result
+  }
+
   func wordSpaceCapacities(
-    _ shape: WordSpaceShape, line: CTLine, naturalWidth: Double, policy: WordSpacing
+    _ shape: WordSpaceShape, line: CTLine, naturalWidth: Double, policy: WordSpacing,
+    letterBasis: Double
   ) -> [String: Any] {
     // The exact native font's transformed U+0020 advances are the affine slope;
     // tracking stays additive and trailing spaces do not contribute visible width.
     func width(_ percent: Double) -> Double {
       max(0, naturalWidth + shape.nominalSpaceWidth * (percent / 100 - 1))
+    }
+    if let lmin = policy.letterMinimum, let ldes = policy.letterDesired,
+      let lmax = policy.letterMaximum,
+      let gmin = policy.glyphMinimum, let gdes = policy.glyphDesired, let gmax = policy.glyphMaximum
+    {
+      func adjusted(_ w: Double, _ l: Double, _ g: Double) -> Double {
+        max(
+          0,
+          (naturalWidth + shape.nominalSpaceWidth * (w / 100 - 1) + letterBasis * l / 100) * g / 100
+        )
+      }
+      return [
+        "minimumWidth": adjusted(policy.minimum, lmin, gmin),
+        "desiredWidth": adjusted(policy.desired, ldes, gdes),
+        "maximumWidth": adjusted(policy.maximum, lmax, gmax), "eligibleGaps": shape.gapCount,
+        "nominalSpaceWidth": shape.nominalSpaceWidth, "letterBasis": letterBasis,
+        "physicalMinimum": adjusted(0, lmin, gmin),
+      ]
     }
     return [
       "minimumWidth": width(policy.minimum), "desiredWidth": width(policy.desired),
@@ -1171,7 +1345,8 @@ public final class TextCompositionEngine {
         let shape = try wordSpaceShape(
           attributed, text: string, start: candidate.start, contentEnd: end)
         row["wordSpacing"] = wordSpaceCapacities(
-          shape, line: line, naturalWidth: measuredWidth, policy: policy)
+          shape, line: line, naturalWidth: measuredWidth, policy: policy,
+          letterBasis: policy.letterDesired == nil ? 0 : try letterOffsets(line, shape: shape, text: string, generatedHyphen: automaticEnds.contains(candidate.end), percent: 100).total)
       }
       rows[index] = row
     }
@@ -1308,7 +1483,10 @@ public final class TextCompositionEngine {
           alignment.hasPrefix("justify")
           && (!paragraphLastLine || alignment == "justify-all")
         let hyphen = automaticEnds.contains(end) ? try breakHyphen(base, at: end) : nil
-        let bodyArea = availableWidth - (hyphen?.advance ?? 0)
+        let fitted = try fittedJustification(placement, policy: paragraph?.wordSpacing)
+        let scaleX = (fitted?.glyph ?? 100) / 100
+        var letters = LetterOffsets()
+        let bodyArea = availableWidth / scaleX - (hyphen?.advance ?? 0)
         var wordSpacingRow: [String: Any]?
         var collapsedShape: WordSpaceShape?
         var collapsedEdge: Double?
@@ -1322,24 +1500,29 @@ public final class TextCompositionEngine {
           let nominal = shape.nominalSpaceWidth
           let desired = max(0, visibleWidth + nominal * (policy.desired / 100 - 1))
           let minimum = max(0, visibleWidth + nominal * (policy.minimum / 100 - 1))
+          if let fitted {
+            letters = try letterOffsets(
+              original, shape: shape, text: canonicalString,
+              generatedHyphen: hyphen != nil, percent: fitted.letter)
+          }
           let condensesLast =
-            alignment.hasPrefix("justify") && paragraphLastLine
-            && alignment != "justify-all" && desired > bodyArea
+            alignment.hasPrefix("justify") && paragraphLastLine && alignment != "justify-all"
+            && (fitted?.condensed ?? (desired > bodyArea))
           let adjustsToArea = justified || condensesLast
           let target = adjustsToArea ? bodyArea : desired
-          if condensesLast {
+          if fitted == nil && condensesLast {
             try require(
               minimum <= bodyArea + 0.000001,
               "Final justified line exceeds its minimum word-space preference")
           }
-          if nominal > 0 && adjustsToArea {
+          if fitted == nil && nominal > 0 && adjustsToArea {
             try require(
               visibleWidth - nominal <= bodyArea + 0.000001,
               "Justified line exceeds its zero-word-space physical floor")
           }
           let percentage =
-            nominal > 0
-            ? policy.desired + (target - desired) / nominal * 100 : policy.desired
+            fitted?.word
+            ?? (nominal > 0 ? policy.desired + (target - desired) / nominal * 100 : policy.desired)
           try require(
             percentage.isFinite && percentage >= -0.000001,
             "Invalid solved native word spacing")
@@ -1347,7 +1530,8 @@ public final class TextCompositionEngine {
             attributed, text: canonicalString, shape: shape, percent: max(0, percentage),
             collapseTrailing: adjustsToArea, offset: indent)
           var fallback = false
-          if justified && nominal == 0 && visibleWidth > 0.000001 && visibleWidth < bodyArea,
+          if fitted == nil && justified && nominal == 0 && visibleWidth > 0.000001
+            && visibleWidth < bodyArea,
             canSpreadGlyphs(original, shape: shape),
             let expanded = justifyFixedPair(
               attributed, text: canonicalString, shape: shape, line: line,
@@ -1361,7 +1545,7 @@ public final class TextCompositionEngine {
           }
           width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
           visibleWidth = max(0, width - CTLineGetTrailingWhitespaceWidth(line))
-          if nominal > 0 {
+          if fitted == nil && nominal > 0 {
             try require(
               abs(visibleWidth - target) < 0.000001,
               "Native word spacing did not realize its measured target")
@@ -1381,6 +1565,11 @@ public final class TextCompositionEngine {
               || percentage > policy.maximum + 0.000001,
             "fallback": fallback ? "single-word" : NSNull(),
           ]
+          if let fitted {
+            wordSpacingRow?["letterPercentage"] = fitted.letter
+            wordSpacingRow?["glyphPercentage"] = fitted.glyph
+            if fitted.letterOutsidePreference { wordSpacingRow?["offPreference"] = true }
+          }
           if let collapsed = collapsedShape {
             wordSpacingRow!["collapsedTrailingStart"] = collapsed.trailingStart
           }
@@ -1394,11 +1583,18 @@ public final class TextCompositionEngine {
         let flush = horizontalFlush(
           alignment, last: paragraphLastLine, placements: request.placements, index: output.count,
           paragraph: paragraph)
-        let originX = indent + CTLineGetPenOffsetForFlush(line, flush, bodyArea)
+        let originX =
+          indent
+          + (paragraph?.wordSpacing?.glyphDesired == nil
+            ? CTLineGetPenOffsetForFlush(line, flush, bodyArea)
+            : Double(flush)
+              * (availableWidth - (visibleWidth + letters.total + (hyphen?.advance ?? 0)) * scaleX))
+        width = (width + letters.total) * scaleX
+        visibleWidth = (visibleWidth + letters.total) * scaleX
         let bodyWidth = visibleWidth
         if let hyphen = hyphen {
-          width += hyphen.advance
-          visibleWidth += hyphen.advance
+          width += hyphen.advance * scaleX
+          visibleWidth += hyphen.advance * scaleX
         }
         if contentEnd == position,
           let blank = request.runs.first(where: { $0.start <= position && $0.end > position })
@@ -1459,7 +1655,8 @@ public final class TextCompositionEngine {
         }
         if placement != nil {
           try require(
-            baseline + Double(descent) <= frame.height + 0.000001,
+            baseline + ((frame.verticalAlign ?? "top") == "top" ? Double(descent) : 0)
+              <= frame.height + 0.000001,
             "Planned line exceeds frame height")
         } else if baseline + Double(descent) > frame.height {
           break
@@ -1472,10 +1669,10 @@ public final class TextCompositionEngine {
             "Explicit line exceeds its indented line area")
         }
         var runRows: [[String: Any]] = []
-        let reuseDetails = retained[position].map {
+        let reuseDetails = request.protocol != 6 && (retained[position].map {
           $0.end == end && $0.availableWidth == availableWidth && $0.originX == originX
             && $0.width == width
-        } ?? false
+        } ?? false)
         let nativeRuns = CTLineGetGlyphRuns(line) as! [CTRun]
         if reuseDetails {
           // Freeze the actual new CTLine for PDF. The editor already owns the
@@ -1488,7 +1685,7 @@ public final class TextCompositionEngine {
           let attrs = CTRunGetAttributes(run) as NSDictionary
           let font = attrs[kCTFontAttributeName] as! CTFont
           let name = CTFontCopyPostScriptName(font) as String
-          if !known.contains(name) {
+          if !known.contains(name) && variableInstances[name] == nil {
             try require(request.allowFallback, "Unpackaged fallback font: " + name)
             diagnostics.insert("unpackaged-fallback:" + name)
           }
@@ -1516,8 +1713,16 @@ public final class TextCompositionEngine {
             let b = edges.first(where: { $0 > a }) ?? source.location + source.length
             var row: [String: Any] = [
               "glyph": Int(glyphs[i]), "index": a, "end": b,
-              "position": [Double(positions[i].x) + originX, Double(positions[i].y)],
-              "advance": [Double(advances[i].width), Double(advances[i].height)],
+              "position": [
+                (Double(positions[i].x) + letters.through(a)) * scaleX + originX,
+                Double(positions[i].y),
+              ],
+              "advance": [
+                (Double(advances[i].width)
+                  + (i + 1 == n || indices[i + 1] != a
+                    ? letters.through(b) - letters.through(a) : 0))
+                  * scaleX, Double(advances[i].height),
+              ],
               "sourceRanges": logicalRanges(a, b, request.spans),
             ]
             if request.includeVectors == true {
@@ -1540,10 +1745,10 @@ public final class TextCompositionEngine {
             return row
           }
           if let hyphen = hyphen, source.location + source.length == end {
-            let x = originX + bodyWidth + hyphen.offset.x
+            let x = originX + bodyWidth + hyphen.offset.x * scaleX
             var ink: [String: Any] = [
               "glyph": Int(hyphen.glyph), "index": end, "end": end, "generated": true,
-              "position": [x, hyphen.offset.y], "advance": [hyphen.advance, 0], "sourceRanges": [],
+              "position": [x, hyphen.offset.y], "advance": [hyphen.advance * scaleX, 0], "sourceRanges": [],
             ]
             if request.includeVectors == true {
               let id = vectorIdentity(font: hyphen.font, glyph: hyphen.glyph, request: request)
@@ -1622,11 +1827,16 @@ public final class TextCompositionEngine {
             primary = CGFloat(edge)
             secondary = primary
           }
-          if hyphen != nil && index == end {
-            primary = visibleWidth
-            secondary = primary
-          }
-          return [
+            let nativeHit =
+              contentEnd == position
+              ? position : CTLineGetStringIndexForPosition(line, CGPoint(x: primary, y: 0))
+            primary = (primary + letters.through(boundary)) * scaleX
+            secondary = (secondary + letters.through(boundary)) * scaleX
+            if hyphen != nil && index == end {
+              primary = visibleWidth
+              secondary = primary
+            }
+            return [
             "index": index, "primary": Double(primary) + originX,
             "secondary": Double(secondary) + originX,
             "logicalCandidates": logicalCandidates(index, request.spans),
@@ -1635,14 +1845,14 @@ public final class TextCompositionEngine {
               : contentEnd == position
                 ? "empty-paragraph-origin"
                 : originalWordSpaceLine != nil ? "native-word-space" : "native-line",
-            "hitIndex": hyphen != nil && index == end ? end : contentEnd == position
-              ? position : CTLineGetStringIndexForPosition(line, CGPoint(x: primary, y: 0)),
+            "hitIndex": hyphen != nil && index == end ? end : nativeHit,
           ]
         }
         frozen.append(
           FrozenLine(
             page: page, start: position, end: end, baseline: baseline, ascent: Double(ascent),
-            descent: Double(descent), line: line, hyphen: hyphen, bodyWidth: bodyWidth, originX: originX))
+            descent: Double(descent), line: line, hyphen: hyphen, letterOffsets: letters,
+            scaleX: scaleX, bodyWidth: bodyWidth, originX: originX))
         var row: [String: Any] = [
           "frame": frame.id, "page": page, "start": position, "end": end, "contentEnd": contentEnd,
           "baseline": baseline, "ascent": Double(ascent), "descent": Double(descent),
@@ -1670,7 +1880,7 @@ public final class TextCompositionEngine {
       }
       if let last = frozen.last, frozen.count > frameStart && request.mode != "planned-lines-proof"
       {
-        let remaining = max(0, frame.height - last.baseline - last.descent)
+        let remaining = max(0, frame.height - last.baseline)
         let offset =
           frame.verticalAlign == "bottom"
           ? remaining : frame.verticalAlign == "center" ? remaining / 2 : 0
@@ -1723,13 +1933,16 @@ public final class TextCompositionEngine {
       let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
       let name = CTFontCopyPostScriptName(font) as String
       try require(
-        request.allowFallback || known.contains(name), "Unpackaged fallback font: " + name)
+        request.allowFallback || known.contains(name) || variableInstances[name] != nil, "Unpackaged fallback font: " + name)
     }
   }
   func vectorIdentity(font: CTFont, glyph: CGGlyph, request: Request) -> String {
     let name = CTFontCopyPostScriptName(font) as String
     let identity: String
-    if let resource = request.resources.first(where: { $0.postscript == name }) {
+    if let instance = variableInstances[name],
+      let resource = request.resources.first(where: { $0.id == instance.resourceID }) {
+      identity = resource.digest + ":axes:" + instance.coordinates
+    } else if let resource = request.resources.first(where: { $0.postscript == name }) {
       identity = resource.digest
     } else {
       // System fallbacks are explicit diagnostics, never misidentified as packaged faces.
@@ -1795,6 +2008,7 @@ public final class TextCompositionEngine {
     defer { lock.unlock() }
     try require(input.count <= 30_000_000, "Composition request exceeds bounds")
     let request = try JSONDecoder().decode(Request.self, from: input)
+    variableInstances.removeAll(keepingCapacity: true)
     let fonts = try validate(request)
     var canonical = try JSONSerialization.jsonObject(with: input) as! [String: Any]
     canonical["resources"] = request.resources.map {
@@ -1852,12 +2066,84 @@ public final class TextCompositionEngine {
       }
       try require(cost <= 64_000_000, "Composition snapshot exceeds bounds")
       snapshots[token] = Snapshot(
-        frames: request.frames, lines: retained, responseData: output, requestDigest: digest(input),
+        text: request.text as NSString, frames: request.frames, lines: retained, responseData: output, requestDigest: digest(input),
         cost: cost)
       snapshotOrder.append(token)
       snapshotBytes += cost
     }
     return output
+  }
+
+  private func drawLetterSpacedRun(
+    _ run: CTRun, text: NSString, offsets: LetterOffsets, context: CGContext
+  ) {
+    let count = CTRunGetGlyphCount(run)
+    let attrs = CTRunGetAttributes(run) as NSDictionary
+    let font = attrs[kCTFontAttributeName] as! CTFont
+    var indices = [CFIndex](repeating: 0, count: count)
+    var glyphs = [CGGlyph](repeating: 0, count: count)
+    var positions = [CGPoint](repeating: .zero, count: count)
+    CTRunGetStringIndices(run, CFRange(), &indices)
+    CTRunGetGlyphs(run, CFRange(), &glyphs)
+    CTRunGetPositions(run, CFRange(), &positions)
+    let matrix = CTRunGetTextMatrix(run)
+    for i in 0..<count {
+      positions[i] = positions[i].applying(matrix)
+      positions[i].x += offsets.through(indices[i])
+    }
+    if let fill = attrs[kCTForegroundColorAttributeName] {
+      context.setFillColor(fill as! CGColor)
+    }
+    let range = CTRunGetStringRange(run)
+    var batch = 0
+    func draw(_ start: Int, _ end: Int) {
+      guard start < end else { return }
+      glyphs.withUnsafeBufferPointer { ids in
+        positions.withUnsafeBufferPointer { points in
+          CTFontDrawGlyphs(
+            font, ids.baseAddress! + start, points.baseAddress! + start, end - start, context)
+        }
+      }
+    }
+    for i in 0..<count {
+      let start = indices[i]
+      let end = i + 1 < count ? indices[i + 1] : range.location + range.length
+      guard end > start else { continue }
+      var character = text.character(at: start), nominal = CGGlyph()
+      let direct =
+        end - start == 1 && CTFontGetGlyphsForCharacters(font, &character, &nominal, 1)
+        && nominal == glyphs[i]
+      if !direct {
+        draw(batch, i)
+        let source = text.substring(with: NSRange(location: start, length: end - start))
+        // Core Graphics can encode "ffi" as a single compatibility
+        // scalar. Drawing a matching one-glyph source line lets Core
+        // Text supply the original ActualText for the publication map.
+        let cluster = CTLineCreateWithAttributedString(
+          NSAttributedString(
+            string: source,
+            attributes: CTRunGetAttributes(run) as! [NSAttributedString.Key: Any]))
+        if let part = (CTLineGetGlyphRuns(cluster) as! [CTRun]).first,
+          CTLineGetGlyphCount(cluster) == 1
+        {
+          var id = CGGlyph(), point = CGPoint.zero
+          CTRunGetGlyphs(part, CFRange(location: 0, length: 1), &id)
+          CTRunGetPositions(part, CFRange(location: 0, length: 1), &point)
+          if id == glyphs[i] {
+            point = point.applying(CTRunGetTextMatrix(part))
+            context.textPosition = CGPoint(x: positions[i].x - point.x, y: positions[i].y - point.y)
+            CTLineDraw(cluster, context)
+            context.textPosition = .zero
+          } else {
+            draw(i, i + 1)
+          }
+        } else {
+          draw(i, i + 1)
+        }
+        batch = i + 1
+      }
+    }
+    draw(batch, count)
   }
 
   /// Export the very same immutable lines used for displayed geometry. No paths or margins.
@@ -1889,15 +2175,27 @@ public final class TextCompositionEngine {
       context.textMatrix = .identity
       context.setTextDrawingMode(invisible ? .invisible : .fill)
       for line in snapshot.lines where line.page == page {
-        context.textPosition = CGPoint(
-          x: margin + line.originX, y: box.height - margin - line.baseline)
-        CTLineDraw(line.line, context)
+        context.saveGState()
+        context.translateBy(x: margin + line.originX, y: box.height - margin - line.baseline)
+        context.scaleBy(x: line.scaleX, y: 1)
+        context.textPosition = .zero
+        if line.letterOffsets.ends.isEmpty {
+          CTLineDraw(line.line, context)
+        } else {
+          for run in CTLineGetGlyphRuns(line.line) as! [CTRun] {
+            drawLetterSpacedRun(
+              run, text: snapshot.text, offsets: line.letterOffsets, context: context)
+          }
+        }
+        context.restoreGState()
         if !invisible, let hyphen = line.hyphen,
           let path = CTFontCreatePathForGlyph(hyphen.font, hyphen.glyph, nil)
         {
           context.saveGState()
-          context.translateBy(x: margin + line.originX + line.bodyWidth + hyphen.offset.x,
+          context.translateBy(
+            x: margin + line.originX + line.bodyWidth + hyphen.offset.x * line.scaleX,
             y: box.height - margin - line.baseline + hyphen.offset.y)
+          context.scaleBy(x: line.scaleX, y: 1)
           context.setFillColor(hyphen.color)
           context.addPath(path)
           context.fillPath()

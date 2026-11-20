@@ -1,3 +1,4 @@
+import { verifyPortableTypeSpecimens } from './portable-type.mjs';
 import { createHash } from 'node:crypto';
 import { inspectFont } from '../../../src/domain/text/fonts.js';
 import { markTypographyVersion } from '../../../src/domain/documents/capabilities.js';
@@ -447,6 +448,13 @@ print(pdf.page(at: 0)!.string ?? "")
       'typesetting',
       'Generated caption ink entered selectable PDF text',
     );
+    const portableType = await verifyPortableTypeSpecimens({
+      root,
+      profile,
+      captionReader,
+      renderPDF,
+      nativeCompositions,
+    });
     const unequalDoc = createSceneDocument('Unequal native paragraph PDF', {
         width: 420,
         height: 360,
@@ -854,6 +862,53 @@ print(String(data: summaryData, encoding: .utf8)!)
     }
     const nativeWrapPDFInspection = await inspectWrappedFile('native-wrap.pdf');
 
+    // A single word wraps to the right of a left-hand object when centered;
+    // at Bottom it returns left and its real descenders print below the frame.
+    const alignedWrapPDFs = {};
+    for (const alignment of ['center', 'bottom', 'justify']) {
+      const document = structuredClone(nativeWrapDocument);
+      document.blocks = document.blocks.filter((b) => b.id !== clippedImage.id);
+      const frame = document.blocks.find((b) => b.id === wrapFrame.id);
+      Object.assign(frame, {
+        x: 20,
+        y: 20,
+        w: 200,
+        h: 180,
+        fontSize: 16,
+        frameOptions: {
+          firstBaseline: 'fixed',
+          minimumFirstBaseline: 16,
+          verticalAlign: alignment,
+        },
+      });
+      const obstacle = document.blocks.find((b) => b.id === wrapObject.id);
+      Object.assign(obstacle, { x: 20, y: 90, w: 140, h: 55 });
+      setTextWrap(document, [obstacle.id], {
+        mode: 'bounds',
+        offsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
+      if (alignment === 'justify') {
+        setTextWrap(document, [obstacle.id], { mode: 'none' });
+        frame.frameOptions.paragraphSpacingLimit = 12;
+        document.textFlows[0].html = '<p>cut<br>hem</p><p>sew<br>grading</p>';
+        markTypographyVersion(document);
+      } else document.textFlows[0].html = '<p>grading</p>';
+      const pdf = await renderPDF(createPDFSnapshot([document], [], document.id), {
+        project: root,
+      });
+      assert.deepEqual(pdf.manifest.warnings, []);
+      const filename = path.join(output, 'native-wrap-' + alignment + '.pdf');
+      await writeFile(filename, pdf.bytes);
+      const inspected = await promisify(execFile)('xcrun', [
+        'swift',
+        '-module-cache-path',
+        path.join(profile, 'swift-cache'),
+        path.join(root, 'tests/runtime/pdf/inspect-aligned-wrap.swift'),
+        filename,
+        alignment,
+      ]);
+      alignedWrapPDFs[alignment] = JSON.parse(inspected.stdout);
+    }
     // Keep the composite Box/Shape proof above. Exercise signed ink in its own Box layout.
     const boxDocument = structuredClone(nativeWrapDocument);
     setTextWrap(boxDocument, [clippedImage.id], { mode: 'none' });
@@ -955,6 +1010,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           pages: 3,
           selectableFontSource: layout.font,
           pageDimensionsExact: true,
+          ...portableType,
           internalAndExternalLinks: true,
           maskedLinkOmitted: true,
           sourceSnapshotUnchanged: true,
@@ -972,6 +1028,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           wrapPDFInspection,
           nativeWrappedTextSourceAndExclusion: true,
           nativeWrapPDFInspection,
+          alignedWrapPDFs,
           nativeBoxInkPDFInspection,
           signedWrapPDFs,
           browserJumpInspection,

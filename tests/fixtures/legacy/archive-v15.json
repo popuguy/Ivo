@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 15,
+  "documents": [
+    {
+      "id": "composition-v9-document",
+      "title": "Paragraph hyphenation before letter and glyph justification",
+      "kicker": "",
+      "subtitle": "",
+      "tags": [],
+      "aliases": [],
+      "blocks": [
+        {
+          "id": "composition-v9-frame",
+          "type": "text",
+          "x": 40.125,
+          "y": 51.75,
+          "w": 300.5,
+          "h": 220.25,
+          "html": "",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "cmu-serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "pageId": "composition-v9-page",
+          "layerId": "composition-v9-layer",
+          "ignoreTextWrap": false,
+          "frameOptions": {
+            "columns": 1,
+            "gutter": 12,
+            "insetTop": 8,
+            "insetRight": 10,
+            "insetBottom": 8,
+            "insetLeft": 10,
+            "corner": 0,
+            "verticalAlign": "top",
+            "firstBaseline": "cap-height",
+            "minimumFirstBaseline": 17.125,
+            "fill": "none",
+            "stroke": "none",
+            "strokeWidth": 0
+          },
+          "textFlowId": "composition-v9-flow"
+        }
+      ],
+      "createdAt": "2026-11-19T12:25:29.028Z",
+      "updatedAt": "2026-11-19T12:25:29.028Z",
+      "layout": {
+        "columns": 12,
+        "rows": 38
+      },
+      "version": 1,
+      "template": "blank",
+      "publishing": {
+        "version": 1,
+        "layers": [
+          {
+            "id": "composition-v9-layer",
+            "name": "Layer 1",
+            "color": "#4b80ff",
+            "visible": true,
+            "locked": false
+          }
+        ],
+        "paragraphStyles": [],
+        "characterStyles": [],
+        "parents": []
+      },
+      "canvasVersion": 14,
+      "pages": [
+        {
+          "id": "composition-v9-page",
+          "name": "Page 1",
+          "width": 612,
+          "height": 792
+        }
+      ],
+      "textFlows": [
+        {
+          "id": "composition-v9-flow",
+          "html": "<p>An <em>existing paragraph</em> retains its original settings.</p>",
+          "frameIds": [
+            "composition-v9-frame"
+          ],
+          "style": {
+            "textStyle": "cmu-serif",
+            "fontSize": 16,
+            "align": "left",
+            "wordSpacing": "80:100:133",
+            "keepWithNext": true,
+            "keepNextLines": 3,
+            "paragraphStart": "odd",
+            "hyphenLimit": 3
+          },
+          "automaticPages": true,
+          "deleteEmptyPages": true,
+          "autoPages": [],
+          "composition": {
+            "version": 1,
+            "composer": "paragraph"
+          }
+        }
+      ],
+      "extensions": {
+        "kept": {
+          "description": "Original frame policy and canonical flow"
+        }
+      }
+    }
+  ],
+  "assets": []
+}

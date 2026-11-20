@@ -1,8 +1,9 @@
+import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 15;
-export const CURRENT_CANVAS_VERSION = 14;
+export const CURRENT_ARCHIVE_VERSION = 16;
+export const CURRENT_CANVAS_VERSION = 15;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -120,6 +121,33 @@ export function hasWordSpacing(doc) {
   return doc.canvasVersion === 9 || hasAuthoredTextSetting(doc, owns, markup);
 }
 
+export function hasJustification(doc) {
+  return (
+    doc.canvasVersion === 15 ||
+    [
+      ...(doc.blocks || []),
+      ...(doc.publishing?.parents || []).flatMap((parent) => parent.blocks || []),
+    ].some(
+      ({ frameOptions }) =>
+        frameOptions?.verticalAlign === 'justify' ||
+        frameOptions?.paragraphSpacingLimit !== undefined,
+    ) ||
+    hasAuthoredTextSetting(
+      doc,
+      (settings) =>
+        [settings?.wordSpacing, settings?.textOverrides?.wordSpacing].some(
+          (value) => typeof value === 'string' && value.includes('|'),
+        ),
+      (html) => {
+        if (!/\bdata-ivo-wordspace\s*=/i.test(html || '')) return false;
+        for (const [tag] of html.matchAll(/<[^>]+>/g))
+          if (attribute(tag, 'data-ivo-wordspace')?.includes('|')) return true;
+        return false;
+      },
+    )
+  );
+}
+
 export function hasExtendedKeeps(doc) {
   const owns = (value) =>
     value &&
@@ -217,6 +245,7 @@ function hasAuthoredTextSetting(doc, owns, markup) {
 }
 
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasJustification)) return 16;
   if (documents.some(hasHyphenationSettings)) return 15;
   if (documents.some(hasNoBreak)) return 14;
   if (documents.some(hasSplitLineKeeps)) return 13;
@@ -238,6 +267,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasJustification(document)) {
+    document.canvasVersion = 15;
+    return document;
+  }
   if (hasHyphenationSettings(document)) {
     document.canvasVersion = 14;
     return document;

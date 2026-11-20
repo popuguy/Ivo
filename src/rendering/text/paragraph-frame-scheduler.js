@@ -1,3 +1,4 @@
+import { alignWrappedColumns } from './vertical-wrap-alignment.js';
 import { retainedHyphenCount } from '../../domain/text/line-hyphenation.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
@@ -14,6 +15,9 @@ const frameShape = (column) => ({
   firstBaseline: column.firstBaseline || 'ascent',
   minimumFirstBaseline: column.minimumFirstBaseline || 0,
   verticalAlign: column.verticalAlign || 'top',
+  ...(column.verticalAlign === 'justify'
+    ? { paragraphSpacingLimit: column.paragraphSpacingLimit || 0 }
+    : {}),
   ...(column.obstacles ? { obstacles: column.obstacles } : {}),
 });
 
@@ -31,7 +35,8 @@ export async function fitFrameParagraphs(
     wrapped = columns.some((column) => column.obstacles?.length);
   while (columns.length < 128) columns.push({ ...columns.at(-1), obstacles: [] });
   const columnKey = JSON.stringify(actualColumns.map(frameShape));
-  let states = 0,
+  let offsetKey = '',
+    states = 0,
     candidates = 0,
     fitProbes = 0,
     keepProbes = 0;
@@ -77,6 +82,7 @@ export async function fitFrameParagraphs(
         JSON.stringify([
           mode,
           columnKey,
+          offsetKey,
           layout,
           cursor,
           previousAfter,
@@ -135,39 +141,76 @@ export async function fitFrameParagraphs(
       failed(chosen.reason);
     return chosen;
   };
-  const scheduled = await scheduleParagraphKeeps(paragraphs, {
+  const schedule = () =>
+    scheduleParagraphKeeps(paragraphs, {
       fit,
       actualFrameCount: actualColumns.length,
       frameCount: columns.length,
       startLocations: paragraphs.some((p) => p.keep.paragraphStart)
         ? paragraphStartLocations(actualColumns, columns.length)
         : undefined,
-    }),
-    lines = scheduled.lines;
+    });
+  const initial = await schedule();
+  const scheduled = await alignWrappedColumns(columns, initial, async (offsets) => {
+    offsetKey = JSON.stringify(offsets);
+    for (const [index, offset] of offsets.entries()) columns[index].alignmentOffset = offset ?? 0;
+    try {
+      return await schedule();
+    } catch (error) {
+      // A lower starting position may strand a kept paragraph in the last column.
+      if (
+        error instanceof UnsupportedComposition &&
+        error.feature === 'paragraph keep scheduling beyond planned frame capacity'
+      )
+        return null;
+      throw error;
+    }
+  });
+  const lines = scheduled.lines;
   if (lines.length > MAX_LINES) failed('flow line budget');
+  const paragraphStarts = new Set(paragraphs.map((p) => p.start));
   // Cache rows remain top-aligned; only owned copies receive final translation.
   for (const [index, column] of columns.entries()) {
     const own = lines.filter((line) => line.frame === index);
-    if (!own.length) continue;
+    if (!own.length || column.obstacles?.length) continue;
     const last = own.at(-1),
-      remaining = Math.max(0, column.height - last.baseline - last.descent),
+      remaining = Math.max(0, column.height - last.baseline),
       offset =
         column.verticalAlign === 'bottom'
           ? remaining
           : column.verticalAlign === 'center'
             ? remaining / 2
             : 0;
-    if (offset) for (const line of own) line.baseline += offset;
+    if (column.verticalAlign === 'justify' && own.length > 1) {
+      const boundaries = own.slice(1).filter((line) => paragraphStarts.has(line.start)).length,
+        paragraphExtra = boundaries
+          ? Math.min(column.paragraphSpacingLimit, remaining / boundaries)
+          : 0,
+        lineExtra = (remaining - boundaries * paragraphExtra) / (own.length - 1);
+      let shift = 0;
+      for (let i = 1; i < own.length; i++) {
+        if (paragraphStarts.has(own[i].start)) shift += paragraphExtra;
+        shift += lineExtra;
+        own[i].baseline = Math.min(column.height, own[i].baseline + shift);
+      }
+    } else if (offset) for (const line of own) line.baseline += offset;
   }
   return {
     ...(scheduled.oversetStart === undefined ? {} : { oversetStart: scheduled.oversetStart }),
     breaks: lines.map((line) => line.end),
-    placements: lines.map(({ end, frame, baseline, left, width }) => ({
+    placements: lines.map(({ end, frame, baseline, left, width, wordSpacing }) => ({
       end,
       frame,
       baseline,
       left,
       width,
+      ...(wordSpacing?.glyphPercentage !== undefined
+        ? {
+            wordPercent: wordSpacing.percentage,
+            letterPercent: wordSpacing.letterPercentage,
+            glyphPercent: wordSpacing.glyphPercentage,
+          }
+        : {}),
     })),
     policy: paragraphs.some((paragraph) => paragraph.wordSpacing)
       ? mode === 'single-line'
@@ -186,6 +229,12 @@ export async function fitFrameParagraphs(
                   end: line.end,
                   visibleWidth: line.wordSpacing.visibleWidth,
                   percentage: line.wordSpacing.percentage,
+                  ...(line.wordSpacing.glyphPercentage !== undefined
+                    ? {
+                        letterPercentage: line.wordSpacing.letterPercentage,
+                        glyphPercentage: line.wordSpacing.glyphPercentage,
+                      }
+                    : {}),
                   eligibleGaps: line.wordSpacing.eligibleGaps,
                   nominalSpaceWidth: line.wordSpacing.nominalSpaceWidth,
                   justified: line.wordSpacing.justified,

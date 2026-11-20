@@ -30,6 +30,11 @@ export function patchComposedFrame(element, before, after) {
     const old = before.columns[i].paint,
       next = after.columns[i].paint,
       svg = node.firstElementChild;
+    if (before.columns[i].bottomOverhang !== after.columns[i].bottomOverhang) {
+      const overhang = after.columns[i].bottomOverhang || 0;
+      node.toggleAttribute('data-bottom-overhang', overhang > 0);
+      node.style.setProperty('--ink-bottom', overhang + 'px');
+    }
     const defs = svg.firstElementChild;
     for (const path of [...defs.children]) if (!next.outlines.has(path.id)) path.remove();
     for (const [id, d] of next.outlines) {

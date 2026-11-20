@@ -21,6 +21,8 @@ export function nativeWrapColumns(document, columns) {
  * Inverse shapes still require the entire glyph band to fit inside the path. */
 export function validateNativeWrapping(source, columns) {
   if (!columns.some((column) => column.obstacles?.length)) return;
+  if (columns.some((column) => column.obstacles?.length && column.verticalAlign === 'justify'))
+    throw new UnsupportedComposition('vertical Justify in a column with wrapping objects');
   if (
     columns.some((column) => column.obstacles?.some((obstacle) => obstacle.invert)) &&
     source.runs.some((run) => (run.baselineShift ?? 0) !== 0 || (run.verticalScale ?? 100) !== 100)
@@ -28,8 +30,6 @@ export function validateNativeWrapping(source, columns) {
     throw new UnsupportedComposition(
       'shifted or vertically scaled ink inside an inverted wrap contour',
     );
-  if (columns.some((column) => column.obstacles?.length && column.verticalAlign !== 'top'))
-    throw new UnsupportedComposition('native wrapping with vertically aligned exclusion columns');
   for (const paragraph of source.paragraphs) {
     if (source.text.slice(paragraph.start, paragraph.end).includes('\t'))
       throw new UnsupportedComposition('native wrapping with tab characters');

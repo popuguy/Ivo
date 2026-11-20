@@ -1,5 +1,8 @@
+import { BUNDLED_FONT_FEATURES } from '../../domain/text/bundled-font-features.js';
+
 /** Public, licensed source font bytes used by the composition boundary. */
 export const SHIPPED_TEXT_FONT_FILES = Object.freeze({
+  geist: 'geist/Geist-Variable.ttf',
   'cmu-regular': 'cmu-serif/cmunrm.ttf',
   'cmu-italic': 'cmu-serif/cmunti.ttf',
   'cmu-bold': 'cmu-serif/cmunbx.ttf',
@@ -34,10 +37,16 @@ const romanFeatures = Object.freeze([
   ]);
 
 /** Exact metadata from the committed public bytes, available before any font I/O.
- * The shipped-font-metadata test independently rehashes and reinspects all four
+ * The shipped-font-metadata test independently rehashes and reinspects all bundled
  * faces so changes to a font cannot leave synchronous admission using stale data.
  */
 export const SHIPPED_TEXT_FONT_METADATA = Object.freeze({
+  geist: Object.freeze({
+    digest: 'b17278190bd0c2be811fe2c3060be95f1aa40cd34e237478743d7c100c28005d',
+    postscript: 'Geist-Regular',
+    features: Object.freeze([...BUNDLED_FONT_FEATURES.geist.regular]),
+    axes: Object.freeze([Object.freeze({ tag: 'wght', min: 100, default: 400, max: 900 })]),
+  }),
   'cmu-regular': Object.freeze({
     digest: 'cf2b28d1f36b680bc5851196c0da97d32ed564d8a703a9636f094092934babe6',
     postscript: 'CMUSerif-Roman',

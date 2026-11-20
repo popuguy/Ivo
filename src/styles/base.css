@@ -3044,6 +3044,17 @@ dialog li {
   display: block;
   overflow: hidden;
 }
+.native-flow-column {
+  overflow: hidden;
+}
+.canvas-text:has(> [data-bottom-overhang]),
+.native-flow-column[data-bottom-overhang],
+.native-flow-column[data-bottom-overhang] > .composed-text {
+  overflow: visible;
+}
+.native-flow-column[data-bottom-overhang] {
+  clip-path: inset(0 0 calc(-1 * var(--ink-bottom)) 0);
+}
 .canvas-composition-notice {
   position: absolute;
   bottom: 38px;

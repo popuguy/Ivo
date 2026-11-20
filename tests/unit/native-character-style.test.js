@@ -30,9 +30,24 @@ test('default character styles retain the previous protocol identity and existin
   assert.deepEqual(nativeCharacterStyle({ features: { dlig: false, smcp: false } }), {});
   assert.ok(Object.isFrozen(result));
   assert.ok(Object.isFrozen(NATIVE_CHARACTER_STYLE_FIELDS));
-  assert.equal(NATIVE_CHARACTER_STYLE_FIELDS.length, 11);
+  assert.equal(NATIVE_CHARACTER_STYLE_FIELDS.length, 12);
   assert.ok(!NATIVE_CHARACTER_STYLE_FIELDS.includes('allCaps'));
-  assert.ok(!NATIVE_CHARACTER_STYLE_FIELDS.includes('fontVariations'));
+  assert.ok(NATIVE_CHARACTER_STYLE_FIELDS.includes('fontVariations'));
+});
+
+test('authored and transported variable coordinates preserve precision and identity', () => {
+  const coordinates = { wdth: 91, wght: 647.5 };
+  assert.deepEqual(nativeCharacterStyle({ fontVariations: 'wght:647.5,wdth:91' }), {
+    variations: coordinates,
+  });
+  assert.deepEqual(nativeCharacterStyle({ variations: coordinates }), { variations: coordinates });
+  for (const input of [
+    { fontVariations: 'wght:1,wght:2' },
+    { variations: { wght: '650' } },
+    { variations: { wd: 91 } },
+    { fontVariations: 'wght:700', variations: { wght: 300 } },
+  ])
+    assert.throws(() => nativeCharacterStyle(input), TypeError);
 });
 
 test('effective character styles project only bounded scalars and enabled protocol4 tags', () => {

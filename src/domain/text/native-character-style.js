@@ -1,4 +1,4 @@
-import { OPENTYPE_FEATURES, TEXT_DEFAULTS } from './typography.js';
+import { OPENTYPE_FEATURES, TEXT_DEFAULTS, validTextAttribute } from './typography.js';
 
 const scalarBounds = Object.freeze({
     baselineShift: Object.freeze([-2000, 2000]),
@@ -23,6 +23,7 @@ const scalarBounds = Object.freeze({
   identity = Object.freeze({});
 
 export const NATIVE_CHARACTER_STYLE_FIELDS = Object.freeze([
+  'fontVariations',
   ...Object.keys(scalarBounds),
   ...Object.keys(featureFields),
 ]);
@@ -70,6 +71,32 @@ function project(input) {
       .sort()
       .map((tag) => [tag, true]),
   );
+  const axes = {};
+  if (input.fontVariations !== undefined && input.fontVariations !== 'normal') {
+    const value = validTextAttribute('axes', input.fontVariations);
+    if (!value) throw new TypeError('Invalid variable font coordinates.');
+    for (const pair of value.split(',')) {
+      const [tag, coordinate] = pair.split(':');
+      axes[tag] = Number(coordinate);
+    }
+  }
+  if (input.variations !== undefined) {
+    object(input.variations, 'variations');
+    for (const [tag, value] of Object.entries(input.variations)) {
+      if (
+        !/^[A-Za-z0-9]{4}$/.test(tag) ||
+        !Number.isFinite(value) ||
+        Math.abs(value) > 1e6 ||
+        (Object.hasOwn(axes, tag) && axes[tag] !== value)
+      )
+        throw new TypeError('Invalid variable font coordinate.');
+      axes[tag] = value;
+    }
+  }
+  const tags = Object.keys(axes).sort();
+  if (tags.length > 16) throw new TypeError('Too many variable font coordinates.');
+  if (tags.length)
+    result.variations = Object.freeze(Object.fromEntries(tags.map((tag) => [tag, axes[tag]])));
   if (Object.keys(enabled).length) result.features = Object.freeze(enabled);
   return Object.keys(result).length ? Object.freeze(result) : identity;
 }
