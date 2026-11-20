@@ -24,7 +24,6 @@ export async function qualifyDesktopInput() {
     const env = {
       ...process.env,
       IVO_LATENCY_BUDGET: '1',
-      IVO_RESPONSIVENESS_HOSTED: '0',
       IVO_RESPONSIVENESS_COMPOSER: composer,
       IVO_RESPONSIVENESS_PANEL: panel,
       IVO_RESPONSIVENESS_SCENE: scene,

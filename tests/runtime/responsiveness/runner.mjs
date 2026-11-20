@@ -25,8 +25,6 @@ app.setPath('userData', process.env.IVO_USER_DATA_DIR);
 const scene = process.env.IVO_RESPONSIVENESS_SCENE || 'linked';
 assert.ok(['linked', 'magazine'].includes(scene));
 const magazine = scene === 'magazine';
-const hosted = process.env.IVO_RESPONSIVENESS_HOSTED === '1';
-if (hosted) assert.ok(magazine, 'The hosted check uses the fixed magazine scene');
 const doc = createSceneDocument('Disposable responsiveness test', { width: 612, height: 792 });
 enablePublishing(doc);
 const paragraph =
@@ -164,7 +162,7 @@ void (async () => {
       `document.querySelector('[data-layer-disclosure][aria-expanded="false"]:enabled').click()`,
     );
     const viewport = await execute('({width:innerWidth,height:innerHeight})');
-    samples = observeRenderedActions(wc, viewport, hosted ? 480 : 260);
+    samples = observeRenderedActions(wc, viewport);
     const rect = (selector) =>
       execute(
         `(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`,
@@ -370,13 +368,7 @@ void (async () => {
         const r = glyph.getBoundingClientRect();
         return {x:r.x,y:r.y,width:r.width,height:r.height};
       })()`);
-    const keyInterval = hosted ? 90 : 24;
-    const burst = await samples.measureBurst(
-      { ...burstGlyph, width: 100 },
-      word,
-      typeKey,
-      keyInterval,
-    );
+    const burst = await samples.measureBurst({ ...burstGlyph, width: 100 }, word, typeKey, 24);
     const savedBurst = beforeBurst.slice(0, 5) + word + beforeBurst.slice(5);
     await until(
       () =>
@@ -451,8 +443,6 @@ void (async () => {
       composer,
       panel,
       scene,
-      environment: hosted ? 'hosted' : 'desktop',
-      keyInterval,
       flows: doc.textFlows.length,
       pages: doc.pages.length,
       objects: doc.blocks.length,
@@ -473,35 +463,25 @@ void (async () => {
         assert.ok(result.median <= median, label + ' exceeded ' + median + ' ms median');
         assert.ok(result.p95 <= p95, label + ' exceeded ' + p95 + ' ms p95');
       };
-      const lockLimits = hosted ? [80, 150] : [25, 65];
-      for (const action of ['lock', 'unlock']) check(action, report[action], ...lockLimits);
-      const [median, p95] = hosted
-        ? [200, 320]
-        : { browser: [35, 70], 'single-line': [65, 115], paragraph: [80, 120] }[composer];
+      for (const action of ['lock', 'unlock']) check(action, report[action], 25, 65);
+      const [median, p95] = { browser: [35, 70], 'single-line': [65, 115], paragraph: [80, 120] }[
+        composer
+      ];
       for (const action of ['insert', 'backspace']) {
         check(action, report[action], median, p95);
         if (pageEnd) check('Page-end ' + action, pageEnd[action], 65, 100);
       }
       if (magazine)
         assert.ok(
-          report.insert.samples[0].ms <= (hosted ? 320 : 135),
-          'First magazine edit after using Layers exceeded its input budget',
+          report.insert.samples[0].ms <= 135,
+          'First magazine edit after using Layers exceeded 135 ms',
         );
+      assert.ok(burst.whileTyping >= 2, 'Glyphs must advance during sustained typing');
+      const gap = composer === 'browser' ? 90 : 135;
       assert.ok(
-        burst.whileTyping >= (hosted ? 4 : 2),
-        'Glyphs must advance during sustained typing',
+        burst.longestPause <= gap && burst.finish <= gap,
+        'Sustained typing exceeded ' + gap + ' ms between visible changes or to final ink',
       );
-      if (hosted) {
-        // A shared VM can pause the input producer itself. Keep the raw tail
-        // timings in its report; gate sustained progress and first visible ink.
-        assert.ok(burst.first <= 450, 'Hosted magazine did not start drawing within 450 ms');
-      } else {
-        const gap = composer === 'browser' ? 90 : 135;
-        assert.ok(
-          burst.longestPause <= gap && burst.finish <= gap,
-          'Sustained typing exceeded ' + gap + ' ms between visible changes or to final ink',
-        );
-      }
     }
     exitCode = 0;
   } catch (error) {

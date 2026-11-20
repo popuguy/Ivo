@@ -25,7 +25,7 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Record the arrival of a compositor frame before doing any pixel processing.
 // Count an action when at least 80% of its high-contrast changed pixels match
 // the settled frame. Capture on independent frames, outside the input handler.
-export function observeRenderedActions(contents, viewport, settleMs = 260) {
+export function observeRenderedActions(contents, viewport) {
   let active;
   contents.beginFrameSubscription(false, (image) => {
     if (!active) return;
@@ -40,7 +40,7 @@ export function observeRenderedActions(contents, viewport, settleMs = 260) {
       sample.start = performance.now();
       active = sample;
       await dispatch();
-      await pause(settleMs);
+      await pause(260);
       // Idle or occluded windows can stop delivering callbacks between changes.
       // Independently read the settled surface rather than trusting the last callback.
       const image = await contents.capturePage();
