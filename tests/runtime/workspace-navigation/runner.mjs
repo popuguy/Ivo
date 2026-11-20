@@ -61,6 +61,10 @@ app
         await window.webContents.executeJavaScript('window.ivoWorkspaceCaptured=true');
         return;
       }
+      if (event.message === 'IVO_WORKSPACE_COMPACT') {
+        window.setContentSize(1024, 768);
+        return;
+      }
       if (event.message === 'IVO_WORKSPACE_NARROW') {
         window.setSize(600, 850);
         await window.webContents.executeJavaScript('window.ivoWorkspaceNarrow=true');

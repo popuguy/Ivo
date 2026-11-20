@@ -115,7 +115,10 @@ function checkSharedControls() {
     [...document.querySelectorAll(selector)].filter((element) => element.getClientRects().length);
   const tools = shown('.canvas-tools');
   const docks = shown('.canvas-panel-dock');
-  assert(tools.length === 1 && docks.length === 1, 'Split must show one set of tools and panels');
+  assert(
+    tools.length === 1 && docks.length === 1,
+    `Expected one split toolbar and inspector; viewport ${innerWidth} × ${innerHeight}, tools ${tools.length}, docks ${docks.length}, active editor ${active()?.querySelector('.scene-editor')?.className}`,
+  );
   const left = tools[0].getBoundingClientRect();
   const right = docks[0].getBoundingClientRect();
   const shell = document.querySelector('.page-workspace').getBoundingClientRect();
@@ -226,6 +229,7 @@ try {
           independentCameras: true,
           sharedControlsInHorizontalAndVerticalSplits: true,
           passiveScrollKeepsActiveDocument: true,
+          compactInspectorFollowsActiveDocument: true,
           historyBranchAndViewRestoration: true,
           dividerPointerKeyboardCancellation: true,
           crossPaneTabTransfer: true,
@@ -323,8 +327,20 @@ try {
       'Navigating the right pane rebuilt its neighbor',
     );
     await command('toggle-edit');
-    const panelX = checkSharedControls();
+    if (matchMedia('(min-width: 1051px)').matches) checkSharedControls();
+    console.log('IVO_WORKSPACE_COMPACT');
+    await wait(
+      () => matchMedia('(min-width: 761px) and (max-width: 1050px)').matches,
+      'Compact split viewport',
+    );
+    assert(
+      ![...document.querySelectorAll('.canvas-panel-dock')].some(
+        (dock) => dock.getClientRects().length,
+      ),
+      'Compact split should keep its inspector hidden until opened',
+    );
     await command('show-panel-pages');
+    const panelX = checkSharedControls();
     const addPage = active().querySelector(
       '.canvas-panel-content:not([hidden]) [data-canvas-command=add-page]',
     );
@@ -354,6 +370,17 @@ try {
     );
     first.querySelector('[data-canvas-command=tool-select]').click();
     assert(checkSharedControls() === panelX, 'Inspector jumped when the left pane was activated');
+    key(document.body, 'Tab');
+    await tick();
+    right.querySelector('.view-header').click();
+    assert(
+      !right.querySelector('.canvas-tools').getClientRects().length &&
+        !right.querySelector('.canvas-panel-dock').getClientRects().length,
+      'Switching documents reopened tools hidden with Tab',
+    );
+    key(document.body, 'Tab');
+    await tick();
+    assert(checkSharedControls() === panelX, 'Tab did not restore the shared compact inspector');
     activate(right);
     await tick();
     await replaceText('Beta edited in its pane.');

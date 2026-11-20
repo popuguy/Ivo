@@ -222,10 +222,7 @@ try {
     assert(control, 'Text composer control is missing');
     control.value = composer;
     control.dispatchEvent(new Event('change', { bubbles: true }));
-    for (let i = 0; i < 80 && !doc.textFlows[0].composition; i++) {
-      await tick();
-      if (notices.length) break;
-    }
+    await editor.flush();
     await settle();
   }
   function latest(frameId = doc.textFlows[0].frameIds[0]) {
@@ -377,7 +374,22 @@ try {
     await verifyNativeFindChange({ editor, host, flow, seam: column(a.id).end });
     // The remainder retains its original single-line input/history baseline.
     calls.length = measurements.length = 0;
-    await choose('single-line');
+    const preflight = holdNextComposition();
+    let switchFinished = false;
+    const switching = choose('single-line').then(() => {
+      switchFinished = true;
+    });
+    try {
+      await preflight.started();
+      await tick();
+      assert(
+        editor.pending && !switchFinished && flow.composition?.composer === 'paragraph',
+        'Saving finished before the requested composer was ready',
+      );
+    } finally {
+      preflight.release();
+    }
+    await switching;
     assert(flow.composition?.composer === 'single-line', 'UI did not opt into native composer');
     history = createDocumentHistory();
     changes = commits = 0;

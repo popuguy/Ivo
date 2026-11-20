@@ -233,6 +233,7 @@ export function mountCanvasEditor(host, options) {
     pendingTextPosition = null,
     flowSelection,
     nativeSession,
+    composerChange = null,
     inputAnchor,
     compositionNotice;
   let nativePlan = { fragments: new Map(), status: new Map() },
@@ -1010,10 +1011,22 @@ export function mountCanvasEditor(host, options) {
     if (element && document.activeElement === element) syncTextStyle();
   }
 
-  async function setFlowComposer(composer) {
+  // An independently focused panel may outlive this selection or even its window.
+  // A later choice supersedes an earlier preflight; saving waits for the current one.
+  function chooseFlowComposer(composer) {
+    const change = {};
+    composerChange = change;
+    change.done = setFlowComposer(composer, change)
+      .catch((error) => options.onNotify?.(error.message))
+      .finally(() => {
+        if (composerChange === change) composerChange = null;
+      });
+  }
+
+  async function setFlowComposer(composer, change) {
     finishText();
     const flow = textFlowForFrame(doc(), object());
-    if (!flow || !ownsInput() || !options.editing) return;
+    if (!flow || !ownsInput() || !canWrite() || !options.editing) return;
     if (composer === 'browser') {
       if (hasNativeTextSettings(doc())) {
         try {
@@ -1044,6 +1057,13 @@ export function mountCanvasEditor(host, options) {
     const key = compositionLayoutKey(doc()),
       candidate = structuredClone(doc()),
       target = candidate.textFlows.find((f) => f.id === flow.id);
+    const stillSelected = () =>
+      alive &&
+      ownsInput() &&
+      canWrite() &&
+      composerChange === change &&
+      textFlowForFrame(doc(), object()) === flow &&
+      key === compositionLayoutKey(doc());
     try {
       if (!options.textComposition) throw Error('This composer requires the native app.');
       enableNativeComposition(candidate, target, composer);
@@ -1052,10 +1072,10 @@ export function mountCanvasEditor(host, options) {
         allowPages: false,
         assets: options.assets?.() || options.fonts?.() || [],
       });
-      if (!alive || key !== compositionLayoutKey(doc())) return;
+      if (!stillSelected()) return;
       mutate(() => enableNativeComposition(doc(), flow, composer), 'Change text composer');
     } catch (error) {
-      if (alive && compositionLayoutKey(doc()) === key) {
+      if (stillSelected()) {
         options.onNotify?.(error.message);
         renderPanel();
       }
@@ -1654,6 +1674,7 @@ export function mountCanvasEditor(host, options) {
     publishingControls.prepareLegacyFonts();
   }
   function deactivate() {
+    composerChange = null;
     findChange.close();
     flowSelection?.cancel();
     if (composing) return false;
@@ -1709,6 +1730,7 @@ export function mountCanvasEditor(host, options) {
   }
   function prepareHistory() {
     if (composing || pendingCount || busy) return false;
+    composerChange = null;
     finishGesture(true);
     finishText();
     pointers.clear();
@@ -3325,7 +3347,7 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     if (el.matches('[data-flow-composer]')) {
-      void setFlowComposer(el.value);
+      chooseFlowComposer(el.value);
       return;
     }
     if (el.matches('[data-flow-auto]')) {
@@ -4572,12 +4594,14 @@ export function mountCanvasEditor(host, options) {
       }
       finishText();
       while (pendingCount) await pendingFiles;
+      while (composerChange) await composerChange.done;
       await nativeSession.flush();
     },
     get pending() {
       return (
         pendingCount > 0 ||
         composing ||
+        !!composerChange ||
         nativeSession.pending ||
         publishingControls.pending ||
         parentEditor?.pending

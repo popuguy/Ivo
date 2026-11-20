@@ -5,7 +5,9 @@ export function installSplitControls(shell) {
   surface.className = 'split-control-surface';
   surface.setAttribute('aria-hidden', 'true');
   shell.append(surface);
-  let active = null;
+  const presentationClasses = ['show-properties', 'panels-hidden', 'tools-hidden'];
+  let active = null,
+    visibleClasses;
   const observer = new MutationObserver(reflect);
   function reflect() {
     const classes = active?.classList;
@@ -27,13 +29,20 @@ export function installSplitControls(shell) {
   return {
     surface,
     bind(editor, split) {
+      const next = editor || null;
+      if (next === active && shell.classList.contains('split-controls') === split) return;
       shell.classList.toggle('split-controls', split);
-      const next = split ? editor : null;
-      if (next === active) return;
       observer.disconnect();
-      active = next;
       if (active)
-        observer.observe(active, { attributes: true, attributeFilter: ['class', 'style'] });
+        visibleClasses = presentationClasses.filter((name) => active.classList.contains(name));
+      active = next;
+      if (active) {
+        if (visibleClasses)
+          for (const name of presentationClasses)
+            active.classList.toggle(name, visibleClasses.includes(name));
+        if (split)
+          observer.observe(active, { attributes: true, attributeFilter: ['class', 'style'] });
+      }
       reflect();
     },
     destroy() {
