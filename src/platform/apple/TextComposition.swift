@@ -571,7 +571,11 @@ public final class TextCompositionEngine {
           "dlig", "smcp", "onum", "tnum", "zero", "frac", "ordn", "salt",
         ]
         try require(
-          features.count <= 8 && Set(features.keys).isSubset(of: supported),
+          features.keys.allSatisfy { tag in
+            supported.contains(tag) || (tag.count == 4 && tag.hasPrefix("ss")
+              && (1...20).contains(Int(tag.suffix(2)) ?? 0)
+              && tag == String(format: "ss%02d", Int(tag.suffix(2)) ?? 0))
+          },
           "Unsupported OpenType feature setting")
         for tag in features.keys.sorted() where features[tag] == true {
           try require(

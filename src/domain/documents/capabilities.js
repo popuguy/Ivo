@@ -2,8 +2,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 21;
-export const CURRENT_CANVAS_VERSION = 20;
+export const CURRENT_ARCHIVE_VERSION = 23;
+export const CURRENT_CANVAS_VERSION = 22;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -128,6 +128,19 @@ export function hasMarginGrid(doc) {
     doc.publishing?.baselineGrid?.relativeTo === 'margin' ||
     [...(doc.blocks || []), ...(doc.publishing?.parents || []).flatMap((p) => p.blocks || [])].some(
       (b) => b.frameOptions?.baselineGrid?.relativeTo === 'margin',
+    )
+  );
+}
+
+export function hasStylisticSets(doc) {
+  const hasSet = (settings) =>
+    Object.keys(settings || {}).some((key) => /^stylisticSet(?:[1-9]|1[0-9]|20)$/.test(key));
+  return (
+    doc.canvasVersion === 21 ||
+    hasAuthoredTextSetting(
+      doc,
+      (settings) => hasSet(settings) || hasSet(settings?.textOverrides),
+      (html) => /\bdata-ivo-ss(?:0[1-9]|1[0-9]|20)\s*=/i.test(html || ''),
     )
   );
 }
@@ -291,6 +304,7 @@ export function hasHyphenationSettings(doc) {
 export function hasNativeTextSettings(doc) {
   return (
     doc.canvasVersion >= 9 ||
+    hasStylisticSets(doc) ||
     hasListNumbering(doc) ||
     hasBaselineGrid(doc) ||
     hasTabStops(doc) ||
@@ -317,6 +331,8 @@ function hasAuthoredTextSetting(doc, owns, markup) {
 }
 
 export function archiveVersion(documents, assets = []) {
+  if (documents.some((doc) => doc.publication !== undefined || doc.canvasVersion === 22)) return 23;
+  if (documents.some(hasStylisticSets)) return 22;
   if (documents.some(hasNextStyle)) return 21;
   if (documents.some(hasListNumbering)) return 20;
   if (documents.some(hasMarginGrid)) return 19;
@@ -344,6 +360,14 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (document.publication !== undefined || document.canvasVersion === 22) {
+    document.canvasVersion = 22;
+    return document;
+  }
+  if (hasStylisticSets(document)) {
+    document.canvasVersion = 21;
+    return document;
+  }
   if (hasNextStyle(document)) {
     document.canvasVersion = 20;
     return document;

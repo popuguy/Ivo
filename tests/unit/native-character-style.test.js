@@ -30,7 +30,7 @@ test('default character styles retain the previous protocol identity and existin
   assert.deepEqual(nativeCharacterStyle({ features: { dlig: false, smcp: false } }), {});
   assert.ok(Object.isFrozen(result));
   assert.ok(Object.isFrozen(NATIVE_CHARACTER_STYLE_FIELDS));
-  assert.equal(NATIVE_CHARACTER_STYLE_FIELDS.length, 12);
+  assert.equal(NATIVE_CHARACTER_STYLE_FIELDS.length, 32);
   assert.ok(!NATIVE_CHARACTER_STYLE_FIELDS.includes('allCaps'));
   assert.ok(NATIVE_CHARACTER_STYLE_FIELDS.includes('fontVariations'));
 });
@@ -316,4 +316,13 @@ test('shipped exact-byte metadata admits actual CMU and Geist capabilities witho
     assert.deepEqual(result.missing, missing);
     assert.deepEqual(exact, before);
   }
+});
+
+test('stylistic sets combine independently and require declarations from the selected face', () => {
+  const input = { stylisticSet1: true, stylisticSet9: true, stylisticSet20: false };
+  assert.deepEqual(nativeCharacterStyle(input), { features: { ss01: true, ss09: true } });
+  assert.deepEqual(nativeCharacterFeatureAdmission(input, metadata(['ss01'])).missing, ['ss09']);
+  assert.deepEqual(nativeCharacterStyle({ stylisticSet20: true }), { features: { ss20: true } });
+  for (const key of ['ss00', 'ss1', 'ss21'])
+    assert.throws(() => nativeCharacterStyle({ features: { [key]: true } }));
 });

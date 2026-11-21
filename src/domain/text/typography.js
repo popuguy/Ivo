@@ -15,6 +15,15 @@ export const TEXT_FONTS = Object.freeze({
   'cmu-serif': '"CMU Serif", Georgia, serif',
   display: '"Helvetica Neue", Helvetica, Arial, sans-serif',
 });
+// Each set is independently inheritable. An explicit false clears that set in a child style.
+export const STYLISTIC_SETS = Object.freeze(
+  Object.fromEntries(
+    Array.from({ length: 20 }, (_, i) => [
+      'stylisticSet' + (i + 1),
+      'ss' + String(i + 1).padStart(2, '0'),
+    ]),
+  ),
+);
 export const OPENTYPE_FEATURES = Object.freeze({
   ligatures: 'liga',
   discretionaryLigatures: 'dlig',
@@ -25,6 +34,7 @@ export const OPENTYPE_FEATURES = Object.freeze({
   fractions: 'frac',
   ordinals: 'ordn',
   stylisticAlternates: 'salt',
+  ...STYLISTIC_SETS,
 });
 /** Effective authoring defaults, independent of a particular renderer's computed CSS. */
 export const TEXT_DEFAULTS = Object.freeze({
@@ -54,6 +64,7 @@ export const TEXT_DEFAULTS = Object.freeze({
   fractions: false,
   ordinals: false,
   stylisticAlternates: false,
+  ...Object.fromEntries(Object.keys(STYLISTIC_SETS).map((key) => [key, false])),
   language: 'en-US',
   characterStyle: 'none',
   paragraphStyle: 'none',
@@ -108,6 +119,7 @@ export const CHARACTER_FIELDS = Object.freeze({
   fractions: 'frac',
   ordinals: 'ordn',
   stylisticAlternates: 'salt',
+  ...STYLISTIC_SETS,
   language: 'lang',
   characterStyle: 'cstyle',
   fontVariations: 'axes',
@@ -255,7 +267,8 @@ export function validTextAttribute(name, value) {
       'next',
       'previous',
       'optical',
-    ].includes(name)
+    ].includes(name) ||
+    /^ss(?:0[1-9]|1[0-9]|20)$/.test(name)
   )
     return value === 'true' || value === 'false' ? value : null;
   if (name === 'kern')

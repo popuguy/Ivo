@@ -54,6 +54,7 @@ export function applyNamedTextStyles(root, doc) {
         });
     if (explicit) {
       node.style.fontFeatureSettings = features
+        .filter(([key, tag]) => !tag.startsWith('ss') || style[key])
         .map(([key, tag]) => `"${tag}" ${style[key] ? 1 : 0}`)
         .join(',');
       featuresOwned.add(node);

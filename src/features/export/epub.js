@@ -1,3 +1,4 @@
+import { orderPublicationEntries } from '../../domain/documents/publication-order.js';
 import { objectAvailable, effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { frameTextSettings } from '../../domain/documents/text-flows.js';
 import { upgradeDocument, worldRect } from '../../domain/documents/scene.js';
@@ -33,7 +34,7 @@ const xhtml = (title, lang, body) =>
   '</body></html>';
 const encoder = new TextEncoder();
 
-function readingOrder(doc) {
+export function readingOrder(doc, { editingOrder = false } = {}) {
   const visible = doc.blocks.filter((item) => objectAvailable(doc, item, { editing: false }));
   const frames = new Set(visible.map((b) => b.id));
   const flows = new Map((doc.textFlows || []).map((f) => [f.id, f]));
@@ -46,16 +47,21 @@ function readingOrder(doc) {
         a.position.y - b.position.y ||
         a.position.x - b.position.x,
     );
-  return order.flatMap(({ item }) => {
+  const entries = order.flatMap(({ item }) => {
     const flow = flows.get(item.textFlowId);
-    if (flow && flow.frameIds.some((id) => !frames.has(id)))
+    if (
+      !editingOrder &&
+      flow &&
+      !doc.publication?.excluded.includes(flow.id) &&
+      flow.frameIds.some((id) => !frames.has(id))
+    )
       throw Error(
         'A text flow in “' +
           doc.title +
           '” crosses visible and hidden frames. Make its visibility consistent before exporting.',
       );
     if (flow && flow.frameIds[0] !== item.id) return [];
-    if (item.type === 'pdf')
+    if (!editingOrder && item.type === 'pdf' && !doc.publication?.excluded.includes(item.id))
       throw Error(
         '“' +
           doc.title +
@@ -64,26 +70,32 @@ function readingOrder(doc) {
     if (item.type === 'polygon') return [];
     return [
       {
+        id: flow?.id || item.id,
         item,
         html: flow?.html ?? item.html ?? '',
         style: effectiveTextStyle(doc, frameTextSettings(doc, item)),
       },
     ];
   });
+  return orderPublicationEntries(entries, doc.publication, { includeExcluded: editingOrder });
 }
 
-function selectedChapters(documents, id, linked) {
+function selectedChapters(documents, id, linked, useBook) {
   const resolver = createDocumentResolver(documents),
-    pending = [id],
+    book = useBook && resolver.byId.get(id)?.publication?.chapters,
+    pending = book?.length ? [...book] : [id],
     included = new Set(pending),
     chapters = [];
   for (const key of pending) {
     const source = resolver.byId.get(key);
-    if (!source) throw Error('Open a document to export.');
+    if (!source)
+      throw Error(
+        'A book chapter is missing from the vault. Update the book order before exporting.',
+      );
     const doc = upgradeDocument(source),
       entries = readingOrder(doc);
     chapters.push({ doc, entries });
-    if (!linked) continue;
+    if (!linked || book?.length) continue;
     for (const entry of entries)
       for (const link of textLinkTargets(entry.html)) {
         const dest = link.canonical
@@ -107,6 +119,19 @@ function chapterText({ item, html, style }, doc, documents, paths, headings) {
   if (style.bold) root.style.fontWeight = 'bold';
   if (style.italic) root.style.fontStyle = 'italic';
   if (style.align && style.align !== 'left') root.style.textAlign = style.align;
+  if (doc.publication?.headings) {
+    for (const p of root.querySelectorAll('p,div')) {
+      if (p.querySelector('p,div,ol,ul,blockquote')) continue;
+      const key =
+        p.closest('[data-ivo-pstyle]')?.getAttribute('data-ivo-pstyle') ?? style.paragraphStyle;
+      const level = Object.hasOwn(doc.publication.headings, key) && doc.publication.headings[key];
+      if (!level) continue;
+      const heading = document.createElement('h' + level);
+      for (const attribute of p.attributes) heading.setAttribute(attribute.name, attribute.value);
+      heading.append(...p.childNodes);
+      p.replaceWith(heading);
+    }
+  }
   for (const node of root.querySelectorAll('*')) {
     if (node.tagName === 'A') {
       const href = node.getAttribute('href') || '';
@@ -146,19 +171,54 @@ function chapterText({ item, html, style }, doc, documents, paths, headings) {
         node.removeAttribute(attribute.name);
     if (!css.length) node.removeAttribute('style');
   }
-  for (const heading of root.querySelectorAll('h2,h3,h4')) {
+  for (const heading of root.querySelectorAll('h2,h3,h4,h5,h6')) {
     if (!heading.textContent.trim()) continue;
     heading.id = 'heading-' + (headings.length + 1);
-    headings.push({ id: heading.id, title: heading.textContent.trim() });
+    headings.push({
+      id: heading.id,
+      level: Number(heading.tagName[1]),
+      title: heading.textContent.trim(),
+    });
   }
   return xmlText(new XMLSerializer().serializeToString(root));
 }
 
+function headingNavigation(headings, path) {
+  const root = { children: [], level: 0 },
+    stack = [root];
+  for (const heading of headings) {
+    while (stack.at(-1).level >= heading.level) stack.pop();
+    const node = { ...heading, children: [] };
+    stack.at(-1).children.push(node);
+    stack.push(node);
+  }
+  const render = (nodes) =>
+    nodes
+      .map(
+        (node) =>
+          '<li><a href="' +
+          path +
+          '#' +
+          node.id +
+          '">' +
+          xml(node.title) +
+          '</a>' +
+          (node.children.length ? '<ol>' + render(node.children) + '</ol>' : '') +
+          '</li>',
+      )
+      .join('');
+  return render(root.children);
+}
+
 /** Build a publication from a frozen set of authored sources, independent of zoom or editing selection. */
-export async function exportReflowableBook(documents, id, { includeLinked = false, getSource }) {
-  const chapters = selectedChapters(documents, id, includeLinked);
+export async function exportReflowableBook(
+  documents,
+  id,
+  { includeLinked = false, useBook = false, getSource },
+) {
+  const chapters = selectedChapters(documents, id, includeLinked, useBook);
   const paths = new Map(chapters.map(({ doc }, i) => [doc.id, 'chapter-' + (i + 1) + '.xhtml']));
-  const title = chapters[0].doc.title,
+  const title = chapters.find(({ doc }) => doc.id === id).doc.title,
     lang = chapters[0].entries.find((e) => e.html)?.style.language || 'en';
   const files = { mimetype: [encoder.encode('application/epub+zip'), { level: 0 }] };
   const add = (path, data) => {
@@ -216,9 +276,7 @@ export async function exportReflowableBook(documents, id, { includeLinked = fals
       '<item id="ch' + i + '" href="' + path + '" media-type="application/xhtml+xml"/>',
     );
     spine.push('<itemref idref="ch' + i + '"/>');
-    const sub = headings
-      .map((h) => '<li><a href="' + path + '#' + h.id + '">' + xml(h.title) + '</a></li>')
-      .join('');
+    const sub = headingNavigation(headings, path);
     nav.push(
       '<li><a href="' +
         path +

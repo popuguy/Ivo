@@ -1449,6 +1449,12 @@ function installMenu() {
             accelerator: 'CmdOrCtrl+Shift+E',
             click: () => sendCommand('export-pdf'),
           },
+          { label: 'Data Merge…', enabled: hasVault, click: () => sendCommand('data-merge') },
+          {
+            label: 'Publication Order…',
+            enabled: hasVault,
+            click: () => sendCommand('publication-order'),
+          },
           {
             label: 'Export Reflowable EPUB…',
             enabled: hasVault,

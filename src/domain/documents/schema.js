@@ -1,3 +1,4 @@
+import { publicationSettings } from './publication-order.js';
 import { baselineGridSettings, frameGridSettings } from '../text/baseline-grid.js';
 import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
 import { migrateArchive } from './migrations.js';
@@ -17,6 +18,7 @@ import {
   hasTabStops,
   hasListNumbering,
   hasNextStyle,
+  hasStylisticSets,
   hasExtendedKeeps,
   hasParagraphStarts,
   hasSplitLineKeeps,
@@ -332,6 +334,11 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 18) || payload.schemaVersion < 19)
     )
       fail(`${label} page margin grids require archive 19 / canvas 18`);
+    if (
+      hasStylisticSets(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 21) || payload.schemaVersion < 22)
+    )
+      fail('Stylistic sets require archive 22 and canvas 21.');
     if (
       hasNextStyle(doc) &&
       (!supportedCanvas(doc.canvasVersion, 20) || payload.schemaVersion < 21)
@@ -1016,6 +1023,13 @@ function validateArchive(payload, parentTemplate) {
       (payload.schemaVersion < 8 || !supportedCanvas(doc.canvasVersion, 7))
     )
       fail(`${label} requires archive 8 / canvas 7 for native text composition`);
+    if (
+      (doc.publication !== undefined || doc.canvasVersion === 22) &&
+      (!supportedCanvas(doc.canvasVersion, 22) || payload.schemaVersion < 23)
+    )
+      fail('Publication order requires archive 23 and canvas 22.');
+    if (doc.publication !== undefined)
+      normalized.publication = publicationSettings(doc.publication, doc.id);
     if (doc.extensions !== undefined)
       normalized.extensions = extensions(doc.extensions, `${label}.extensions`);
     if (normalized.extensions?.ivoTextWrapDefaults !== undefined) {

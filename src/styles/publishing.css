@@ -876,3 +876,28 @@
   outline: 1px solid var(--panel-control-border);
   outline-offset: -1px;
 }
+
+.publication-order-control {
+  margin: 0 0 12px;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.publication-order-control legend {
+  margin-bottom: 4px;
+}
+.publication-order-control > select {
+  display: block;
+  width: 100%;
+}
+.publication-order-control > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.publication-order-control > div select {
+  min-width: 4em;
+  max-width: 12em;
+}

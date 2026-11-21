@@ -82,7 +82,7 @@ export async function verifyNativeCharacterEditing({
       html:
         '<p>Raised sample preserves the strut.</p><p>Lowered sample preserves the strut.</p>' +
         '<p>Wide sample preserves the strut.</p><p>Tall sample preserves the strut.</p>' +
-        '<p>smallcaps 012345 alternate a shape.</p><p>Editable inherits careful transforms.</p>' +
+        '<p>smallcaps 012345 alternate ÁÉ shape.</p><p>Editable inherits careful transforms.</p>' +
         '<p>Plain neighboring source remains regular.</p>',
     }),
     flow = startTextFlow(doc, frame.id, { automaticPages: false });
@@ -356,10 +356,9 @@ export async function verifyNativeCharacterEditing({
       originalFrames = stable(doc.blocks),
       originalPages = stable(doc.pages),
       control = Object.fromEntries(
-        ['Raised', 'Lowered', 'Wide', 'Tall', 'smallcaps', '012345', 'alternate'].map((word) => [
-          word,
-          wordGeometry(word),
-        ]),
+        ['Raised', 'Lowered', 'Wide', 'Tall', 'smallcaps', '012345', 'alternate', 'ÁÉ'].map(
+          (word) => [word, wordGeometry(word)],
+        ),
       );
     assert(commits === 0 && changes === 0, 'Initial character composition wrote authored history');
     await selectWord('Raised');
@@ -424,6 +423,7 @@ export async function verifyNativeCharacterEditing({
       ['smallcaps', 'smallCaps', 'smcp', true],
       ['012345', 'oldstyleFigures', 'onum', true],
       ['alternate', 'stylisticAlternates', 'salt', false],
+      ['ÁÉ', 'stylisticSet1', 'ss01', true],
     ]) {
       await selectWord(word);
       const checkbox = await feature(field, true);
@@ -435,6 +435,16 @@ export async function verifyNativeCharacterEditing({
           checkbox.closest('[data-feature-row]').dataset.checked === 'true',
         'OpenType native transport/checked feedback is missing: ' + tag,
       );
+      if (tag === 'ss01') {
+        assert(
+          stable(changed.glyphs.map((g) => g.glyph)) === stable([2027, 2032]),
+          'CMU ss01 diverged from the HarfBuzz reference',
+        );
+        assert(
+          doc.canvasVersion === 21 && archiveVersion([doc]) === 22,
+          'Stylistic set lost its archive floor',
+        );
+      }
       if (substitution)
         assert(
           stable(changed.glyphs.map((glyph) => glyph.glyph)) !==
@@ -586,7 +596,7 @@ export async function verifyNativeCharacterEditing({
       await selectAll();
       await property(field, value);
     }
-    for (const field of ['smallCaps', 'oldstyleFigures', 'stylisticAlternates']) {
+    for (const field of ['smallCaps', 'oldstyleFigures', 'stylisticAlternates', 'stylisticSet1']) {
       await selectAll();
       await feature(field, false, { hidden: true });
     }

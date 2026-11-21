@@ -22,6 +22,21 @@ export function copyDocument(source, { title = source.title + ' (copy)', templat
   ])
     ids.set(item.id, uid('copy-'));
   document.id = ids.get(source.id);
+  if (document.publication) {
+    for (const key of ['order', 'excluded'])
+      document.publication[key] = document.publication[key]
+        .filter((id) => ids.has(id))
+        .map((id) => ids.get(id));
+    if (document.publication.headings)
+      document.publication.headings = Object.fromEntries(
+        Object.entries(document.publication.headings)
+          .filter(([key]) => ids.has(key))
+          .map(([key, level]) => [ids.get(key), level]),
+      );
+    document.publication.chapters = document.publication.chapters.map((id) =>
+      id === source.id ? document.id : id,
+    );
+  }
   const basic = basicParagraph(source);
   if (basic) document.extensions.ivoTypography.defaultParagraphStyle = ids.get(basic.id);
   document.title = title.trim().slice(0, 180) || 'Untitled';

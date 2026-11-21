@@ -83,6 +83,33 @@ async function verifyBook(window) {
     ),
     'EPUB image pixels follow the polygon mask',
   );
+  const zipBytes = Uint8Array.from(
+    await window.webContents.executeJavaScript(
+      "import('/tests/runtime/build/merge-book-fixture.js').then(m=>m.verifyMergedBook())",
+    ),
+  );
+  const merged = unzipSync(zipBytes);
+  const first = strFromU8(merged['EPUB/chapter-1.xhtml']),
+    second = strFromU8(merged['EPUB/chapter-2.xhtml']),
+    toc = strFromU8(merged['EPUB/nav.xhtml']);
+  assert(
+    first.includes('藍') &&
+      second.includes('Écru') &&
+      strFromU8(merged['EPUB/book.opf']).includes('<dc:title>Swatch card · 1</dc:title>'),
+    'Saved book order and owner title',
+  );
+  assert(
+    first.indexOf('Introduction') < first.indexOf('<h2') &&
+      !first.includes('excluded swatch text') &&
+      /<h2[^>]*><i>藍<\/i>/.test(first),
+    'Authored flow order, semantic heading and exclusions',
+  );
+  assert(
+    /heading-1">藍<\/a><ol><li><a[^>]+heading-2">Weave/.test(toc),
+    'Nested semantic navigation',
+  );
+  if (process.env.IVO_MERGED_EPUB_FIXTURE)
+    await writeFile(process.env.IVO_MERGED_EPUB_FIXTURE, zipBytes);
   if (process.env.IVO_EPUB_FIXTURE) await writeFile(process.env.IVO_EPUB_FIXTURE, bytes);
 }
 async function inspect(url) {
@@ -134,6 +161,23 @@ async function inspect(url) {
     await window.webContents.executeJavaScript(`
       document.querySelector('[data-action="view-options"]').click();
     `);
+    await poll(window, "!!document.querySelector('[data-navigation-action=publication-order]')");
+    await window.webContents.executeJavaScript(
+      "document.querySelector('[data-navigation-action=publication-order]').click()",
+    );
+    await poll(
+      window,
+      "!!document.querySelector('dialog[open] select[aria-label=" +
+        JSON.stringify('Book chapters') +
+        "]')",
+    );
+    await window.webContents.executeJavaScript(
+      "document.querySelector('dialog[open] form').requestSubmit()",
+    );
+    await poll(window, "!document.querySelector('dialog[open]')");
+    await window.webContents.executeJavaScript(
+      "document.querySelector('[data-action=view-options]').click()",
+    );
     await poll(window, "!!document.querySelector('[data-navigation-action=export-epub]')");
     await window.webContents.executeJavaScript(
       "document.querySelector('[data-navigation-action=export-epub]').click()",

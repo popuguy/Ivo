@@ -1,4 +1,9 @@
-import { fontFamilyFor, validTextAttribute } from '../../domain/text/typography.js';
+import {
+  OPENTYPE_FEATURES,
+  fontFamilyFor,
+  validTextAttribute,
+} from '../../domain/text/typography.js';
+const featureTags = Object.values(OPENTYPE_FEATURES);
 export function setTextAttribute(element, name, value) {
   const valid = validTextAttribute(name, String(value));
   if (valid === null) throw new TypeError('Unsupported text attribute ' + name);
@@ -66,9 +71,7 @@ export function applyTextAttributes(element, attributes) {
   if (value('strike') === 'true') decorations.push('line-through');
   if (value('strike') !== null || value('underline') !== null)
     values.textDecoration = decorations.join(' ') || 'none';
-  const features = ['liga', 'dlig', 'smcp', 'onum', 'tnum', 'zero', 'frac', 'ordn', 'salt'].filter(
-    (name) => value(name) !== null,
-  );
+  const features = featureTags.filter((name) => value(name) !== null);
   if (features.length)
     values.fontFeatureSettings = features
       .map((name) => `"${name}" ${value(name) === 'true' ? 1 : 0}`)

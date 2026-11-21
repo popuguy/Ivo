@@ -7,16 +7,7 @@ const scalarBounds = Object.freeze({
   }),
   featureFields = Object.freeze(
     Object.fromEntries(
-      [
-        'discretionaryLigatures',
-        'smallCaps',
-        'oldstyleFigures',
-        'tabularFigures',
-        'slashedZero',
-        'fractions',
-        'ordinals',
-        'stylisticAlternates',
-      ].map((field) => [field, OPENTYPE_FEATURES[field]]),
+      Object.entries(OPENTYPE_FEATURES).filter(([field]) => field !== 'ligatures'),
     ),
   ),
   featureTags = new Set(Object.values(featureFields)),

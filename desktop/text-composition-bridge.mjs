@@ -1,3 +1,4 @@
+import { OPENTYPE_FEATURES } from '../src/domain/text/typography.js';
 import { MAX_TAB_STOPS, tabStopsValue } from '../src/domain/text/tab-stops.js';
 const CHANNEL = 'ivo:text-composition',
   MAX_REQUEST = 32_000_000;
@@ -86,7 +87,7 @@ const fields = {
     'letterPercent',
     'glyphPercent',
   ],
-  features: ['dlig', 'smcp', 'onum', 'tnum', 'zero', 'frac', 'ordn', 'salt'],
+  features: Object.values(OPENTYPE_FEATURES).filter((tag) => tag !== 'liga'),
 };
 const plain = (value) =>
   value &&

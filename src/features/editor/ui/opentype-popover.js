@@ -1,5 +1,9 @@
 import { SHIPPED_TEXT_FONT_METADATA } from '../../../rendering/text/font-resources.js';
-import { OPENTYPE_FEATURES, fontFamilyFor } from '../../../domain/text/typography.js';
+import {
+  STYLISTIC_SETS,
+  OPENTYPE_FEATURES,
+  fontFamilyFor,
+} from '../../../domain/text/typography.js';
 import { BUNDLED_FONT_FEATURES } from '../../../domain/text/bundled-font-features.js';
 import { placePopover } from '../../../domain/geometry/popover.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
@@ -14,6 +18,12 @@ const labels = {
   fractions: 'Fractions',
   ordinals: 'Ordinal',
   stylisticAlternates: 'Stylistic Alternates',
+  ...Object.fromEntries(
+    Object.entries(STYLISTIC_SETS).map(([key, tag]) => [
+      key,
+      'Stylistic Set ' + Number(tag.slice(2)),
+    ]),
+  ),
 };
 function declaredFeatures(id, values, fonts) {
   const face = values.bold
@@ -96,6 +106,9 @@ export function createOpenTypePopover(
         tag = OPENTYPE_FEATURES[key],
         checkbox = row.querySelector('input');
       row.hidden = faces.length > 0 && faces.every((face) => face && !face.includes(tag));
+      if (Object.hasOwn(STYLISTIC_SETS, key))
+        row.hidden = !faces.some((face) => face?.includes(tag));
+      if (row.hidden) continue;
       checkbox.checked = values[key] === true;
       checkbox.indeterminate = summary.mixed.includes(key);
       row.dataset.checked = checkbox.indeterminate ? 'mixed' : String(checkbox.checked);
@@ -105,6 +118,9 @@ export function createOpenTypePopover(
       preview.style.fontWeight = values.bold ? '700' : '400';
       preview.style.fontStyle = values.italic ? 'italic' : 'normal';
       preview.style.fontFeatureSettings = Object.entries(OPENTYPE_FEATURES)
+        .filter(
+          ([field]) => !Object.hasOwn(STYLISTIC_SETS, field) || field === key || values[field],
+        )
         .map(([field, t]) => `"${t}" ${field === key || values[field] ? 1 : 0}`)
         .join(',');
     }

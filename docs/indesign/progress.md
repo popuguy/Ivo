@@ -4,6 +4,12 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Font alternates, book order and merge records
+
+**Release estimate ~77% across 63 capabilities.** The Mac editor exercised a selected stylistic set through native shaping, caret placement, editing, undo and reopening. The CMU Serif substitutions for Á and É matched independent HarfBuzz glyph IDs. The Explore More Type Options control offers the numbered sets declared by a face.
+
+Publication order stores the order of whole threaded passages and illustrations, exclusions, book chapters and heading levels for named paragraph styles. EPUB resolves links against the chosen chapters. Missing chapters stop export. A two-page template produced independent editable records with split-style placeholders, literal multiline Unicode values and masked vault images. Its reordered two-chapter book passed EPUBCheck 5.4.0 without errors or warnings. Multiple records on one sheet, synchronized styles across book documents, in-document generated contents and tagged PDF remain open.
+
 ## Structured text and reflowable publishing
 
 **Ivo release text parity is estimated at ~73% across the same 63 capabilities, up from ~65%.** This is an engineering estimate. The largest gains are in structured paragraph editing and publishing. Specialist language exemptions and the release denominator are unchanged.

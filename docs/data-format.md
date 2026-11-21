@@ -140,3 +140,11 @@ Archive 20 and canvas 19 preserve authored list starts, explicit item values and
 Archive 21 and canvas 20 add an optional `nextStyle` ID to a paragraph style. Omission means [Same Style]. The target belongs to the same document’s paragraph definitions. Cycles are valid here, since one paragraph advances a sequence by exactly one step. The separate `basedOn` relationship continues to reject cycles. Copying a document remaps the successor ID. Object clipboard export retains reachable successors and their base styles.
 
 The EPUB file is an independent publication. Its spine orders chapters, its navigation file links to headings, and each text flow is emitted once. Crops and polygon masks are baked into its image pixels. It contains reader text and used illustrations. Vault font files, hidden objects and parent-page furniture stay in the vault.
+
+## OpenType stylistic sets and publication order
+
+Archive 22 and canvas 21 preserve independently inherited `stylisticSet1` through `stylisticSet20`, including explicit off overrides. Inline attributes run from `data-ivo-ss01` through `data-ivo-ss20`.
+
+Archive 23 and canvas 22 preserve optional `publication` settings. Version 1 records `order` and `excluded` by flow or object ID, ordered `chapters` by document ID, and optional `headings` by paragraph style ID with levels 2–6. The chapter title is level 1. New objects follow the stored order. Deleted objects and hidden content do not enter the book. A missing chapter remains visible for repair. Document copies remap local references and retain external chapter IDs.
+
+Data Merge takes UTF-8 CSV, TSV or semicolon-delimited records. Place `{{column name}}` in a text frame, or write `{{{{` for literal opening braces. In the merge dialog, image columns prefixed with `@` can target existing image frames by vault filename or asset ID. Merging produces one ordinary editable document per selected record in a single vault transaction. The input spreadsheet is read for this operation.

@@ -1359,10 +1359,51 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       `<h2>Vault options</h2><p>${globalThis.ivoNative?.store ? 'Documents and original media are saved in your vault folder.' : 'Documents and original media are saved on this device.'}</p><div class="options-list">${globalThis.ivoNative?.showFolder ? button('show-folder', 'Show vault folder', 'book') : ''}${globalThis.ivoNative?.vaults ? button('manage-vaults', 'Manage vaults…') : ''}${button('new-layout', 'New layout or template…')}${button('split-right', 'Split right')}${button('split-down', 'Split down')}${workspace.groups.length > 1 ? button('merge-pane', 'Merge this pane') : ''}${button('go-back', 'Back')}${button('go-forward', 'Forward')}${button('export', 'Export vault backup')}${button('import', 'Import atlas backup')}${view === 'document' ? (globalThis.ivoNative?.exportPDF ? button('export-pdf', 'Export PDF…') : '') + button('markdown', 'Export document as Markdown') + button('history', 'Document history') + button('duplicate-document', 'Duplicate document') + button('save-template', 'Save as template…') + button('insert-link', 'Insert document link…') : ''}</div>`,
     );
   }
+  async function mergeDialog() {
+    if (view !== 'document' || !windowLease || !(await flush())) return;
+    const template = ensureScene();
+    const { showDataMerge } = await import('../features/data-merge/dialog.js');
+    showDataMerge({
+      template,
+      assets: [...assets.values()],
+      documentCount: allDocuments().length,
+      dialog,
+      showDialog,
+      commit: async (generated) => {
+        if (!windowLease) throw Error('This vault is open for editing in another window.');
+        await saveImport({
+          schemaVersion: archiveVersion(generated),
+          documents: generated,
+          assets: [],
+        });
+        docs.unshift(...generated);
+        dialog.close();
+        await openDocumentNow(generated[0].id, { newTab: true, editing: true });
+        toast(
+          'Created ' + generated.length + (generated.length === 1 ? ' document' : ' documents'),
+        );
+      },
+    });
+  }
+  async function publicationDialog() {
+    if (view !== 'document' || !windowLease || !(await flush())) return;
+    const doc = ensureScene();
+    const { editPublicationOrder } = await import('../features/export/publication-dialog.js');
+    editPublicationOrder({
+      document: doc,
+      documents: docs,
+      dialog,
+      showDialog,
+      save: (settings) =>
+        editDocumentMetadata(doc.id, 'Publication order', (target) => {
+          target.publication = settings;
+        }),
+    });
+  }
   function epubDialog() {
     if (view !== 'document' || !current()) return;
     showDialog(
-      '<h2>Export reflowable EPUB</h2><p>Includes the full text of visible flows, including overset text. Text follows page order, then frame position. The reader sets the type size. Images retain their crops and masks.</p><label class="pdf-scope"><input type="checkbox" name="linked"> Include linked documents as chapters</label><button type="submit" class="button-primary">Export…</button>',
+      `<h2>Export reflowable EPUB</h2><p>Includes complete visible text flows, including overset text. Images retain their crops and masks.</p><label>Chapters<select name="scope"><option value="current">Current document</option><option value="linked">Include linked documents</option>${current().publication?.chapters.length ? '<option value="book" selected>Saved book order</option>' : ''}</select></label><button type="submit" class="button-primary">Export…</button>`,
       async (data) => {
         if (!(await flush())) return;
         const submit = dialog.querySelector('button[type=submit]');
@@ -1372,7 +1413,8 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
           const { exportReflowableBook } = await import('../features/export/epub.js');
           const bytes = await exportReflowableBook(docs, activeId, {
             getSource: source,
-            includeLinked: data.has('linked'),
+            includeLinked: data.get('scope') === 'linked',
+            useBook: data.get('scope') === 'book',
           });
           download(name + '.epub', bytes, 'application/epub+zip');
           dialog.close();
@@ -1982,6 +2024,8 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
                     },
                   ]
                 : []),
+              { id: 'data-merge', label: 'Data Merge…', enabled: windowLease },
+              { id: 'publication-order', label: 'Publication order…', enabled: windowLease },
               { id: 'history', label: 'Open version history' },
               { id: 'rename', label: 'Rename…' },
               { id: 'insert-link', label: 'Insert document link…' },
@@ -2061,6 +2105,8 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       saveTemplateDialog();
       return;
     }
+    if (name === 'data-merge') return mergeDialog();
+    if (name === 'publication-order') return publicationDialog();
     if (name === 'export-epub') return epubDialog();
     if (name === 'export-pdf') {
       if (globalThis.ivoNative?.exportPDF) pdfDialog();
@@ -2864,7 +2910,8 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     )
       return runAction(name);
     if (name === 'quick-switcher') return quickSwitcher();
-    if (name === 'export-pdf' || name === 'export-epub') return runAction(name);
+    if (['export-pdf', 'export-epub', 'publication-order', 'data-merge'].includes(name))
+      return runAction(name);
     if (name === 'toggle-edit') return runAction(name);
     if (view === 'document') {
       if (name === 'link' && !editing) return runAction('insert-link');
