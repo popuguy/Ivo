@@ -4,6 +4,10 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Generated tables of contents and page links
+
+**Release estimate ~88% across 63 capabilities.** A single document can generate an editable contents flow from visible headings and named paragraph styles. Placement, regeneration, undo, section folios and persistent settings are exercised in the editor. PDFKit verifies that a linked folio goes to the printed page containing the heading, including a continuation frame in an ordered book. Overset headings are excluded. Page links also work independently through Insert > Page Link. Book-wide contents, named anchors and cross-reference formats remain open.
+
 ## Placed picture outlines, parent fields and heading bookmarks
 
 **Release estimate ~86% across the same 63 capabilities.** The picture and parent-field milestones account for the intermediate estimate of about 84%. The remaining progress covers working case conversion and nested PDF heading destinations. The document zoom limit is separate from the text estimate.

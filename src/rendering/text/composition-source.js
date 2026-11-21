@@ -149,7 +149,9 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
     }
     const anchor = kind === 'list-marker' ? null : node.closest?.('a'),
       target = anchor?.getAttribute('data-doc-id'),
-      url = safeURL(anchor?.getAttribute('href'));
+      href = anchor?.getAttribute('href'),
+      pageId = /^#page=([A-Za-z0-9][A-Za-z0-9_-]{0,119})$/.exec(href || '')?.[1],
+      url = safeURL(href);
     tokens.push({
       kind,
       logicalStart: start,
@@ -157,7 +159,14 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
       text,
       style,
       priority,
-      link: target && /^[\w-]{1,120}$/.test(target) ? { documentId: target } : url ? { url } : null,
+      link:
+        target && /^[\w-]{1,120}$/.test(target)
+          ? { documentId: target }
+          : pageId
+            ? { pageId }
+            : url
+              ? { url }
+              : null,
     });
   };
   for (const node of root.querySelectorAll('*')) {

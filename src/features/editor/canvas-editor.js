@@ -1,3 +1,4 @@
+import { collectPageHeadings } from '../../rendering/text/publication-headings.js';
 import { CASE_COMMANDS } from '../../domain/text/change-case.js';
 import { changeSelectedCase } from '../../rendering/text/edit-case.js';
 import { PARENT_FIELDS, parentFieldToken } from '../../domain/documents/running-text.js';
@@ -3042,6 +3043,23 @@ export function mountCanvasEditor(host, options) {
         !objects().length)
     )
       return;
+    if (name === 'table-of-contents' || name === 'update-table-of-contents') {
+      if (!options.editing || !canWrite() || options.parentMode) return;
+      const owner = doc();
+      finishText();
+      while (pendingContours) await pendingContours.done;
+      await nativeSession.flush();
+      if (
+        !alive ||
+        doc() !== owner ||
+        !ownsInput() ||
+        !canWrite() ||
+        composing ||
+        busy ||
+        dialogOpen()
+      )
+        return;
+    }
     if (publishingControls.command(name, { anchor })) return;
     if (['document-text', 'start-flow', 'thread'].includes(name) && !options.editing) return;
     if (name === 'flow-previous' || name === 'flow-next') {
@@ -3324,25 +3342,37 @@ export function mountCanvasEditor(host, options) {
       return;
     }
 
-    if (name === 'link') {
+    if (name === 'link' || name === 'page-link') {
+      if (!canWrite() || (options.parentMode && name === 'page-link')) return;
+      const pageLink = name === 'page-link',
+        selectedId = object()?.id;
       const range = preserveRange(),
         owner = doc().id,
         element = activeText(),
         viewBefore = captureView(),
         bookmark = range && bookmarkForRange(element, range),
-        id = await onLink?.();
-      if (!id || !alive || doc().id !== owner) return;
-      const target = options.documents.find((v) => v.id === id);
-      if (!target) return;
+        id = pageLink ? await publishingControls.choosePageLink() : await onLink?.();
+      if (
+        !id ||
+        !alive ||
+        !canWrite() ||
+        !ownsInput() ||
+        doc().id !== owner ||
+        object()?.id !== selectedId
+      )
+        return;
+      const target = (pageLink ? doc().pages : options.documents).find((v) => v.id === id);
+      if (!target || (object() && !objectAvailable(doc(), object()))) return;
+      const label = pageLink ? target.name : target.title;
+      const anchor = document.createElement('a');
+      if (!pageLink) anchor.dataset.docId = id;
+      anchor.setAttribute('href', (pageLink ? '#page=' : '#doc=') + id);
       if (element?.isConnected && activeTextId === element.dataset.sceneText && bookmark) {
         finishText();
         const before = structuredClone(doc()),
           currentRange = rangeFromBookmark(element, bookmark);
         if (!currentRange) return;
-        const anchor = document.createElement('a');
-        anchor.dataset.docId = id;
-        anchor.href = '#doc=' + id;
-        if (currentRange.collapsed) anchor.textContent = target.title;
+        if (currentRange.collapsed) anchor.textContent = label;
         else anchor.append(currentRange.extractContents());
         currentRange.insertNode(anchor);
         currentRange.selectNodeContents(anchor);
@@ -3359,22 +3389,26 @@ export function mountCanvasEditor(host, options) {
         requestFrame();
         return;
       }
+      anchor.textContent = label;
+      const paragraph = '<p>' + anchor.outerHTML + '</p>';
       mutate(() => {
         const existing = object();
+        if (existing && !objectAvailable(doc(), existing))
+          throw Error('Unlock the object to insert a link.');
         if (existing && ['text', 'quote'].includes(existing.type)) {
           const textFlow = textFlowForFrame(doc(), existing);
           if (textFlow) {
-            textFlow.html += `<p><a data-doc-id="${esc(id)}" href="#doc=${esc(id)}">${esc(target.title)}</a></p>`;
+            textFlow.html += paragraph;
             return;
           }
-          existing.html += `<p><a data-doc-id="${esc(id)}" href="#doc=${esc(id)}">${esc(target.title)}</a></p>`;
+          existing.html += paragraph;
           return;
         }
         const context = insertionContext();
         insertObject(doc(), 'text', context.pageId, {
           parentId: context.parentId,
           layerId: context.layerId,
-          html: `<p><a data-doc-id="${esc(id)}" href="#doc=${esc(id)}">${esc(target.title)}</a></p>`,
+          html: paragraph,
         });
       }, 'Insert link');
     }
@@ -3548,7 +3582,7 @@ export function mountCanvasEditor(host, options) {
     contextMenu = document.createElement('div');
     contextMenu.className = 'canvas-context-menu';
     contextMenu.setAttribute('role', 'menu');
-    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button>${
+    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button>${
       context.textEditing
         ? Object.entries({
             ...INSERT_CHARACTERS,
@@ -3624,8 +3658,15 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     const p = event.target.closest('[data-select-page]');
-    if (p) {
-      state.activePage = p.dataset.selectPage;
+    const pageLink = event.target.closest('a[href^="#page="]');
+    if (p || (pageLink && (!options.editing || event.metaKey || event.ctrlKey))) {
+      event.preventDefault();
+      const target = p?.dataset.selectPage || pageLink.getAttribute('href').slice(6);
+      if (!doc().pages.some((page) => page.id === target)) {
+        options.onNotify?.('The linked page is no longer in this document.');
+        return;
+      }
+      state.activePage = target;
       setSelectionState(null);
       state.inside = null;
       renderPanel();
@@ -4567,6 +4608,22 @@ export function mountCanvasEditor(host, options) {
   });
   const publishingControls = installPublishingControls(editor, {
     nativeComposition: !!options.textComposition,
+    readContents(settings) {
+      if (!canWrite() || pendingContours || nativeSession.pending)
+        throw Error('Finish composing the document before generating its contents.');
+      const pages = [...world.querySelectorAll('.canvas-page[data-page]')].map((section) => ({
+        pageId: section.dataset.page,
+        section,
+      }));
+      return collectPageHeadings(doc(), flowPlan, pages, {
+        semantic: settings.semantic,
+        headings: settings.styles,
+      });
+    },
+    focusContents(id) {
+      select(id);
+      fit();
+    },
     documents: () => options.documents || [],
     doc,
     state,

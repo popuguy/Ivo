@@ -1,4 +1,4 @@
-import { pdfDocumentHeadings } from './publication-headings.js';
+import { collectPageHeadings } from '../../rendering/text/publication-headings.js';
 import { readyImageWrapResources } from '../../rendering/text/image-contours.js';
 import { pageFolios } from '../../domain/documents/page-sections.js';
 import { prepareVaultFonts } from '../../rendering/text/fonts.js';
@@ -111,14 +111,14 @@ export async function renderPDFSnapshot(snapshot) {
       }),
     ),
   );
-  for (const doc of documents)
-    pdfDocumentHeadings(
-      doc,
-      flowPlans.get(doc.id),
-      pages.filter((page) => page.documentId === doc.id),
-    );
+  for (const doc of documents) {
+    const chapter = pages.filter((page) => page.documentId === doc.id);
+    const headings = collectPageHeadings(doc, flowPlans.get(doc.id), chapter);
+    for (const page of chapter) page.headings = headings.get(page.pageId);
+  }
   const links = [],
     composedText = new Map();
+  const pageTargets = new Map(pages.map((p, i) => [p.documentId + '/' + p.pageId, i]));
   for (const [pageIndex, page] of pages.entries()) {
     const pageRect = page.section.getBoundingClientRect(),
       factor = 4 / 3;
@@ -172,6 +172,10 @@ export async function renderPDFSnapshot(snapshot) {
       if (targetId) {
         if (destinations.has(targetId)) target = { pageIndex: destinations.get(targetId) };
         else warnings.add(`Link to a document outside this export: ${anchor.textContent.trim()}`);
+      } else if (anchor.getAttribute('href')?.startsWith('#page=')) {
+        const index = pageTargets.get(page.documentId + '/' + anchor.getAttribute('href').slice(6));
+        if (index !== undefined) target = { pageIndex: index };
+        else warnings.add('Link to a missing page: ' + anchor.textContent.trim());
       } else if (/^https?:\/\//.test(anchor.getAttribute('href') || ''))
         target = { url: anchor.href };
       else if (anchor.classList.contains('unresolved'))
@@ -186,7 +190,7 @@ export async function renderPDFSnapshot(snapshot) {
           });
           if (!visible) continue;
           const text = anchor.closest('.canvas-text');
-          if (text?.dataset.textKind !== 'point')
+          if (text && text.dataset.textKind !== 'point')
             visible = intersectPDFRect(visible, rect(text.getBoundingClientRect()));
           if (!visible) continue;
           let clip = anchor.closest('.canvas-clip'),

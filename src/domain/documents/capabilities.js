@@ -3,8 +3,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 27;
-export const CURRENT_CANVAS_VERSION = 26;
+export const CURRENT_ARCHIVE_VERSION = 28;
+export const CURRENT_CANVAS_VERSION = 27;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -344,7 +344,11 @@ export const hasRunningText = (doc) =>
   [...(doc.blocks || []), ...(doc.publishing?.parents || []).flatMap((p) => p.blocks || [])].some(
     (b) => b.extensions?.ivoRunningText === true,
   );
+export const hasContents = (doc) =>
+  doc.canvasVersion === 27 ||
+  (Array.isArray(doc.textFlows) && doc.textFlows.some((flow) => flow?.contents !== undefined));
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasContents)) return 28;
   if (
     documents.some((doc) => doc.canvasVersion === 26 || hasRasterWrap(doc) || hasRunningText(doc))
   )
@@ -382,6 +386,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasContents(document)) {
+    document.canvasVersion = 27;
+    return document;
+  }
   if (document.canvasVersion === 26 || hasRasterWrap(document) || hasRunningText(document)) {
     document.canvasVersion = 26;
     return document;

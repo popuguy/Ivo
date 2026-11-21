@@ -1,10 +1,14 @@
+import { remapContentsStyles } from './contents-settings.js';
 import { uid } from './model.js';
 import { upgradeDocument } from './scene.js';
 import { basicParagraph } from './publishing.js';
 export const isTemplate = (document) => document?.extensions?.ivoTemplate?.version === 1;
 
 /** Copy authored data, remapping owned IDs and self-links while retaining immutable asset refs. */
-export function copyDocument(source, { title = source.title + ' (copy)', template = false } = {}) {
+export function copyDocument(
+  source,
+  { title = source.title + ' (copy)', template = false, remapPageLinks = true } = {},
+) {
   const document = structuredClone(source),
     ids = new Map();
   for (const item of [
@@ -49,6 +53,12 @@ export function copyDocument(source, { title = source.title + ' (copy)', templat
     if (page.parentOverrides) page.parentOverrides = page.parentOverrides.map((id) => ids.get(id));
   }
   function remapRichText(holder) {
+    remapContentsStyles(holder, ids);
+    if (remapPageLinks && holder.html)
+      holder.html = holder.html.replace(
+        /(<a\b[^>]*?\shref\s*=\s*["']#page=)([\w-]+)(["'])/gi,
+        (all, prefix, id, suffix) => (ids.has(id) ? prefix + ids.get(id) + suffix : all),
+      );
     if (holder.html)
       holder.html = holder.html.replace(
         /(data-ivo-(?:pstyle|cstyle)=["'])([^"']+)(["'])/g,

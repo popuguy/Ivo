@@ -43,6 +43,8 @@ function sourceInterval(line, run, start, end, geometry) {
 }
 
 function linkAttributes(link) {
+  if (link.pageId && /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(link.pageId))
+    return 'href="#page=' + esc(link.pageId) + '"';
   return link.documentId && /^[\w-]{1,120}$/.test(link.documentId)
     ? `data-doc-id="${esc(link.documentId)}" href="#doc=${esc(link.documentId)}"`
     : /^https?:\/\//.test(link.url || '')

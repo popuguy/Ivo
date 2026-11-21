@@ -1,3 +1,6 @@
+import { contentsSettings } from '../../../src/domain/documents/contents-settings.js';
+import { writeContents } from '../../../src/domain/documents/contents.js';
+import { contentsHTML } from '../../../src/features/editor/ui/table-of-contents.js';
 import { baselineGridFixture, addGridWrap } from '../../fixtures/text/baseline-grid.js';
 import { verifyPortableTypeSpecimens } from './portable-type.mjs';
 import { createHash } from 'node:crypto';
@@ -258,7 +261,9 @@ app
       fontSize: 12,
       leading: 16,
       html:
-        '<p>Opening</p><p data-ivo-pstyle="' +
+        '<p><a href="#page=' +
+        owner.pages[1].id +
+        '">Opening</a></p><p data-ivo-pstyle="' +
         headingStyle.id +
         '">Woven surfaces</p><p>' +
         'Overflow '.repeat(160) +
@@ -295,6 +300,38 @@ app
     ]);
     const outline = JSON.parse(inspected.stdout);
     assert.deepEqual(outline.labels, ['i', 'A–7', 'A–8']);
+    assert(
+      outline.pageLinks.some(([from, to]) => from === 1 && to === 2),
+      'Native text link did not navigate to the next page in PDFKit',
+    );
+    const withContents = structuredClone(owner);
+    const settings = contentsSettings({ styles: { [headingStyle.id]: 2 } });
+    const entries = new Map(
+      bookPDF.manifest.pages
+        .filter((p) => p.documentId === owner.id)
+        .map((p) => [p.pageId, p.headings]),
+    );
+    writeContents(withContents, null, contentsHTML(withContents, entries, settings), settings);
+    const contentsPDF = await renderPDF(
+      createPDFSnapshot([withContents, front], [asset], owner.id, { useBook: true }),
+      { project: root },
+    );
+    const tocFile = path.join(output, 'book-contents.pdf');
+    await writeFile(tocFile, contentsPDF.bytes);
+    const tocInspected = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      path.join(root, 'tests/runtime/pdf/inspect-book.swift'),
+      tocFile,
+    ]);
+    const toc = JSON.parse(tocInspected.stdout);
+    assert.match(toc.text[3], /Woven surfaces\s+A–8/u);
+    assert(
+      toc.pageLinks.some(([from, to]) => from === 3 && to === 2),
+      'Printed contents did not link to the heading’s page',
+    );
+    assert(!toc.text[3].includes('Unprinted entry'), 'Overset heading appeared in the contents');
     assert.match(outline.text[1], /Printed A–7 \/ A–8/);
     assert.match(outline.text[2], /Printed A–8 \/ A–8/);
     assert.deepEqual(outline.bookmarks, [

@@ -11,6 +11,13 @@ func children(_ parent: PDFOutline) -> [[String: Any]] {
 }
 let data = try JSONSerialization.data(withJSONObject: [
   "bookmarks": children(root),
+  "pageLinks": (0..<pdf.pageCount).flatMap { source -> [[Int]] in
+    (pdf.page(at: source)?.annotations ?? []).compactMap { annotation -> [Int]? in
+      let destination = annotation.destination ?? (annotation.action as? PDFActionGoTo)?.destination
+      guard let page = destination?.page else { return nil }
+      return [source, pdf.index(for: page)]
+    }
+  },
   "text": (0..<pdf.pageCount).map { pdf.page(at: $0)?.string ?? "" },
   "labels": (0..<pdf.pageCount).map { pdf.page(at: $0)?.label ?? "" }
 ])

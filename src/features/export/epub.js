@@ -1,4 +1,4 @@
-import { publicationHeadingLevel } from './publication-headings.js';
+import { publicationHeadingLevel } from '../../rendering/text/publication-headings.js';
 import { orderPublicationEntries } from '../../domain/documents/publication-order.js';
 import { objectAvailable, effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { frameTextSettings } from '../../domain/documents/text-flows.js';

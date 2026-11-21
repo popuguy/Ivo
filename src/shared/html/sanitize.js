@@ -145,6 +145,8 @@ export function cleanHTML(value) {
       if (target && /^[\w-]{1,120}$/.test(target)) {
         out.dataset.docId = target;
         out.href = '#doc=' + encodeURIComponent(target);
+      } else if (/^#page=[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(node.getAttribute('href') || '')) {
+        out.setAttribute('href', node.getAttribute('href'));
       } else if (href) {
         out.href = href;
         out.target = '_blank';

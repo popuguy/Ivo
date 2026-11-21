@@ -1,3 +1,4 @@
+import { contentsSettings } from './contents-settings.js';
 import { pageSection } from './page-sections.js';
 import { hyphenationExceptions } from '../text/hyphenation-exceptions.js';
 import { publicationSettings } from './publication-order.js';
@@ -29,6 +30,7 @@ import {
   hasExtendedPageSections,
   hasRasterWrap,
   hasRunningText,
+  hasContents,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -994,6 +996,9 @@ function validateArchive(payload, parentTemplate) {
           html,
           frameIds,
           style,
+          ...(textFlow.contents !== undefined
+            ? { contents: contentsSettings(textFlow.contents) }
+            : {}),
           automaticPages: textFlow.automaticPages,
           deleteEmptyPages: textFlow.deleteEmptyPages,
           autoPages,
@@ -1060,6 +1065,8 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 25) || payload.schemaVersion < 26)
     )
       fail('Extended section numbering requires archive 26 and canvas 25.');
+    if (hasContents(doc) && (!supportedCanvas(doc.canvasVersion, 27) || payload.schemaVersion < 28))
+      fail('Generated contents require archive 28 and canvas 27.');
     if (doc.hyphenationExceptions !== undefined)
       normalized.hyphenationExceptions = hyphenationExceptions(doc.hyphenationExceptions);
     if (doc.publication !== undefined)

@@ -578,6 +578,7 @@ else {
         const send = (name) => record.window.webContents.send('ivo:command', name),
           items = [
             { label: 'Insert Document Link…', click: () => send('link') },
+            { label: 'Insert Page Link…', click: () => send('page-link') },
             { type: 'separator' },
           ];
         if (context.textEditing)
@@ -1339,6 +1340,9 @@ function applyHistory(record) {
     ['find-change', canvas.canvasEditing],
     ['document-dictionary', canvas.canvasEditing],
     ['load-text-styles', canvas.canvasEditing],
+    ['page-link', canvas.canvasEditing],
+    ['table-of-contents', canvas.canvasEditing],
+    ['update-table-of-contents', canvas.canvasEditing],
     ['check-spelling', canvas.canvasEditing],
   ];
   for (const [id, enabled] of panelCommands) {
@@ -1525,6 +1529,23 @@ function installMenu() {
         ],
       },
       {
+        label: 'Layout',
+        submenu: [
+          {
+            id: 'table-of-contents',
+            label: 'Table of Contents…',
+            enabled: false,
+            click: () => sendCommand('table-of-contents'),
+          },
+          {
+            id: 'update-table-of-contents',
+            label: 'Update Table of Contents',
+            enabled: false,
+            click: () => sendCommand('update-table-of-contents'),
+          },
+        ],
+      },
+      {
         label: 'Object',
         submenu: [
           {
@@ -1540,7 +1561,15 @@ function installMenu() {
       },
       {
         label: 'Insert',
-        submenu: [{ label: 'Document Link…', enabled: hasVault, click: () => sendCommand('link') }],
+        submenu: [
+          { label: 'Document Link…', enabled: hasVault, click: () => sendCommand('link') },
+          {
+            id: 'page-link',
+            label: 'Page Link…',
+            enabled: false,
+            click: () => sendCommand('page-link'),
+          },
+        ],
       },
       {
         label: 'Type',

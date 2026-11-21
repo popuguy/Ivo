@@ -3,7 +3,8 @@ import { cleanHTML } from '../../shared/html/sanitize.js';
 import { frameTextSettings } from '../../domain/documents/text-flows.js';
 
 export function publicationHeadingLevel(element, settings, defaultStyle) {
-  if (/^H[1-6]$/.test(element.tagName)) return Number(element.tagName[1]);
+  if (settings?.semantic !== false && /^H[1-6]$/.test(element.tagName))
+    return Number(element.tagName[1]);
   if (!settings?.headings || element.querySelector('p,div,ol,ul,blockquote,h1,h2,h3,h4,h5,h6'))
     return null;
   const key = element.closest('[data-ivo-pstyle]')?.getAttribute('data-ivo-pstyle') ?? defaultStyle;
@@ -35,15 +36,17 @@ function headingStarts(root, settings, defaultStyle) {
 
 /** Find the printed page containing a heading's first character. A subsequent
  * copy of the same paragraph in a continuation cannot create another bookmark. */
-export function pdfDocumentHeadings(doc, flow, pages) {
+export function collectPageHeadings(doc, flow, pages, settings = doc.publication) {
+  const results = new Map(pages.map((page) => [page.pageId, []]));
   const byId = new Map(doc.blocks.map((b) => [b.id, b]));
   const physical = new Map(pages.map((p) => [p.pageId, p]));
   const excluded = new Set(doc.publication?.excluded || []);
+  for (const source of doc.textFlows || []) if (source.contents) excluded.add(source.id);
   function add(id, heading) {
     const block = byId.get(id),
       page = physical.get(block?.pageId);
     if (!page || !page.section.querySelector('[data-object="' + CSS.escape(id) + '"]')) return;
-    (page.headings ||= []).push({ title: heading.title, level: heading.level });
+    results.get(page.pageId).push({ title: heading.title, level: heading.level });
   }
   const sources = new Map((doc.textFlows || []).map((f) => [f.id, f]));
   const seen = new Set(),
@@ -60,7 +63,7 @@ export function pdfDocumentHeadings(doc, flow, pages) {
     if (seen.has(key) || excluded.has(key)) continue;
     seen.add(key);
     const html = source?.html ?? block.html ?? '';
-    if (!doc.publication?.headings && !/<h[1-6]\b/i.test(html)) continue;
+    if (!Object.keys(settings?.headings || {}).length && !/<h[1-6]\b/i.test(html)) continue;
     const style = source?.style?.paragraphStyle || frameTextSettings(doc, block).paragraphStyle;
     if (!source) {
       const page = physical.get(block.pageId),
@@ -68,7 +71,7 @@ export function pdfDocumentHeadings(doc, flow, pages) {
       if (!node) continue;
       const frame = node.closest('[data-object]').getBoundingClientRect(),
         sheet = page.section.getBoundingClientRect();
-      for (const h of headingStarts(node, doc.publication, style)) {
+      for (const h of headingStarts(node, settings, style)) {
         const range = document.createRange();
         range.setStart(h.first, h.offset);
         range.setEnd(h.first, h.offset + 1);
@@ -87,7 +90,7 @@ export function pdfDocumentHeadings(doc, flow, pages) {
     }
     const root = document.createElement('div');
     root.innerHTML = cleanHTML(html);
-    const headings = headingStarts(root, doc.publication, style);
+    const headings = headingStarts(root, settings, style);
     let next = 0;
     for (const id of source.frameIds) {
       const fragment = flow.fragments.get(id);
@@ -98,4 +101,5 @@ export function pdfDocumentHeadings(doc, flow, pages) {
       }
     }
   }
+  return results;
 }

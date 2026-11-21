@@ -1,3 +1,4 @@
+import { remapContentsStyles } from './contents-settings.js';
 import { archiveVersion } from './capabilities.js';
 import { uid } from './model.js';
 import { copyDocument } from './copy.js';
@@ -48,6 +49,12 @@ export function copyObjectSelection(doc, selection, assets = []) {
   if (fragment.publishing) {
     const used = { paragraph: new Set(), character: new Set() },
       holders = [...fragment.blocks, ...(fragment.textFlows || []).flatMap((f) => [f, f.style])];
+    for (const holder of holders) {
+      const contents = holder.contents;
+      if (contents)
+        for (const id of [contents.entryStyle, ...Object.keys(contents.styles || {})])
+          if (id) used.paragraph.add(id);
+    }
     for (const holder of holders)
       for (const kind of ['paragraph', 'character']) {
         if (holder[kind + 'Style']) used[kind].add(holder[kind + 'Style']);
@@ -118,7 +125,7 @@ export function pasteObjectSelection(
 ) {
   if (!doc.pages.some((p) => p.id === pageId))
     throw new Error('The destination page is no longer available.');
-  const incoming = copyDocument(archive.documents[0]);
+  const incoming = copyDocument(archive.documents[0], { remapPageLinks: false });
   if (doc.blocks.length + incoming.blocks.length > 1000)
     throw new Error('A document can contain up to 1,000 objects.');
   const next = structuredClone(doc),
@@ -168,6 +175,7 @@ export function pasteObjectSelection(
       ...incoming.blocks,
       ...(incoming.textFlows || []).flatMap((f) => [f, f.style]),
     ]) {
+      remapContentsStyles(holder, remap);
       for (const key of ['paragraphStyle', 'characterStyle'])
         if (remap.has(holder[key])) holder[key] = remap.get(holder[key]);
       if (holder.html)

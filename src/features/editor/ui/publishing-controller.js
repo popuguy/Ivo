@@ -1,4 +1,11 @@
+import { contentsDialog, contentsHTML } from './table-of-contents.js';
+import {
+  contentsOwner,
+  canPlaceContents,
+  writeContents,
+} from '../../../domain/documents/contents.js';
 import { readyImageWrapResources } from '../../../rendering/text/image-contours.js';
+import { pageFolios } from '../../../domain/documents/page-sections.js';
 import { editSection } from './section-options.js';
 import { importTextStyles } from '../../../domain/documents/import-text-styles.js';
 import { openStyleImport } from './import-text-styles.js';
@@ -75,6 +82,8 @@ export function installPublishingControls(
     notify,
     onAsset,
     onEditParent,
+    readContents,
+    focusContents,
     showPanel,
     clearOverrides,
     fonts = () => [],
@@ -969,6 +978,31 @@ export function installPublishingControls(
     refreshTextState() {
       popover?.refresh();
     },
+    choosePageLink() {
+      const owner = doc(),
+        folios = pageFolios(owner.pages);
+      return new Promise((resolve) => {
+        const dialog = form(
+          'Insert Page Link',
+          '<label>Page<select name="destination">' +
+            owner.pages
+              .map(
+                (p, i) =>
+                  '<option value="' +
+                  esc(p.id) +
+                  '">' +
+                  esc(folios[i] + ' · ' + p.name) +
+                  '</option>',
+              )
+              .join('') +
+            '</select></label>',
+          (data) => resolve(data.get('destination')),
+        );
+        dialog.setAttribute('aria-label', 'Insert Page Link');
+        dialog.querySelector('select').value = state.activePage;
+        dialog.addEventListener('close', () => resolve(null), { once: true });
+      });
+    },
     command(name, { anchor } = {}) {
       if (name === 'toggle-wrap-options') {
         saveDisclosure('wrapPanel', state.propertyDisclosures?.wrapPanel === false);
@@ -1027,6 +1061,42 @@ export function installPublishingControls(
         return true;
       }
       if (!allowed()) return false;
+      if (name === 'table-of-contents' || name === 'update-table-of-contents') {
+        if (parentMode) return true;
+        const owner = doc(),
+          picked = objects().length === 1 ? objects()[0] : null;
+        const contents = contentsOwner(owner, picked),
+          saved = contents?.contents;
+        const apply = (settings, placement) => {
+          if (!dialogAllowed() || doc() !== owner || (picked && !owner.blocks.includes(picked)))
+            throw Error('The selected document or frame changed.');
+          const target = contents || placement === 'selection' ? picked : null;
+          const html = contentsHTML(owner, readContents(settings), settings, {
+            allowEmpty: !!contents,
+          });
+          let written;
+          mutate(
+            () => {
+              written = writeContents(owner, target, html, settings, { update: !!contents });
+              markTypographyVersion(owner);
+              state.activePage = written.pageId;
+              state.selection = [written.id];
+            },
+            contents ? 'Update Table of Contents' : 'Table of Contents',
+          );
+          focusContents(written.id);
+        };
+        if (name === 'table-of-contents')
+          contentsDialog(
+            form,
+            owner,
+            { saved, emptyFrame: canPlaceContents(owner, picked) },
+            apply,
+          );
+        else if (saved) apply(saved);
+        else notify?.('Select the table of contents you want to update.');
+        return true;
+      }
       if (name === 'section-options') {
         const owner = doc(),
           page = owner.pages.find((p) => p.id === state.activePage);
