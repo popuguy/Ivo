@@ -1,3 +1,5 @@
+import { crossReferenceResolver } from '../../domain/documents/cross-references.js';
+import { planCrossReferenceUpdate } from './ui/update-cross-references.js';
 import { tableMarkup } from '../../rendering/table.js';
 import { tableText } from '../../domain/documents/table-clipboard.js';
 import { installTableControls } from './ui/table-controls.js';
@@ -1647,7 +1649,11 @@ export function mountCanvasEditor(host, options) {
       delete element.dataset.projectedStart;
     if (textFlow) textFlow.html = canonical;
     else if (item) item.html = canonical;
-    if (hasNativeTextSettings(doc())) markTypographyVersion(doc());
+    if (
+      hasNativeTextSettings(doc()) ||
+      (doc().canvasVersion < 30 && /<a\b[^>]*\s(?:data-xref-format|data-page-id)=/i.test(canonical))
+    )
+      markTypographyVersion(doc());
   }
   function activeText() {
     return activeTextId
@@ -3405,16 +3411,33 @@ export function mountCanvasEditor(host, options) {
       return;
     }
 
-    if (name === 'link' || name === 'page-link') {
-      if (!canWrite() || (options.parentMode && name === 'page-link')) return;
-      const pageLink = name === 'page-link',
+    if (name === 'update-cross-references') {
+      if (!options.editing || !canWrite() || options.parentMode) return;
+      finishText();
+      const result = planCrossReferenceUpdate(doc(), [...(options.documents || []), doc()]);
+      if (result.changes.length)
+        mutate(() => {
+          for (const { holder, html } of result.changes) holder.html = html;
+        }, 'Update Cross-References');
+      options.onNotify?.(
+        `${result.updated} updated · ${result.unresolved} unresolved · ${result.locked} locked`,
+      );
+      return;
+    }
+    if (['link', 'page-link', 'new-cross-reference'].includes(name)) {
+      const reference = name === 'new-cross-reference';
+      if (!canWrite() || (reference && !options.editing) || (options.parentMode && name !== 'link'))
+        return;
+      const pageLink = name !== 'link',
         selectedId = object()?.id;
       const range = preserveRange(),
         owner = doc().id,
         element = activeText(),
         viewBefore = captureView(),
         bookmark = range && bookmarkForRange(element, range),
-        destination = pageLink ? await publishingControls.choosePageLink() : await onLink?.();
+        destination = pageLink
+          ? await publishingControls.choosePageLink(reference)
+          : await onLink?.();
       if (
         !destination ||
         !alive ||
@@ -3428,7 +3451,13 @@ export function mountCanvasEditor(host, options) {
       const chapter = id === owner ? doc() : options.documents?.find((d) => d.id === id);
       const target = pageLink ? chapter?.pages?.find((p) => p.id === destination.pageId) : chapter;
       if (!target || (object() && !objectAvailable(doc(), object()))) return;
-      const label = pageLink ? target.name : target.title;
+      const label = reference
+        ? crossReferenceResolver([chapter])(chapter.id, target.id, destination.format)
+        : pageLink
+          ? target.name
+          : target.title;
+      if (label == null) return;
+      const action = reference ? 'Insert Cross-Reference' : 'Insert link';
       const anchor = document.createElement('a');
       if (pageLink && id === owner) anchor.setAttribute('href', '#page=' + target.id);
       else {
@@ -3436,17 +3465,20 @@ export function mountCanvasEditor(host, options) {
         anchor.setAttribute('href', '#doc=' + id);
         if (pageLink) anchor.dataset.pageId = target.id;
       }
+      if (reference) anchor.dataset.xrefFormat = destination.format;
       if (element?.isConnected && activeTextId === element.dataset.sceneText && bookmark) {
         finishText();
         const before = structuredClone(doc()),
           currentRange = rangeFromBookmark(element, bookmark);
         if (!currentRange) return;
-        if (currentRange.collapsed) anchor.textContent = label;
-        else anchor.append(currentRange.extractContents());
+        if (reference || currentRange.collapsed) {
+          if (reference && !currentRange.collapsed) currentRange.deleteContents();
+          anchor.textContent = label;
+        } else anchor.append(currentRange.extractContents());
         currentRange.insertNode(anchor);
         currentRange.selectNodeContents(anchor);
         writeText(sceneObject(doc(), activeTextId), element.innerHTML, element);
-        if (anchor.dataset.pageId) markTypographyVersion(doc());
+
         if (textFlowForFrame(doc(), activeTextId)) refreshFlowPreview();
         savedTextSelection = {
           id: activeTextId,
@@ -3454,7 +3486,7 @@ export function mountCanvasEditor(host, options) {
         };
         restoreTextSelection(element, savedTextSelection.bookmark);
         measureText(sceneObject(doc(), activeTextId), element);
-        onCommit(before, { label: 'Insert link', viewBefore, viewAfter: captureView() });
+        onCommit(before, { label: action, viewBefore, viewAfter: captureView() });
         selectionDirty = true;
         requestFrame();
         return;
@@ -3462,7 +3494,8 @@ export function mountCanvasEditor(host, options) {
       anchor.textContent = label;
       const paragraph = '<p>' + anchor.outerHTML + '</p>';
       mutate(() => {
-        if (anchor.dataset.pageId) doc().canvasVersion = Math.max(doc().canvasVersion, 29);
+        if (reference || anchor.dataset.pageId)
+          doc().canvasVersion = Math.max(doc().canvasVersion, reference ? 30 : 29);
         const existing = object();
         if (existing && !objectAvailable(doc(), existing))
           throw Error('Unlock the object to insert a link.');
@@ -3481,7 +3514,7 @@ export function mountCanvasEditor(host, options) {
           layerId: context.layerId,
           html: paragraph,
         });
-      }, 'Insert link');
+      }, action);
     }
   }
   function pasteObjects(value) {
@@ -3661,7 +3694,7 @@ export function mountCanvasEditor(host, options) {
     contextMenu = document.createElement('div');
     contextMenu.className = 'canvas-context-menu';
     contextMenu.setAttribute('role', 'menu');
-    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="insert-table">Insert table…</button>${table ? '<button role="menuitem" data-canvas-command="table-options">Table options…</button>' : ''}<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button>${
+    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="insert-table">Insert table…</button>${table ? '<button role="menuitem" data-canvas-command="table-options">Table options…</button>' : ''}<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button><button role="menuitem" data-canvas-command="new-cross-reference">New Cross-Reference…</button>${
       context.textEditing
         ? Object.entries({
             ...INSERT_CHARACTERS,
@@ -3737,10 +3770,16 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     const p = event.target.closest('[data-select-page]');
-    const pageLink = event.target.closest('a[href^="#page="]');
+    const anchor = event.target.closest('a');
+    const pageLink =
+      anchor?.getAttribute('href')?.startsWith('#page=') ||
+      (anchor?.dataset.pageId && anchor.dataset.docId === doc().id)
+        ? anchor
+        : null;
     if (p || (pageLink && (!options.editing || event.metaKey || event.ctrlKey))) {
       event.preventDefault();
-      const target = p?.dataset.selectPage || pageLink.getAttribute('href').slice(6);
+      const target =
+        p?.dataset.selectPage || pageLink.dataset.pageId || pageLink.getAttribute('href').slice(6);
       if (!doc().pages.some((page) => page.id === target)) {
         options.onNotify?.('The linked page is no longer in this document.');
         return;

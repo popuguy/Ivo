@@ -1,3 +1,4 @@
+import { crossReferenceFormats } from './cross-references.js';
 import { validateTable } from './tables.js';
 import { indexSettings } from './subject-index.js';
 import { contentsSettings } from './contents-settings.js';
@@ -36,6 +37,7 @@ import {
   hasTables,
   hasIndexReferences,
   hasBookDestinations,
+  hasCrossReferences,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -198,6 +200,24 @@ function checkHtml(html, label, assetIds) {
     fail(`${label} contains an event handler`);
   if (/\s+srcset\s*=/i.test(html)) fail(`${label} contains an unsupported srcset`);
   for (const tag of html.matchAll(/<[^>]*>/g)) {
+    if (/^<a\b/i.test(tag[0]) && /\sdata-(?:xref-format|page-id)\s*=/i.test(tag[0])) {
+      const format = attribute(tag[0], 'data-xref-format'),
+        page = attribute(tag[0], 'data-page-id'),
+        destination = attribute(tag[0], 'data-doc-id'),
+        href = attribute(tag[0], 'href') || '';
+      if (
+        page !== null &&
+        (!ID_PATTERN.test(page) || !destination || !ID_PATTERN.test(destination))
+      )
+        fail(`${label} has an invalid chapter page link`);
+      if (
+        format !== null &&
+        (!Object.hasOwn(crossReferenceFormats, format) ||
+          (page === null &&
+            (destination || !href.startsWith('#page=') || !ID_PATTERN.test(href.slice(6)))))
+      )
+        fail(`${label} has an invalid cross-reference`);
+    }
     for (const key of ['href', 'src', 'poster', 'action', 'formaction', 'xlink:href']) {
       const value = attribute(tag[0], key);
       if (value !== null) {
@@ -1094,6 +1114,11 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 29) || payload.schemaVersion < 30)
     )
       fail('Book page destinations require archive 30 and canvas 29.');
+    if (
+      hasCrossReferences(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 30) || payload.schemaVersion < 31)
+    )
+      fail('Inline cross-references require archive 31 and canvas 30.');
     if (hasTables(doc) && (!supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29))
       fail('Tables require archive 29 and canvas 28.');
     if (hasContents(doc) && (!supportedCanvas(doc.canvasVersion, 27) || payload.schemaVersion < 28))

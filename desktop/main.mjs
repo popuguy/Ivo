@@ -583,6 +583,7 @@ else {
               ? [{ label: 'Table Options…', click: () => send('table-options') }]
               : []),
             { label: 'Insert Page Link…', click: () => send('page-link') },
+            { label: 'New Cross-Reference…', click: () => send('new-cross-reference') },
             { type: 'separator' },
           ];
         if (context.textEditing)
@@ -1345,6 +1346,8 @@ function applyHistory(record) {
     ['document-dictionary', canvas.canvasEditing],
     ['load-text-styles', canvas.canvasEditing],
     ['page-link', canvas.canvasEditing],
+    ['new-cross-reference', canvas.canvasEditing],
+    ['update-cross-references', canvas.canvasEditing],
     ['insert-table', canvas.canvasEditing],
     ['generate-index', canvas.canvasEditing],
     ['update-index', canvas.canvasEditing],
@@ -1587,6 +1590,18 @@ function installMenu() {
             label: 'Table…',
             enabled: false,
             click: () => sendCommand('insert-table'),
+          },
+          {
+            id: 'new-cross-reference',
+            label: 'New Cross-Reference…',
+            enabled: false,
+            click: () => sendCommand('new-cross-reference'),
+          },
+          {
+            id: 'update-cross-references',
+            label: 'Update Cross-References',
+            enabled: false,
+            click: () => sendCommand('update-cross-references'),
           },
           {
             id: 'page-link',

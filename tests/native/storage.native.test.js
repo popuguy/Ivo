@@ -9,6 +9,7 @@ import {
 import { setLibraryInfo, libraryInfo } from '../../src/domain/documents/library.js';
 import { startTextFlow, appendTextFlowPage } from '../../src/domain/documents/text-flows.js';
 import { markTypographyVersion } from '../../src/domain/documents/capabilities.js';
+import { crossReferenceResolver } from '../../src/domain/documents/cross-references.js';
 import { createSceneDocument, addPage, insertObject } from '../../src/domain/documents/scene.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -289,6 +290,44 @@ test(
     const again = await openVault(folder),
       onMac = (await again.loadDocuments()).find((d) => d.id === card.id);
     assert.deepEqual(onMac.blocks[0].table, onPhone.blocks[0].table);
+    const references = createSceneDocument('References');
+    const destination = onMac.pages[0].id;
+    const field =
+      '<a href="#doc=' +
+      card.id +
+      '" data-doc-id="' +
+      card.id +
+      '" data-page-id="' +
+      destination +
+      '" data-xref-format="document-page">Supply card, 1</a>';
+    const frame = insertObject(references, 'text', references.pages[0].id, {
+      html: '<p>See ' + field + '</p>',
+    });
+    const linked = startTextFlow(references, frame.id);
+    references.publication = {
+      version: 1,
+      order: [],
+      excluded: [],
+      chapters: [references.id, card.id],
+    };
+    markTypographyVersion(references);
+    await again.saveDocument(references);
+    const handset = await openMobile();
+    const mobileChapters = await handset.loadDocuments();
+    const source = mobileChapters.find((d) => d.id === references.id);
+    assert.deepEqual(source.publication.chapters, references.publication.chapters);
+    assert.equal(source.textFlows[0].html, linked.html);
+    assert.equal(source.canvasVersion, 30);
+    const mobileCard = mobileChapters.find((d) => d.id === card.id);
+    mobileCard.title = 'New fabric card';
+    mobileCard.version++;
+    await handset.saveDocument(mobileCard);
+    const restored = await (await openVault(folder)).loadDocuments();
+    assert.equal(
+      crossReferenceResolver(restored)(card.id, destination, 'document-page'),
+      'New fabric card, 1',
+    );
+    assert.equal(restored.find((d) => d.id === references.id).textFlows[0].html, linked.html);
     assert.equal(stderr, '');
     child.stdin.end();
     await new Promise((resolve) => child.on('close', resolve));

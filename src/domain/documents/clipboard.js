@@ -1,5 +1,6 @@
+import { ID_PATTERN } from './constants.js';
 import { remapContentsStyles } from './contents-settings.js';
-import { archiveVersion } from './capabilities.js';
+import { archiveVersion, markTypographyVersion } from './capabilities.js';
 import { uid } from './model.js';
 import { copyDocument } from './copy.js';
 import { descendantsOf, worldRect, pagePositions } from './scene.js';
@@ -23,6 +24,7 @@ export function copyObjectSelection(doc, selection, assets = []) {
   const fragment = structuredClone(doc);
   // Keep document links pointing to their original document when identities are remapped on paste.
   fragment.id = uid('clipboard-');
+  delete fragment.publication;
   fragment.blocks = fragment.blocks.filter((b) => included.has(b.id));
   for (const root of roots) {
     const copy = fragment.blocks.find((b) => b.id === root.id);
@@ -45,6 +47,8 @@ export function copyObjectSelection(doc, selection, assets = []) {
     flow.automaticPages = false;
     flow.autoPages = [];
   }
+  if ([...fragment.blocks, ...fragment.textFlows].some((holder) => holder.html?.includes('#page=')))
+    fragment.extensions = { ...fragment.extensions, ivoClipboardPageOwner: doc.id };
   if (!fragment.textFlows.length) delete fragment.textFlows;
   if (fragment.publishing) {
     const used = { paragraph: new Set(), character: new Set() },
@@ -126,6 +130,32 @@ export function pasteObjectSelection(
   if (!doc.pages.some((p) => p.id === pageId))
     throw new Error('The destination page is no longer available.');
   const incoming = copyDocument(archive.documents[0], { remapPageLinks: false });
+  const origin = incoming.extensions?.ivoClipboardPageOwner;
+  if (typeof origin === 'string' && ID_PATTERN.test(origin) && origin !== doc.id) {
+    for (const holder of [...incoming.blocks, ...(incoming.textFlows || [])]) {
+      if (!holder.html?.includes('#page=')) continue;
+      holder.html = holder.html.replace(/<a\b[^>]*>/gi, (tag) => {
+        const href = attribute(tag, 'href');
+        if (
+          attribute(tag, 'data-doc-id') ||
+          !href?.startsWith('#page=') ||
+          !ID_PATTERN.test(href.slice(6))
+        )
+          return tag;
+        return tag.replace(
+          /\shref\s*=\s*(["'])#page=[\w-]+\1/i,
+          ' data-doc-id="' +
+            origin +
+            '" data-page-id="' +
+            href.slice(6) +
+            '" href="#doc=' +
+            origin +
+            '"',
+        );
+      });
+    }
+    markTypographyVersion(incoming);
+  }
   if (doc.blocks.length + incoming.blocks.length > 1000)
     throw new Error('A document can contain up to 1,000 objects.');
   const next = structuredClone(doc),

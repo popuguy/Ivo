@@ -1,3 +1,4 @@
+import { verifyCrossReferences } from './cross-references.js';
 import { verifyBookEntries } from './book-entries.js';
 import { verifyTables } from './tables.js';
 import { verifySubjectIndex } from './subject-index.js';
@@ -50,6 +51,7 @@ try {
   await verifyTables(host, assert);
   await verifyContents(host, assert);
   await verifyBookEntries(host, assert);
+  await verifyCrossReferences(host, assert);
   await verifySubjectIndex(host, assert);
   await verifyTextControls(host);
   await verifyNestedLayers(host, assert);

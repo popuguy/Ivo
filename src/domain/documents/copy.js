@@ -72,6 +72,14 @@ export function copyDocument(
         /(data-ivo-(?:pstyle|cstyle)=["'])([^"']+)(["'])/g,
         (all, prefix, id, suffix) => (ids.has(id) ? prefix + ids.get(id) + suffix : all),
       );
+    if (holder.html)
+      holder.html = holder.html
+        .replace(/(\bdata-doc-id\s*=\s*)(["'])([^"']*)\2/gi, (all, prefix, quote, value) =>
+          value === source.id ? prefix + quote + document.id + quote : all,
+        )
+        .replace(/(\bhref\s*=\s*)(["'])#doc=([^"']*)\2/gi, (all, prefix, quote, value) =>
+          value === source.id ? prefix + quote + '#doc=' + document.id + quote : all,
+        );
     for (const key of ['paragraphStyle', 'characterStyle'])
       if (holder[key] && ids.has(holder[key])) holder[key] = ids.get(holder[key]);
   }
@@ -105,13 +113,7 @@ export function copyDocument(
     if (block.textFlowId) block.textFlowId = ids.get(block.textFlowId);
     if (block.parentId) block.parentId = ids.get(block.parentId);
     for (const point of block.points || []) point.id = ids.get(point.id);
-    block.html = (block.html || '')
-      .replace(/(\bdata-doc-id\s*=\s*)(["'])([^"']*)\2/gi, (all, prefix, quote, value) =>
-        value === source.id ? prefix + quote + document.id + quote : all,
-      )
-      .replace(/(\bhref\s*=\s*)(["'])#doc=([^"']*)\2/gi, (all, prefix, quote, value) =>
-        value === source.id ? prefix + quote + '#doc=' + document.id + quote : all,
-      );
+    block.html ||= '';
   }
   for (const textFlow of document.textFlows || []) {
     textFlow.id = ids.get(textFlow.id);
@@ -122,13 +124,6 @@ export function copyDocument(
       pageId: ids.get(value.pageId),
       frameId: ids.get(value.frameId),
     }));
-    textFlow.html = textFlow.html
-      .replace(/(\bdata-doc-id\s*=\s*)(["'])([^"']*)\2/gi, (all, prefix, quote, value) =>
-        value === source.id ? prefix + quote + document.id + quote : all,
-      )
-      .replace(/(\bhref\s*=\s*)(["'])#doc=([^"']*)\2/gi, (all, prefix, quote, value) =>
-        value === source.id ? prefix + quote + '#doc=' + document.id + quote : all,
-      );
   }
   if (document.extensions?.ivoTemplate) {
     delete document.extensions.ivoTemplate;

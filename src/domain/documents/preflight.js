@@ -1,7 +1,8 @@
+import { crossReferenceResolver } from './cross-references.js';
 import { preflightPresets } from './preflight-profiles.js';
 import { createDocumentResolver, textLinkTargets } from '../knowledge/index.js';
 import { fontsInText } from '../text/font-references.js';
-import { attribute } from '../text/html.js';
+import { attribute, decodeEntities } from '../text/html.js';
 
 /** Inspect the document and its current composition without writing to either. */
 export function inspectPublication(
@@ -21,6 +22,7 @@ export function inspectPublication(
   const blocks = new Map(doc.blocks.map((item) => [item.id, item]));
   const pages = new Map(doc.pages.map((page, i) => [page.id, page.name || 'Page ' + (i + 1)]));
   const resolver = checks.has('links') ? createDocumentResolver(documents || [doc]) : null;
+  const resolveField = resolver && crossReferenceResolver(documents || [doc]);
   const issues = [],
     keys = new Set();
   function report(group, problem, location, detail = '') {
@@ -79,6 +81,19 @@ export function inspectPublication(
             location,
             `${Number(measurement.toFixed(1))} ppi (minimum ${profile.ppi} ppi)`,
           );
+      }
+    }
+    if (resolveField && source.html?.includes('data-xref-format')) {
+      for (const [, attrs, contents] of source.html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
+        const format = attribute(attrs, 'data-xref-format');
+        if (!format) continue;
+        const label = resolveField(
+          attribute(attrs, 'data-doc-id') || doc.id,
+          attribute(attrs, 'data-page-id') || (attribute(attrs, 'href') || '').slice(6),
+          format,
+        );
+        if (label !== null && label !== decodeEntities(contents.replace(/<[^>]*>/g, '')))
+          report('Links', 'Out-of-date cross-reference', location, label);
       }
     }
     if (resolver)

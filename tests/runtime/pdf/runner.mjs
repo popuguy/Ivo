@@ -265,7 +265,13 @@ app
       html:
         '<p><a href="#page=' +
         owner.pages[1].id +
-        '">Opening</a></p><p data-ivo-pstyle="' +
+        '">Opening</a> <a data-xref-format="folio" data-doc-id="' +
+        front.id +
+        '" data-page-id="' +
+        front.pages[0].id +
+        '" href="#doc=' +
+        front.id +
+        '">i</a></p><p data-ivo-pstyle="' +
         headingStyle.id +
         '">Woven surfaces</p><p>' +
         'Overflow '.repeat(160) +
@@ -313,6 +319,10 @@ app
     ]);
     const outline = JSON.parse(inspected.stdout);
     assert.match(outline.text[1], /Linen twill/);
+    assert(
+      outline.pageLinks.some(([from, to]) => from === 1 && to === 0),
+      'The composed inline reference lost its external page destination',
+    );
     assert.deepEqual(outline.labels, ['i', 'A–7', 'A–8']);
     assert(
       outline.pageLinks.some(([from, to]) => from === 1 && to === 2),

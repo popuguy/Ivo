@@ -1,3 +1,4 @@
+import { crossReferenceFormats } from '../../domain/documents/cross-references.js';
 import { listOrdinal } from '../../domain/text/list-numbering.js';
 import { nativeTextAttributes } from '../dom/native-text-format.js';
 import { normalizeInlineMetrics } from '../dom/inline-metrics.js';
@@ -154,6 +155,11 @@ export function cleanHTML(value) {
         out.target = '_blank';
         out.rel = 'noopener noreferrer';
       }
+      if (
+        (out.dataset.pageId || out.getAttribute('href')?.startsWith('#page=')) &&
+        Object.hasOwn(crossReferenceFormats, node.dataset.xrefFormat)
+      )
+        out.dataset.xrefFormat = node.dataset.xrefFormat;
     }
     return out;
   }

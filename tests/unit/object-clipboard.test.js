@@ -195,3 +195,24 @@ test('clipboard retains exact used font bytes and family companions for another 
   });
   assert.equal(decoded.documents[0].blocks[0].textStyle, assets[0].id);
 });
+
+test('copy a page reference from a book and retain its original page in another vault document', () => {
+  const source = createSceneDocument('Source'),
+    target = createSceneDocument('Reader');
+  source.publication = { version: 1, order: [], excluded: [], chapters: [source.id, target.id] };
+  const page = addPage(source, source.pages[0].id);
+  const frame = insertObject(source, 'text', source.pages[0].id, {
+    html: '<p><a data-xref-format="folio" href="#page=' + page.id + '">2</a></p>',
+  });
+  source.canvasVersion = 30;
+  const archive = readObjectClipboard(JSON.stringify(copyObjectSelection(source, [frame.id])));
+  pasteObjectSelection(target, archive, { pageId: target.pages[0].id });
+  assert.match(target.blocks[0].html, new RegExp('data-doc-id="' + source.id + '"'));
+  assert.match(target.blocks[0].html, new RegExp('data-page-id="' + page.id + '"'));
+  assert.equal(target.publication, undefined);
+  assert.equal(
+    validateImport({ schemaVersion: 31, documents: [target], assets: [] }).documents[0]
+      .canvasVersion,
+    30,
+  );
+});

@@ -4,6 +4,12 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Inline page cross-references
+
+**50 of 63 release capabilities have implementation evidence**, with 32 foundations, 18 partial implementations and 13 open rows. This measures breadth. The remaining acceptance criteria include reference comparisons, sustained-use checks and device qualification.
+
+Insert → New Cross-Reference can insert a linked page number, page name, or document name and number at the text selection. Update Cross-References refreshes changed labels as a single undoable edit. Locked text and unresolved references retain their last labels. Preflight identifies stale text and missing destinations. A hidden Mac editor test exercises insertion into italic text in a threaded flow, chapter renaming, Roman numbering, locked frames, no-op updates and reopening from an archive. PDFKit checks an external page link from composed text. Paragraph anchors, user-defined reference formats and protected atomic field editing remain open.
+
 ## Contents and indexes across a book
 
 Layout → Table of Contents and Generate Index offer Include Book Documents when the document owns a chapter list. Both follow its saved order, use each chapter’s section folios and link to individual pages. An index range stops at a chapter or a section boundary. Named heading styles in separate chapters match by name. Generating and updating read closed chapters without changing them. Insert Page Link can also target another vault document. The desktop publishing fixture exercises these paths, missing chapters, copying and archive reopen. PDFKit independently checks links between chapters in an exported book. Adobe documents the book option in its [TOC guide](https://helpx.adobe.com/indesign/desktop/indexes-and-references/add-a-table-of-contents/customize-toc-style.html).

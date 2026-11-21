@@ -3,8 +3,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 30;
-export const CURRENT_CANVAS_VERSION = 29;
+export const CURRENT_ARCHIVE_VERSION = 31;
+export const CURRENT_CANVAS_VERSION = 30;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -354,6 +354,15 @@ export const hasContents = (doc) =>
   doc.canvasVersion === 27 ||
   (Array.isArray(doc.textFlows) &&
     doc.textFlows.some((flow) => flow?.contents !== undefined || flow?.index !== undefined));
+export function hasCrossReferences(doc) {
+  const contains = (holder) => /<a\b[^>]*\sdata-xref-format\s*=/i.test(holder?.html || '');
+  return (
+    doc.canvasVersion === 30 ||
+    doc.blocks?.some(contains) ||
+    doc.textFlows?.some(contains) ||
+    doc.publishing?.parents?.some((p) => p.blocks?.some(contains))
+  );
+}
 export function hasBookDestinations(doc) {
   const link = (source) => /<a\b[^>]*\sdata-page-id\s*=/i.test(source?.html || '');
   return (
@@ -364,6 +373,7 @@ export function hasBookDestinations(doc) {
   );
 }
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasCrossReferences)) return 31;
   if (documents.some(hasBookDestinations)) return 30;
   if (documents.some((doc) => hasTables(doc) || hasIndexReferences(doc))) return 29;
   if (documents.some(hasContents)) return 28;
@@ -404,6 +414,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasCrossReferences(document)) {
+    document.canvasVersion = 30;
+    return document;
+  }
   if (hasBookDestinations(document)) {
     document.canvasVersion = 29;
     return document;

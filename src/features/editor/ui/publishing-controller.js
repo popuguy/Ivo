@@ -1,3 +1,4 @@
+import { crossReferenceFormats } from '../../../domain/documents/cross-references.js';
 import { generatedTextCommands } from './publication-commands.js';
 import { indexDialog, indexHTML } from './subject-index.js';
 import { contentsDialog, contentsHTML } from './table-of-contents.js';
@@ -991,26 +992,35 @@ export function installPublishingControls(
     refreshTextState() {
       popover?.refresh();
     },
-    choosePageLink() {
+    choosePageLink(reference = false) {
       const owner = doc(),
         others = documents().filter((d) => d.id !== owner.id && d.pages?.length);
       return new Promise((resolve) => {
         const dialog = form(
-          'Insert Page Link',
+          reference ? 'New Cross-Reference' : 'Insert Page Link',
           (others.length
             ? '<label>Document<select name="chapter">' +
               [owner, ...others]
                 .map((d) => '<option value="' + esc(d.id) + '">' + esc(d.title) + '</option>')
                 .join('') +
               '</select></label>'
-            : '') + '<label>Page<select name="destination"></select></label>',
+            : '') +
+            '<label>Page<select name="destination"></select></label>' +
+            (reference
+              ? '<label>Cross-Reference Format<select name="format">' +
+                Object.entries(crossReferenceFormats)
+                  .map(([key, name]) => '<option value="' + key + '">' + esc(name) + '</option>')
+                  .join('') +
+                '</select></label>'
+              : ''),
           (data) =>
             resolve({
               documentId: data.get('chapter') || owner.id,
               pageId: data.get('destination'),
+              ...(reference && { format: data.get('format') }),
             }),
         );
-        dialog.setAttribute('aria-label', 'Insert Page Link');
+        dialog.setAttribute('aria-label', reference ? 'New Cross-Reference' : 'Insert Page Link');
         const fields = dialog.querySelector('form').elements;
         function showPages(chapter) {
           const folios = pageFolios(chapter.pages);

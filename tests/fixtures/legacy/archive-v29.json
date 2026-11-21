@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 29,
+  "documents": [
+    {
+      "id": "frozen-29",
+      "title": "Fabric swatches",
+      "kicker": "",
+      "subtitle": "",
+      "tags": [],
+      "aliases": [],
+      "blocks": [
+        {
+          "id": "table",
+          "type": "table",
+          "x": 48,
+          "y": 48,
+          "w": 180,
+          "h": 100,
+          "html": "",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "cmu-serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "pageId": "p",
+          "table": {
+            "cells": [
+              [
+                "Fabric"
+              ],
+              [
+                "Silk"
+              ]
+            ],
+            "widths": [
+              1
+            ],
+            "merges": [],
+            "headerRows": 1,
+            "footerRows": 0,
+            "inset": 4,
+            "stroke": 0.5,
+            "vertical": "top"
+          }
+        }
+      ],
+      "createdAt": "2026-11-21T00:00:00.000Z",
+      "updatedAt": "2026-11-21T00:00:00.000Z",
+      "layout": {
+        "columns": 12,
+        "rows": 38
+      },
+      "version": 1,
+      "template": "blank",
+      "canvasVersion": 28,
+      "pages": [
+        {
+          "id": "p",
+          "name": "Page 1",
+          "width": 612,
+          "height": 792
+        }
+      ]
+    }
+  ],
+  "assets": []
+}
