@@ -112,8 +112,10 @@ void (async () => {
     await wait(() => execute('ivoNative.windows.info().then(s=>s.active)'), 'Writer');
     const nativeItem = (id) => Menu.getApplicationMenu()?.getMenuItemById(id);
     await wait(
-      () => nativeItem('show-panel-text-wrap')?.enabled,
-      'Text Wrap panel in reading view',
+      async () =>
+        (await execute("!!document.querySelector('.scene-reading')")) &&
+        nativeItem('show-panel-text-wrap')?.enabled === false,
+      'Reading view disables the Text Wrap panel command',
     );
     assert.equal(nativeItem('wrap-preferences').enabled, false);
     assert.equal(nativeItem('show-contextual').enabled, false);
@@ -136,6 +138,7 @@ void (async () => {
     await wait(() => nativeItem('send-backward')?.enabled, 'Object arrangement menu');
     assert.equal(nativeItem('wrap-preferences').enabled, true);
     assert.equal(nativeItem('show-contextual').enabled, false);
+    assert.equal(nativeItem('show-panel-text-wrap').enabled, true);
     nativeItem('show-panel-text-wrap').click();
     await wait(
       () =>
