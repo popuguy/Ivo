@@ -306,7 +306,7 @@ test('viewport zoom preserves its focal point and world/screen inverses at fract
     screen = { x: 385.12, y: 240.789 },
     world = screenToWorld(screen, camera);
   assert.deepEqual(worldToScreen(world, camera), screen);
-  for (const zoom of [0.08, 0.25, 1, 3.77, 8]) {
+  for (const zoom of [0.08, 0.25, 1, 3.77, 8, 40]) {
     const next = zoomAt(camera, screen, zoom),
       actual = worldToScreen(world, next);
     assert.ok(Math.abs(actual.x - screen.x) < 1e-9);

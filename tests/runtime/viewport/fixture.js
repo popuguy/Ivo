@@ -183,6 +183,26 @@ try {
     host.querySelector('.scene-editor').dataset.gesture
   )
     throw new Error('Pan cursor remained active after focus loss');
+  for (let i = 0; i < 48; i++) await editor.command('zoom-in');
+  await next();
+  if (
+    editor.getState().camera.zoom !== 40 ||
+    host.querySelector('.zoom-value').textContent !== '4000.00%'
+  )
+    throw Error('Zoom In did not reach the InDesign maximum.');
+  await editor.command('zoom-out');
+  viewport.dispatchEvent(
+    new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -1000,
+      ctrlKey: true,
+      clientX: 600,
+      clientY: 400,
+    }),
+  );
+  if (editor.getState().camera.zoom !== 40) throw Error('Trackpad pinch exceeded or missed 4000%.');
+  result.maximumZoomPercent = 4000;
   mutations.disconnect();
   editor.destroy();
   result.textZoom = await verifyTextZoom(host);

@@ -1,6 +1,6 @@
 /** Pure camera math. One affine viewport maps page/world points to CSS screen points. */
 export const MIN_ZOOM = 0.0001,
-  MAX_ZOOM = 8;
+  MAX_ZOOM = 40;
 export function screenToWorld(point, camera) {
   return { x: (point.x - camera.x) / camera.zoom, y: (point.y - camera.y) / camera.zoom };
 }

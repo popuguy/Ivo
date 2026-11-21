@@ -1,3 +1,4 @@
+import { MIN_ZOOM, MAX_ZOOM } from '../geometry/viewport.js';
 import { uid } from '../documents/model.js';
 export const isDrawingTool = (value) =>
   ['select', 'direct', 'text', 'rectangle', 'polygon', 'hand'].includes(value);
@@ -56,8 +57,8 @@ export function normalizeWorkspace(value, documents) {
         [c.x, c.y, c.zoom].every(Number.isFinite) &&
         Math.abs(c.x) <= 1e9 &&
         Math.abs(c.y) <= 1e9 &&
-        c.zoom >= 0.0001 &&
-        c.zoom <= 8
+        c.zoom >= MIN_ZOOM &&
+        c.zoom <= MAX_ZOOM
       )
         next.camera = { x: c.x, y: c.y, zoom: c.zoom };
       result.canvasState = next;

@@ -172,7 +172,7 @@ test('A maximum workspace remains below the native metadata envelope without dro
     ),
     documents = ids.map((id) => ({ id })),
     state = {
-      camera: { x: 999999999, y: -999999999, zoom: 7.999999 },
+      camera: { x: 999999999, y: -999999999, zoom: 40 },
       activePage: 'p' + 'a'.repeat(119),
       inside: 'm' + 'a'.repeat(119),
       activeTextId: 'f' + 'a'.repeat(119),
