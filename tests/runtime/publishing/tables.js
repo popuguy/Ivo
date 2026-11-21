@@ -1,3 +1,4 @@
+import { columnPoints } from '../../../src/domain/geometry/table-columns.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
 import { createSceneDocument } from '../../../src/domain/documents/scene.js';
 import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
@@ -63,7 +64,7 @@ export async function verifyTables(host, assert) {
     const table = doc.blocks.find((b) => b.type === 'table');
     assert(table && cell(0, 0)?.tagName === 'TH', 'Header cells missing after insertion');
     const divider = () => host.querySelector('[data-selected-table] [data-table-divider="0"]');
-    const drag = (distance, cancel = false) => {
+    const drag = (distance, cancel = false, shiftKey = false) => {
       const grip = divider(),
         bounds = grip.getBoundingClientRect(),
         x = bounds.x + bounds.width / 2,
@@ -75,6 +76,7 @@ export async function verifyTables(host, assert) {
           clientX: x,
           clientY: y,
           pointerId: 51,
+          shiftKey,
           button: 0,
         }),
       );
@@ -84,6 +86,7 @@ export async function verifyTables(host, assert) {
           clientX: x + distance,
           clientY: y,
           pointerId: 51,
+          shiftKey,
         }),
       );
       window.dispatchEvent(
@@ -92,17 +95,28 @@ export async function verifyTables(host, assert) {
           clientX: x + distance,
           clientY: y,
           pointerId: 51,
+          shiftKey,
         }),
       );
     };
-    const initial = [...table.table.widths];
+    const initial = columnPoints(table),
+      frameWidth = table.w;
     drag(15, true);
-    assert(table.table.widths[0] === initial[0], 'Cancel committed a column drag');
-    drag(20);
     assert(
-      table.table.widths[0] > initial[0] &&
-        Math.abs(table.table.widths[0] + table.table.widths[1] - 2) < 0.0001,
-      'Column divider did not transfer width between neighbors',
+      columnPoints(table)[0] === initial[0] && table.w === frameWidth,
+      'Cancel committed a column drag',
+    );
+    drag(20);
+    const grown = columnPoints(table);
+    assert(
+      table.w > frameWidth && Math.abs(grown[1] - initial[1]) < 0.0001,
+      'Normal drag changed the adjacent column',
+    );
+    const wider = table.w;
+    drag(10, false, true);
+    assert(
+      table.w === wider && columnPoints(table)[0] > grown[0] && columnPoints(table)[1] < grown[1],
+      'Shift-drag changed the overall table width',
     );
     edit(0, 0);
     type('Cut & finish');
@@ -112,6 +126,20 @@ export async function verifyTables(host, assert) {
     type('<silk>');
     tab();
     type('Printed');
+    const jump = (key) =>
+      input().dispatchEvent(
+        new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true }),
+      );
+    jump('Home');
+    assert(
+      input()?.getAttribute('aria-label') === 'Row 2, column 1',
+      'Could not jump to the first cell of the row',
+    );
+    jump('PageDown');
+    assert(
+      input()?.getAttribute('aria-label') === 'Row 3, column 1',
+      'Could not jump to the last cell of the column',
+    );
     input().blur();
     assert(
       cell(1, 0).textContent === '<silk>' && !cell(1, 0).querySelector('silk'),

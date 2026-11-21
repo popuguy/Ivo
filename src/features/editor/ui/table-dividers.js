@@ -1,3 +1,4 @@
+import { columnPoints, resizeColumn } from '../../../domain/geometry/table-columns.js';
 /** Measure the transformed inline axis so zoomed and rotated tables use the same drag. */
 export function installTableDividers({ world, doc, selected, available, mutate, allowed }) {
   let marked = null,
@@ -33,27 +34,34 @@ export function installTableDividers({ world, doc, selected, available, mutate, 
       length = dx * dx + dy * dy;
     if (length < 1) return true;
     const i = Number(grip.dataset.tableDivider),
-      widths = block.table.widths,
-      total = widths.reduce((a, b) => a + b, 0);
-    const cols = frame.querySelectorAll('col'),
-      old = widths[i],
-      pair = old + widths[i + 1],
-      min = Math.min(old, widths[i + 1], (4 * total) / block.w);
-    const before = widths.slice(0, i).reduce((a, b) => a + b, 0);
-    let next = old;
+      old = columnPoints(block)[i];
+    const objectNode = frame.parentElement,
+      cols = frame.querySelectorAll('col'),
+      grips = frame.querySelectorAll('[data-table-divider]');
     const session = new AbortController(),
       opts = { signal: session.signal, capture: true };
-    function preview(w) {
-      next = w;
-      cols[i].style.width = (100 * w) / total + '%';
-      cols[i + 1].style.width = (100 * (pair - w)) / total + '%';
-      grip.style.left = (100 * (before + w)) / total + '%';
+    let proposed;
+    function preview(next) {
+      Object.assign(objectNode.style, {
+        width: next.w + 'px',
+        left: next.x + 'px',
+        top: next.y + 'px',
+      });
+      const total = next.widths.reduce((a, b) => a + b, 0);
+      let x = 0;
+      next.widths.forEach((width, c) => {
+        const percent = (100 * width) / total;
+        x += percent;
+        cols[c].style.width = percent + '%';
+        if (grips[c]) grips[c].style.left = x + '%';
+      });
     }
     function change(e) {
       if (e.pointerId !== event.pointerId) return;
       const movement =
-        (((e.clientX - event.clientX) * dx + (e.clientY - event.clientY) * dy) / length) * total;
-      preview(Math.min(10000, pair - min, Math.max(min, pair - 10000, old + movement)));
+        (((e.clientX - event.clientX) * dx + (e.clientY - event.clientY) * dy) / length) * block.w;
+      proposed = resizeColumn(block, i, old + movement, e.shiftKey);
+      preview(proposed);
     }
     function end(commit) {
       session.abort();
@@ -61,18 +69,20 @@ export function installTableDividers({ world, doc, selected, available, mutate, 
       if (grip.hasPointerCapture(event.pointerId)) grip.releasePointerCapture(event.pointerId);
       if (
         !commit ||
-        next === old ||
+        !proposed ||
+        proposed.widths === block.table.widths ||
         doc() !== owner ||
         selected() !== block ||
         !allowed() ||
         !available(owner, block)
       ) {
-        preview(old);
+        preview({ w: block.w, x: block.x, y: block.y, widths: block.table.widths });
         return;
       }
+      const { widths, ...rect } = proposed;
       mutate(() => {
-        widths[i] = next;
-        widths[i + 1] = pair - next;
+        Object.assign(block, rect);
+        block.table.widths = widths;
       }, 'Resize table columns');
     }
     cancel = () => end(false);

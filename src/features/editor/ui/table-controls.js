@@ -1,3 +1,5 @@
+import { columnPoints, resizeColumn } from '../../../domain/geometry/table-columns.js';
+import { LIMITS } from '../../../domain/documents/constants.js';
 import { installTableDividers } from './table-dividers.js';
 import { readTableText, putTableCells } from '../../../domain/documents/table-clipboard.js';
 import {
@@ -18,6 +20,7 @@ const selectField = (name, label, choices, value) =>
   `<label>${label}<select name="${name}">${choices.map(([key, title]) => `<option value="${key}" ${key === value ? 'selected' : ''}>${title}</option>`).join('')}</select></label>`;
 const operations = [
   ['format', 'Format table'],
+  ['even-columns', 'Distribute columns evenly'],
   ['insert-row', 'Insert row below'],
   ['delete-row', 'Delete row'],
   ['earlier-row', 'Move row up'],
@@ -157,6 +160,22 @@ export function installTableControls({
         finish();
         return;
       }
+      if (e.altKey && ['Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+        const horizontal = e.key === 'Home' || e.key === 'End';
+        const group = cellsFor(id).filter((cell) => {
+          const point = coordinate(cell),
+            start = horizontal ? point.row : point.column;
+          const at = horizontal ? row : column;
+          return start <= at && at < start + (horizontal ? cell.rowSpan : cell.colSpan);
+        });
+        const end = e.key === 'End' || e.key === 'PageDown';
+        const target = end ? group.at(-1) : group[0];
+        if (target) {
+          e.preventDefault();
+          edit(target);
+        }
+        return;
+      }
       if (e.key !== 'Tab') return;
       e.preventDefault();
       const cells = cellsFor(id),
@@ -198,6 +217,8 @@ export function installTableControls({
         (data) => {
           if (doc() !== owner || !allowed())
             throw Error('Switch back to the document to insert the table.');
+          if (owner.blocks.length >= LIMITS.blocksPerDocument)
+            throw Error('The document has reached its object limit.');
           const text = data.get('source');
           const table = text
             ? putTableCells(createTable(1, 1), 0, 0, readTableText(text))
@@ -235,6 +256,8 @@ export function installTableControls({
       prior = last?.id === block.id ? last : { row: 0, column: 0 };
     const col = Math.min(prior.column, t.widths.length - 1),
       row = Math.min(prior.row, t.cells.length - 1);
+    const points = columnPoints(block);
+    const display = (n) => Number(n.toFixed(3)) || n;
     const menu = form(
       'Table Options',
       selectField('action', 'Operation', operations, 'format') +
@@ -242,7 +265,14 @@ export function installTableControls({
         numberField('column', 'Column', col + 1, 1, t.widths.length) +
         numberField('rows', 'Rows to merge', 1, 1, t.cells.length) +
         numberField('columns', 'Columns to merge', 1, 1, t.widths.length) +
-        numberField('weight', 'Relative column width', t.widths[col], 0.001, 10000, 'any') +
+        numberField(
+          'width',
+          'Column width (pt)',
+          display(points[col]),
+          Math.min(4, display(points[col])),
+          display(100000 - block.w + points[col]),
+          'any',
+        ) +
         numberField('inset', 'Cell inset (pt)', t.inset, 0, 72, 'any') +
         numberField('stroke', 'Rule weight (pt)', t.stroke, 0, 12, 'any') +
         numberField('header', 'Header rows', t.headerRows, 0, t.cells.length - 1) +
@@ -258,7 +288,13 @@ export function installTableControls({
           t.vertical,
         ),
       (data) => {
-        if (owner !== doc() || selected() !== block || !allowed() || !available(owner, block))
+        if (
+          owner !== doc() ||
+          selected() !== block ||
+          block.table !== t ||
+          !allowed() ||
+          !available(owner, block)
+        )
           throw Error('Choose the editable table again.');
         const n = (k) => Number(data.get(k)),
           r = n('row') - 1,
@@ -271,10 +307,13 @@ export function installTableControls({
           stroke: n('stroke'),
           vertical: data.get('vertical'),
         });
-        changed.widths[c] = n('weight');
+        const requested = n('width') === display(points[c]) ? points[c] : n('width');
+        const { widths, ...geometry } = resizeColumn(block, c, requested);
+        changed.widths = widths;
         const action = data.get('action');
+        if (action === 'even-columns') changed.widths = changed.widths.map(() => 1);
         changed =
-          action === 'format'
+          action === 'format' || action === 'even-columns'
             ? validateTable(changed)
             : reshapeTable(changed, action, {
                 row: r,
@@ -283,6 +322,7 @@ export function installTableControls({
                 columns: n('columns'),
               });
         mutate(() => {
+          Object.assign(block, geometry);
           block.table = changed;
         }, 'Edit table');
         last = {
@@ -293,10 +333,14 @@ export function installTableControls({
       },
     );
     const column = menu.querySelector('[name=column]'),
-      weight = menu.querySelector('[name=weight]');
+      width = menu.querySelector('[name=width]');
     column.addEventListener('input', () => {
-      if (t.widths[Number(column.value) - 1] !== undefined)
-        weight.value = t.widths[Number(column.value) - 1];
+      const value = points[Number(column.value) - 1];
+      if (value !== undefined) {
+        width.value = display(value);
+        width.min = Math.min(4, display(value));
+        width.max = display(100000 - block.w + value);
+      }
     });
     const op = menu.querySelector('[name=action]');
     function showMergeFields() {

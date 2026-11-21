@@ -863,6 +863,7 @@ export function mountCanvasEditor(host, options) {
           `<section class="canvas-page ${p.id === state.activePage ? 'active' : ''}" data-page="${esc(p.id)}" aria-label="${esc(p.name)}" style="left:${p.x}px;top:${p.y}px;width:${p.width}px;height:${p.height}px"><div class="canvas-page-label">${esc(p.name)}</div>${pageObjectsHTML(p)}</section>`,
       )
       .join('');
+    tables?.mark(state.selection.length === 1 ? object() : null);
     paintBaselineGrid();
     applySceneTypography(world, renderingDocument());
     if (doc().textFlows?.length) {

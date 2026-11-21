@@ -1,3 +1,4 @@
+import { columnPoints, resizeColumn } from '../../src/domain/geometry/table-columns.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTable, reshapeTable, validateTable } from '../../src/domain/documents/tables.js';
@@ -83,4 +84,25 @@ test('portable table objects round-trip safely, paste independently, and export 
   assert.notEqual(pasted.id, block.id);
   pasted.table.cells[0][0] = 'other';
   assert.equal(block.table.cells[0][0], '<silk & rayon>');
+});
+
+test('column sizing uses points and keeps the rotated leading edge fixed', () => {
+  const block = { w: 360, x: 30, y: 50, rotation: 90, table: createTable(2, 3) };
+  const result = resizeColumn(block, 1, 180);
+  assert.equal(result.w, 420);
+  assert.ok(Math.abs(result.x) < 1e-8 && Math.abs(result.y - 80) < 1e-8);
+  assert.deepEqual(
+    columnPoints({ ...block, ...result, table: { widths: result.widths } }).map((n) =>
+      Number(n.toFixed(9)),
+    ),
+    [120, 180, 120],
+  );
+  const pair = resizeColumn(block, 1, 200, true);
+  assert.equal(pair.w, block.w);
+  assert.equal(pair.x, block.x);
+  assert.equal(pair.y, block.y);
+  assert.deepEqual(
+    columnPoints({ ...block, table: { widths: pair.widths } }).map((n) => Number(n.toFixed(9))),
+    [120, 200, 40],
+  );
 });
