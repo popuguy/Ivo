@@ -2,8 +2,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 23;
-export const CURRENT_CANVAS_VERSION = 22;
+export const CURRENT_ARCHIVE_VERSION = 25;
+export const CURRENT_CANVAS_VERSION = 24;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -330,7 +330,12 @@ function hasAuthoredTextSetting(doc, owns, markup) {
   );
 }
 
+const hasPageSections = (doc) =>
+  doc.canvasVersion === 24 || doc.pages?.some((p) => p.section !== undefined);
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasPageSections)) return 25;
+  if (documents.some((doc) => doc.hyphenationExceptions !== undefined || doc.canvasVersion === 23))
+    return 24;
   if (documents.some((doc) => doc.publication !== undefined || doc.canvasVersion === 22)) return 23;
   if (documents.some(hasStylisticSets)) return 22;
   if (documents.some(hasNextStyle)) return 21;
@@ -360,6 +365,14 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasPageSections(document)) {
+    document.canvasVersion = 24;
+    return document;
+  }
+  if (document.hyphenationExceptions !== undefined || document.canvasVersion === 23) {
+    document.canvasVersion = 23;
+    return document;
+  }
   if (document.publication !== undefined || document.canvasVersion === 22) {
     document.canvasVersion = 22;
     return document;

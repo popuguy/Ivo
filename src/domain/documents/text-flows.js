@@ -195,6 +195,7 @@ export function trimTextFlowPages(document, textFlow, used) {
   for (const owned of [...textFlow.autoPages].reverse()) {
     const index = textFlow.frameIds.indexOf(owned.frameId);
     if (index < used || index < 0) continue;
+    if (document.pages.some((page) => page.id === owned.pageId && page.section)) continue;
     if (document.blocks.some((b) => b.pageId === owned.pageId && b.id !== owned.frameId)) continue;
     document.pages = document.pages.filter((p) => p.id !== owned.pageId);
     document.blocks = document.blocks.filter((b) => b.id !== owned.frameId);

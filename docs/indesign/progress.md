@@ -4,6 +4,15 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Word breaks, shared styles and numbered publications
+
+**Release estimate ~81% across the same 63 capabilities.** This pass moved from ~73% through ~77% with stylistic sets, editorial reading order and Data Merge. The further gains cover document hyphenation, reusable styles, section numbering and fixed-page book export. These are engineering estimates of scope covered. Side-by-side composition and physical input acceptance remain open.
+
+- The document dictionary records a word’s allowed breaks or forbids breaks, independently for each language. Both native composers immediately recompute threaded text after an edit. Changing or undoing an entry preserves the original characters. Czech joins the offline pattern dictionaries. A language without built-in patterns can still use authored entries.
+- Load Text Styles imports selected paragraph and character definitions from another document in the vault. Based On and Next Style dependencies are included. A conflict can keep the local definition, replace it under the same ID, or give the incoming definition a distinct name. The Mac editor exercised the dialog, undo and redo.
+- A section can restart or continue numbering, add a prefix and switch between Arabic and upper- or lower-case Roman folios. The start stays on its page through reordering and survives automatic text shrinkage. A PDF book uses its saved chapter order. An independent PDFKit read verified a Unicode chapter name, nested bookmark destinations and three folios: `i`, `A–7`, `A–8`. A folio in the Pages panel or PDF reader does not add a printed page-number marker to the artwork.
+- A built-app test imports a two-record data file through the document menu, checks the preview, rejects a malformed second record, then reopens the original template and both formatted results from storage.
+
 ## Font alternates, book order and merge records
 
 **Release estimate ~77% across 63 capabilities.** The Mac editor exercised a selected stylistic set through native shaping, caret placement, editing, undo and reopening. The CMU Serif substitutions for Á and É matched independent HarfBuzz glyph IDs. The Explore More Type Options control offers the numbered sets declared by a face.

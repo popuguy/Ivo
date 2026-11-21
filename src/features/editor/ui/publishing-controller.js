@@ -1,3 +1,7 @@
+import { editSection } from './section-options.js';
+import { importTextStyles } from '../../../domain/documents/import-text-styles.js';
+import { openStyleImport } from './import-text-styles.js';
+import { openExceptionDictionary } from './hyphenation-dialog.js';
 import { nativeTextColumnWidth } from '../../../rendering/text/native-flow-layout.js';
 import {
   openHyphenationForm,
@@ -80,6 +84,7 @@ export function installPublishingControls(
     prepareDocumentFonts,
     canPrepareFonts,
     nativeComposition,
+    documents,
     ensureFontVariant,
     fontSelection,
     applyTextSettings,
@@ -982,6 +987,66 @@ export function installPublishingControls(
         return true;
       }
       if (!allowed()) return false;
+      if (name === 'section-options') {
+        const owner = doc(),
+          page = owner.pages.find((p) => p.id === state.activePage);
+        if (!page || state.panelParent) return false;
+        editSection(form, page, (section) => {
+          if (!dialogAllowed?.() || doc() !== owner || !owner.pages.includes(page))
+            throw Error('The selected page changed.');
+          mutate(() => {
+            if (section) page.section = section;
+            else delete page.section;
+            markTypographyVersion(owner);
+          }, 'Numbering & Section Options');
+        });
+        return true;
+      }
+      if (name === 'load-text-styles') {
+        const owner = doc(),
+          sources = documents().filter(
+            (other) =>
+              other.id !== owner.id &&
+              other.publishing &&
+              (other.publishing.paragraphStyles.length || other.publishing.characterStyles.length),
+          );
+        preserveRange();
+        openStyleImport(form, sources, (source, selected, policy) => {
+          if (!dialogAllowed?.() || doc() !== owner || !documents().includes(source))
+            throw Error('The source or destination changed. Reopen Load Text Styles.');
+          mutate(() => importTextStyles(owner, source, selected, policy), 'Load Text Styles');
+        });
+        return true;
+      }
+      if (name === 'document-dictionary') {
+        if (!nativeComposition || paragraphDialog?.open) return true;
+        preserveRange();
+        const owner = doc(),
+          original = owner.hyphenationExceptions;
+        const dialog = openExceptionDictionary(
+          form,
+          original,
+          textState()?.values.language,
+          (words) => {
+            if (!dialogAllowed?.() || doc() !== owner || doc().hyphenationExceptions !== original)
+              throw Error('The document changed. Reopen its dictionary.');
+            mutate(() => {
+              if (Object.keys(words).length) owner.hyphenationExceptions = words;
+              else delete owner.hyphenationExceptions;
+              markTypographyVersion(owner);
+            }, 'Document dictionary');
+          },
+        );
+        paragraphDialog = dialog;
+        dialog.addEventListener(
+          'close',
+          () => {
+            if (paragraphDialog === dialog) paragraphDialog = null;
+          },
+          { once: true },
+        );
+        return true;
+      }
       if (name === 'type-options') {
         openType(anchor);
         return true;

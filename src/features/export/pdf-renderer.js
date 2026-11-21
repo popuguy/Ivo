@@ -1,3 +1,4 @@
+import { pageFolios } from '../../domain/documents/page-sections.js';
 import { prepareVaultFonts } from '../../rendering/text/fonts.js';
 import { parentObjects, orderedPageObjects } from '../../domain/documents/publishing.js';
 import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
@@ -46,7 +47,8 @@ export async function renderPDFSnapshot(snapshot) {
     if (documents.reduce((sum, doc) => sum + doc.pages.length, 0) > 256)
       throw new Error('Export up to 256 pages at a time.');
     destinations.set(doc.id, pages.length);
-    for (const page of doc.pages) {
+    const folios = pageFolios(doc.pages);
+    for (const [pageIndex, page] of doc.pages.entries()) {
       const index = pages.length,
         name = 'ivo_page_' + index;
       rules += `@page ${name}{size:${page.width}pt ${page.height}pt;margin:0}`;
@@ -77,6 +79,7 @@ export async function renderPDFSnapshot(snapshot) {
         sourceVersion: doc.version,
         pageId: page.id,
         name: page.name,
+        folio: folios[pageIndex],
         width: page.width,
         height: page.height,
         section,

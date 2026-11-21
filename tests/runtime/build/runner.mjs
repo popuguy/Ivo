@@ -112,6 +112,59 @@ async function verifyBook(window) {
     await writeFile(process.env.IVO_MERGED_EPUB_FIXTURE, zipBytes);
   if (process.env.IVO_EPUB_FIXTURE) await writeFile(process.env.IVO_EPUB_FIXTURE, bytes);
 }
+async function verifyMergeAction(window) {
+  const run = (script) => window.webContents.executeJavaScript(script);
+  const id = await run(`(async()=>{
+    const {createSceneDocument,insertObject}=await import('/dist/src/domain/documents/scene.js');
+    const {saveDocument}=await import('/dist/src/storage/store.js');
+    const d=createSceneDocument('Merge cards');
+    insertObject(d,'text',d.pages[0].id,{html:'<p>Fabric <strong>{{Name}}</strong></p>'});
+    await saveDocument(d);
+    return d.id;
+  })()`);
+  const freshURL = new URL(window.webContents.getURL());
+  freshURL.searchParams.set('fixture', 'merge');
+  freshURL.hash = 'doc=' + encodeURIComponent(id);
+  await window.loadURL(freshURL.href);
+  await poll(window, "document.querySelector('.workspace-title-input')?.value==='Merge cards'");
+  await run("document.querySelector('[data-action=view-options]').click()");
+  await poll(window, "!!document.querySelector('[data-navigation-action=data-merge]')");
+  await run("document.querySelector('[data-navigation-action=data-merge]').click()");
+  await poll(window, "!!document.querySelector('dialog[open] input[type=file]')");
+  const choose = async (csv) =>
+    run(`(() => {
+    const box=document.querySelector('dialog[open] input[type=file]');
+    const transfer=new DataTransfer();
+    transfer.items.add(new File([${JSON.stringify(csv)}],'fabric.csv',{type:'text/csv'}));
+    box.files=transfer.files;box.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`);
+  await choose('Name\nÉcru\nBad,record');
+  await poll(
+    window,
+    "document.querySelector('dialog[open] output')?.textContent.includes('Record 2')",
+  );
+  assert(
+    await run("document.querySelector('dialog[open] [type=submit]').disabled"),
+    'A malformed batch can be submitted',
+  );
+  await choose('Name\nÉcru\n藍');
+  await poll(window, "document.querySelector('dialog[open] output')?.textContent.includes('Écru')");
+  await run("document.querySelector('dialog[open] form').requestSubmit()");
+  await poll(window, "document.querySelector('.workspace-title-input')?.value==='Merge cards · 1'");
+  freshURL.searchParams.set('fixture', 'reopen');
+  await window.loadURL(freshURL.href);
+  const docs = await run(
+    `import('/dist/src/storage/store.js').then(s=>s.loadDocuments()).then(all=>all.filter(d=>d.title.startsWith('Merge cards')).map(d=>[d.title,d.blocks[0].html]))`,
+  );
+  const byTitle = new Map(docs);
+  assert(
+    byTitle.size === 3 &&
+      byTitle.get('Merge cards').includes('{{Name}}') &&
+      byTitle.get('Merge cards · 1').includes('<strong>Écru</strong>') &&
+      byTitle.get('Merge cards · 2').includes('<strong>藍</strong>'),
+    'Merged files or original template failed cold reopen',
+  );
+}
 async function inspect(url) {
   const window = new BrowserWindow({
     show: false,
@@ -196,6 +249,8 @@ async function inspect(url) {
       document.querySelector('dialog[open] form').requestSubmit();
     `);
     await poll(window, 'globalThis.__downloadedBook === true');
+    if (url.startsWith('ivo-build-test:')) await verifyMergeAction(window);
+    await poll(window, "!!document.querySelector('[data-action=graph]')");
     await window.webContents.executeJavaScript(
       `globalThis.__workerMessages=0;globalThis.__workerErrors=[];const OriginalWorker=Worker;globalThis.Worker=class extends OriginalWorker {constructor(...args){super(...args);this.addEventListener('message',()=>globalThis.__workerMessages++);this.addEventListener('error',event=>globalThis.__workerErrors.push(event.message));}};document.querySelector('[data-action=graph]').click()`,
     );

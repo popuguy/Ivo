@@ -40,6 +40,7 @@ function pureOwnership(document) {
         frame = frames.get(owned.frameId);
       if (
         page &&
+        !page.section &&
         frame &&
         frame.type === 'text' &&
         frame.textKind === 'area' &&

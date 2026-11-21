@@ -216,6 +216,38 @@ app
     await writeFile(path.join(output, 'output.pdf'), bytes);
     await writeFile(path.join(output, 'manifest.json'), JSON.stringify(manifest, null, 2));
     await writeFile(path.join(output, 'layout.json'), JSON.stringify(layout, null, 2));
+    const front = createSceneDocument('Préface Ω');
+    front.pages[0].section = { style: 'roman-lower', prefix: '', start: 1 };
+    const owner = structuredClone(a);
+    owner.publication = { version: 1, order: [], excluded: [], chapters: [front.id, owner.id] };
+    owner.pages[0].section = { style: 'decimal', prefix: 'A–', start: 7 };
+    markTypographyVersion(front);
+    markTypographyVersion(owner);
+    const book = createPDFSnapshot([owner, front], [asset], owner.id, { useBook: true });
+    const bookPDF = await renderPDF(book, { project: root });
+    assert.deepEqual(
+      bookPDF.manifest.pages.map((p) => p.documentId),
+      [front.id, owner.id, owner.id],
+    );
+    const bookFile = path.join(output, 'sectioned-book.pdf');
+    await writeFile(bookFile, bookPDF.bytes);
+    const inspected = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      path.join(root, 'tests/runtime/pdf/inspect-book.swift'),
+      bookFile,
+    ]);
+    const outline = JSON.parse(inspected.stdout);
+    assert.deepEqual(outline.labels, ['i', 'A–7', 'A–8']);
+    assert.deepEqual(outline.bookmarks, [
+      { title: front.title, page: 0, children: [] },
+      {
+        title: owner.title,
+        page: 1,
+        children: owner.pages.map((p, i) => ({ title: p.name, page: i + 1, children: [] })),
+      },
+    ]);
     const long = createSceneDocument('Flow PDF', { width: 360, height: 300 }),
       flowFrame = insertObject(long, 'text', {
         x: 30,

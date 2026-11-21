@@ -1,3 +1,7 @@
+import {
+  exceptionLanguage,
+  indexHyphenationExceptions,
+} from '../../domain/text/hyphenation-exceptions.js';
 import { listMarkers, inlineListPrefix, firstListText } from '../../shared/dom/list-numbering.js';
 import { HYPHENATION_DEFAULTS } from '../../domain/text/hyphenation.js';
 import {
@@ -353,8 +357,14 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   if (logical !== logicalLength || root.innerHTML !== sourceHTML)
     throw Error('Text composition changed its source.');
   const hyphenationPoints = [];
+  const exceptions = doc?.hyphenationExceptions
+    ? indexHyphenationExceptions(doc.hyphenationExceptions)
+    : undefined;
   const dictionaryKeys = paragraphs.some((p) => p.hyphenate)
-    ? runs.map((run) => dictionaryForLanguage(run.language))
+    ? runs.map((run) => {
+        const locale = exceptions && exceptionLanguage(run.language);
+        return exceptions?.has(locale) ? locale : dictionaryForLanguage(run.language);
+      })
     : [];
   let rangeIndex = 0,
     runIndex = 0;
@@ -370,7 +380,12 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
         if (dictionaryKeys[i] !== key) return null;
       return key;
     };
-    for (const relative of dictionaryHyphenationPoints(content, paragraph, languageAt)) {
+    for (const relative of dictionaryHyphenationPoints(
+      content,
+      paragraph,
+      languageAt,
+      exceptions,
+    )) {
       const at = paragraph.start + relative;
       while (noBreakRanges[rangeIndex]?.end <= at) rangeIndex++;
       if (!(noBreakRanges[rangeIndex]?.start <= at)) hyphenationPoints.push(at);

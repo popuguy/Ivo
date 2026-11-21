@@ -1372,7 +1372,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       commit: async (generated) => {
         if (!windowLease) throw Error('This vault is open for editing in another window.');
         await saveImport({
-          schemaVersion: archiveVersion(generated),
+          schemaVersion: CURRENT_ARCHIVE_VERSION,
           documents: generated,
           assets: [],
         });
@@ -1427,11 +1427,12 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   function pdfDialog() {
     if (view !== 'document' || !current()) return;
     showDialog(
-      `<h2>Export PDF</h2><p>Pages retain their sizes, typography and object placement. Text stays selectable.</p><label class="pdf-scope"><input type="checkbox" name="linked"> Include linked documents</label><p class="dialog-note">Document links work when their targets are included. Links outside this export remain text. Legacy PDF attachment objects must be removed before export; their original files remain in the vault backup.</p><button type="submit" class="button-primary">Export…</button>`,
+      `<h2>Export PDF</h2><p>Pages retain their sizes, typography and object placement. Text stays selectable.</p><label>Pages from<select name="scope"><option value="current">Current document</option><option value="linked">Include linked documents</option>${current().publication?.chapters.length ? '<option value="book" selected>Saved book order</option>' : ''}</select></label><p class="dialog-note">Document links work when their targets are included. Links outside this export remain text. Legacy PDF attachment objects must be removed before export; their original files remain in the vault backup.</p><button type="submit" class="button-primary">Export…</button>`,
       async (data) => {
         if (!(await flush())) return;
         const snapshot = createPDFSnapshot(docs, assets, activeId, {
-          includeLinked: data.has('linked'),
+          includeLinked: data.get('scope') === 'linked',
+          useBook: data.get('scope') === 'book',
         });
         const submit = dialog.querySelector('button[type=submit]');
         submit.disabled = true;

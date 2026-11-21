@@ -11,6 +11,7 @@ export function compositionLayoutKey(doc) {
     doc.publishing?.parents,
     doc.publishing?.baselineGrid,
     doc.textWrapPreferences,
+    doc.hyphenationExceptions,
   ]);
 }
 

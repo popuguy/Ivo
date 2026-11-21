@@ -1333,6 +1333,8 @@ function applyHistory(record) {
     ['show-contextual', canvas.canShowContextual],
     ['wrap-preferences', canvas.canvasEditing],
     ['find-change', canvas.canvasEditing],
+    ['document-dictionary', canvas.canvasEditing],
+    ['load-text-styles', canvas.canvasEditing],
     ['check-spelling', canvas.canvasEditing],
   ];
   for (const [id, enabled] of panelCommands) {
@@ -1508,6 +1510,12 @@ function installMenu() {
                 enabled: false,
                 click: () => sendCommand('check-spelling'),
               },
+              {
+                id: 'document-dictionary',
+                label: 'Document Dictionary…',
+                enabled: false,
+                click: () => sendCommand('document-dictionary'),
+              },
             ],
           },
         ],
@@ -1549,6 +1557,12 @@ function installMenu() {
             click: () => sendTextCommand(name),
           })),
           { type: 'separator' },
+          {
+            id: 'load-text-styles',
+            label: 'Load Text Styles…',
+            enabled: false,
+            click: () => sendCommand('load-text-styles'),
+          },
           listMenu(false),
           ...characterMenuItems(false),
         ],

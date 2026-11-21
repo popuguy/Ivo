@@ -1,3 +1,4 @@
+import { pageFolios } from '../../../domain/documents/page-sections.js';
 import { layersFor, layerFor } from '../../../domain/documents/publishing.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
@@ -121,11 +122,12 @@ function pageSettings(doc, page, editing, parentMode) {
   return `<div class="page-settings" role="group" aria-label="Page options">
     <label>Name<input data-page-prop="name" value="${esc(page.name)}" ${lock}></label>
     ${['width', 'height'].map((key) => `<label>${key === 'width' ? 'Width' : 'Height'} (pt)<input type="number" min="72" max="14400" step="any" data-page-prop="${key}" value="${page[key]}" ${lock}></label>`).join('')}
-    ${parentMode ? '' : `<label>Parent<select data-page-parent-choice ${lock}><option value="">[None]</option>${(doc.publishing?.parents || []).map((p) => `<option value="${esc(p.id)}" ${page.parentPageId === p.id ? 'selected' : ''}>${esc(p.prefix + '-' + p.name)}</option>`).join('')}</select></label><label><input type="checkbox" data-text-wrap-pref="facingPages" ${doc.textWrapPreferences?.facingPages ? 'checked' : ''} ${lock}>Facing Pages</label><label>First Page Side<select data-text-wrap-pref="firstPageSide" ${lock}><option value="right">Right</option><option value="left" ${doc.textWrapPreferences?.firstPageSide === 'left' ? 'selected' : ''}>Left</option></select></label><label>Order<input type="number" data-page-order min="1" max="${doc.pages.length}" value="${doc.pages.indexOf(page) + 1}" ${lock}></label>`}</div>`;
+    ${parentMode ? '' : `<button type="button" data-canvas-command="section-options" ${lock}>Numbering &amp; Section Options…</button><label>Parent<select data-page-parent-choice ${lock}><option value="">[None]</option>${(doc.publishing?.parents || []).map((p) => `<option value="${esc(p.id)}" ${page.parentPageId === p.id ? 'selected' : ''}>${esc(p.prefix + '-' + p.name)}</option>`).join('')}</select></label><label><input type="checkbox" data-text-wrap-pref="facingPages" ${doc.textWrapPreferences?.facingPages ? 'checked' : ''} ${lock}>Facing Pages</label><label>First Page Side<select data-text-wrap-pref="firstPageSide" ${lock}><option value="right">Right</option><option value="left" ${doc.textWrapPreferences?.firstPageSide === 'left' ? 'selected' : ''}>Left</option></select></label><label>Order<input type="number" data-page-order min="1" max="${doc.pages.length}" value="${doc.pages.indexOf(page) + 1}" ${lock}></label>`}</div>`;
 }
 export function pagesContent(doc, page, editing, { parentMode = false, state = {} } = {}) {
   const parents = doc.publishing?.parents || [],
     count = doc.pages.length,
+    folios = pageFolios(doc.pages),
     parentList = parentMode
       ? ''
       : `<div class="page-parents" role="group" aria-label="Parent pages">
@@ -141,7 +143,7 @@ export function pagesContent(doc, page, editing, { parentMode = false, state = {
     <div class="page-thumbnails" role="group" aria-label="Document pages">${doc.pages
       .map((p, i) => {
         const parent = parents.find((candidate) => candidate.id === p.parentPageId);
-        return `<button data-select-page="${esc(p.id)}" aria-pressed="${p.id === page.id && state.panelParent == null}" ${tip('Select ' + p.name)}>${sheet(p.width, p.height, parent?.prefix)}<span class="page-number">${i + 1}</span></button>`;
+        return `<button data-select-page="${esc(p.id)}" aria-pressed="${p.id === page.id && state.panelParent == null}" ${tip('Select ' + p.name)}>${sheet(p.width, p.height, parent?.prefix)}<span class="page-number">${esc(folios[i])}</span></button>`;
       })
       .join('')}</div>
     <div class="inventory-footer"><span>${count} ${count === 1 ? 'Page in 1 Spread' : 'Pages in ' + count + ' Spreads'}</span>

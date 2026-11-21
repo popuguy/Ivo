@@ -193,6 +193,21 @@ test('async native layout changes do not break source undo/redo and full history
   assert.equal(h.redo(full).document.textFlows[0].html, '<p>Short.</p>');
 });
 
+test('an authored section on a generated page survives trimming and the history projection', () => {
+  const { doc, flow } = fixture({ pages: 2 });
+  const before = structuredClone(doc);
+  const page = doc.pages[1];
+  page.section = { start: 1, style: 'roman-lower', prefix: '' };
+  assert.ok(authoredLayoutDocument(doc).pages.some((p) => p.id === page.id));
+  assert.equal(promoteTextLayout(before, doc), 1);
+  assert.equal(trimTextFlowPages(doc, flow, 1), true);
+  assert.deepEqual(
+    doc.pages.map((p) => p.id),
+    [before.pages[0].id, page.id],
+  );
+  assert.deepEqual(doc.pages[1].section, page.section);
+});
+
 test('only exclusive native ownership is omitted; legacy/mixed pages and unrelated changes stay visible to history', () => {
   const { doc, flow } = fixture(),
     before = structuredClone(doc);

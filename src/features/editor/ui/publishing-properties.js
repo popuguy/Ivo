@@ -150,6 +150,7 @@ export function styleProperties(item, doc, state) {
     `<div class="style-kind-tabs" role="group" aria-label="Text style kind">${['paragraph', 'character'].map((value) => `<button data-style-kind="${value}" aria-pressed="${kind === value}">${value === 'paragraph' ? 'Paragraph' : 'Character'} Styles</button>`).join('')}</div>
      <div class="property-style-picker"><span aria-hidden="true">Ag</span>${choose(kind + 'Style', item[kind + 'Style'] || 'none', styles, kind === 'paragraph' ? 'Paragraph Styles' : 'Character Styles')}</div>
      ${kind === 'paragraph' && definitions.some((s) => s.nextStyle) ? '<button type="button" data-canvas-command="apply-next-styles">Apply Style Sequence…</button>' : ''}
+     <button type="button" data-canvas-command="load-text-styles">Load Text Styles…</button>
      <div class="property-style-actions">${button('edit-' + kind + '-style', 'Edit ' + kind + ' style', 'edit')}${button('clear-overrides', 'Clear overrides in selection', 'clear-overrides')}${button('new-' + kind + '-style', 'New ' + kind + ' style', 'plus')}</div>`,
   );
 }
@@ -304,7 +305,10 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
               .map(([k, label]) => num(k, item[k] || 0, label + ' · pt'))
               .join('')}</div>` +
             check('hyphenate', item.hyphenate, 'Hyphenate') +
-            (nativeFlow ? button('hyphenation-options', 'Hyphenation…') : '') +
+            (nativeFlow
+              ? button('hyphenation-options', 'Hyphenation…') +
+                button('document-dictionary', 'Document dictionary…')
+              : '') +
             check('keepTogether', item.keepTogether, 'Keep paragraph together') +
             check('keepWithNext', item.keepWithNext, 'Keep with next') +
             (nativeFlow

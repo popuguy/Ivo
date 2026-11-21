@@ -4466,6 +4466,7 @@ export function mountCanvasEditor(host, options) {
   });
   const publishingControls = installPublishingControls(editor, {
     nativeComposition: !!options.textComposition,
+    documents: () => options.documents || [],
     doc,
     state,
     objects,

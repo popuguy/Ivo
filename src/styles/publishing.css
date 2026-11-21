@@ -901,3 +901,8 @@
   min-width: 4em;
   max-width: 12em;
 }
+
+.style-import-list {
+  max-height: min(32vh, 16em);
+  overflow-y: auto;
+}

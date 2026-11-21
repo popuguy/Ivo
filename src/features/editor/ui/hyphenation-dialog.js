@@ -1,3 +1,7 @@
+import {
+  exceptionLanguage,
+  hyphenationExceptions,
+} from '../../../domain/text/hyphenation-exceptions.js';
 import { HYPHENATION_FIELDS, validHyphenationAttribute } from '../../../domain/text/hyphenation.js';
 
 const fields = { hyphenate: { label: 'Hyphenate', initial: false }, ...HYPHENATION_FIELDS };
@@ -79,4 +83,49 @@ export function readHyphenationStyle(data, attributes) {
       attributes[key] = Number(value);
     }
   }
+}
+
+export function openExceptionDictionary(form, stored = {}, activeLanguage = 'en-US', save) {
+  const drafts = new Map(Object.entries(stored).map(([key, entries]) => [key, entries.join('\n')]));
+  let current = exceptionLanguage(activeLanguage) || 'en-us';
+  const dialog = form(
+    'Document dictionary',
+    '<label>Language<select name="language"></select></label><label>Hyphenation exceptions<textarea rows="8" name="words" spellcheck="false"></textarea></label><p>Enter one word per line. Use a tilde for an allowed break (colo~phon), or a leading tilde to keep a word together (~lookbook).</p>',
+    () => {
+      drafts.set(current, area.value);
+      const result = hyphenationExceptions(
+        Object.fromEntries(
+          [...drafts].map(([key, words]) => [key, words.split(/\s+/u).filter(Boolean)]),
+        ),
+      );
+      if (JSON.stringify(result) !== JSON.stringify(stored)) save(result);
+    },
+  );
+  dialog.setAttribute('aria-label', 'Document dictionary');
+  const area = dialog.querySelector('textarea'),
+    select = dialog.querySelector('select');
+  const languages = new Intl.DisplayNames(['en'], { type: 'language' });
+  for (const key of new Set([
+    current,
+    ...drafts.keys(),
+    'en-us',
+    'en-gb',
+    'es',
+    'it',
+    'ru',
+    'tr',
+    'el',
+    'cs',
+    'hu',
+    'fr',
+    'de',
+  ]))
+    select.add(new Option(languages.of(key), key));
+  area.value = drafts.get(current) || '';
+  select.onchange = () => {
+    drafts.set(current, area.value);
+    current = select.value;
+    area.value = drafts.get(current) || '';
+  };
+  return dialog;
 }

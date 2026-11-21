@@ -275,6 +275,10 @@ export function duplicateObject(document, id) {
 }
 export function removePage(document, id) {
   if (document.pages.length === 1) throw new Error('A document needs at least one page.');
+  const index = document.pages.findIndex((page) => page.id === id);
+  const section = document.pages[index]?.section,
+    next = document.pages[index + 1];
+  if (section && next && !next.section) next.section = section;
   document.pages = document.pages.filter((page) => page.id !== id);
   const removed = document.blocks
     .filter((object) => object.pageId === id)

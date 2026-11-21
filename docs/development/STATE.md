@@ -12,7 +12,9 @@ A signed iPhone build opens a local vault on first launch. The [iPhone startup c
 
 ## Text composition and current progress
 
-**Ivo release text parity is estimated at ~77%.** Report the release bar after each completed text milestone. The [programme ledger](../indesign/progress.md) explains the change from the historical ~48% across 66 capabilities to 63 release capabilities. The [broader-edition wishlist](../indesign/text-parity-programme.md#broader-edition-wishlist) preserves the three specialist language areas. Release work includes the shared engine, structured text, editorial tools, publishing and device verification.
+**Ivo release text parity is estimated at ~81%.** Report the release bar after each completed text milestone. The [programme ledger](../indesign/progress.md) explains the change from the historical ~48% across 66 capabilities to 63 release capabilities. The [broader-edition wishlist](../indesign/text-parity-programme.md#broader-edition-wishlist) preserves the three specialist language areas. Release work includes the shared engine, structured text, editorial tools, publishing and device verification.
+
+The [publishing and composition update](../indesign/progress.md#word-breaks-shared-styles-and-numbered-publications) covers numbered OpenType sets, document hyphenation exceptions, Czech patterns, importing styles across a vault, merging records, ordered EPUB/PDF books and section numbering.
 
 The [structured text and publishing milestone](../indesign/progress.md#structured-text-and-reflowable-publishing) adds native tab stops and leaders, hierarchical lists, Next Style, page-margin grids, desktop spelling review, Preflight and reflowable EPUB export. New authored settings use feature-specific archive versions 18–21. Existing vaults retain their previous format until a feature requires a later one.
 

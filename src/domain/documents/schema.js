@@ -1,3 +1,5 @@
+import { pageSection } from './page-sections.js';
+import { hyphenationExceptions } from '../text/hyphenation-exceptions.js';
 import { publicationSettings } from './publication-order.js';
 import { baselineGridSettings, frameGridSettings } from '../text/baseline-grid.js';
 import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
@@ -407,6 +409,7 @@ function validateArchive(payload, parentTemplate) {
           name: string(page.name, `${key}.name`, 180, `Page ${index + 1}`),
           width: number(page.width, `${key}.width`, 72, 14400),
           height: number(page.height, `${key}.height`, 72, 14400),
+          ...(page.section === undefined ? {} : { section: pageSection(page.section) }),
           ...(page.topMargin === undefined
             ? {}
             : {
@@ -1028,6 +1031,18 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 22) || payload.schemaVersion < 23)
     )
       fail('Publication order requires archive 23 and canvas 22.');
+    if (
+      (doc.hyphenationExceptions !== undefined || doc.canvasVersion === 23) &&
+      (!supportedCanvas(doc.canvasVersion, 23) || payload.schemaVersion < 24)
+    )
+      fail('Document dictionaries require archive 24 and canvas 23.');
+    if (
+      (doc.canvasVersion === 24 || doc.pages?.some((p) => p.section !== undefined)) &&
+      (!supportedCanvas(doc.canvasVersion, 24) || payload.schemaVersion < 25)
+    )
+      fail('Numbered sections require archive 25 and canvas 24.');
+    if (doc.hyphenationExceptions !== undefined)
+      normalized.hyphenationExceptions = hyphenationExceptions(doc.hyphenationExceptions);
     if (doc.publication !== undefined)
       normalized.publication = publicationSettings(doc.publication, doc.id);
     if (doc.extensions !== undefined)

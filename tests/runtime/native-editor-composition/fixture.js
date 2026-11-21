@@ -671,6 +671,7 @@ try {
       ['paragraph', 'it', 'tipografia'],
       ['single-line', 'ru', 'типографика'],
       ['paragraph', 'tr', 'ışıklandırma'],
+      ['paragraph', 'cs', 'jihomoravského'],
     ]) {
       doc = createSceneDocument('Narrow caption', { width: 400, height: 300 });
       const attrs =
@@ -749,6 +750,48 @@ try {
       await editor.command('undo');
       await settle();
       assert(latest().request.hyphenationPoints?.length, 'Undo did not restore dictionary breaks');
+      if (language === 'en-US') {
+        const original = [...latest().request.hyphenationPoints];
+        for (const [entry, expected] of [
+          ['type~setting', [4]],
+          ['~typesetting', []],
+        ]) {
+          host.querySelector('[data-canvas-command="document-dictionary"]').click();
+          const form = document.querySelector('dialog[aria-label="Document dictionary"] form');
+          assert(form, 'Document dictionary is unavailable for native text');
+          form.elements.words.value = entry;
+          form.requestSubmit();
+          await settle();
+          assert(
+            !form.closest('dialog')?.open,
+            'Dictionary submission failed: ' + form.querySelector('[role=alert]').textContent,
+          );
+          assert(
+            JSON.stringify(latest().request.hyphenationPoints || []) === JSON.stringify(expected),
+            'Edited word breaks did not immediately recompose the native flow',
+          );
+          const archive = validateImport({
+            schemaVersion: archiveVersion([doc]),
+            documents: [doc],
+            assets: [],
+          });
+          assert(
+            archive.documents[0].hyphenationExceptions['en-us'][0] === entry &&
+              doc.canvasVersion === 23,
+            'Dictionary missing from cold archive',
+          );
+          assert(
+            latest().request.text === word + '\u2029',
+            'Document dictionary inserted marks into source',
+          );
+          await editor.command('undo');
+          await settle();
+          assert(
+            JSON.stringify(latest().request.hyphenationPoints) === JSON.stringify(original),
+            'Undo did not restore original break candidates',
+          );
+        }
+      }
       await editor.command('document-text');
       await settle();
       selectWord(word);

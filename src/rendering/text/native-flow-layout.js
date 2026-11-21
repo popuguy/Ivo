@@ -605,6 +605,7 @@ function semanticKey(doc, allowPages) {
     doc.pages,
     doc.publishing?.paragraphStyles,
     doc.publishing?.characterStyles,
+    doc.hyphenationExceptions,
     hasBaselineGrid(doc)
       ? [doc.publishing?.baselineGrid, doc.blocks.map((b) => [b.id, b.parentId, b.y, b.rotation])]
       : null,
@@ -761,6 +762,7 @@ export async function composeNativeTextFlows(
           doc.blocks.map(layoutProperties),
           { ...doc.publishing, layers: doc.publishing?.layers?.map(layoutProperties) },
           doc.textWrapPreferences,
+          doc.hyphenationExceptions,
           doc.textFlows.map(({ html: _text, ...settings }) => settings),
         ])
       : null;

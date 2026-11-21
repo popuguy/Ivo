@@ -5,6 +5,7 @@ import * as spanish from './dictionaries/es.js';
 import * as italian from './dictionaries/it.js';
 import * as russian from './dictionaries/ru.js';
 import * as turkish from './dictionaries/tr.js';
+import * as czech from './dictionaries/cs.js';
 import * as greek from './dictionaries/el-monoton.js';
 
 const englishLetters = /^[a-z]+$/;
@@ -15,6 +16,7 @@ const dictionaries = {
   tr: { data: turkish, letters: /^[abcçdefgğhıijklmnoöprsştuüvyzâîû]+$/, left: 2, right: 2 },
   es: { data: spanish, letters: /^[a-záéíóúüñ]+$/, left: 2, right: 2 },
   it: { data: italian, letters: /^[a-zàèéìíîòóùú]+$/, left: 2, right: 2 },
+  cs: { data: czech, letters: /^[a-záčďéěíňóřšťúůýž]+$/, left: 2, right: 2 },
   el: { data: greek, letters: /^[α-ωάέήίόύώϊϋΐΰ]+$/, left: 1, right: 1 },
 };
 const compiled = new Map();
@@ -90,7 +92,12 @@ function wordBreaks(word, key) {
 // Look up complete words so a language or style boundary inside a word cannot
 // accidentally hyphenate a substring. Offsets returned to the editor always
 // refer to the original UTF-16 source, even for decomposed accented letters.
-export function dictionaryHyphenationPoints(text, settings = {}, languageAt = () => 'en-us') {
+export function dictionaryHyphenationPoints(
+  text,
+  settings = {},
+  languageAt = () => 'en-us',
+  exceptions,
+) {
   const points = [];
   const policy = { ...HYPHENATION_DEFAULTS, ...settings };
   const words =
@@ -107,17 +114,20 @@ export function dictionaryHyphenationPoints(text, settings = {}, languageAt = ()
       continue;
     const key = languageAt(match.index, match.index + raw.length);
     if (!key) continue;
-    const dictionary = dictionaries[key];
+    const base = Object.hasOwn(dictionaries, key) ? key : dictionaryForLanguage(key);
+    const dictionary = base && dictionaries[base];
     const word = raw.normalize('NFC').toLocaleLowerCase(key);
     if (
       word.length < policy.hyphenWordLength ||
       word.length > 128 ||
-      !dictionary.letters.test(word)
+      !(exceptions?.get(key)?.has(word) || dictionary?.letters.test(word))
     )
       continue;
-    const left = Math.max(dictionary.left ?? 1, policy.hyphenAfterFirst, policy.hyphenBeforeLast);
-    const right = Math.max(dictionary.right ?? 1, policy.hyphenBeforeLast);
-    const breaks = wordBreaks(word, key).filter((at) => at >= left && at <= word.length - right);
+    const left = Math.max(dictionary?.left ?? 1, policy.hyphenAfterFirst, policy.hyphenBeforeLast);
+    const right = Math.max(dictionary?.right ?? 1, policy.hyphenBeforeLast);
+    const breaks = (exceptions?.get(key)?.get(word) ?? wordBreaks(word, base)).filter(
+      (at) => at >= left && at <= word.length - right,
+    );
     if (!breaks.length) continue;
     if (raw.length === word.length) {
       for (const at of breaks) points.push(match.index + at);

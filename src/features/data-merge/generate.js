@@ -14,7 +14,7 @@ export function mergeImageFrames(doc) {
 // Work on inert markup. Replace from the end so each source offset remains valid.
 // Inserting in the opening text node preserves its character style and link.
 function substituteHTML(html, fields, used) {
-  if (!html || !html.includes('{')) return html;
+  if (!html || !/[{&]/.test(html)) return html;
   const root = document.createElement('template');
   root.innerHTML = html;
   const container = root.content.ownerDocument.createElement('div');

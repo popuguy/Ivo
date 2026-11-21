@@ -5,20 +5,40 @@ import { validateImport } from '../../domain/documents/schema.js';
 import { isSceneDocument, upgradeDocument } from '../../domain/documents/scene.js';
 
 /** A frozen, validated sharing snapshot. No persistence, camera, selection or history writes. */
-export function createPDFSnapshot(documents, assets, documentId, { includeLinked = false } = {}) {
+export function createPDFSnapshot(
+  documents,
+  assets,
+  documentId,
+  { includeLinked = false, useBook = false } = {},
+) {
   const byId = new Map(documents.map((doc) => [doc.id, doc]));
   if (!byId.has(documentId)) throw new Error('Open a document to export.');
-  const edges = buildIndex(documents).edges,
-    ids = [documentId],
-    included = new Set(ids);
-  if (includeLinked)
+  const savedOrder = useBook && byId.get(documentId).publication?.chapters;
+  const ids = savedOrder?.length ? [...savedOrder] : [documentId];
+  const included = new Set(ids);
+  if (includeLinked && !savedOrder?.length) {
+    const edges = buildIndex(documents).edges;
     for (let i = 0; i < ids.length; i++)
       for (const edge of edges)
         if (edge.source === ids[i] && !included.has(edge.target)) {
           included.add(edge.target);
           ids.push(edge.target);
         }
-  const selected = ids.map((id) => byId.get(id));
+  }
+  const selected = ids.map((id) => {
+    const chapter = byId.get(id);
+    if (!chapter)
+      throw Error(
+        'A book chapter is missing from the vault. Update the book order before exporting.',
+      );
+    return chapter;
+  });
+  return freezePDFDocuments(selected, assets, documentId);
+}
+
+export function freezePDFDocuments(selected, assets, documentId) {
+  const owner = selected.find((doc) => doc.id === documentId);
+  if (!owner) throw Error('The PDF must include its owning document.');
   const assetIds = new Set(
     selected
       .flatMap((doc) => doc.blocks.map((block) => block.src))
@@ -79,7 +99,8 @@ export function createPDFSnapshot(documents, assets, documentId, { includeLinked
   if (errors.length) throw new Error([...new Set(errors)].join('\n'));
   return {
     format: 'ivo-pdf-1',
-    title: scenes[0].title,
+    documentId,
+    title: owner.title,
     createdAt: new Date().toISOString(),
     documents: scenes,
     assets: archive.assets,

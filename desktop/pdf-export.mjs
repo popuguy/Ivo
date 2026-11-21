@@ -1,10 +1,11 @@
+import { addPDFBookmarks } from './pdf-bookmarks.mjs';
 import { CURRENT_ARCHIVE_VERSION } from '../src/domain/documents/capabilities.js';
 import { BrowserWindow, ipcMain, net } from 'electron';
 import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateImport } from '../src/domain/documents/schema.js';
-import { createPDFSnapshot } from '../src/features/export/pdf-plan.js';
+import { freezePDFDocuments } from '../src/features/export/pdf-plan.js';
 import { embedComposedTextLayers } from './composed-pdf.mjs';
 import { resolveCompositionPDFLayers } from './composition-pdf-layers.mjs';
 const jobs = new Map();
@@ -70,6 +71,7 @@ export async function finalizePDF(bytes, manifest, { composedLayers = [] } = {})
         'Some native text retains its original PDF encoding. Copying or searching ligatures may differ between PDF readers.',
       );
   }
+  addPDFBookmarks(pdf, manifest.pages);
   pdf.setTitle(manifest.title);
   pdf.setCreator('Ivo');
   pdf.setProducer('Ivo');
@@ -90,9 +92,11 @@ export async function renderPDF(
     archive.documents.reduce((sum, doc) => sum + doc.pages.length, 0) > 256
   )
     throw new Error('Invalid PDF page snapshot.');
-  const frozen = createPDFSnapshot(archive.documents, archive.assets, archive.documents[0]?.id, {
-    includeLinked: true,
-  });
+  const frozen = freezePDFDocuments(
+    archive.documents,
+    archive.assets,
+    snapshot.documentId ?? archive.documents[0]?.id,
+  );
   frozen.createdAt = String(snapshot.createdAt || frozen.createdAt);
   const pdfOrigin = 'https://ivo-pdf.invalid',
     url = pdfOrigin + '/pdf.html',

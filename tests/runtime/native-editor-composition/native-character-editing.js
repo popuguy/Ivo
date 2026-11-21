@@ -1,5 +1,5 @@
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
-import { enablePublishing } from '../../../src/domain/documents/publishing.js';
+import { enablePublishing, saveTextStyle } from '../../../src/domain/documents/publishing.js';
 import {
   startTextFlow,
   enableNativeComposition,
@@ -70,6 +70,17 @@ export async function verifyNativeCharacterEditing({
     mountCount = 0;
   // Author the publishing/layer capability before any frame snapshots or editor commands.
   enablePublishing(doc);
+  const donor = createSceneDocument('Style library');
+  enablePublishing(donor);
+  const baseStyle = saveTextStyle(donor, 'character', {
+    name: 'Foundry',
+    attributes: { tracking: 20 },
+  });
+  const importedStyle = saveTextStyle(donor, 'character', {
+    name: 'Alternates',
+    basedOn: baseStyle.id,
+    attributes: { stylisticSet1: true },
+  });
   const frame = insertObject(doc, 'text', doc.pages[0].id, {
       x: 48,
       y: 48,
@@ -109,7 +120,7 @@ export async function verifyNativeCharacterEditing({
   function mount() {
     editor = mountCanvasEditor(host, {
       getDocument: () => doc,
-      documents: [doc],
+      documents: [doc, donor],
       source: (value) => value,
       editing: true,
       textComposition: { compose: composeOwned },
@@ -616,6 +627,59 @@ export async function verifyNativeCharacterEditing({
       'Character formatting/reset rewrote source characters',
     );
     assert(source() !== initialSource, 'Transformed typing unexpectedly lost its authored edit');
+    const beforeImport = documentContent(doc);
+    await editor.command('load-text-styles');
+    await tick();
+    const importForm = document.querySelector('dialog[aria-label="Load Text Styles"] form');
+    assert(importForm, 'Style library dialog missing');
+    for (const option of importForm.querySelectorAll('[name=style]'))
+      option.checked = option.value === importedStyle.id;
+    importForm.requestSubmit();
+    await settle();
+    const imported = doc.publishing.characterStyles.find((s) => s.name === 'Alternates');
+    assert(
+      imported?.id !== importedStyle.id &&
+        doc.publishing.characterStyles.find((s) => s.id === imported.basedOn)?.attributes
+          .tracking === 20,
+      'Load Text Styles lost inherited attributes or reused a donor ID',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(
+      documentContent(doc) === beforeImport,
+      'One undo did not restore the document after style import',
+    );
+    await editor.command('redo');
+    await settle();
+    assert(
+      doc.publishing.characterStyles.some((s) => s.id === imported.id),
+      'Redo lost style IDs',
+    );
+    const beforeSection = documentContent(doc);
+    await editor.command('section-options');
+    await tick();
+    const sectionForm = document.querySelector(
+      'dialog[aria-label="Numbering & Section Options"] form',
+    );
+    assert(sectionForm, 'Numbering & Section Options is unavailable');
+    const fields = sectionForm.elements;
+    fields.numbering.value = 'restart';
+    fields.numbering.dispatchEvent(new Event('change'));
+    fields.start.value = '7';
+    fields.prefix.value = 'A–';
+    fields.style.value = 'roman-lower';
+    sectionForm.requestSubmit();
+    await settle();
+    assert(
+      doc.pages.some(
+        (p) =>
+          p.section?.prefix === 'A–' && p.section.start === 7 && p.section.style === 'roman-lower',
+      ),
+      'Section form failed to apply numbering',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(documentContent(doc) === beforeSection, 'Undo did not restore previous numbering');
     return {
       nativeCharacterProperties: true,
       conditionalCharacterProtocol: true,
