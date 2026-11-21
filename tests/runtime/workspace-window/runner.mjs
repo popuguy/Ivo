@@ -215,6 +215,15 @@ async function verifyPaletteDrag(window, palettes) {
   const viewport = await center(window, '.workspace-view.active .canvas-viewport');
   assert.ok(viewport);
   const begin = async (point) => {
+    const hit = await execute(
+      window,
+      `(() => {
+        const target = document.elementFromPoint(${point.x}, ${point.y});
+        return document.querySelector(${JSON.stringify(panel)}).contains(target)
+          ? 'Layers tab' : target?.getAttribute('aria-label') || target?.tagName || 'outside window';
+      })()`,
+    );
+    assert.equal(hit, 'Layers tab', 'Layers must receive pointer input at its visible center');
     mouse(window, 'mouseDown', point);
     await wait(
       () =>

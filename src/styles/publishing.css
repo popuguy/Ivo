@@ -685,7 +685,8 @@
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 35;
+  /* Canvas tools sit above page ink and below the overlay dock and floating panels. */
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 4px;
