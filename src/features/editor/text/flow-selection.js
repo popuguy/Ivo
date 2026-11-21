@@ -176,6 +176,7 @@ export function installFlowSelection(
     onSelection,
     showRange,
     pan,
+    caretClearance = () => 0,
     layoutKey = () => flow()?.html,
     onNativeCaret = () => {},
   },
@@ -849,10 +850,13 @@ export function installFlowSelection(
       : wrappedCaretBounds(column, focus, layoutKey());
     if (!rect) return;
     const viewportRect = viewport.getBoundingClientRect();
-    const shift =
-      Math.min(0, viewportRect.bottom - 12 - rect.height - rect.y) ||
+    const dy =
+      Math.min(0, viewportRect.bottom - 12 - caretClearance() - rect.height - rect.y) ||
       Math.max(0, viewportRect.top + 12 - rect.y);
-    if (shift) pan(0, shift);
+    const dx =
+      Math.min(0, viewportRect.right - 12 - rect.width - rect.x) ||
+      Math.max(0, viewportRect.left + 12 - rect.x);
+    if (dx || dy) pan(dx, dy);
   }
   listen(
     viewport,

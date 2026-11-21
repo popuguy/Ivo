@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, screen } from 'electron';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -274,9 +274,9 @@ void (async () => {
       wc.sendInputEvent({ type: 'char', keyCode: letter });
       wc.sendInputEvent({ type: 'keyUp', keyCode: letter });
     }
+    const activeInk = `[data-flow-frame="${frames[0].id}"] [data-line-start="0"]`;
     const glyphRect = async (offset) => {
-      if (composer !== 'browser')
-        return rect(`[data-line-start="0"] use[data-glyph-offset="${offset}"]`);
+      if (composer !== 'browser') return rect(`${activeInk} use[data-glyph-offset="${offset}"]`);
       return execute(
         `(()=>{const input=document.querySelector('.canvas-flow-input'),element=input?.isContentEditable?input:document.querySelector('[data-flow-text]'),walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT),node=walker.nextNode(),range=document.createRange();range.setStart(node,${offset});range.setEnd(node,${offset + 1});const r=range.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()`,
       );
@@ -418,7 +418,7 @@ void (async () => {
         ? await glyphRect(32)
         : await execute(`
       (() => {
-        const glyph = [...document.querySelectorAll('[data-line-start="0"] use')]
+        const glyph = [...document.querySelectorAll(${JSON.stringify(activeInk + ' use')})]
           .find((node) => Number(node.dataset.glyphOffset) >= 28);
         const r = glyph.getBoundingClientRect();
         return {x:r.x,y:r.y,width:r.width,height:r.height};
@@ -468,7 +468,26 @@ void (async () => {
         if (!first || !(await samples.containsInk(first))) return null;
         const current = await lastGlyph();
         return current && JSON.stringify(first) === JSON.stringify(current) ? current : null;
-      }, 'painted last-page glyph at its final position');
+      }, 'painted last-page glyph at its final position').catch(async (error) => {
+        const image = await wc.capturePage();
+        if (process.env.IVO_RESPONSIVENESS_CAPTURE)
+          await writeFile(process.env.IVO_RESPONSIVENESS_CAPTURE, image.toPNG());
+        console.error('Last-page capture', {
+          viewport,
+          window: win.getBounds(),
+          capture: image.getSize(),
+          display: screen.getDisplayMatching(win.getBounds()).bounds,
+          glyph: await lastGlyph(),
+          layout: await execute(`(() => {
+            const bounds = s => document.querySelector(s)?.getBoundingClientRect().toJSON();
+            const input = document.querySelector('.canvas-flow-input');
+            return { surface:bounds('.canvas-viewport'), caret:bounds('[data-native-selection="caret"]'),
+              frame:input?.dataset.sceneText, sourceLength:input?.textContent.length,
+              columns:[...document.querySelectorAll('[data-flow-frame] svg[data-composed-text]')].map(e=>[e.closest('[data-flow-frame]').dataset.flowFrame,e.getAttribute('aria-label')?.slice(-12),e.getBoundingClientRect().top]) };
+          })()`),
+        });
+        throw error;
+      });
       const insert = [],
         backspace = [];
       for (let i = 0; i < 6; i++) {

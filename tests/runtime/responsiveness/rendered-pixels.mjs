@@ -1,6 +1,6 @@
 // Read only the test control or text region and discard the frame immediately.
 // Scale from CSS coordinates to the capture surface, including Retina displays.
-function crop(image, region, viewport) {
+function crop(image, region, viewport, { waitForVisible = false } = {}) {
   const size = image.getSize();
   const xScale = size.width / viewport.width,
     yScale = size.height / viewport.height;
@@ -15,8 +15,10 @@ function crop(image, region, viewport) {
     rect.y < 0 ||
     rect.x + rect.width > size.width ||
     rect.y + rect.height > size.height
-  )
-    throw Error('Measured ink is outside the window');
+  ) {
+    if (waitForVisible) return null;
+    throw Error('Measured ink is outside the window: ' + JSON.stringify({ rect, size }));
+  }
   const data = image.crop(rect).toBitmap();
   return Uint8Array.from({ length: data.length / 4 }, (_, i) => data[i * 4]);
 }
@@ -150,8 +152,8 @@ export function observeRenderedActions(contents, viewport) {
     }
   }
   async function containsInk(region) {
-    const pixels = crop(await contents.capturePage(), region, viewport);
-    return pixels.reduce((n, pixel) => n + (pixel < 120 ? 1 : 0), 0) >= 4;
+    const pixels = crop(await contents.capturePage(), region, viewport, { waitForVisible: true });
+    return !!pixels && pixels.reduce((n, pixel) => n + (pixel < 120 ? 1 : 0), 0) >= 4;
   }
   return { measure, measureBurst, containsInk, close: () => contents.endFrameSubscription() };
 }

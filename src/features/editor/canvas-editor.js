@@ -1528,10 +1528,10 @@ export function mountCanvasEditor(host, options) {
     state.activePage = sceneObject(doc(), id).pageId;
     rememberTextSelection();
     renderPanel();
-    const p = objectWorld(sceneObject(doc(), id)),
-      top = worldToScreen(p, state.camera);
-    if (top.y < 20 || top.y > viewport.clientHeight - 60)
-      cameraTo({ ...state.camera, y: state.camera.y + 20 - top.y });
+    // A continuation frame can be taller than the window at the current zoom.
+    // Reveal the insertion point inside it, including any pending camera move.
+    applyPageCamera(world, state.camera);
+    flowSelection?.revealFocus({ index: offset, affinity });
     selectionDirty = true;
     requestFrame();
   }
@@ -4983,6 +4983,7 @@ export function mountCanvasEditor(host, options) {
           delete node.dataset.flowEditing;
     },
     pan: (x, y) => cameraTo({ ...state.camera, x: state.camera.x + x, y: state.camera.y + y }),
+    caretClearance: contextualBar.caretClearance,
   });
   publishingControls.prepareLegacyFonts();
   listen(editor, 'change', (event) => {

@@ -1,5 +1,13 @@
 # Verification
 
+## Book links and typing in continuation frames — 21 November 2026
+
+The publishing fixture creates a contents list and index across closed chapters. It follows page links, changes the destination numbering, updates inline references and exercises document history. PDFKit reads the exported cross-chapter destinations, including a link carried by native composed glyphs. The iOS Foundation vault adapter reopens a threaded reference saved on the Mac, renames its destination chapter, and returns both documents to the desktop vault. This checks storage compatibility. Physical iPhone and iPad editing remain separate checks.
+
+The three-page Paragraph Composer fixture exposed a caret covered by the contextual toolbar near the lower edge of the viewport. Following a continuation now reveals the insertion point and leaves space for the toolbar. When the bar fits above the selected frame, it can move there automatically. The release checks still require a visible pixel change for each measured insertion and deletion.
+
+The qualifying Apple silicon run passed six input configurations and the six-page masked-image reflow case. Median visible insertion and deletion on the last page were 23.0 and 23.3 ms with Properties docked, and 25.1 and 24.3 ms with it detached. Across the six configurations median Layers lock feedback ranged from 12.8 to 13.9 ms. Earlier runs on this machine exceeded the lock budget on both the previous revision and this branch. These measurements describe the tested machine and fixtures.
+
 ## Six-page contour reflow — 21 November 2026
 
 The earlier magazine case measures editing one frame among 71 independent credits. The contour study edits one continuous flow threaded through twelve boxes on six pages. Each box intersects three original 15-vertex masks with placed 3072 × 2048 textile images. The final box has additional room for the inserted material. `npm run test:threaded-wrap` builds and reopens a disposable vault, verifies the decoded images, inserts text at the beginning through the editor, checks every frame and removes the insertion. It also moves a mask using Properties and checks the resulting local line geometry and restoration.

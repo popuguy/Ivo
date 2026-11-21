@@ -35,8 +35,11 @@ export function createContextualBar(
     lastRect = null,
     origin = { x: 0, y: 0 };
   const observe = new ResizeObserver((entries) => {
-    width = entries[0].contentRect.width;
-    height = entries[0].contentRect.height;
+    const size = entries[0].borderBoxSize[0];
+    if (size.inlineSize && size.blockSize) {
+      width = size.inlineSize;
+      height = size.blockSize;
+    }
   });
   observe.observe(bar);
   const geometry = new ResizeObserver(() => {
@@ -145,10 +148,12 @@ export function createContextualBar(
       selection = lastRect;
     if (!selection) return;
     const x = Math.max(4, Math.min(viewportWidth - width - 8, selection.x + offset.x));
-    const y = Math.max(
-      4,
-      Math.min(viewportHeight - height - 8, selection.y + selection.h + 12 + offset.y),
-    );
+    const bottom = viewportHeight - height - 8,
+      below = selection.y + selection.h + 12,
+      above = selection.y - height - 12;
+    const target =
+      !state.contextBarOffset && below > bottom && above >= 4 ? above : below + offset.y;
+    const y = Math.max(4, Math.min(bottom, target));
     bar.style.transform = `translate3d(${origin.x + x}px,${origin.y + y}px,0)`;
   }
   bar.addEventListener(
@@ -164,6 +169,8 @@ export function createContextualBar(
   return {
     available,
     layout,
+    caretClearance: () =>
+      bar.hidden || !textEditing() || !bar.getClientRects().length ? 0 : height + 8,
     destroy() {
       end();
       controller.abort();
