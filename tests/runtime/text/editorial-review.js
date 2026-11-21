@@ -18,11 +18,21 @@ export async function verifyEditorialReview() {
   const b = insertObject(doc, 'text', page, { html: '<p>Also recieve [[Unresolved]].</p>' });
   const locked = insertObject(doc, 'text', page, { html: '<p>recieve</p>' });
   locked.locked = true;
+  const bitmap = document.createElement('canvas');
+  bitmap.width = 72;
+  bitmap.height = 72;
+  const pic = insertObject(doc, 'image', page, {
+    w: 144,
+    h: 144,
+    src: bitmap.toDataURL('image/png'),
+    alt: 'Test swatch',
+  });
   const host = document.createElement('div');
   host.style.cssText = 'width:900px;height:640px;position:relative;display:flex';
   document.body.append(host);
   const native = globalThis.ivoNative;
   const savedProfile = localStorage.getItem('ivo:preflight-profile');
+  const savedDefinitions = localStorage.getItem('ivo:preflight-definitions:1');
   const before = structuredClone(doc),
     changes = [];
   globalThis.ivoNative = {
@@ -82,12 +92,52 @@ export async function verifyEditorialReview() {
     select.dispatchEvent(new Event('change', { bubbles: true }));
     const link = host.querySelector('[data-preflight-object="' + b.id + '"]');
     check(link?.textContent.includes('Unresolved'), 'Digital profile pinpoints an unresolved link');
-    link.click();
+    const profile = () => host.querySelector('[data-preflight-profile]');
+    profile().value = 'print';
+    profile().dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() =>
+      host
+        .querySelector('[data-preflight-object="' + pic.id + '"]')
+        ?.textContent.includes('36 ppi'),
+    );
+    host.querySelector('[data-new-profile]').click();
+    const dialog = document.querySelector('dialog[aria-label="Define Preflight Profile"]');
+    const form = dialog.querySelector('form');
+    form.elements.namedItem('name').value = 'Test proofs';
+    form.elements.ppi.value = '30';
+    form.requestSubmit();
+    check(
+      !dialog.open && profile().selectedOptions[0].text === 'Test proofs',
+      'Create and select a custom profile',
+    );
+    check(
+      !host.querySelector('[data-preflight-object="' + pic.id + '"]'),
+      'Threshold applied to placed image',
+    );
+    host.querySelector('[data-edit-profile]').click();
+    const editing = document.querySelector('dialog[open][aria-label="Define Preflight Profile"]');
+    editing.querySelector('[name=ppi]').value = '150';
+    editing.querySelector('form').requestSubmit();
+    check(
+      host
+        .querySelector('[data-preflight-object="' + pic.id + '"]')
+        ?.textContent.includes('150 ppi'),
+      'Updated the custom profile',
+    );
+    check(
+      Object.values(JSON.parse(localStorage.getItem('ivo:preflight-definitions:1'))).some(
+        (p) => p.name === 'Test proofs' && p.ppi === 150,
+      ),
+      'Profile was not saved',
+    );
+    host.querySelector('[data-preflight-object="' + b.id + '"]').click();
     check(editor.getState().selected === b.id, 'Preflight selects the object on its page');
   } finally {
     editor.destroy();
     host.remove();
     globalThis.ivoNative = native;
+    if (savedDefinitions === null) localStorage.removeItem('ivo:preflight-definitions:1');
+    else localStorage.setItem('ivo:preflight-definitions:1', savedDefinitions);
     if (savedProfile === null) localStorage.removeItem('ivo:preflight-profile');
     else localStorage.setItem('ivo:preflight-profile', savedProfile);
   }

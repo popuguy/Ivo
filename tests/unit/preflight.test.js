@@ -1,3 +1,4 @@
+import { preflightProfile, effectivePPI } from '../../src/domain/documents/preflight-profiles.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectPublication } from '../../src/domain/documents/preflight.js';
@@ -73,4 +74,61 @@ test('Digital publishing checks resolve aliases, skip code and flag missing reso
   );
   assert.equal(issues[3].detail, 'Missing');
   assert.equal(issues.at(-1).location.parent, 'a');
+});
+
+test('custom profiles check stable page IDs and printed image scale without running disabled layout checks', () => {
+  const doc = {
+    id: 'd',
+    pages: [{ id: 'a' }],
+    blocks: [
+      {
+        id: 't',
+        type: 'text',
+        pageId: 'a',
+        html: '<p><a href="#page=a">p.</a><a href="#page=removed">old</a></p>',
+      },
+      { id: 'i', type: 'image', pageId: 'a', src: 'asset:img' },
+      { id: 'v', type: 'image', pageId: 'a', src: 'logo.svg' },
+      { id: 'loading', type: 'image', pageId: 'a', src: 'asset:new' },
+    ],
+  };
+  const settings = preflightProfile({
+    name: 'Magazine',
+    checks: ['links', 'resolution'],
+    ppi: 300,
+  });
+  const options = {
+    profile: settings,
+    assets: [],
+    documents: [doc],
+    frameOverflow: () => assert.fail('unrequested layout read'),
+    imageResolution: (item) =>
+      item.id === 'v'
+        ? 'vector'
+        : item.id === 'i'
+          ? effectivePPI({
+              pixelsWide: 600,
+              pixelsHigh: 400,
+              width: 144,
+              height: 144,
+              fit: 'cover',
+            })
+          : null,
+  };
+  const issues = inspectPublication(doc, options);
+  assert.deepEqual(
+    issues.map((i) => [i.problem, i.location.object]),
+    [
+      ['Unresolved page link', 't'],
+      ['Low effective image resolution', 'i'],
+      ['Image resolution unavailable', 'loading'],
+    ],
+  );
+  assert.match(issues[1].detail, /200 ppi/);
+  assert.equal(
+    effectivePPI({ pixelsWide: 600, pixelsHigh: 400, width: 144, height: 144, fit: 'contain' }),
+    300,
+  );
+  assert.equal(effectivePPI({ pixelsWide: 0, pixelsHigh: 1, width: 72, height: 72 }), null);
+  assert.throws(() => preflightProfile({ name: 'Press', checks: [], ppi: 300 }), /at least one/);
 });

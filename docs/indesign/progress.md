@@ -4,6 +4,10 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Preflight profiles for print layouts
+
+**Release estimate ~90% across 63 capabilities.** Preflight now locates broken page references and checks the effective resolution of a placed picture at its printed size. The same artwork can pass at one size and fail after enlargement. The Print preset uses 300 ppi. Named local profiles control six checks and the minimum resolution. In the Mac editor a 72-pixel square in a 144-point frame measured 36 ppi, passed a 30 ppi threshold and failed at 150 ppi. Undecoded images and unavailable layout appear as incomplete checks. Profile exchange and color/separation checks remain open.
+
 ## Subject indexes
 
 **Release estimate ~89%.** Generate Index searches for the exact words or phrases specified at the last level of each topic path. Printed occurrences are grouped by topic, sorted and linked to their pages. Ranges end at section boundaries. Generating again updates the selected index and excludes generated material. The five-page editor fixture checks overlapping terms, formatted phrases, duplicates, overset text, and a removed reference. Independent PDFKit inspection verifies the two destinations of a printed range. Individual persistent index markers, custom sort keys, See/See also references and book-wide indexing remain open.

@@ -1,3 +1,4 @@
+import { effectivePPI } from '../../domain/documents/preflight-profiles.js';
 import { generatedTextCommands } from './ui/publication-commands.js';
 import { indexMatcher } from '../../rendering/text/subject-index-matches.js';
 import {
@@ -400,19 +401,50 @@ export function mountCanvasEditor(host, options) {
   const spelling = createSpellingPanel(editorialContext, globalThis.ivoNative?.spelling);
   const preflight = createPreflightPanel({
     editor,
-    publication(digital) {
+    publication(profile) {
       const current = doc();
       const nativeReady =
         !current.textFlows?.some((flow) => flow.composition) ||
         (!nativeError && nativePlanKey === compositionLayoutKey(current));
-      const frames = new Map(
-        Array.from(world.querySelectorAll('[data-scene-text]'), (el) => [el.dataset.sceneText, el]),
-      );
+      const assets = options.assets?.() || options.fonts?.() || [];
+      const assetById = new Map(assets.map((a) => [a.id, a]));
+      const placedImages = new Map();
+      if (profile.checks.includes('resolution'))
+        for (const image of world.querySelectorAll('.canvas-image-frame > img'))
+          placedImages.set(image.closest('[data-object]')?.dataset.object, image);
+      const frames = new Map();
+      if (profile.checks.includes('overset'))
+        for (const el of world.querySelectorAll('[data-scene-text]'))
+          frames.set(el.dataset.sceneText, el);
       return [
         current,
         {
-          digital,
-          assets: options.assets?.() || options.fonts?.() || [],
+          profile,
+          assets,
+          imageResolution(item, location) {
+            const resource = assetById.get(item.src.slice(6));
+            if (
+              resource?.mimeType === 'image/svg+xml' ||
+              /^(?:data:image\/svg\+xml[;,])|\.svg$/i.test(item.src)
+            )
+              return 'vector';
+            let image = placedImages.get(item.id);
+            if (!image && location.parent) {
+              for (const p of current.pages) {
+                image = placedImages.get(p.id + '--' + item.id);
+                if (image) break;
+              }
+            }
+            if (!image?.complete || !image.naturalWidth) return null;
+            const style = getComputedStyle(image);
+            return effectivePPI({
+              pixelsWide: image.naturalWidth,
+              pixelsHigh: image.naturalHeight,
+              width: parseFloat(style.width),
+              height: parseFloat(style.height),
+              fit: item.fit,
+            });
+          },
           documents: options.documents,
           flowStatus: (flow) => (!flow.composition || nativeReady) && flowPlan.status.get(flow.id),
           frameOverflow: (item) => {
