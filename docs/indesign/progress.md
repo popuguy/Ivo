@@ -2,6 +2,24 @@
 
 The [current development state](../development/STATE.md) records the latest engineering estimate. Milestone updates report progress toward the [63 release capabilities](text-parity-programme.md#capability-acceptance-ledger), including their editing, layout, export and device checks.
 
+## Readiness for the desktop text review
+
+**21 November 2026 · about 55% ready (11/20).** This first baseline rates how far five desktop workflows have advanced toward a full Mac side-by-side review with InDesign. Separately, 50 of the 63 release capabilities have some implementation evidence. The desktop review excludes physical mobile input, cloud sync, the deferred language and math work, and the proposed Markdown note type.
+
+Each workflow gets equal weight and has five possible scores. At **0**, a reviewer cannot start the task. At **1**, individual pieces work. At **2**, a common case works end to end, with an important part of the workflow still missing or divergent. At **3**, representative everyday and difficult cases have repeatable editor checks, with some reference checks outstanding. At **4**, the agreed desktop scenarios are implemented, compared with InDesign and ready for independent testing. Known differences are recorded and the reviewer can finish each scenario. Twenty points is the invitation to start the full review. The review itself can still uncover defects.
+
+| Desktop workflow                   | Score | Evidence and what still limits review                                                                                                                                                                                                         |
+| ---------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Write and edit across pages        | 3/4   | On-page typing, selection across frames, undo and save/reopen have editor checks. A long threaded note and a dense magazine fixture exercise typing latency. Mixed-script caret movement and selection still need broader reference coverage. |
+| Format type and reuse styles       | 3/4   | Character formatting, OpenType alternates and sequences of paragraph styles are testable in the editor. Nested styles and styles applied by text patterns are still missing.                                                                  |
+| Fit paragraphs around artwork      | 2/4   | Ivo matched every line ending in 141 of 180 previously unseen column layouts. Overlapping wrap objects matched in 104 of 120 cases. The remaining differences can move words into another frame or onto another page.                         |
+| Edit structured and editorial text | 1/4   | A reviewer can edit page tables and search across frames. Tables flowing across pages, anchored illustrations, footnotes, endnotes and tracked changes still block complete editorial scenarios.                                              |
+| Publish and check a long document  | 2/4   | Contents, indexes and page references work across chapters. Tests read destinations from the exported PDF. Paragraph-level targets, custom cross-reference formats and tagged PDF still limit a complete publishing comparison.               |
+
+At each completed text milestone, record the prior and current total, the workflow affected, the test or comparison that supports a change, and the largest remaining obstacle. Keep the score steady when a fix strengthens an existing score without moving the workflow to the next level. [Release capability ledger](text-parity-programme.md#capability-acceptance-ledger) · [Column comparisons](../native-word-spacing.md) · [Frame comparisons](../frame-composition.md) · [Desktop verification](../verification.md)
+
+## Earlier release estimates
+
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
 ## Inline page cross-references

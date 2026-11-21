@@ -10,6 +10,8 @@ User preference, 18 November 2026: run development and app checks in the backgro
 
 After each completed text milestone, report a small **Ivo release text parity** progress bar. Use the [release estimate and scope history](docs/indesign/progress.md) and distinguish engineering progress from verified reference and device behavior. Count the release capabilities and their scoped acceptance criteria. Consult the broader-edition wishlist only when the user asks to revisit an exemption. Record any future scope change separately from features delivered.
 
+Lead each text milestone update with [readiness for the desktop text review](docs/indesign/progress.md#readiness-for-the-desktop-text-review). Give the previous and current score, one piece of editor or reference evidence, and the biggest remaining obstacle to a full side-by-side review. At 20/20, invite the user to begin that review.
+
 ## Git throughout the project
 
 User direction, 17 November 2026: keep Ivo under active Git version control for the remainder of the project.
