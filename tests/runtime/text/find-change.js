@@ -1,3 +1,4 @@
+import { verifyEditorialSearch } from './editorial-search.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { threadFrame } from '../../../src/domain/documents/text-flows.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
@@ -63,6 +64,7 @@ function verifyParagraphSearch() {
 }
 export async function verifyFindChange() {
   verifyParagraphSearch();
+  await verifyEditorialSearch();
   const doc = createSceneDocument('Editorial search'),
     page = doc.pages[0].id;
   const one = insertObject(doc, 'text', page, {

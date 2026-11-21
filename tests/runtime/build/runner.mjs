@@ -56,6 +56,25 @@ async function inspect(url) {
       ),
       'Obsolete product terminology in built editor',
     );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('.canvas-viewport').dispatchEvent(new KeyboardEvent('keydown',{key:'f',metaKey:true,ctrlKey:true,bubbles:true,cancelable:true}));
+    `);
+    await poll(window, "!!document.querySelector('.canvas-find-change')");
+    await window.webContents.executeJavaScript(`
+      const panel = document.querySelector('.canvas-find-change');
+      panel.querySelector('[data-find-mode="grep"]').click();
+      const needle = panel.elements.namedItem('needle');
+      needle.value = 'unmatched[0-9]+fixture';
+      needle.dispatchEvent(new Event('input',{bubbles:true}));
+      panel.querySelector('[data-find-action="next"]').click();
+    `);
+    await poll(
+      window,
+      "document.querySelector('.canvas-find-change output').value === 'No matches found.'",
+    );
+    await window.webContents.executeJavaScript(
+      "document.querySelector('[data-find-action=done]').click()",
+    );
     await window.webContents.executeJavaScript(
       `globalThis.__workerMessages=0;globalThis.__workerErrors=[];const OriginalWorker=Worker;globalThis.Worker=class extends OriginalWorker {constructor(...args){super(...args);this.addEventListener('message',()=>globalThis.__workerMessages++);this.addEventListener('error',event=>globalThis.__workerErrors.push(event.message));}};document.querySelector('[data-action=graph]').click()`,
     );

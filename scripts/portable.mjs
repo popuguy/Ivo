@@ -7,14 +7,20 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (file) => fs.readFile(path.join(root, file), 'utf8');
 /** Real ESM bundling, including the physics worker and embedded original font bytes. */
 export async function buildPortable() {
-  const worker = await build({
-    absWorkingDir: root,
-    entryPoints: ['src/features/graph/physics-worker.js'],
-    bundle: true,
-    write: false,
-    format: 'esm',
-    target: 'es2022',
-  });
+  const inlineWorker = async (entry, factory) => {
+    const worker = await build({
+      absWorkingDir: root,
+      entryPoints: [entry],
+      bundle: true,
+      write: false,
+      format: 'esm',
+      target: 'es2022',
+    });
+    return {
+      loader: 'js',
+      contents: `const url=URL.createObjectURL(new Blob([${JSON.stringify(worker.outputFiles[0].text)}],{type:'text/javascript'}));export function ${factory}(){return new Worker(url,{type:'module'});}`,
+    };
+  };
   const script = await build({
     absWorkingDir: root,
     entryPoints: ['src/app/main.js'],
@@ -27,10 +33,12 @@ export async function buildPortable() {
       {
         name: 'standalone-worker',
         setup(builder) {
-          builder.onLoad({ filter: /[/\\]features[/\\]graph[/\\]worker-factory\.js$/ }, () => ({
-            loader: 'js',
-            contents: `const url=URL.createObjectURL(new Blob([${JSON.stringify(worker.outputFiles[0].text)}],{type:'text/javascript'}));export function createGraphWorker(){return new Worker(url,{type:'module'});}`,
-          }));
+          builder.onLoad({ filter: /[/\\]graph[/\\]worker-factory\.js$/ }, () =>
+            inlineWorker('src/features/graph/physics-worker.js', 'createGraphWorker'),
+          );
+          builder.onLoad({ filter: /[/\\]text[/\\]grep-worker-factory\.js$/ }, () =>
+            inlineWorker('src/features/editor/text/grep-worker.js', 'createGrepWorker'),
+          );
           builder.onLoad(
             { filter: /[/\\]rendering[/\\]text[/\\]font-resources\.js$/ },
             async (args) => {

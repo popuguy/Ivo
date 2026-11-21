@@ -65,3 +65,33 @@
   background: Highlight;
   color: HighlightText;
 }
+.canvas-find-change .find-query,
+.canvas-find-change .find-modes {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.canvas-find-change .find-query label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.canvas-find-change .find-query select {
+  flex: 1;
+}
+.canvas-find-change [hidden] {
+  display: none;
+}
+.canvas-find-change .find-modes button[aria-pressed='true'] {
+  background: var(--line);
+  font-weight: 600;
+}
+.canvas-find-change details p {
+  line-height: 1.45;
+  margin: 6px 0;
+}
+.canvas-find-change > label {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
