@@ -4,6 +4,13 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Editorial search and frame grids
+
+**Engineering estimate on the 63-capability release scope is ~65%, up from ~60%.** Editorial search adds an estimated two points. Frame grids and grid-aware wrapping add three. The estimate includes the remaining structured text, font, publishing and physical-device work.
+
+- Edit → Find/Change supports Text and GREP, named queries on this device, and searching or changing character formatting. A saved query can target a named paragraph style or apply a named character style. Captured groups carry their formatting and links into reordered text. Change All creates one undo entry across eligible flows. Tests cover protected ranges, stale results, paragraph/soft returns, zero-width matches, query cancellation, time limits and a match spanning two native pages. Advanced ICU syntax, glyph-ID search, spelling and searches spanning documents remain open. [Adobe GREP workflow](https://helpx.adobe.com/ca/indesign/desktop/language-and-proofing/glyphs-characters-and-expressions/find-and-replace-with-text-patterns-grep.html)
+- Native text flows support different grid spacing in each frame and wrapping around an object while the lines stay on the grid. A comparison with InDesign matched 168 of 168 aligned layouts. Independent PDF checks also measured the words that move to the side of an obstruction. The comparison and the separate unaligned controls are described in [frame composition](../frame-composition.md#custom-frame-grids-and-wrapping-objects).
+
 ## Magazine columns and long notes
 
 **Engineering estimate on the 63-capability release scope: ~60%, up from ~50%.** The estimate reflects new editing, composition and export behavior and cross-device evidence. A fixture match rate measures that test corpus only.

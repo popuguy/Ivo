@@ -2,7 +2,12 @@ import Foundation
 import PDFKit
 guard let pdf = PDFDocument(url: URL(fileURLWithPath: CommandLine.arguments[1])), pdf.pageCount == 2
 else { fatalError("Baseline grid export must contain two pages") }
-let expected: [(String, Int, Double, Double)] = [
+let custom = CommandLine.arguments.dropFirst(2).first == "custom"
+let expected: [(String, Int, Double, Double)] = custom ? [
+  ("cut",0,35,52), ("hem",0,135,69), ("sew",0,135,86), ("press",0,135,103),
+  ("join",0,245,65), ("trim",0,245,87), ("fold",0,245,109), ("line",0,245,131),
+  ("rip",1,31,93), ("finish",1,31,112), ("dart",1,31,131), ("spin",1,31,150)
+] : [
   ("cut",0,35,55), ("hem",0,35,74), ("sew",0,35,93),
   ("press",0,245,74), ("join",0,245,93), ("trim",0,245,112), ("fold",0,245,131),
   ("line",1,31,93), ("rip",1,31,112), ("finish",1,31,131), ("dart",1,31,150), ("spin",1,31,169)

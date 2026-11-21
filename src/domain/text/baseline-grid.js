@@ -26,3 +26,37 @@ export function nextGridBaseline(baseline, grid) {
   const step = Math.max(0, Math.ceil((baseline - grid.start) / grid.increment - 1e-8));
   return grid.start + step * grid.increment;
 }
+
+export const FRAME_GRID_ORIGINS = Object.freeze({
+  inset: 'Top Inset',
+  frame: 'Top of Frame',
+  page: 'Top of Page',
+});
+export const FRAME_GRID_DEFAULTS = Object.freeze({ relativeTo: 'inset', start: 0, increment: 12 });
+
+export function frameGridSettings(value) {
+  if (!value || !Object.hasOwn(FRAME_GRID_ORIGINS, value.relativeTo))
+    throw Error('Choose a frame grid origin.');
+  const { relativeTo, ...spacing } = value;
+  return { ...baselineGridSettings(spacing), relativeTo };
+}
+
+/** Convert an authored grid in page points to coordinates inside this frame's text inset. */
+export function gridInsideFrame(frame, byId, documentGrid = BASELINE_GRID_DEFAULTS) {
+  const custom = frame.frameOptions?.baselineGrid;
+  const grid = custom || documentGrid;
+  const inset = frame.frameOptions?.insetTop || 0;
+  const scale = frame.textScale?.y ?? 1;
+  let offset = 0;
+  if (custom?.relativeTo !== 'inset') offset = inset;
+  if (!custom || custom.relativeTo === 'page') {
+    const visited = new Set();
+    for (let owner = frame; owner; owner = byId.get(owner.parentId)) {
+      if (visited.has(owner.id)) throw Error('Baseline grid frame has a circular group ancestry.');
+      visited.add(owner.id);
+      if (owner.rotation) return null;
+      offset += owner.y || 0;
+    }
+  }
+  return { start: (grid.start - offset) / scale, increment: grid.increment / scale };
+}

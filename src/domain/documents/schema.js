@@ -1,4 +1,4 @@
-import { baselineGridSettings } from '../text/baseline-grid.js';
+import { baselineGridSettings, frameGridSettings } from '../text/baseline-grid.js';
 import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
 import { migrateArchive } from './migrations.js';
 import { BLOCK_TYPES, ID_PATTERN, LIMITS } from './constants.js';
@@ -12,6 +12,7 @@ import {
   hasTextWrap,
   hasWordSpacing,
   hasJustification,
+  hasFrameGrid,
   hasExtendedKeeps,
   hasParagraphStarts,
   hasSplitLineKeeps,
@@ -323,6 +324,11 @@ function validateArchive(payload, parentTemplate) {
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
     if (
+      hasFrameGrid(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 16) || payload.schemaVersion < 17)
+    )
+      fail('Custom frame baseline grids require canvas 16 and archive 17');
+    if (
       hasJustification(doc) &&
       (!supportedCanvas(doc.canvasVersion, 15) || payload.schemaVersion < 16)
     )
@@ -522,6 +528,10 @@ function validateArchive(payload, parentTemplate) {
               ['top', 'center', 'bottom', 'justify'],
               'top',
             );
+            if (f.baselineGrid !== undefined) {
+              if (!block.textFlowId) fail(`${key} frame baseline grid requires a native text flow`);
+              normalized.frameOptions.baselineGrid = frameGridSettings(f.baselineGrid);
+            }
             if (f.paragraphSpacingLimit !== undefined)
               normalized.frameOptions.paragraphSpacingLimit = number(
                 f.paragraphSpacingLimit,
@@ -867,6 +877,8 @@ function validateArchive(payload, parentTemplate) {
             frame.textKind !== 'area'
           )
             fail(`${key} has invalid, duplicate or shared frames`);
+          if (frame.frameOptions?.baselineGrid && !composition)
+            fail(`${key} frame baseline grid requires a native text flow`);
           if (frame.frameOptions?.verticalAlign === 'justify' && !composition)
             fail(`${key} vertical Justify requires a native text flow`);
           frameOwners.add(frameId);

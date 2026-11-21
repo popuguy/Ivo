@@ -1,3 +1,4 @@
+import { FRAME_GRID_ORIGINS } from '../../../domain/text/baseline-grid.js';
 import { PARAGRAPH_STARTS } from '../../../domain/text/paragraph-keep-policy.js';
 import { fontChoices, systemFontId } from '../../../domain/text/font-catalog.js';
 import { referencePoint } from '../../../domain/geometry/transform-reference.js';
@@ -367,6 +368,35 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
     )
   );
 }
+function frameGridFields(grid) {
+  const toggle = `<label class="publishing-check"><input type="checkbox" data-frame-grid="enabled" ${grid ? 'checked' : ''}>Use Custom Baseline Grid</label>`;
+  if (!grid) return toggle;
+  return (
+    toggle +
+    field(
+      'Start',
+      unitNumber('frame-grid', 'start', grid.start, 'Start', 'pt', { min: 0, max: 14400 }),
+    ) +
+    field(
+      'Relative To',
+      `<select data-frame-grid="relativeTo" aria-label="Relative To">${Object.entries(
+        FRAME_GRID_ORIGINS,
+      )
+        .map(
+          ([id, label]) =>
+            `<option value="${id}" ${grid.relativeTo === id ? 'selected' : ''}>${label}</option>`,
+        )
+        .join('')}</select>`,
+    ) +
+    field(
+      'Increment Every',
+      unitNumber('frame-grid', 'increment', grid.increment, 'Increment Every', 'pt', {
+        min: 1,
+        max: 2000,
+      }),
+    )
+  );
+}
 export function frameProperties(item, state = {}, native = false) {
   const f = item.frameOptions || {};
   return section(
@@ -411,6 +441,7 @@ export function frameProperties(item, state = {}, native = false) {
           'minimumFirstBaseline',
           f.minimumFirstBaseline || 0,
         ) +
+        (native ? frameGridFields(f.baselineGrid) : '') +
         `<label class="publishing-check"><input type="checkbox" data-ignore-text-wrap ${item.ignoreTextWrap ? 'checked' : ''}>Ignore Text Wrap</label>`,
       state,
       'Options',

@@ -1,4 +1,8 @@
-import { BASELINE_GRID_DEFAULTS } from '../../domain/text/baseline-grid.js';
+import {
+  BASELINE_GRID_DEFAULTS,
+  gridInsideFrame,
+  nextGridBaseline,
+} from '../../domain/text/baseline-grid.js';
 import { customHyphenation } from '../../domain/text/hyphenation.js';
 import { INSERT_CHARACTERS } from '../../domain/text/native-commands.js';
 import { PANEL_LABELS } from '../../domain/workspace/panels.js';
@@ -703,6 +707,29 @@ export function mountCanvasEditor(host, options) {
       blocks: [...doc().pages.flatMap((p) => parentObjects(doc(), p)), ...doc().blocks],
     };
   }
+  function paintFrameGrid(element, frame, byId) {
+    const f = frame.frameOptions;
+    element.toggleAttribute('data-custom-frame-grid', !!f?.baselineGrid);
+    if (!f?.baselineGrid) return;
+    const grid = gridInsideFrame(frame, byId);
+    if (!grid) {
+      element.removeAttribute('data-custom-frame-grid');
+      return;
+    }
+    const sy = frame.textScale?.y || 1;
+    element.style.setProperty(
+      '--frame-grid-inset',
+      [
+        (f.insetTop || 0) + nextGridBaseline(0, grid) * sy,
+        f.insetRight || 0,
+        f.insetBottom || 0,
+        f.insetLeft || 0,
+      ]
+        .map((n) => n + 'px')
+        .join(' '),
+    );
+    element.style.setProperty('--frame-grid-step', grid.increment * sy + 'px');
+  }
   function paintBaselineGrid() {
     const { start, increment } = doc().publishing?.baselineGrid || BASELINE_GRID_DEFAULTS;
     world.toggleAttribute('data-show-baseline-grid', !!state.showBaselineGrid);
@@ -710,19 +737,26 @@ export function mountCanvasEditor(host, options) {
       world.style.setProperty('--baseline-guide-width', 1 / state.camera.zoom + 'px');
     world.style.setProperty('--baseline-grid-start', start + 'px');
     world.style.setProperty('--baseline-grid-increment', increment + 'px');
+    if (!state.showBaselineGrid) return;
+    const byId = new Map(doc().blocks.map((b) => [b.id, b]));
+    for (const frame of byId.values())
+      if (frame.frameOptions?.baselineGrid) {
+        const element = world.querySelector(`[data-object="${CSS.escape(frame.id)}"]`);
+        if (element) paintFrameGrid(element, frame, byId);
+      }
   }
   function paint() {
     sceneRevision++;
     updateFlowPlan();
     setSelectionState(state.selection);
     selectionDirty = true;
-    paintBaselineGrid();
     world.innerHTML = positions()
       .map(
         (p) =>
           `<section class="canvas-page ${p.id === state.activePage ? 'active' : ''}" data-page="${esc(p.id)}" aria-label="${esc(p.name)}" style="left:${p.x}px;top:${p.y}px;width:${p.width}px;height:${p.height}px"><div class="canvas-page-label">${esc(p.name)}</div>${pageObjectsHTML(p)}</section>`,
       )
       .join('');
+    paintBaselineGrid();
     applySceneTypography(world, renderingDocument());
     if (doc().textFlows?.length) {
       flowPreviewDirty = true;
@@ -743,6 +777,8 @@ export function mountCanvasEditor(host, options) {
       height: item.h,
     }))
       element.style[name] = value + 'px';
+    if (state.showBaselineGrid && item.frameOptions?.baselineGrid)
+      paintFrameGrid(element, item, new Map(doc().blocks.map((b) => [b.id, b])));
     const polygon = element.querySelector(':scope > .canvas-polygon polygon');
     if (polygon) {
       polygon.parentElement.setAttribute('viewBox', `0 0 ${item.w} ${item.h}`);
@@ -1051,6 +1087,12 @@ export function mountCanvasEditor(host, options) {
             throw Error(
               'Change vertical Justify to Top, Center or Bottom before switching to the existing layout.',
             );
+          if (
+            doc().blocks.some(
+              (frame) => frame.textFlowId === flow.id && frame.frameOptions?.baselineGrid,
+            )
+          )
+            throw Error('Turn off the custom frame grid before switching to the existing layout.');
           validateLegacyTextSettings(flow.html, flow.style);
         } catch (error) {
           options.onNotify?.(error.message);

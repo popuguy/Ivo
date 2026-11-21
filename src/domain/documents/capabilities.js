@@ -2,8 +2,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 16;
-export const CURRENT_CANVAS_VERSION = 15;
+export const CURRENT_ARCHIVE_VERSION = 17;
+export const CURRENT_CANVAS_VERSION = 16;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -121,9 +121,19 @@ export function hasWordSpacing(doc) {
   return doc.canvasVersion === 9 || hasAuthoredTextSetting(doc, owns, markup);
 }
 
+export function hasFrameGrid(doc) {
+  return (
+    doc.canvasVersion === 16 ||
+    [...(doc.blocks || []), ...(doc.publishing?.parents || []).flatMap((p) => p.blocks || [])].some(
+      (b) => b.frameOptions?.baselineGrid !== undefined,
+    )
+  );
+}
+
 export function hasBaselineGrid(doc) {
   return (
     doc.publishing?.baselineGrid !== undefined ||
+    hasFrameGrid(doc) ||
     hasAuthoredTextSetting(
       doc,
       (settings) =>
@@ -265,6 +275,7 @@ function hasAuthoredTextSetting(doc, owns, markup) {
 }
 
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasFrameGrid)) return 17;
   if (documents.some(hasJustification)) return 16;
   if (documents.some(hasHyphenationSettings)) return 15;
   if (documents.some(hasNoBreak)) return 14;
@@ -287,6 +298,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasFrameGrid(document)) {
+    document.canvasVersion = 16;
+    return document;
+  }
   if (hasJustification(document)) {
     document.canvasVersion = 15;
     return document;

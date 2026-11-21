@@ -1,4 +1,4 @@
-import { baselineGridFixture } from '../../fixtures/text/baseline-grid.js';
+import { baselineGridFixture, addGridWrap } from '../../fixtures/text/baseline-grid.js';
 import { verifyPortableTypeSpecimens } from './portable-type.mjs';
 import { createHash } from 'node:crypto';
 import { inspectFont } from '../../../src/domain/text/fonts.js';
@@ -925,6 +925,28 @@ print(String(data: summaryData, encoding: .utf8)!)
       gridFile,
     ]);
     const documentBaselineGridPDF = JSON.parse(gridInspection.stdout);
+    addGridWrap(gridDocument);
+    const gridFrames = gridDocument.textFlows[0].frameIds.map((id) =>
+      gridDocument.blocks.find((b) => b.id === id),
+    );
+    gridFrames[0].frameOptions.baselineGrid = { relativeTo: 'frame', start: 4, increment: 17 };
+    gridFrames[1].frameOptions.baselineGrid = { relativeTo: 'inset', start: 1, increment: 11 };
+    markTypographyVersion(gridDocument);
+    const custom = await renderPDF(createPDFSnapshot([gridDocument], [], gridDocument.id), {
+      project: root,
+    });
+    assert.deepEqual(custom.manifest.warnings, []);
+    const frameGridFile = path.join(output, 'native-frame-baseline-grid.pdf');
+    await writeFile(frameGridFile, custom.bytes);
+    const inspectedFrameGrid = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      path.join(root, 'tests/runtime/pdf/inspect-baseline-grid.swift'),
+      frameGridFile,
+      'custom',
+    ]);
+    assert.equal(JSON.parse(inspectedFrameGrid.stdout).selectableGridWords, 12);
     // Keep the composite Box/Shape proof above. Exercise signed ink in its own Box layout.
     const boxDocument = structuredClone(nativeWrapDocument);
     setTextWrap(boxDocument, [clippedImage.id], { mode: 'none' });

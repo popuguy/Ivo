@@ -1,4 +1,4 @@
-import { baselineGridFixture } from '../../fixtures/text/baseline-grid.js';
+import { baselineGridFixture, addGridWrap } from '../../fixtures/text/baseline-grid.js';
 import { createDocumentHistory } from '../../../src/domain/history/document-history.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
 import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
@@ -158,8 +158,69 @@ export async function verifyBaselineGrid({ host, compose }) {
     open();
     await settle();
     check(true);
+    editor.destroy();
+    addGridWrap(doc);
+    open();
+    await settle();
+    editor.restoreView({ tool: 'select', selection: [ids[0]], activePage: doc.pages[0].id });
+    await settle();
+    await set('[data-object-prop="baselineAlignment"]', 'all');
+    const customGrid = async (index, origin, start, increment) => {
+      editor.restoreView({ tool: 'select', selection: [ids[index]], activePage: doc.pages[0].id });
+      await settle();
+      host.querySelector('[data-frame-grid="enabled"]').click();
+      await settle();
+      await set('[data-frame-grid="relativeTo"]', origin);
+      await set('[data-frame-grid="start"]', start);
+      await set('[data-frame-grid="increment"]', increment);
+    };
+    await customGrid(0, 'frame', 4, 17);
+    await customGrid(1, 'inset', 1, 11);
+    const checkCustom = () => {
+      const token = host.querySelector(`[data-flow-frame="${ids[0]}"] svg`).dataset
+        .compositionToken;
+      const { result } = calls.findLast((c) => c.result.token === token);
+      const positions = result.layout.lines.map((line) => {
+        const i = ids.findIndex((id) => line.frame === id + '-column-0');
+        const frame = doc.blocks.find((b) => b.id === ids[i]);
+        return [i, Math.round((line.baseline + frame.y + frame.frameOptions.insetTop) * 100) / 100];
+      });
+      const expected = [
+        [0, 52],
+        [0, 69],
+        [0, 86],
+        [0, 103],
+        [1, 65],
+        [1, 87],
+        [1, 109],
+        [1, 131],
+        [2, 93],
+        [2, 112],
+        [2, 131],
+        [2, 150],
+      ];
+      assert(
+        JSON.stringify(positions) === JSON.stringify(expected),
+        'Custom frame grid baseline or page mismatch: ' + JSON.stringify(positions),
+      );
+    };
+    checkCustom();
+    await set('[data-frame-grid="increment"]', 15);
+    await editor.command('undo');
+    await settle();
+    checkCustom();
+    editor.destroy();
+    doc = validateImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] })
+      .documents[0];
+    open();
+    await settle();
+    checkCustom();
     assert(!notices.length, 'Grid acceptance produced a notification: ' + notices.join('; '));
-    return { nativeDocumentBaselineGrid: true, nativeFirstLineGridAcrossLinkedPages: true };
+    return {
+      nativeFrameGridsAndObjectWrap: true,
+      nativeDocumentBaselineGrid: true,
+      nativeFirstLineGridAcrossLinkedPages: true,
+    };
   } finally {
     editor?.destroy();
   }

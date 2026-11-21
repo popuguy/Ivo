@@ -1,4 +1,4 @@
-import { baselineGridSettings } from '../../domain/text/baseline-grid.js';
+import { baselineGridSettings, gridInsideFrame } from '../../domain/text/baseline-grid.js';
 import { hasBaselineGrid } from '../../domain/documents/capabilities.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { compositionSource, UnsupportedComposition } from './composition-source.js';
@@ -312,22 +312,11 @@ export function nativeFlowColumns(doc, flow, useGrid = false) {
       throw Error('Frame insets, columns or text scaling leave an invalid native text area.');
     if (f.verticalAlign && !['top', 'center', 'bottom', 'justify'].includes(f.verticalAlign))
       throw new UnsupportedComposition('unknown vertical frame alignment');
-    let localGrid;
-    if (grid) {
-      let pageY = f.insetTop || 0;
-      const visited = new Set();
-      for (let owner = frame; owner; owner = byId.get(owner.parentId)) {
-        if (visited.has(owner.id))
-          throw Error('Baseline grid frame has a circular group ancestry.');
-        visited.add(owner.id);
-        if (owner.rotation)
-          throw new UnsupportedComposition(
-            'document baseline grids in rotated text frames or groups',
-          );
-        pageY += owner.y || 0;
-      }
-      localGrid = { start: (grid.start - pageY) / sy, increment: grid.increment / sy };
-    }
+    const localGrid = grid && gridInsideFrame(frame, byId, grid);
+    if (grid && !localGrid)
+      throw new UnsupportedComposition(
+        'page-relative baseline grids in rotated text frames or groups',
+      );
     for (let i = 0; i < count; i++) {
       const id = frame.id + '-column-' + i;
       if (id.length > 120) throw Error('The native text column identity exceeds its bounds.');
@@ -670,8 +659,6 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
     throw new UnsupportedComposition(
       'combining baseline grid alignment with a vertically centered, bottom-aligned or justified frame',
     );
-  if (useGrid && wrapped)
-    throw new UnsupportedComposition('baseline grid alignment in text flows with wrapping objects');
   const planned = selectParagraphPlan(required, source);
   normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))

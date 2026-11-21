@@ -12,7 +12,9 @@ A signed iPhone build opens a local vault on first launch. The [iPhone startup c
 
 ## Text composition and current progress
 
-**Ivo release text parity is estimated at ~60%.** Report the release bar after each completed text milestone. The [programme ledger](../indesign/progress.md) explains the change from the historical ~48% across 66 capabilities to 63 release capabilities. The [broader-edition wishlist](../indesign/text-parity-programme.md#broader-edition-wishlist) preserves the three specialist language areas. Release work includes the shared engine, structured text, editorial tools, publishing and device verification.
+**Ivo release text parity is estimated at ~65%.** Report the release bar after each completed text milestone. The [programme ledger](../indesign/progress.md) explains the change from the historical ~48% across 66 capabilities to 63 release capabilities. The [broader-edition wishlist](../indesign/text-parity-programme.md#broader-edition-wishlist) preserves the three specialist language areas. Release work includes the shared engine, structured text, editorial tools, publishing and device verification.
+
+The [editorial search and frame grid qualification](../indesign/progress.md#editorial-search-and-frame-grids) covers GREP, formatting, saved queries, individually spaced frames and grid-aware wrapping. Custom frame grids use archive 17 / canvas 16 and survive undo, vault reopen and PDF export.
 
 The [column and editing qualification](../indesign/progress.md#magazine-columns-and-long-notes) covers scoped Find/Change, variable font instances, document baseline grids, vertical paragraph spacing and wrapped reflow. A disposable two-page native vault also survived cold relaunch with the same six lines and font weights on iPhone 17 Pro and iPad mini simulators.
 

@@ -1,6 +1,7 @@
 import {createSceneDocument,insertObject,addPage} from '../../../src/domain/documents/scene.js';
 import {startTextFlow,threadFrame,enableNativeComposition} from '../../../src/domain/documents/text-flows.js';
 import {enablePublishing} from '../../../src/domain/documents/publishing.js';
+import {setTextWrap} from '../../../src/domain/documents/text-wrap.js';
 import {markTypographyVersion} from '../../../src/domain/documents/capabilities.js';
 
 export function baselineGridFixture({aligned=false} = {}) {
@@ -19,4 +20,9 @@ export function baselineGridFixture({aligned=false} = {}) {
     markTypographyVersion(doc);
   }
   return {doc,frames,words};
+}
+
+export function addGridWrap(doc) {
+  const obstacle = insertObject(doc,'polygon',doc.pages[0].id,{x:35,y:66,w:100,h:28,strokeWidth:0,points:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]});
+  setTextWrap(doc,[obstacle.id],{mode:'bounds'});
 }

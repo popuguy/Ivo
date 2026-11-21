@@ -1,3 +1,4 @@
+import { nextGridBaseline, BASELINE_ALIGNMENT } from './baseline-grid.js';
 import { fitMixedWrapRow, indexWrapRowMetrics } from './mixed-wrap-rows.js';
 import {
   adjustWordSpacing,
@@ -76,6 +77,10 @@ function* prepare(input) {
       !column ||
       !finite(column.width, 1, 14400) ||
       !finite(column.height, 1, 14400) ||
+      (column.grid !== undefined &&
+        (!Number.isFinite(column.grid?.start) ||
+          !Number.isFinite(column.grid?.increment) ||
+          column.grid.increment <= 0)) ||
       (column.alignmentOffset !== undefined && !finite(column.alignmentOffset, 0, column.height)) ||
       (column.firstBaseline !== undefined && !FIRST_BASELINES.includes(column.firstBaseline)) ||
       (column.minimumFirstBaseline !== undefined &&
@@ -253,8 +258,11 @@ export function* wrappedParagraphFlowSteps({
   maxCandidates = 1000000,
   hyphenation,
   priorHyphens = 0,
+  baselineAlignment = 'none',
   wordSpacing: inputWordSpacing,
 }) {
+  if (!BASELINE_ALIGNMENT.includes(baselineAlignment))
+    throw Error('Invalid wrapped baseline alignment');
   const wordSpacing = normalizeWordSpacingPolicy(inputWordSpacing);
   const costPolicy = wordSpacing ? wordSpacingCostPolicy(wordSpacing) : policy;
   const prepared = yield* prepare({
@@ -336,12 +344,29 @@ export function* wrappedParagraphFlowSteps({
           : after !== null
             ? state.rowTop
             : baseline - metrics.advance;
-        while (
-          baseline + (column.verticalAlign === 'bottom' ? 0 : metrics.descent) <=
-          column.height + EPS
-        ) {
+        const alignRow =
+          column.grid &&
+          (baselineAlignment === 'all' || (baselineAlignment === 'first' && state.end === 0));
+        while (true) {
+          // Fragments on the far side of an object keep their physical row.
+          // Recheck the exclusion at the actual baseline after *every* clearance move.
+          if (alignRow && after === null) baseline = nextGridBaseline(baseline, column.grid);
+          if (
+            baseline + (column.grid || column.verticalAlign === 'bottom' ? 0 : metrics.descent) >
+            column.height + EPS
+          )
+            break;
           if (!(yield* checkpoint())) return [];
-          const key = [frame, baseline, rowTop, left, metrics.ascent, metrics.descent].join(':');
+          const gridRow = !!(alignRow || (after !== null && state.gridAligned));
+          const key = [
+            frame,
+            baseline,
+            rowTop,
+            left,
+            metrics.ascent,
+            metrics.descent,
+            gridRow,
+          ].join(':');
           let band = bands.get(key);
           if (!band) {
             if (column.cooperativeBand) yield { stage: 'geometry', states, candidates };
@@ -356,7 +381,7 @@ export function* wrappedParagraphFlowSteps({
             const slices = {
               jumpBand: lineBand,
               shapeBand: lineBand,
-              boundsBand: aligned ? lineBand : undefined,
+              boundsBand: aligned || gridRow ? lineBand : undefined,
               // A lowered first row cannot jump past a Next Column object.
               nextColumnBand: aligned ? { top: 0, bottom: baseline } : undefined,
             };
@@ -458,6 +483,7 @@ export function* wrappedParagraphFlowSteps({
               available.push({
                 line,
                 rowTop,
+                gridAligned: gridRow,
                 after: segment.right,
                 mandatory: measured.mandatory,
                 clearance: baseline - naturalBaseline,
@@ -499,6 +525,7 @@ export function* wrappedParagraphFlowSteps({
         cursor: { frame: choice.line.frame, baseline: choice.line.baseline },
         after: choice.after,
         rowTop: choice.rowTop,
+        gridAligned: choice.gridAligned,
         mandatory: choice.mandatory,
         cost: state.cost + choice.line.cost,
         line: choice.line,

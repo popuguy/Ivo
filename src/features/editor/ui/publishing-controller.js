@@ -6,6 +6,8 @@ import {
 import {
   baselineGridSettings,
   BASELINE_GRID_DEFAULTS,
+  FRAME_GRID_DEFAULTS,
+  frameGridSettings,
 } from '../../../domain/text/baseline-grid.js';
 import { markTypographyVersion } from '../../../domain/documents/capabilities.js';
 import { HYPHENATION_DEFAULTS } from '../../../domain/text/hyphenation.js';
@@ -743,6 +745,30 @@ export function installPublishingControls(
           enablePublishing(doc()).baselineGrid = settings;
           markTypographyVersion(doc());
         }, 'Document baseline grid');
+        return;
+      }
+      if (t.dataset.frameGrid && objects().length === 1) {
+        if (!nativeTextFlow())
+          throw Error('Choose a native text composer to use a custom baseline grid.');
+        const frame = objects()[0],
+          key = t.dataset.frameGrid;
+        const prior = frame.frameOptions?.baselineGrid || FRAME_GRID_DEFAULTS;
+        const grid =
+          key === 'enabled'
+            ? t.checked
+              ? prior
+              : null
+            : frameGridSettings({
+                ...prior,
+                [key]: key === 'relativeTo' ? t.value : t.valueAsNumber,
+              });
+        mutate(() => {
+          enablePublishing(doc());
+          frame.frameOptions ||= {};
+          if (grid) frame.frameOptions.baselineGrid = { ...grid };
+          else delete frame.frameOptions.baselineGrid;
+          markTypographyVersion(doc());
+        }, 'Custom baseline grid');
         return;
       }
       if (t.dataset.frameProp && objects().length === 1) {
