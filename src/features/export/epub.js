@@ -1,3 +1,4 @@
+import { publicationHeadingLevel } from './publication-headings.js';
 import { orderPublicationEntries } from '../../domain/documents/publication-order.js';
 import { objectAvailable, effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { frameTextSettings } from '../../domain/documents/text-flows.js';
@@ -121,10 +122,7 @@ function chapterText({ item, html, style }, doc, documents, paths, headings) {
   if (style.align && style.align !== 'left') root.style.textAlign = style.align;
   if (doc.publication?.headings) {
     for (const p of root.querySelectorAll('p,div')) {
-      if (p.querySelector('p,div,ol,ul,blockquote')) continue;
-      const key =
-        p.closest('[data-ivo-pstyle]')?.getAttribute('data-ivo-pstyle') ?? style.paragraphStyle;
-      const level = Object.hasOwn(doc.publication.headings, key) && doc.publication.headings[key];
+      const level = publicationHeadingLevel(p, doc.publication, style.paragraphStyle);
       if (!level) continue;
       const heading = document.createElement('h' + level);
       for (const attribute of p.attributes) heading.setAttribute(attribute.name, attribute.value);

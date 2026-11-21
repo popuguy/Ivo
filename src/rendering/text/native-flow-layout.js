@@ -1,3 +1,4 @@
+import { readyImageWrapResources, imageWrapResources } from './image-contours.js';
 import { baselineGridSettings, gridInsideFrame } from '../../domain/text/baseline-grid.js';
 import { hasBaselineGrid } from '../../domain/documents/capabilities.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
@@ -375,9 +376,11 @@ const transportFrames = (columns) =>
       verticalAlign,
     }),
   );
-function compositionColumns(doc, flow, useGrid, session) {
+function compositionColumns(doc, flow, useGrid, session, imageContours) {
   const columns = nativeFlowColumns(doc, flow, useGrid);
-  return documentHasObjectWrap(doc) ? nativeWrapColumns(doc, columns, session) : columns;
+  return documentHasObjectWrap(doc)
+    ? nativeWrapColumns(doc, columns, session, imageContours)
+    : columns;
 }
 
 /** Canonical boundary before a native character, including virtual marks only once. */
@@ -632,7 +635,12 @@ function selectParagraphPlan(required, source) {
   }
 }
 
-function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false, session } = {}) {
+function projectNativeFlow(
+  doc,
+  flow,
+  fonts,
+  { deferUnavailable = false, session, imageContours } = {},
+) {
   const root = document.createElement('div');
   root.innerHTML = flow.html;
   const effective = effectiveTextStyle(doc, flow.style),
@@ -651,7 +659,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false, session
   const useGrid = source.paragraphs.some(
     (paragraph) => paragraph.baselineAlignment && paragraph.baselineAlignment !== 'none',
   );
-  const columns = compositionColumns(doc, flow, useGrid, session),
+  const columns = compositionColumns(doc, flow, useGrid, session, imageContours),
     wrapped = columns.some((column) => column.obstacles?.length),
     required =
       flow.composition?.composer === 'paragraph' ||
@@ -731,7 +739,9 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false, session
 
 /** Synchronous source/exact-face gate; no font bytes, fetches or native requests. */
 export function validateNativeFlowSource(doc, flow, assets = []) {
-  return projectNativeFlow(doc, flow, fontResolver(assets)).source;
+  return projectNativeFlow(doc, flow, fontResolver(assets), {
+    imageContours: imageWrapResources(doc, assets),
+  }).source;
 }
 
 /**
@@ -766,9 +776,10 @@ export async function composeNativeTextFlows(
           doc.textFlows.map(({ html: _text, ...settings }) => settings),
         ])
       : null;
+  const imageContours = await readyImageWrapResources(doc, assets);
   const owner = context ? editorSession : doc;
   const key = semanticKey(doc, allowPages),
-    signature = assetSignature(assets),
+    signature = [...assetSignature(assets), imageContours?.signature],
     previous = sessions.get(owner),
     prior =
       previous?.id === doc.id && previous?.compose === compose && same(previous.assets, signature)
@@ -825,6 +836,7 @@ export async function composeNativeTextFlows(
       } = projectNativeFlow(projection, flow, fonts, {
         deferUnavailable: true,
         session: editorSession,
+        imageContours,
       });
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });
@@ -944,6 +956,7 @@ export async function composeNativeTextFlows(
         flow,
         initial.some((column) => column.grid),
         editorSession,
+        imageContours,
       );
     }
     // Outline IDs already include immutable face/size/transform identity.

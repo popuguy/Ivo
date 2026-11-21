@@ -30,13 +30,15 @@ try {
       [reference.id, reference],
     ]),
     meta = new Map([['initialized', true]]);
-  let nativeCommand;
+  let nativeCommand, menuState;
   globalThis.ivoNative = {
     platform: 'macos',
     zoomFactor: () => 1,
     onCommand: (callback) => (nativeCommand = callback),
     onPrepareClose: () => {},
-    updateHistory: () => {},
+    updateHistory: (value) => {
+      menuState = value;
+    },
     store: {
       loadDocuments: async () => structuredClone([...docs.values()]),
       loadAssets: async () => [],
@@ -265,6 +267,19 @@ try {
   );
   await nativeCommand('undo');
   assert(!root.querySelector('[data-ivo-size="24"]'), 'TextFlow formatting undo failed');
+  const mixed = root.querySelector('strong').firstChild;
+  root.focus();
+  selection.setBaseAndExtent(mixed, 4, mixed, 0);
+  document.dispatchEvent(new Event('selectionchange'));
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  await wait(() => menuState?.canChangeCase && menuState.textTarget);
+  await nativeCommand({ name: 'case-uppercase', textTarget: menuState.textTarget });
+  assert(
+    root.querySelector('strong')?.textContent === 'RICH type' && selection.toString() === 'RICH',
+    'Changing case altered the rich run, surrounding text or selection',
+  );
+  await nativeCommand('undo');
+  assert(root.querySelector('strong')?.textContent === 'rich type', 'Change Case was not one undo');
   const linked = root.querySelector('strong').firstChild;
   root.focus();
   selection.setBaseAndExtent(linked, 0, linked, 4);

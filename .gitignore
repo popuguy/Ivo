@@ -24,3 +24,5 @@ desktop/native/bin/
 
 /public/vendor/epub-zip.js
 /public/vendor/fflate-LICENSE.txt
+/public/vendor/clipper2.js
+/public/vendor/clipper2-LICENSE.txt

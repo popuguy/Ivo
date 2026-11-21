@@ -1,3 +1,5 @@
+import { rasterContourSource } from './raster-contour.js';
+import { compoundWrapPieces } from './compound-contour.js';
 // The object, archive and layout boundaries use this same pure contour authority.
 // It has no document/platform imports, so source validation cannot form a cycle.
 const EPS = 1e-7;
@@ -171,15 +173,6 @@ function offsetConvex(input, distance) {
   const points = simplePoints(input),
     sign = direction(points);
   if (Math.abs(distance) < EPS) return points;
-  if (
-    points.some(
-      (p, i) =>
-        orientation(p, points[(i + 1) % points.length], points[(i + 2) % points.length]) * sign < 0,
-    )
-  )
-    throw new Error(
-      'Concave contour offsets and stroke expansion are not yet supported. Use zero offset with no stroke, or bounding-box wrap.',
-    );
   const edges = points.map((a, i) => {
     const b = points[(i + 1) % points.length],
       length = Math.hypot(b.x - a.x, b.y - a.y),
@@ -251,8 +244,16 @@ function intersectConvex(subject, clip) {
 
 /** A placed graphic wraps its visible clipped contour, then its wrap offset.
  * Preserve a single convex boundary when possible, so offsets never expand
- * triangulation seams. Concave/disconnected nonzero buffering stays explicit. */
+ * triangulation seams. Compound boundaries retain islands after signed offsets. */
 export function clippedTextWrapPath(points, masks, distance = 0) {
+  // Intersect all boundaries before buffering. Expanding separate triangles
+  // would leave artificial seams, particularly with negative offsets.
+  if (
+    distance &&
+    (convexPieces(points).length > 1 || masks.some((mask) => convexPieces(mask).length > 1))
+  ) {
+    return compoundWrapPieces([points], masks, distance);
+  }
   let pieces = convexPieces(points);
   for (const mask of masks) {
     const clips = convexPieces(mask),
@@ -268,8 +269,7 @@ export function clippedTextWrapPath(points, masks, distance = 0) {
     if (!pieces.length) return [];
   }
   if (Math.abs(distance) < EPS) return pieces;
-  if (pieces.length !== 1)
-    throw new Error('Concave clipped-image wrap offsets are not yet supported. Use zero offset.');
+  if (pieces.length !== 1) return compoundWrapPieces([points], masks, distance);
   const expanded = offsetConvex(pieces[0], distance);
   return expanded.length ? [expanded] : [];
 }
@@ -293,9 +293,9 @@ export function rectangularWrapFrame(object) {
   );
 }
 
-export function uniformWrapOffset(object, mode) {
+export function uniformWrapOffset(object, mode, source = object?.textWrap?.contour?.source) {
   return (
-    (mode === 'contour' && !rectangularWrapFrame(object)) ||
+    (mode === 'contour' && (!rectangularWrapFrame(object) || rasterContourSource(source))) ||
     (object?.type === 'image' && !!object.parentId)
   );
 }
@@ -303,6 +303,15 @@ export function uniformWrapOffset(object, mode) {
 /** Shared cross-field proof used before commands, import/storage and layout.
  * Options are already normalized. Returned points stay in object-local units. */
 export function textWrapObjectPath(object, options) {
+  const raster = rasterContourSource(options.contour?.source);
+  if (raster && (object.type !== 'image' || !/^(asset:|data:image\/)/i.test(object.src || '')))
+    throw Error('Choose a placed vault image for a raster contour.');
+  if (
+    raster &&
+    options.mode === 'contour' &&
+    Object.values(options.offsets).some((v) => v !== options.offsets.top)
+  )
+    throw Error('Image contours require uniform offsets.');
   if (
     options.contour?.source &&
     options.contour.source !== 'frame' &&
@@ -351,7 +360,19 @@ export function textWrapObjectPath(object, options) {
       stroke,
     };
   }
-  const output = offsetConvex(points, options.offsets.top + stroke);
+  const distance = options.offsets.top + stroke;
+  if (distance && object.type === 'polygon') {
+    const clean = simplePoints(points);
+    const sign = direction(clean);
+    if (
+      clean.some(
+        (p, i) =>
+          orientation(p, clean[(i + 1) % clean.length], clean[(i + 2) % clean.length]) * sign < 0,
+      )
+    )
+      return { pieces: compoundWrapPieces([clean], [], distance), stroke };
+  }
+  const output = offsetConvex(points, distance);
   triangulateTextWrapContour(output);
   return { points: output, stroke };
 }

@@ -6,6 +6,7 @@
   "type": "module",
   "description": "Linked documents with precise page composition, stored in portable vaults.",
   "scripts": {
+    "postinstall": "node scripts/geometry-vendor.mjs",
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs",
     "test": "node --test tests/unit/*.test.js",
@@ -110,6 +111,7 @@
   "dependencies": {
     "@capacitor/core": "8.6.0",
     "@capacitor/ios": "8.6.0",
+    "clipper2-ts": "2.0.1-19",
     "fflate": "0.8.2",
     "pdf-lib": "1.17.1"
   }

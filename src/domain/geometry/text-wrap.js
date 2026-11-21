@@ -1,3 +1,5 @@
+import { compoundWrapPieces } from './compound-contour.js';
+import { placedImageRings, rasterContourSource } from './raster-contour.js';
 import { layerFor, layersFor, parentObjects } from '../documents/publishing.js';
 import { normalizeTextWrap, normalizeTextWrapPreferences } from '../documents/text-wrap.js';
 import {
@@ -90,7 +92,7 @@ export function textWrapPageSide(document, pageId) {
 }
 
 /** Read-only transformed exclusion paths in unscaled frame text coordinates. */
-export function textWrapObstacles(document, frame, { column } = {}) {
+export function textWrapObstacles(document, frame, { column, imageContours } = {}) {
   if (frame.ignoreTextWrap) return [];
   const { blocks, byId } = pageArtwork(document, frame.pageId),
     target = byId.get(frame.id) || frame,
@@ -128,90 +130,80 @@ export function textWrapObstacles(document, frame, { column } = {}) {
       object.type === 'image'
         ? chain.slice(1).filter((ancestor) => ancestor.type === 'polygon' && ancestor.clip)
         : [];
-    if (
+    const maskPaths = masks.map((mask) => {
+      const owners = ancestors(mask, byId);
+      return mask.points.map((p) =>
+        owners.reduce((v, a) => localPoint(a, v), { x: p.x * mask.w, y: p.y * mask.h }),
+      );
+    });
+    const frameRect = rectangle(0, 0, object.w, object.h);
+    let pieces;
+    if (options.mode === 'contour' && rasterContourSource(options.contour.source)) {
+      const image = imageContours?.get(object);
+      if (!image) throw Error('Prepare the placed image before composing its text-wrap contour.');
+      const inset = object.frameOptions?.strokeWidth || 0;
+      const height = image.viewportHeight ?? object.h - 2 * inset;
+      const imageRect = rectangle(inset, inset, object.w - inset, inset + height).map(toWorld);
+      const distance = options.offsets.top + stroke;
+      pieces = imageRect.length
+        ? compoundWrapPieces(
+            placedImageRings(object, image).map((r) => r.map(toWorld)),
+            [imageRect, ...maskPaths],
+            distance,
+          )
+        : [];
+      if (object.caption) {
+        const caption = rectangle(inset, inset + height + 6, object.w - inset, object.h - inset);
+        if (caption.length)
+          pieces.push(...compoundWrapPieces([caption.map(toWorld)], maskPaths, distance));
+      }
+    } else if (
       masks.length &&
       !(options.mode === 'contour' && options.contour.source === 'bounding-box')
     ) {
-      // Graphic wrap is independent of the parent frame's own wrap settings,
-      // but invisible image content cannot contribute an exclusion rectangle.
       const values =
         options.mode === 'jump'
           ? [options.offsets.top, options.offsets.bottom]
           : Object.values(options.offsets);
-      if (!values.every((value) => value === values[0]))
-        throw new Error('Clipped-image text wrapping currently requires uniform offsets.');
-      const clips = masks.map((mask) => {
-        const owners = ancestors(mask, byId);
-        return mask.points.map((p) =>
-          owners.reduce((value, ancestor) => localPoint(ancestor, value), {
-            x: p.x * mask.w,
-            y: p.y * mask.h,
-          }),
-        );
-      });
-      // A graphic's own bounds, the visible clipped graphic, and its container
-      // can be different when an image is cropped or smaller than the frame.
+      if (!values.every((v) => v === values[0]))
+        throw Error('Clipped-image text wrapping currently requires uniform offsets.');
       const useContainer = options.mode === 'contour' && options.contour.source === 'graphic-frame';
-      const polygons = clippedTextWrapPath(
-        useContainer ? clips[0] : rectangle(0, 0, object.w, object.h).map(toWorld),
-        useContainer ? clips.slice(1) : clips,
+      pieces = clippedTextWrapPath(
+        useContainer ? maskPaths[0] : frameRect.map(toWorld),
+        useContainer ? maskPaths.slice(1) : maskPaths,
         values[0] + stroke,
-      ).map((polygon) => polygon.map(toFrame));
-      if (polygons.length || options.invert)
-        result.push({
-          id: object.id,
-          mode: options.mode,
-          side: options.side,
-          invert: options.invert,
-          polygons,
-          bounds: polygons.length
-            ? extent(polygons.flat())
-            : { left: 0, top: 0, right: 0, bottom: 0 },
-          offsets: { ...options.offsets },
-          pageSide: textWrapPageSide(document, frame.pageId),
-        });
-      continue;
-    }
-    let polygon;
-    if (options.mode === 'contour') {
-      polygon = path.points.map(toWorld);
-    } else {
-      const bounds = extent(rectangle(0, 0, object.w, object.h).map(toWorld));
-      const offsets = options.offsets;
-      polygon = rectangle(
-        bounds.left - offsets.left - stroke,
-        bounds.top - offsets.top - stroke,
-        bounds.right + offsets.right + stroke,
-        bounds.bottom + offsets.bottom + stroke,
       );
+    } else if (path.pieces) {
+      pieces = path.pieces.map((piece) => piece.map(toWorld));
+    } else {
+      let polygon;
+      if (options.mode === 'contour') polygon = path.points.map(toWorld);
+      else {
+        const box = extent(frameRect.map(toWorld)),
+          o = options.offsets;
+        polygon = rectangle(
+          box.left - o.left - stroke,
+          box.top - o.top - stroke,
+          box.right + o.right + stroke,
+          box.bottom + o.bottom + stroke,
+        );
+      }
+      pieces = polygon.length ? triangulate(polygon) : [];
     }
-    if (!polygon.length) {
-      if (options.invert)
-        result.push({
-          id: object.id,
-          mode: options.mode,
-          side: options.side,
-          invert: true,
-          polygons: [],
-          bounds: { left: 0, top: 0, right: 0, bottom: 0 },
-          offsets: { ...options.offsets },
-          pageSide: textWrapPageSide(document, frame.pageId),
-        });
-      continue;
-    }
-    polygon = polygon.map(toFrame);
-    const polygons = triangulate(polygon);
-    if (!polygons.length) continue;
-    result.push({
-      id: object.id,
-      mode: options.mode,
-      side: options.side,
-      invert: options.invert,
-      polygons,
-      bounds: extent(polygon),
-      offsets: { ...options.offsets },
-      pageSide: textWrapPageSide(document, frame.pageId),
-    });
+    const polygons = pieces.map((piece) => piece.map(toFrame));
+    if (polygons.length || options.invert)
+      result.push({
+        id: object.id,
+        mode: options.mode,
+        side: options.side,
+        invert: options.invert,
+        polygons,
+        bounds: polygons.length
+          ? extent(polygons.flat())
+          : { left: 0, top: 0, right: 0, bottom: 0 },
+        offsets: { ...options.offsets },
+        pageSide: textWrapPageSide(document, frame.pageId),
+      });
   }
   return result;
 }

@@ -290,7 +290,7 @@ test('text-wrap options are typed, mode-specific and reject unimplemented contou
     { offsets: { left: null } },
     { offsets: { right: 2001 } },
     { offsets: { unknown: 0 } },
-    { contour: { source: 'alpha' } },
+    { contour: { source: 'photoshop-path' } },
     { version: 2 },
   ])
     assert.throws(() => normalizeTextWrap(input));
@@ -481,7 +481,7 @@ test('nested rotated clipping, concave openings and empty intersections bound im
   assert.deepEqual(segments(doc, frame), [], 'Empty inverted clip admits no text');
 });
 
-test('convex contour expansion/contraction is explicit and concave offset limitations reject atomically', () => {
+test('convex and concave contours support expansion, erosion, strokes and empty inverted paths', () => {
   const { doc, frame, object } = fixture();
   setTextWrap(doc, [object.id], { mode: 'contour', offsets: offsets(5) });
   assert.deepEqual(segments(doc, frame), [
@@ -497,19 +497,20 @@ test('convex contour expansion/contraction is explicit and concave offset limita
   assert.deepEqual(segments(doc, frame), [{ left: 0, right: 300 }]);
   setTextWrap(doc, [object.id], { invert: true });
   assert.deepEqual(segments(doc, frame), []);
-  const other = fixture(concave),
-    before = structuredClone(other.doc);
-  assert.throws(
-    () => setTextWrap(other.doc, [other.object.id], { mode: 'contour', offsets: offsets(2) }),
-    /Concave/,
-  );
-  assert.deepEqual(other.doc, before);
-  other.object.stroke = '#000000';
-  other.object.strokeWidth = 1;
-  assert.throws(
-    () => setTextWrap(other.doc, [other.object.id], { mode: 'contour' }),
-    /stroke expansion/,
-  );
+  const other = fixture(concave);
+  setTextWrap(other.doc, [other.object.id], { mode: 'contour', offsets: offsets(2) });
+  assert.deepEqual(segments(other.doc, other.frame), [
+    { left: 0, right: 38 },
+    { left: 142, right: 300 },
+  ]);
+  other.object.stroke = '#111111';
+  other.object.strokeWidth = 2;
+  assert.deepEqual(segments(other.doc, other.frame), [
+    { left: 0, right: 37 },
+    { left: 143, right: 300 },
+  ]);
+  setTextWrap(other.doc, [other.object.id], { offsets: offsets(-200) });
+  assert.deepEqual(segments(other.doc, other.frame), [{ left: 0, right: 300 }]);
 });
 
 test('side, inverse, spine and largest choices leave deterministic legal segments', () => {
@@ -897,22 +898,6 @@ test('commands and archive validation share unsupported cross-field contour rule
       },
       patch: { mode: 'contour' },
       error: /Rounded-frame/,
-    },
-    {
-      change: (object) => {
-        object.points = concave.map((p, i) => ({ ...p, id: object.id + '-bad-' + i }));
-      },
-      patch: { mode: 'contour', offsets: offsets(2) },
-      error: /Concave/,
-    },
-    {
-      change: (object) => {
-        object.points = concave.map((p, i) => ({ ...p, id: object.id + '-bad-' + i }));
-        object.stroke = '#000000';
-        object.strokeWidth = 1;
-      },
-      patch: { mode: 'contour' },
-      error: /stroke expansion/,
     },
     {
       change: (object) => object.points.pop(),

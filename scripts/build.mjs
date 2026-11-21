@@ -1,3 +1,4 @@
+import './geometry-vendor.mjs';
 import { prepareEpubZip } from './epub-zip.mjs';
 import { prepareReferenceArt } from './reference-art.mjs';
 import { writeOfflineShell } from './offline.mjs';

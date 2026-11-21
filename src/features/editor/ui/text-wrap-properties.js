@@ -98,13 +98,17 @@ export function textWrapControls(objects, { editing, state, dedicated = false, d
     ['graphic-frame', 'Graphic Frame'],
     ['frame', 'Same as Clipping'],
   ];
+  const raster = objects.every(
+    (object) => object.type === 'image' && /^(asset:|data:image\/)/i.test(object.src || ''),
+  );
+  const inside = common(values, (wrap) => !!wrap.contour.insideEdges);
   const contourSelect = `<select aria-label="Contour type" data-wrap-contour ${editing && contourType ? '' : 'disabled'}>${
     contourType
       ? (source === null ? '<option selected disabled>Mixed</option>' : '') +
         contours
           .map(
             ([key, label]) =>
-              `<option value="${key}" ${['edges', 'alpha', 'path'].includes(key) ? 'disabled' : ''} ${key === source ? 'selected' : ''}>${label}</option>`,
+              `<option value="${key}" ${key === 'path' || (!raster && ['alpha', 'edges'].includes(key)) ? 'disabled' : ''} ${key === source ? 'selected' : ''}>${label}</option>`,
           )
           .join('')
       : '<option></option>'
@@ -113,7 +117,7 @@ export function textWrapControls(objects, { editing, state, dedicated = false, d
     state.propertyDisclosures?.wrapPanel !== false
       ? `<section class="wrap-panel-section"><h3>Wrap Options:</h3>
     <label>Wrap To: <select data-text-wrap="side" ${editing && values.every((wrap) => !wrap.invert) && ['bounds', 'contour'].includes(mode) ? '' : 'disabled'}>${side === null ? '<option value="" selected disabled>Mixed</option>' : ''}${sides.map(([value, label]) => `<option value="${value}" ${value === side ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label></section>
-    <section class="wrap-panel-section"><h3>Contour Options:</h3><label>Type: ${contourSelect}</label><label class="wrap-inside"><input type="checkbox" disabled>Include Inside Edges</label></section>`
+    <section class="wrap-panel-section"><h3>Contour Options:</h3><label>Type: ${contourSelect}</label><label class="wrap-inside"><input type="checkbox" data-wrap-inside ${inside === null ? 'data-wrap-mixed aria-checked="mixed"' : inside ? 'checked' : ''} ${editing && contourType && values.every((w) => ['alpha', 'edges'].includes(w.contour.source)) ? '' : 'disabled'}>Include Inside Edges</label></section>`
       : '';
   return `<div class="wrap-controls wrap-panel"><div class="wrap-panel-basic">${row}${fields}</div>${extra}</div>`;
 }

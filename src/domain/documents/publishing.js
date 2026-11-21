@@ -1,3 +1,4 @@
+import { pageFieldValues, resolveRunningText } from './running-text.js';
 import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
 import { uid } from './model.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS, validTextAttribute } from '../text/typography.js';
@@ -255,10 +256,14 @@ export function commitParentDefinition(doc, id, edited) {
 export function parentObjects(doc, page) {
   const parent = doc.publishing?.parents.find((p) => p.id === page.parentPageId);
   if (!parent) return [];
+  let fields;
   return parent.blocks
     .filter((b) => !page.parentOverrides?.includes(b.id))
     .map((b) => ({
       ...structuredClone(b),
+      ...(b.extensions?.ivoRunningText === true && {
+        html: resolveRunningText(b.html, (fields ||= pageFieldValues(doc, page))),
+      }),
       id: `${page.id}--${b.id}`,
       pageId: page.id,
       ...(b.parentId ? { parentId: `${page.id}--${b.parentId}` } : {}),
@@ -276,6 +281,10 @@ export function overrideParent(doc, pageId) {
     throw new Error('Overriding these items exceeds the document object limit.');
   const ids = new Map(instances.map((b) => [b.id, uid('object-')]));
   for (const b of instances) {
+    if (b.extensions?.ivoRunningText === true) {
+      delete b.extensions.ivoRunningText;
+      if (!Object.keys(b.extensions).length) delete b.extensions;
+    }
     b.parentOriginId = b.id.slice(page.id.length + 2);
     b.id = ids.get(b.id);
     if (b.parentId) b.parentId = ids.get(b.parentId);

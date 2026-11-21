@@ -3,8 +3,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 26;
-export const CURRENT_CANVAS_VERSION = 25;
+export const CURRENT_ARCHIVE_VERSION = 27;
+export const CURRENT_CANVAS_VERSION = 26;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -335,7 +335,20 @@ const hasPageSections = (doc) =>
   doc.canvasVersion === 24 || doc.pages?.some((p) => p.section !== undefined);
 export const hasExtendedPageSections = (doc) =>
   doc.canvasVersion === 25 || doc.pages?.some((p) => extendedPageSection(p.section));
+export const hasRasterWrap = (doc) =>
+  [...(doc.blocks || []), ...(doc.publishing?.parents || []).flatMap((p) => p.blocks || [])].some(
+    (b) => ['alpha', 'edges'].includes(b.textWrap?.contour?.source),
+  );
+export const hasRunningText = (doc) =>
+  doc.pages?.some((p) => p.section?.marker) ||
+  [...(doc.blocks || []), ...(doc.publishing?.parents || []).flatMap((p) => p.blocks || [])].some(
+    (b) => b.extensions?.ivoRunningText === true,
+  );
 export function archiveVersion(documents, assets = []) {
+  if (
+    documents.some((doc) => doc.canvasVersion === 26 || hasRasterWrap(doc) || hasRunningText(doc))
+  )
+    return 27;
   if (documents.some(hasExtendedPageSections)) return 26;
   if (documents.some(hasPageSections)) return 25;
   if (documents.some((doc) => doc.hyphenationExceptions !== undefined || doc.canvasVersion === 23))
@@ -369,6 +382,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (document.canvasVersion === 26 || hasRasterWrap(document) || hasRunningText(document)) {
+    document.canvasVersion = 26;
+    return document;
+  }
   if (hasExtendedPageSections(document)) {
     document.canvasVersion = 25;
     return document;

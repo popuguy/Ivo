@@ -33,22 +33,29 @@ export function pageSection(value) {
   if (
     !value ||
     typeof value !== 'object' ||
-    Object.keys(value).some((k) => !['start', 'style', 'prefix', 'includePrefix'].includes(k)) ||
+    Object.keys(value).some(
+      (k) => !['start', 'style', 'prefix', 'includePrefix', 'marker'].includes(k),
+    ) ||
     !Object.hasOwn(sectionNumberStyles, value.style) ||
     (value.includePrefix !== undefined && typeof value.includePrefix !== 'boolean') ||
     (value.start !== null &&
       (!Number.isSafeInteger(value.start) || value.start < 1 || value.start > 9999)) ||
+    (value.marker !== undefined &&
+      (typeof value.marker !== 'string' ||
+        [...value.marker].length > 256 ||
+        /[\p{C}]/u.test(value.marker))) ||
     typeof value.prefix !== 'string' ||
     [...value.prefix].length > 8 ||
     /[+,\p{C}]/u.test(value.prefix)
   )
     throw Error(
-      'Choose a numbering style, a start from 1 to 9999, and a prefix of up to eight characters without commas or plus signs.',
+      'Check the section numbering, eight-character prefix and section marker (up to 256 characters).',
     );
   return {
     start: value.start,
     style: value.style,
     prefix: value.prefix,
+    ...(value.marker && { marker: value.marker }),
     ...(value.includePrefix === false ? { includePrefix: false } : {}),
   };
 }

@@ -50,20 +50,21 @@ export function normalizeTextWrap(input = {}) {
   }
   const contour = ownRecord(
     input.contour === undefined ? {} : input.contour,
-    ['source'],
+    ['source', 'insideEdges'],
     'text-wrap contour',
   );
   const source = contour.source === undefined ? 'frame' : contour.source;
-  if (!['frame', 'bounding-box', 'graphic-frame'].includes(source))
-    throw new TypeError(
-      'Choose a supported contour source. Image alpha, edge detection and embedded paths are not yet available.',
-    );
+  if (!['frame', 'bounding-box', 'graphic-frame', 'edges', 'alpha'].includes(source))
+    throw new TypeError('Choose a supported contour source.');
+  const insideEdges = boolean(contour.insideEdges, false, 'Include inside edges');
+  if (insideEdges && !['alpha', 'edges'].includes(source))
+    throw TypeError('Inside edges require an image contour.');
   return {
     mode,
     offsets,
     side,
     invert: boolean(input.invert, false, 'Invert text wrap'),
-    contour: { source },
+    contour: { source, ...(insideEdges && { insideEdges: true }) },
   };
 }
 
@@ -142,13 +143,18 @@ function selected(document, ids, textOnly = false) {
 function updatedWrap(current, patch) {
   ownRecord(patch, ['mode', 'offsets', 'side', 'invert', 'contour'], 'text wrap');
   if ('offsets' in patch) ownRecord(patch.offsets, sides, 'text-wrap offsets');
-  if ('contour' in patch) ownRecord(patch.contour, ['source'], 'text-wrap contour');
+  if ('contour' in patch) ownRecord(patch.contour, ['source', 'insideEdges'], 'text-wrap contour');
   const previous = normalizeTextWrap(current);
   return normalizeTextWrap({
     ...previous,
     ...patch,
     offsets: { ...previous.offsets, ...patch.offsets },
-    contour: { ...previous.contour, ...patch.contour },
+    contour: {
+      ...previous.contour,
+      ...(patch.contour?.source &&
+        !['alpha', 'edges'].includes(patch.contour.source) && { insideEdges: false }),
+      ...patch.contour,
+    },
   });
 }
 
@@ -183,6 +189,8 @@ export function setTextWrap(document, ids, patch) {
       return next;
     });
   enableTextWrap(document);
+  if (values.some((wrap) => ['alpha', 'edges'].includes(wrap.contour.source)))
+    document.canvasVersion = Math.max(document.canvasVersion, 26);
   targets.forEach((object, index) => {
     object.textWrap = values[index];
   });

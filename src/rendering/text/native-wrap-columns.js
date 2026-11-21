@@ -4,13 +4,14 @@ import { UnsupportedComposition } from './composition-source.js';
 const wrappedLayouts = new WeakMap();
 
 /** Disposable exclusion geometry uses the same unscaled coordinate system as native columns. */
-export function nativeWrapColumns(document, columns, session) {
+export function nativeWrapColumns(document, columns, session, imageContours) {
   // Typing changes a flow's source independently of the scene that excludes ink.
   // Keep one bounded set per editor. The exact key includes parent art, layer
   // order, masking, stacking, physical columns and every object property.
   const key =
     session &&
     JSON.stringify([
+      imageContours?.signature,
       columns,
       document.blocks,
       document.pages,
@@ -25,7 +26,10 @@ export function nativeWrapColumns(document, columns, session) {
   const frames = new Map(document.blocks.map((block) => [block.id, block]));
   const result = columns.map((column) => ({
     ...column,
-    obstacles: textWrapObstacles(document, frames.get(column.frameId), { column }).filter(
+    obstacles: textWrapObstacles(document, frames.get(column.frameId), {
+      column,
+      imageContours,
+    }).filter(
       ({ bounds, invert }) =>
         invert ||
         (bounds.right > 0 &&

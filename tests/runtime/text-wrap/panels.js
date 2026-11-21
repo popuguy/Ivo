@@ -9,6 +9,14 @@ export async function verifyWrapPanels(host, assert, tick) {
     image = add('image'),
     text = add('text'),
     line = add('rule');
+  const canvas = document.createElement('canvas');
+  canvas.width = 2048;
+  canvas.height = 2048;
+  const ctx = canvas.getContext('2d');
+  ctx.fillRect(0, 0, 2048, 2048);
+  ctx.clearRect(512, 512, 1024, 1024);
+  const asset = { id: 'alpha-photo', mimeType: 'image/png', data: canvas.toDataURL() };
+  image.src = 'asset:' + asset.id;
   const notices = [];
   const editor = mountCanvasEditor(host, {
     getDocument: () => doc,
@@ -17,7 +25,8 @@ export async function verifyWrapPanels(host, assert, tick) {
     onNotify: (msg) => notices.push(msg),
     onCommit() {},
     onChange() {},
-    source: (s) => s,
+    assets: () => [asset],
+    source: (s) => (s === image.src ? asset.data : s),
   });
   const current = () => host.querySelector('.canvas-panel-content:not([hidden])');
   const control = (selector) => current().querySelector(selector);
@@ -140,6 +149,28 @@ export async function verifyWrapPanels(host, assert, tick) {
     assert(
       control('.wrap-panel') && control('[data-wrap-contour]').value === 'frame',
       'Dedicated panel lacks graphic contour controls',
+    );
+    const chooseContour = async (value) => {
+      const input = control('[data-wrap-contour]');
+      input.value = value;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await editor.flush();
+      await tick();
+    };
+    await chooseContour('alpha');
+    assert(
+      image.textWrap.contour.source === 'alpha' && !control('[data-wrap-inside]').disabled,
+      'Transparency contour did not apply in the editor: ' + notices,
+    );
+    control('[data-wrap-inside]').click();
+    await tick();
+    assert(image.textWrap.contour.insideEdges, 'Counter did not open');
+    await chooseContour('edges');
+    assert(image.textWrap.contour.source === 'edges', 'Detect Edges did not apply');
+    await chooseContour('graphic-frame');
+    assert(
+      !image.textWrap.contour.insideEdges && control('[data-wrap-inside]').disabled,
+      'Graphic Frame kept a stale interior setting',
     );
     const menu = host.querySelector('[data-panel-menu]');
     menu.click();

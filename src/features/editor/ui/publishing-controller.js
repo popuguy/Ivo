@@ -1,3 +1,4 @@
+import { readyImageWrapResources } from '../../../rendering/text/image-contours.js';
 import { editSection } from './section-options.js';
 import { importTextStyles } from '../../../domain/documents/import-text-styles.js';
 import { openStyleImport } from './import-text-styles.js';
@@ -77,6 +78,7 @@ export function installPublishingControls(
     showPanel,
     clearOverrides,
     fonts = () => [],
+    assets = () => [],
     parentMode = false,
     textState,
     resolveFont,
@@ -109,6 +111,8 @@ export function installPublishingControls(
     wordSpacingDialog = null,
     paragraphDialog = null,
     fontWork = Promise.resolve(),
+    wrapWork = null,
+    wrapRevision = 0,
     fontPending = 0,
     preparedLegacy = '';
   const disclosureKey = 'ivo:property-disclosures:1';
@@ -713,8 +717,44 @@ export function installPublishingControls(
         });
         return;
       }
+      if (t.hasAttribute('data-wrap-inside')) {
+        editWrap('Include Inside Edges', () => ({ contour: { insideEdges: t.checked } }), t);
+        return;
+      }
       if (t.hasAttribute('data-wrap-contour')) {
-        editWrap('Contour type', () => ({ contour: { source: t.value } }), t);
+        const source = t.value,
+          revision = ++wrapRevision;
+        if (source === 'alpha' || source === 'edges') {
+          const selected = objects(),
+            snapshot = selected.map((b) => ({
+              ...b,
+              textWrap: { mode: 'contour', contour: { source } },
+            }));
+          wrapWork = readyImageWrapResources({ blocks: snapshot }, assets())
+            .then(() => {
+              const current = objects();
+              if (
+                revision === wrapRevision &&
+                !controller.signal.aborted &&
+                allowed() &&
+                current.length === selected.length &&
+                current.every((b, i) => b.id === selected[i].id && b.src === snapshot[i].src)
+              )
+                editWrap('Contour type', () => ({ contour: { source } }), t);
+            })
+            .catch((error) => {
+              if (revision === wrapRevision) {
+                notify?.(error.message);
+                render();
+              }
+            })
+            .finally(() => {
+              if (revision === wrapRevision) wrapWork = null;
+            });
+        } else {
+          wrapWork = null;
+          editWrap('Contour type', () => ({ contour: { source } }), t);
+        }
         return;
       }
       if (t.dataset.textWrap) {
@@ -922,9 +962,9 @@ export function installPublishingControls(
       });
       return true;
     },
-    flush: () => fontWork,
+    flush: () => Promise.all([fontWork, wrapWork]),
     get pending() {
-      return fontPending > 0;
+      return fontPending > 0 || !!wrapWork;
     },
     refreshTextState() {
       popover?.refresh();

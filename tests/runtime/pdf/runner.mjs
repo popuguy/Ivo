@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import {
   enablePublishing,
   createParent,
+  saveTextStyle,
   applyParent,
   addLayer,
 } from '../../../src/domain/documents/publishing.js';
@@ -223,6 +224,60 @@ app
     owner.pages[0].section = { style: 'decimal', prefix: 'A–', start: 7 };
     markTypographyVersion(front);
     markTypographyVersion(owner);
+    const footerFrame = insertObject(owner, 'text', {
+      x: 36,
+      y: 350,
+      w: 240,
+      h: 32,
+      html: '<p>Printed «Current Page Number» / «Last Page Number»</p>',
+      extensions: { ivoRunningText: true },
+    });
+    const footerParent = createParent(owner, owner.pages[0].id, 'Pagination');
+    footerParent.blocks = footerParent.blocks.filter((b) => b.extensions?.ivoRunningText);
+    owner.blocks = owner.blocks.filter((b) => b.id !== footerFrame.id);
+    for (const page of owner.pages) applyParent(owner, page.id, footerParent.id);
+    markTypographyVersion(owner);
+    insertObject(front, 'text', {
+      x: 30,
+      y: 30,
+      w: 480,
+      h: 180,
+      html: '<h2>Sources</h2><h3>Image credits</h3>',
+    });
+    const headingStyle = saveTextStyle(owner, 'paragraph', {
+      name: 'Contents heading',
+      attributes: { fontSize: 12, textStyle: 'cmu-serif' },
+    });
+    owner.publication.headings = { [headingStyle.id]: 2 };
+    const intro = insertObject(owner, 'text', {
+      x: 25,
+      y: 25,
+      w: 180,
+      h: 19,
+      textStyle: 'cmu-serif',
+      fontSize: 12,
+      leading: 16,
+      html:
+        '<p>Opening</p><p data-ivo-pstyle="' +
+        headingStyle.id +
+        '">Woven surfaces</p><p>' +
+        'Overflow '.repeat(160) +
+        '</p><p data-ivo-pstyle="' +
+        headingStyle.id +
+        '">Unprinted entry</p>',
+    });
+    const continuation = insertObject(owner, 'text', {
+      pageId: owner.pages[1].id,
+      x: 25,
+      y: 25,
+      w: 180,
+      h: 62,
+      html: '',
+    });
+    const indexedFlow = startTextFlow(owner, intro.id, { automaticPages: false });
+    threadFrame(owner, intro.id, continuation.id);
+    enableNativeComposition(owner, indexedFlow, 'single-line');
+    markTypographyVersion(owner);
     const book = createPDFSnapshot([owner, front], [asset], owner.id, { useBook: true });
     const bookPDF = await renderPDF(book, { project: root });
     assert.deepEqual(
@@ -240,12 +295,28 @@ app
     ]);
     const outline = JSON.parse(inspected.stdout);
     assert.deepEqual(outline.labels, ['i', 'A–7', 'A–8']);
+    assert.match(outline.text[1], /Printed A–7 \/ A–8/);
+    assert.match(outline.text[2], /Printed A–8 \/ A–8/);
     assert.deepEqual(outline.bookmarks, [
-      { title: front.title, page: 0, children: [] },
+      {
+        title: front.title,
+        page: 0,
+        children: [
+          {
+            title: 'Sources',
+            page: 0,
+            children: [{ title: 'Image credits', page: 0, children: [] }],
+          },
+        ],
+      },
       {
         title: owner.title,
         page: 1,
-        children: owner.pages.map((p, i) => ({ title: p.name, page: i + 1, children: [] })),
+        children: owner.pages.map((p, i) => ({
+          title: p.name,
+          page: i + 1,
+          children: i === 1 ? [{ title: 'Woven surfaces', page: 2, children: [] }] : [],
+        })),
       },
     ]);
     const long = createSceneDocument('Flow PDF', { width: 360, height: 300 }),
@@ -882,6 +953,52 @@ print(String(data: summaryData, encoding: .utf8)!)
       path.join(output, 'native-wrap-ink.json'),
       JSON.stringify(nativeWrapInk, null, 2),
     );
+    // A hole in a placed picture must admit searchable glyphs only when its interior is enabled.
+    const ringPixels = Buffer.alloc(64 * 64 * 4);
+    for (let y = 0; y < 64; y++)
+      for (let x = 0; x < 64; x++)
+        if (x < 10 || x >= 54 || y < 10 || y >= 54) ringPixels[(y * 64 + x) * 4 + 3] = 255;
+    const ringAsset = {
+      id: 'ring-cutout',
+      mimeType: 'image/png',
+      name: 'Ring',
+      data: nativeImage.createFromBitmap(ringPixels, { width: 64, height: 64 }).toDataURL(),
+    };
+    const ringDoc = structuredClone(nativeWrapDocument);
+    const ringPic = ringDoc.blocks.find((b) => b.id === clippedImage.id);
+    delete ringPic.parentId;
+    Object.assign(ringPic, {
+      x: 100,
+      y: 55,
+      w: 260,
+      h: 260,
+      src: 'asset:' + ringAsset.id,
+      caption: '',
+    });
+    setTextWrap(ringDoc, [wrapObject.id], { mode: 'none' });
+    setTextWrap(ringDoc, [ringPic.id], { mode: 'contour', contour: { source: 'alpha' } });
+    for (const insideEdges of [false, true]) {
+      setTextWrap(ringDoc, [ringPic.id], { contour: { insideEdges } });
+      let interiorGlyphs;
+      const exported = await renderPDF(createPDFSnapshot([ringDoc], [ringAsset], ringDoc.id), {
+        project: root,
+        onRendered: async (window) => {
+          interiorGlyphs = await window.webContents.executeJavaScript(`(()=>{
+            const page=document.querySelector('.pdf-layout').getBoundingClientRect(),scale=page.width/500;
+            return [...document.querySelectorAll('svg[data-composed-text] use')].filter(g=>{
+              const rect=g.getBoundingClientRect(),x=(rect.x-page.x)/scale,y=(rect.y-page.y)/scale;
+              return x>150 && x<305 && y>108 && y<254;
+            }).length;
+          })()`);
+        },
+      });
+      assert.equal((await PDFDocument.load(exported.bytes)).getPageCount(), 1);
+      assert.equal(
+        interiorGlyphs > 0,
+        insideEdges,
+        'PDF ignored the picture’s inside-edge setting',
+      );
+    }
     async function inspectWrappedFile(name, mode = 'bounds') {
       const inspected = await promisify(execFile)('xcrun', [
         'swift',

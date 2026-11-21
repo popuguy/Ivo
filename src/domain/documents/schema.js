@@ -27,6 +27,8 @@ import {
   hasNoBreak,
   hasHyphenationSettings,
   hasExtendedPageSections,
+  hasRasterWrap,
+  hasRunningText,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -661,6 +663,12 @@ function validateArchive(payload, parentTemplate) {
       }
       if (block.extensions !== undefined)
         normalized.extensions = extensions(block.extensions, `${key}.extensions`);
+      if (
+        normalized.extensions?.ivoRunningText !== undefined &&
+        (typeof normalized.extensions.ivoRunningText !== 'boolean' ||
+          !['text', 'quote'].includes(normalized.type))
+      )
+        fail('Running text requires a text frame and a boolean flag.');
       return normalized;
     });
     const normalized = {
@@ -1042,6 +1050,11 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 24) || payload.schemaVersion < 25)
     )
       fail('Numbered sections require archive 25 and canvas 24.');
+    if (
+      (doc.canvasVersion === 26 || hasRasterWrap(doc) || hasRunningText(doc)) &&
+      (!supportedCanvas(doc.canvasVersion, 26) || payload.schemaVersion < 27)
+    )
+      fail('Image contours and running text require archive 27 and canvas 26.');
     if (
       hasExtendedPageSections(doc) &&
       (!supportedCanvas(doc.canvasVersion, 25) || payload.schemaVersion < 26)

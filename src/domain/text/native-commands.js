@@ -1,3 +1,4 @@
+import { CASE_COMMANDS } from './change-case.js';
 import { LIST_COMMANDS } from './list-numbering.js';
 export const CHARACTER_MENUS = Object.freeze([
   {
@@ -51,10 +52,12 @@ export const NATIVE_TEXT_COMMANDS = Object.freeze([
   'tabs',
   ...Object.keys(INSERT_CHARACTERS),
   ...Object.keys(LIST_COMMANDS),
+  ...Object.keys(CASE_COMMANDS),
 ]);
 export function textCommandEnabled(name, state) {
   return (
     state.canFormat &&
+    (!Object.hasOwn(CASE_COMMANDS, name) || state.canChangeCase === true) &&
     (!['keep-options', 'tabs'].includes(name) || state.canKeepOptions === true) &&
     ((!Object.hasOwn(INSERT_CHARACTERS, name) && !Object.hasOwn(LIST_COMMANDS, name)) ||
       state.canInsertCharacter === true)
@@ -77,6 +80,7 @@ export function nativeTextMenuState(value) {
     ? {
         canFormat: true,
         textTarget: value.textTarget,
+        ...(value.canChangeCase === true ? { canChangeCase: true } : {}),
         ...(value.canInsertCharacter === true ? { canInsertCharacter: true } : {}),
         ...(value.canKeepOptions === true ? { canKeepOptions: true } : {}),
       }

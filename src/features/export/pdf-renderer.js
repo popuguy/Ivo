@@ -1,3 +1,5 @@
+import { pdfDocumentHeadings } from './publication-headings.js';
+import { readyImageWrapResources } from '../../rendering/text/image-contours.js';
 import { pageFolios } from '../../domain/documents/page-sections.js';
 import { prepareVaultFonts } from '../../rendering/text/fonts.js';
 import { parentObjects, orderedPageObjects } from '../../domain/documents/publishing.js';
@@ -19,11 +21,13 @@ export async function renderPDFSnapshot(snapshot) {
     documents = snapshot.documents,
     warnings = new Set(),
     destinations = new Map(),
-    nativeDocuments = new Map();
+    nativeDocuments = new Map(),
+    flowPlans = new Map();
   root.replaceChildren();
   let rules = '';
   for (const doc of documents) {
-    const flow = layoutDocumentTextFlows(doc);
+    const imageContours = await readyImageWrapResources(doc, snapshot.assets);
+    const flow = layoutDocumentTextFlows(doc, { imageContours });
     if (doc.textFlows?.some((f) => f.composition)) {
       const port = globalThis.ivoTextComposition || globalThis.ivoNative?.textComposition;
       if (!port) throw Error('This document requires the native text composer for PDF export.');
@@ -47,6 +51,7 @@ export async function renderPDFSnapshot(snapshot) {
     if (documents.reduce((sum, doc) => sum + doc.pages.length, 0) > 256)
       throw new Error('Export up to 256 pages at a time.');
     destinations.set(doc.id, pages.length);
+    flowPlans.set(doc.id, flow);
     const folios = pageFolios(doc.pages);
     for (const [pageIndex, page] of doc.pages.entries()) {
       const index = pages.length,
@@ -106,6 +111,12 @@ export async function renderPDFSnapshot(snapshot) {
       }),
     ),
   );
+  for (const doc of documents)
+    pdfDocumentHeadings(
+      doc,
+      flowPlans.get(doc.id),
+      pages.filter((page) => page.documentId === doc.id),
+    );
   const links = [],
     composedText = new Map();
   for (const [pageIndex, page] of pages.entries()) {

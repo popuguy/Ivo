@@ -1,3 +1,4 @@
+import { CASE_COMMANDS } from '../src/domain/text/change-case.js';
 import { LIST_COMMANDS } from '../src/domain/text/list-numbering.js';
 import { ARRANGE_COMMANDS } from '../src/domain/documents/arrange.js';
 import { editorMenuState } from '../src/domain/workspace/editor-commands.js';
@@ -582,7 +583,10 @@ else {
         if (context.textEditing)
           items.push(
             ...characterMenuItems(true),
-            listMenu(true),
+            textActionMenu(true, 'Bulleted & Numbered Lists', LIST_COMMANDS),
+            ...(record.history?.canChangeCase
+              ? [textActionMenu(true, 'Change Case', CASE_COMMANDS)]
+              : []),
             { type: 'separator' },
             { role: 'cut' },
             { role: 'copy' },
@@ -1276,10 +1280,10 @@ function sendCommand(name) {
   if (!record.vault && name === 'close-tab') return record.window.close();
   record.window.webContents.send('ivo:command', name);
 }
-function listMenu(contextMenu) {
+function textActionMenu(contextMenu, label, commands) {
   return {
-    label: 'Bulleted & Numbered Lists',
-    submenu: Object.entries(LIST_COMMANDS).map(([name, label]) => ({
+    label,
+    submenu: Object.entries(commands).map(([name, label]) => ({
       ...(contextMenu ? {} : { id: 'type-' + name, enabled: false }),
       label,
       click: () => sendTextCommand(name),
@@ -1543,7 +1547,9 @@ function installMenu() {
         submenu: [
           ...NATIVE_TEXT_COMMANDS.filter(
             (name) =>
-              !Object.hasOwn(INSERT_CHARACTERS, name) && !Object.hasOwn(LIST_COMMANDS, name),
+              !Object.hasOwn(INSERT_CHARACTERS, name) &&
+              !Object.hasOwn(LIST_COMMANDS, name) &&
+              !Object.hasOwn(CASE_COMMANDS, name),
           ).map((name) => ({
             id: 'type-' + name,
             label:
@@ -1563,7 +1569,8 @@ function installMenu() {
             enabled: false,
             click: () => sendCommand('load-text-styles'),
           },
-          listMenu(false),
+          textActionMenu(false, 'Bulleted & Numbered Lists', LIST_COMMANDS),
+          textActionMenu(false, 'Change Case', CASE_COMMANDS),
           ...characterMenuItems(false),
         ],
       },

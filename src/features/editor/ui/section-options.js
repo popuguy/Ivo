@@ -8,7 +8,7 @@ export function editSection(form, page, apply) {
       Object.entries(sectionNumberStyles)
         .map(([id, label]) => '<option value="' + id + '">' + label + '</option>')
         .join('') +
-      '</select></label><label>Section prefix<input name="prefix"></label><label class="publishing-check"><input type="checkbox" name="includePrefix">Include prefix when numbering pages</label>',
+      '</select></label><label>Section marker<input name="marker" maxlength="256"></label><label>Section prefix<input name="prefix"></label><label class="publishing-check"><input type="checkbox" name="includePrefix">Include prefix when numbering pages</label>',
     () =>
       apply(
         inputs.section.checked
@@ -16,6 +16,7 @@ export function editSection(form, page, apply) {
               start: inputs.numbering.value === 'auto' ? null : inputs.start.valueAsNumber,
               style: inputs.style.value,
               prefix: inputs.prefix.value,
+              marker: inputs.marker.value,
               includePrefix: inputs.includePrefix.checked,
             })
           : null,
@@ -27,10 +28,11 @@ export function editSection(form, page, apply) {
   inputs.numbering.value = saved?.start ? 'restart' : 'auto';
   inputs.start.value = saved?.start || 1;
   inputs.style.value = saved?.style || 'decimal';
+  inputs.marker.value = saved?.marker || '';
   inputs.prefix.value = saved?.prefix || '';
   inputs.includePrefix.checked = saved?.includePrefix !== false;
   function update() {
-    for (const name of ['numbering', 'style', 'prefix', 'includePrefix'])
+    for (const name of ['numbering', 'style', 'prefix', 'marker', 'includePrefix'])
       inputs[name].disabled = !inputs.section.checked;
     inputs.start.disabled = !inputs.section.checked || inputs.numbering.value === 'auto';
   }

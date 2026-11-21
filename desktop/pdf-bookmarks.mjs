@@ -11,13 +11,22 @@ export function addPDFBookmarks(pdf, manifest) {
       chapter = { title: page.documentTitle, documentId: page.documentId, index, children: [] };
       groups.push(chapter);
     }
+    const children = [],
+      stack = [];
+    for (const heading of page.headings || []) {
+      const node = { title: heading.title, index, children: [] };
+      while (stack.length && stack.at(-1).level >= heading.level) stack.pop();
+      (stack.at(-1)?.node.children || children).push(node);
+      stack.push({ level: heading.level, node });
+    }
     chapter.children.push({
       title: page.name || 'Page ' + (chapter.children.length + 1),
       index,
-      children: [],
+      children,
     });
   }
-  for (const group of groups) if (group.children.length === 1) group.children = [];
+  for (const group of groups)
+    if (group.children.length === 1) group.children = group.children[0].children;
   const ctx = pdf.context;
   const root = ctx.obj({ Type: 'Outlines' }),
     rootRef = ctx.register(root);

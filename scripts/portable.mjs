@@ -39,6 +39,9 @@ export async function buildPortable() {
           builder.onLoad({ filter: /[/\\]text[/\\]grep-worker-factory\.js$/ }, () =>
             inlineWorker('src/features/editor/text/grep-worker.js', 'createGrepWorker'),
           );
+          builder.onLoad({ filter: /image-contour-worker-factory\.js$/ }, () =>
+            inlineWorker('src/rendering/text/image-contour-worker.js', 'createImageContourWorker'),
+          );
           builder.onLoad(
             { filter: /[/\\]rendering[/\\]text[/\\]font-resources\.js$/ },
             async (args) => {
@@ -86,6 +89,7 @@ export async function buildPortable() {
     ['font', 'public/fonts/cmu-serif/OFL.txt'],
     ['geist-font', 'public/fonts/geist/OFL.txt'],
     ['epub-zip', 'public/vendor/fflate-LICENSE.txt'],
+    ['clipper', 'public/vendor/clipper2-LICENSE.txt'],
   ]) {
     const license = await read(file);
     html = html.replace(

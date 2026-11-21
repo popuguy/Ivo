@@ -4,6 +4,15 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Placed picture outlines, parent fields and heading bookmarks
+
+**Release estimate ~86% across the same 63 capabilities.** The picture and parent-field milestones account for the intermediate estimate of about 84%. The remaining progress covers working case conversion and nested PDF heading destinations. The document zoom limit is separate from the text estimate.
+
+- Placed images can use transparency or detected edges on a light background. Include Inside Edges lets text into a cutout. The editor and PDF use the placed picture’s crop, masks and signed offset. A 2048-pixel ring fixture exercised the editor controls. The PDF test measures glyph positions in the opening with the option on and off. Sampling starts at a maximum of 512 pixels per side and reduces detail for complex artwork. Embedded Photoshop paths, custom thresholds and editable outlines remain open.
+- On a parent page, Insert running text adds the current folio, last folio, section marker or document name. Independent PDFKit inspection found selectable printed footers on two consecutive pages with section numbering. Overriding the parent frame on a page turns the displayed value into local editable text. Inline flow variables and style-based running headers remain open.
+- The Type menu changes the case of selected characters. The editor test changes part of a bold run and undoes it in place. The language tests cover Turkish dotted I, Greek final sigma and German sharp S.
+- PDF bookmarks nest headings within their printed pages and chapters. PDFKit verified a paragraph-style heading that flowed onto a second page, nested semantic headings and the omission of a heading beyond the final frame. Printed contents pages, index generation and tagged PDF remain open.
+
 ## Word breaks, shared styles and numbered publications
 
 **Release estimate ~81% across the same 63 capabilities.** This pass moved from ~73% through ~77% with stylistic sets, editorial reading order and Data Merge. The further gains cover document hyphenation, reusable styles, section numbering and fixed-page book export. These are engineering estimates of scope covered. Side-by-side composition and physical input acceptance remain open.

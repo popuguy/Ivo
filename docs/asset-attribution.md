@@ -46,3 +46,7 @@ Ivo ships the patterns and exceptions from `hyph-en-us.tex` with their original 
 British English, Spanish, Italian and monotonic Modern Greek use patterns and exceptions from [tex-hyphen revision 5684c0f](https://github.com/hyphenation/tex-hyphen/tree/5684c0f51c0b81133db2efbe60a408b4155a3ff5/hyph-utf8/tex/generic/hyph-utf8/patterns/tex). Each generated data module in `src/domain/text/dictionaries` retains its authors’ copyright and MIT permission notice. The editor uses its own matching and source-position logic.
 
 The Russian patterns and exceptions by Alexander I. Lebedev and Turkish patterns by Pierre A. MacKay and the TeX Users Group are distributed under the LaTeX Project Public License. Ivo converted the original lists to JavaScript string data. Each module includes the copyright, license, transformation and pinned link to its original TeX source. [Russian original](https://github.com/hyphenation/tex-hyphen/blob/5684c0f51c0b81133db2efbe60a408b4155a3ff5/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-ru.tex) · [Turkish original](https://github.com/hyphenation/tex-hyphen/blob/5684c0f51c0b81133db2efbe60a408b4155a3ff5/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-tr.tex) · [LPPL](https://www.latex-project.org/lppl/)
+
+## Polygon clipping and offsets
+
+Ivo bundles Clipper2-ts 2.0.1-19 for compound paths, silhouette offsets and triangulation. The build includes the Boost Software License with the module and in the standalone HTML. [Clipper2-ts source and license](https://github.com/countertype/clipper2-ts)

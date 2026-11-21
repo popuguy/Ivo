@@ -328,6 +328,10 @@ try {
     'Parent session leaked uncommitted text changes',
   );
   assert(doc.blocks[0].fontSize !== 25, 'Parent control event changed the page-frame owner');
+  const runningField = parentHost.querySelector('[data-running-field]');
+  runningField.value = 'current-page-number';
+  runningField.dispatchEvent(new Event('change', { bubbles: true }));
+  await tick();
   parentHost.querySelector(`[data-layer-select="${added.id}"]`).click();
   parentHost.querySelector('[data-canvas-command="delete-layer"]').click();
   assert(doc.blocks[0].layerId === added.id, 'Parent layer edit escaped before commit');
@@ -342,7 +346,17 @@ try {
     doc.publishing.layers.some((layer) => layer.id === doc.blocks[0].layerId),
     'Parent layer removal stranded artwork outside the isolated canvas',
   );
-  validateImport({ schemaVersion: 6, documents: [doc], assets: [] });
+  assert(
+    doc.publishing.parents[0].blocks[0].html.includes('«Current Page Number»'),
+    'Parent lost its editable page field',
+  );
+  assert(
+    [...host.querySelectorAll('.canvas-parent-art')].some((el) =>
+      el.textContent.includes('Collection 012'),
+    ),
+    'Applied parent failed to render page 2',
+  );
+  validateImport({ schemaVersion: 27, documents: [doc], assets: [] });
   editor.destroy();
   editor = mount();
   pick();

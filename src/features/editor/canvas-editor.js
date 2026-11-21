@@ -1,3 +1,7 @@
+import { CASE_COMMANDS } from '../../domain/text/change-case.js';
+import { changeSelectedCase } from '../../rendering/text/edit-case.js';
+import { PARENT_FIELDS, parentFieldToken } from '../../domain/documents/running-text.js';
+import { imageWrapResources } from '../../rendering/text/image-contours.js';
 import { LIST_COMMANDS } from '../../domain/text/list-numbering.js';
 import { applyListCommand } from '../../rendering/text/edit-lists.js';
 import {
@@ -217,6 +221,9 @@ export function mountCanvasEditor(host, options) {
   sessions.set(sessionId, state);
   let flowPlan = { fragments: new Map(), status: new Map() },
     flowSignature = '',
+    pendingContours = null,
+    displayedContourSignature = '',
+    runningPageSignature = '',
     flowPreviewDirty = true,
     threadFrom = null,
     sceneRevision = 0;
@@ -1200,9 +1207,33 @@ export function mountCanvasEditor(host, options) {
 
   function updateFlowPlan(typingFlow) {
     const key = flowLayoutKey();
-    if (key === flowSignature) return false;
+    if (key === flowSignature && !displayedContourSignature) return false;
+    const imageContours =
+      doc().canvasVersion >= 26 ? imageWrapResources(doc(), options.assets?.() || []) : null;
+    const contourSignature = imageContours?.signature || '';
+    if (key === flowSignature && displayedContourSignature === contourSignature) return false;
+    if (imageContours?.pending.length) {
+      if (pendingContours?.key !== contourSignature) {
+        const wait = { key: contourSignature };
+        pendingContours = wait;
+        wait.done = Promise.all(imageContours.pending).then(() => {
+          if (alive && pendingContours === wait) {
+            pendingContours = null;
+            refreshFlowPreview();
+          }
+        });
+      }
+      return false;
+    }
+    pendingContours = null;
+    if (imageContours?.error) {
+      compositionNotice.hidden = false;
+      compositionNotice.querySelector('span').textContent = imageContours.error.message;
+      return false;
+    }
+    displayedContourSignature = contourSignature;
     if (typingPreview?.flow !== typingFlow) typingPreview = null;
-    flowPlan = layoutDocumentTextFlows(doc(), { allowPages: canWrite() });
+    flowPlan = layoutDocumentTextFlows(doc(), { allowPages: canWrite(), imageContours });
     for (const flow of doc().textFlows || [])
       if (flow.composition) {
         for (const id of flow.frameIds)
@@ -1232,6 +1263,14 @@ export function mountCanvasEditor(host, options) {
     for (const id of flowRenderCache.keys()) if (!frameIds.has(id)) flowRenderCache.delete(id);
     for (const element of world.querySelectorAll('[data-page]'))
       if (!ids.has(element.dataset.page)) element.remove();
+    const runningPages = doc().publishing?.parents.some((parent) =>
+      parent.blocks.some((b) => b.extensions?.ivoRunningText),
+    );
+    const numbering = runningPages
+      ? JSON.stringify([doc().title, doc().pages.map((p) => [p.id, p.section, p.parentPageId])])
+      : '';
+    const refreshRunning = runningPages && numbering !== runningPageSignature;
+    runningPageSignature = numbering;
     for (const p of positions()) {
       let section = world.querySelector(`[data-page="${CSS.escape(p.id)}"]`);
       if (!section) {
@@ -1241,6 +1280,12 @@ export function mountCanvasEditor(host, options) {
         section.setAttribute('aria-label', p.name);
         section.innerHTML = `<div class="canvas-page-label">${esc(p.name)}</div>${pageObjectsHTML(p)}`;
         world.append(section);
+      } else if (refreshRunning) {
+        for (const item of parentObjects(doc(), p))
+          if (item.extensions?.ivoRunningText) {
+            const node = section.querySelector('[data-scene-text="' + CSS.escape(item.id) + '"]');
+            if (node) node.innerHTML = cleanHTML(item.html);
+          }
       }
       Object.assign(section.style, {
         left: p.x + 'px',
@@ -2884,7 +2929,7 @@ export function mountCanvasEditor(host, options) {
       options.onNotify?.('Parent frames are independent text containers.');
       return;
     }
-    if (Object.hasOwn(LIST_COMMANDS, name)) {
+    if (Object.hasOwn(LIST_COMMANDS, name) || Object.hasOwn(CASE_COMMANDS, name)) {
       const text = activeText(),
         range = preserveRange();
       if (!options.editing || !text?.isContentEditable || !range) return;
@@ -2900,6 +2945,17 @@ export function mountCanvasEditor(host, options) {
       }
       if (sourceTextFlow(text)) projectFlowInput(text, 0);
       finishText();
+      if (Object.hasOwn(CASE_COMMANDS, name)) {
+        if (text.ownerDocument.getSelection().isCollapsed) return;
+        beginTextInput('changeCase');
+        const changed = changeSelectedCase(
+          text,
+          name,
+          effectiveTextStyle(doc(), frameTextSettings(doc(), object())).language,
+        );
+        finishDocumentInput(text, changed ? 'edited' : 'unchanged');
+        return;
+      }
       beginTextInput('formatList');
       const changed = applyListCommand(text, selection.getRangeAt(0), name);
       finishDocumentInput(text, changed ? 'edited' : 'unchanged');
@@ -3123,6 +3179,45 @@ export function mountCanvasEditor(host, options) {
       state.inside = item.id;
       renderTools();
       renderPanel();
+      return;
+    }
+    if (name.startsWith('parent-field-')) {
+      const key = name.slice('parent-field-'.length);
+      if (
+        !options.parentMode ||
+        !options.editing ||
+        !canWrite() ||
+        !Object.hasOwn(PARENT_FIELDS, key)
+      )
+        return;
+      const p = page(),
+        selected = object(),
+        token = parentFieldToken(key);
+      const target =
+        selected && ['text', 'quote'].includes(selected.type) && objectAvailable(doc(), selected)
+          ? selected
+          : null;
+      mutate(() => {
+        if (target) {
+          const end = /<\/(p|div|h[2-4]|blockquote)>\s*$/i;
+          target.html = end.test(target.html)
+            ? target.html.replace(end, (match) => token + match)
+            : target.html + token;
+          target.extensions = { ...target.extensions, ivoRunningText: true };
+        } else {
+          const w = Math.min(240, p.width - 16);
+          const label = insertObject(doc(), 'text', p.id, {
+            x: Math.min(36, p.width - w - 8),
+            y: Math.max(8, p.height - 52),
+            w,
+            h: 32,
+            html: '<p>' + token + '</p>',
+            extensions: { ivoRunningText: true },
+          });
+          setSelectionState(label.id);
+        }
+        doc().canvasVersion = Math.max(doc().canvasVersion, 26);
+      }, 'Insert ' + PARENT_FIELDS[key]);
       return;
     }
     if (name === 'add-page') {
@@ -3466,6 +3561,12 @@ export function mountCanvasEditor(host, options) {
                 `<button role="menuitem" data-canvas-command="${id}">${label}</button>`,
             )
             .join('') +
+          `<details><summary>Change Case</summary>${Object.entries(CASE_COMMANDS)
+            .map(
+              ([id, label]) =>
+                `<button role="menuitem" data-canvas-command="${id}">${label}</button>`,
+            )
+            .join('')}</details>` +
           `<details><summary>Bulleted &amp; Numbered Lists</summary>${Object.entries(LIST_COMMANDS)
             .map(
               ([id, label]) =>
@@ -4526,6 +4627,7 @@ export function mountCanvasEditor(host, options) {
     showPanel: (kind) => workspacePanels.show(kind),
     clearOverrides: clearTextOverrides,
     fonts: options.fonts,
+    assets: options.assets,
     parentMode: options.parentMode,
   });
   inputAnchor = createNativeInputAnchor(host.querySelector('.canvas-flow-input'), {
@@ -4535,7 +4637,7 @@ export function mountCanvasEditor(host, options) {
   });
   nativeSession = createCompositionSession({
     getDocument: doc,
-    scope: canWrite,
+    scope: () => canWrite() + ':' + (pendingContours?.key || displayedContourSignature),
     compose: (snapshot, settings) => {
       if (!options.textComposition)
         throw Error(
@@ -4602,6 +4704,11 @@ export function mountCanvasEditor(host, options) {
   compositionNotice.querySelector('button').addEventListener(
     'click',
     () => {
+      if (doc().canvasVersion >= 26) {
+        imageWrapResources(doc(), options.assets?.() || [], { retry: true });
+        flowSignature = '';
+        refreshFlowPreview();
+      }
       nativeSession.retry(doc(), {
         assets: options.assets?.() || options.fonts?.() || [],
         allowPages: canWrite(),
@@ -4667,6 +4774,16 @@ export function mountCanvasEditor(host, options) {
     pan: (x, y) => cameraTo({ ...state.camera, x: state.camera.x + x, y: state.camera.y + y }),
   });
   publishingControls.prepareLegacyFonts();
+  listen(editor, 'change', (event) => {
+    if (
+      !event.target.matches('[data-running-field]') ||
+      event.target.closest('.scene-editor') !== editor
+    )
+      return;
+    const key = event.target.value;
+    event.target.value = '';
+    if (key) void command('parent-field-' + key);
+  });
   function editParent(id) {
     if (parentEditor || options.parentMode || !options.editing) return;
     endTextEditing();
@@ -4850,6 +4967,7 @@ export function mountCanvasEditor(host, options) {
       finishText();
       while (pendingCount) await pendingFiles;
       while (composerChange) await composerChange.done;
+      while (pendingContours) await pendingContours.done;
       await nativeSession.flush();
     },
     get pending() {
@@ -4857,6 +4975,7 @@ export function mountCanvasEditor(host, options) {
         pendingCount > 0 ||
         composing ||
         !!composerChange ||
+        !!pendingContours ||
         nativeSession.pending ||
         publishingControls.pending ||
         parentEditor?.pending
@@ -4886,6 +5005,7 @@ export function mountCanvasEditor(host, options) {
     },
     getMenuState: () => ({
       canInsertCharacter: !!activeText()?.isContentEditable,
+      canChangeCase: !!activeText()?.isContentEditable && !document.getSelection()?.isCollapsed,
       canKeepOptions: !!(object() && textFlowForFrame(doc(), object())?.composition),
       canvasView: ownsInput() && !busy && !dialogOpen(),
       canvasEditing: !!options.editing && canWrite() && !composing,

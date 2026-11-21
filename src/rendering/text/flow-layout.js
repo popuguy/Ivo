@@ -85,13 +85,16 @@ const metrics = (frame) => ({
   h: frame.h / (frame.textScale?.y || 1),
 });
 /** Native browser column composition with derived fragments; canonical textFlow source is never split or rewritten. */
-export function layoutDocumentTextFlows(doc, { allowPages = true, objectWrap = true } = {}) {
+export function layoutDocumentTextFlows(
+  doc,
+  { allowPages = true, objectWrap = true, imageContours } = {},
+) {
   // The native compositor may own every flow. A remaining frameOptions on
   // those objects must not trigger a second projection of the entire scene.
   if (!doc.textFlows?.length) return { fragments: new Map(), status: new Map(), changed: false };
   if (objectWrap && documentHasObjectWrap(doc)) {
     const wrapped = (doc.textFlows || []).filter(
-      (flow) => !flow.composition && flowHasObjectWrap(doc, flow),
+      (flow) => !flow.composition && flowHasObjectWrap(doc, flow, imageContours),
     );
     if (wrapped.length) {
       const ids = new Set(wrapped.map((flow) => flow.id)),
@@ -103,7 +106,7 @@ export function layoutDocumentTextFlows(doc, { allowPages = true, objectWrap = t
       doc.pages = projection.pages;
       doc.blocks = projection.blocks;
       for (const flow of wrapped) {
-        const plan = layoutWrappedTextFlow(doc, flow, { allowPages });
+        const plan = layoutWrappedTextFlow(doc, flow, { allowPages, imageContours });
         for (const [id, fragment] of plan.fragments) result.fragments.set(id, fragment);
         result.status.set(flow.id, plan.status);
         result.changed ||= plan.changed;
@@ -115,7 +118,7 @@ export function layoutDocumentTextFlows(doc, { allowPages = true, objectWrap = t
   // scene for page ownership checks, but never enter browser line composition.
   if (doc.textFlows?.some((flow) => flow.composition)) {
     const projection = { ...doc, textFlows: doc.textFlows.filter((flow) => !flow.composition) };
-    const result = layoutDocumentTextFlows(projection, { allowPages });
+    const result = layoutDocumentTextFlows(projection, { allowPages, imageContours });
     doc.pages = projection.pages;
     doc.blocks = projection.blocks;
     return result;

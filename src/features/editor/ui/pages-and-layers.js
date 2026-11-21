@@ -1,3 +1,4 @@
+import { PARENT_FIELDS } from '../../../domain/documents/running-text.js';
 import { pageFolios } from '../../../domain/documents/page-sections.js';
 import { layersFor, layerFor } from '../../../domain/documents/publishing.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
@@ -146,6 +147,15 @@ export function pagesContent(doc, page, editing, { parentMode = false, state = {
         return `<button data-select-page="${esc(p.id)}" aria-pressed="${p.id === page.id && state.panelParent == null}" ${tip('Select ' + p.name)}>${sheet(p.width, p.height, parent?.prefix)}<span class="page-number">${esc(folios[i])}</span></button>`;
       })
       .join('')}</div>
+    ${
+      parentMode && editing
+        ? '<label class="page-size-options">Insert running text<select data-running-field aria-label="Insert running text"><option value="">Choose field…</option>' +
+          Object.entries(PARENT_FIELDS)
+            .map(([key, label]) => '<option value="' + key + '">' + esc(label) + '</option>')
+            .join('') +
+          '</select></label>'
+        : ''
+    }
     <div class="inventory-footer"><span>${count} ${count === 1 ? 'Page in 1 Spread' : 'Pages in ' + count + ' Spreads'}</span>
     <details class="page-size-options"${state.pageSizeOpen ? ' open' : ''}><summary ${tip('Edit page size')}>${icon('page-size')}</summary>${pageSettings(doc, page, editing, parentMode)}</details>
     ${parentMode ? '' : action('add-page', 'Create new page', 'panel-new', editing) + action('delete-page', 'Delete selected page', 'panel-trash', editing && count > 1)}

@@ -12,19 +12,19 @@ export const documentHasObjectWrap = (doc) =>
     (block) => block.textWrap && block.textWrap.mode !== 'none',
   );
 
-export function frameWrapObstacles(doc, frame) {
+export function frameWrapObstacles(doc, frame, imageContours) {
   const width = frame.w / (frame.textScale?.x || 1),
     height = frame.h / (frame.textScale?.y || 1);
-  return textWrapObstacles(doc, frame).filter(
+  return textWrapObstacles(doc, frame, { imageContours }).filter(
     ({ bounds, invert }) =>
       invert ||
       (bounds.right > 0 && bounds.left < width && bounds.bottom > 0 && bounds.top < height),
   );
 }
-export const flowHasObjectWrap = (doc, flow) =>
+export const flowHasObjectWrap = (doc, flow, imageContours) =>
   flow.frameIds.some((id) => {
     const frame = doc.blocks.find((b) => b.id === id);
-    return frame && frameWrapObstacles(doc, frame).length > 0;
+    return frame && frameWrapObstacles(doc, frame, imageContours).length > 0;
   });
 
 function columnSlots(frame) {
@@ -48,7 +48,7 @@ function columnSlots(frame) {
 
 /** Multiple source fragments can share one baseline around an interior object.
  * Their HTML is derived paint/provenance; the flow remains one canonical input. */
-export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
+export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageContours } = {}) {
   for (const id of flow.frameIds) {
     let frame = doc.blocks.find((b) => b.id === id);
     if (['center', 'bottom'].includes(frame.frameOptions?.verticalAlign))
@@ -74,7 +74,7 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true } = {}) {
       throw Error('Wrapped text currently supports up to 200,000 source positions per flow.');
     for (let frameIndex = 0; frameIndex < flow.frameIds.length; frameIndex++) {
       const frame = doc.blocks.find((b) => b.id === flow.frameIds[frameIndex]),
-        obstacles = frameWrapObstacles(doc, frame),
+        obstacles = frameWrapObstacles(doc, frame, imageContours),
         parts = [],
         frameStart = start;
       for (const column of columnSlots(frame)) {
