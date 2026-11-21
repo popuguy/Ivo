@@ -1,3 +1,4 @@
+import { publicationPages } from '../../../src/rendering/publication-pages.js';
 import { indexHTML } from '../../../src/features/editor/ui/subject-index.js';
 import { contentsSettings } from '../../../src/domain/documents/contents-settings.js';
 import { writePublicationText } from '../../../src/domain/documents/contents.js';
@@ -318,7 +319,7 @@ app
       'Native text link did not navigate to the next page in PDFKit',
     );
     const withContents = structuredClone(owner);
-    const settings = contentsSettings({ styles: { [headingStyle.id]: 2 } });
+    const settings = contentsSettings({ includeBook: true, styles: { [headingStyle.id]: 2 } });
     const entries = new Map(
       bookPDF.manifest.pages
         .filter((p) => p.documentId === owner.id)
@@ -327,7 +328,17 @@ app
     writePublicationText(
       withContents,
       null,
-      contentsHTML(withContents, entries, settings),
+      contentsHTML(
+        withContents,
+        [
+          ...publicationPages(
+            front,
+            new Map([[front.pages[0].id, [{ title: 'Book introduction', level: 1 }]]]),
+          ),
+          ...publicationPages(withContents, entries),
+        ],
+        settings,
+      ),
       settings,
     );
     const indexOptions = { title: 'Subject index', topics: [['Textiles', 'Weaves']], ranges: true };
@@ -339,7 +350,7 @@ app
     writePublicationText(
       withContents,
       null,
-      indexHTML(withContents, matches, indexOptions),
+      indexHTML(withContents, publicationPages(withContents, matches), indexOptions),
       indexOptions,
       { kind: 'index' },
     );
@@ -363,6 +374,11 @@ app
         toc.pageLinks.some(([from, to]) => from === 4 && to === dest),
         'Index range endpoint lost its PDF destination',
       );
+    assert.match(toc.text[3], /Book introduction/);
+    assert(
+      toc.pageLinks.some(([from, to]) => from === 3 && to === 0),
+      'Book contents lost the other chapter destination',
+    );
     assert.match(toc.text[3], /Woven surfaces\s+A–8/u);
     assert(
       toc.pageLinks.some(([from, to]) => from === 3 && to === 2),

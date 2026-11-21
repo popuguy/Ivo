@@ -43,13 +43,13 @@ function sourceInterval(line, run, start, end, geometry) {
 }
 
 function linkAttributes(link) {
-  if (link.pageId && /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(link.pageId))
-    return 'href="#page=' + esc(link.pageId) + '"';
-  return link.documentId && /^[\w-]{1,120}$/.test(link.documentId)
-    ? `data-doc-id="${esc(link.documentId)}" href="#doc=${esc(link.documentId)}"`
-    : /^https?:\/\//.test(link.url || '')
-      ? `href="${esc(link.url)}"`
-      : '';
+  const page = /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(link.pageId || '') ? link.pageId : null;
+  if (link.documentId && /^[\w-]{1,120}$/.test(link.documentId)) {
+    const destination = page ? ' data-page-id="' + esc(page) + '"' : '';
+    return `data-doc-id="${esc(link.documentId)}"${destination} href="#doc=${esc(link.documentId)}"`;
+  }
+  if (page) return 'href="#page=' + esc(page) + '"';
+  return /^https?:\/\//.test(link.url || '') ? `href="${esc(link.url)}"` : '';
 }
 
 function firstIntersecting(ranges, start) {

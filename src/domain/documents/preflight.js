@@ -52,6 +52,13 @@ export function inspectPublication(
           asset(href);
           asset(attribute(tag, 'src'));
         }
+        if (resolver && /^<a\b/i.test(tag)) {
+          const targetId = attribute(tag, 'data-doc-id'),
+            pageId = attribute(tag, 'data-page-id');
+          const chapter = targetId && resolver.byId.get(targetId);
+          if (chapter && pageId && !chapter.pages?.some((p) => p.id === pageId))
+            report('Links', 'Unresolved page link', location, chapter.title + ' / ' + pageId);
+        }
         if (
           resolver &&
           /^<a\b/i.test(tag) &&

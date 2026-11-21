@@ -21,6 +21,7 @@ export function indexSettings(value) {
     throw Error('Check the index settings.');
   const { title = 'Index', topics, ranges = true, references = [], sortKeys = [] } = value;
   if (
+    (value.includeBook !== undefined && typeof value.includeBook !== 'boolean') ||
     typeof title !== 'string' ||
     title.length > 256 ||
     typeof ranges !== 'boolean' ||
@@ -88,6 +89,7 @@ export function indexSettings(value) {
   }
   return {
     title,
+    ...(value.includeBook && { includeBook: true }),
     topics: [...unique.values()],
     ranges,
     ...(refs.size && { references: [...refs.values()] }),

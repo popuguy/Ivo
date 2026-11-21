@@ -3,11 +3,7 @@ import { tableText } from '../../domain/documents/table-clipboard.js';
 import { installTableControls } from './ui/table-controls.js';
 import { effectivePPI } from '../../domain/documents/preflight-profiles.js';
 import { generatedTextCommands } from './ui/publication-commands.js';
-import { indexMatcher } from '../../rendering/text/subject-index-matches.js';
-import {
-  collectPageHeadings,
-  collectPrintedEntries,
-} from '../../rendering/text/publication-headings.js';
+import { bookEntries, entriesOnPages } from './ui/book-entries.js';
 import { CASE_COMMANDS } from '../../domain/text/change-case.js';
 import { changeSelectedCase } from '../../rendering/text/edit-case.js';
 import { PARENT_FIELDS, parentFieldToken } from '../../domain/documents/running-text.js';
@@ -3123,7 +3119,11 @@ export function mountCanvasEditor(host, options) {
       )
         return;
     }
-    if (publishingControls.command(name, { anchor })) return;
+    const handled = publishingControls.command(name, { anchor });
+    if (handled) {
+      if (handled instanceof Promise) await handled;
+      return;
+    }
     if (['document-text', 'start-flow', 'thread'].includes(name) && !options.editing) return;
     if (name === 'flow-previous' || name === 'flow-next') {
       const item = object(),
@@ -3414,9 +3414,9 @@ export function mountCanvasEditor(host, options) {
         element = activeText(),
         viewBefore = captureView(),
         bookmark = range && bookmarkForRange(element, range),
-        id = pageLink ? await publishingControls.choosePageLink() : await onLink?.();
+        destination = pageLink ? await publishingControls.choosePageLink() : await onLink?.();
       if (
-        !id ||
+        !destination ||
         !alive ||
         !canWrite() ||
         !ownsInput() ||
@@ -3424,12 +3424,18 @@ export function mountCanvasEditor(host, options) {
         object()?.id !== selectedId
       )
         return;
-      const target = (pageLink ? doc().pages : options.documents).find((v) => v.id === id);
+      const id = pageLink ? destination.documentId : destination;
+      const chapter = id === owner ? doc() : options.documents?.find((d) => d.id === id);
+      const target = pageLink ? chapter?.pages?.find((p) => p.id === destination.pageId) : chapter;
       if (!target || (object() && !objectAvailable(doc(), object()))) return;
       const label = pageLink ? target.name : target.title;
       const anchor = document.createElement('a');
-      if (!pageLink) anchor.dataset.docId = id;
-      anchor.setAttribute('href', (pageLink ? '#page=' : '#doc=') + id);
+      if (pageLink && id === owner) anchor.setAttribute('href', '#page=' + target.id);
+      else {
+        anchor.dataset.docId = id;
+        anchor.setAttribute('href', '#doc=' + id);
+        if (pageLink) anchor.dataset.pageId = target.id;
+      }
       if (element?.isConnected && activeTextId === element.dataset.sceneText && bookmark) {
         finishText();
         const before = structuredClone(doc()),
@@ -3440,6 +3446,7 @@ export function mountCanvasEditor(host, options) {
         currentRange.insertNode(anchor);
         currentRange.selectNodeContents(anchor);
         writeText(sceneObject(doc(), activeTextId), element.innerHTML, element);
+        if (anchor.dataset.pageId) markTypographyVersion(doc());
         if (textFlowForFrame(doc(), activeTextId)) refreshFlowPreview();
         savedTextSelection = {
           id: activeTextId,
@@ -3455,6 +3462,7 @@ export function mountCanvasEditor(host, options) {
       anchor.textContent = label;
       const paragraph = '<p>' + anchor.outerHTML + '</p>';
       mutate(() => {
+        if (anchor.dataset.pageId) doc().canvasVersion = Math.max(doc().canvasVersion, 29);
         const existing = object();
         if (existing && !objectAvailable(doc(), existing))
           throw Error('Unlock the object to insert a link.');
@@ -3748,6 +3756,7 @@ export function mountCanvasEditor(host, options) {
     if (open && (!options.editing || event.metaKey || event.ctrlKey || open.dataset.sceneOpen)) {
       event.preventDefault();
       onOpen(open.dataset.sceneOpen || open.dataset.docId, {
+        ...(open.dataset.pageId && { pageId: open.dataset.pageId }),
         newTab: event.metaKey || event.ctrlKey,
         toRight: (event.metaKey || event.ctrlKey) && event.altKey,
       });
@@ -3758,6 +3767,7 @@ export function mountCanvasEditor(host, options) {
     if (event.button === 1 && link) {
       event.preventDefault();
       onOpen(link.dataset.docId || link.dataset.sceneOpen, {
+        ...(link.dataset.pageId && { pageId: link.dataset.pageId }),
         newTab: true,
         toRight: (event.metaKey || event.ctrlKey) && event.altKey,
       });
@@ -4684,21 +4694,23 @@ export function mountCanvasEditor(host, options) {
   });
   const publishingControls = installPublishingControls(editor, {
     nativeComposition: !!options.textComposition,
-    readContents(settings, kind) {
+    readContents(settings, kind, valid) {
       if (!canWrite() || pendingContours || nativeSession.pending)
         throw Error('Finish composing the document before generating its contents.');
       const pages = [...world.querySelectorAll('.canvas-page[data-page]')].map((section) => ({
         pageId: section.dataset.page,
         section,
       }));
-      if (kind === 'index')
-        return collectPrintedEntries(doc(), flowPlan, pages, {
-          includeTables: true,
-          matches: indexMatcher(settings.topics, doc().language || 'en'),
-        });
-      return collectPageHeadings(doc(), flowPlan, pages, {
-        semantic: settings.semantic,
-        headings: settings.styles,
+      const owner = doc(),
+        local = entriesOnPages(owner, owner, flowPlan, pages, settings, kind);
+      if (!settings.includeBook) return local;
+      return bookEntries(owner, local, settings, kind, {
+        documents: options.documents || [],
+        assets: options.assets?.() || [],
+        source,
+        compose: options.textComposition?.compose,
+        valid: () => alive && valid(),
+        getChapter: (id) => (options.documents || []).find((d) => d.id === id),
       });
     },
     focusContents(id) {
@@ -4995,6 +5007,15 @@ export function mountCanvasEditor(host, options) {
   });
   return {
     command,
+    revealPage(id) {
+      if (!doc().pages.some((p) => p.id === id)) return false;
+      state.activePage = id;
+      setSelectionState(null);
+      state.inside = null;
+      renderPanel();
+      fit();
+      return true;
+    },
     adoptWorkspaceTool() {
       const name = options.workspaceTool?.();
       if (!name || state.tool === name || !options.editing || activeTextId) return;

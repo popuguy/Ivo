@@ -1121,9 +1121,15 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
   }
   async function openDocumentNow(
     id,
-    { newTab = false, toRight = false, groupId, editing: requestedEditing = false } = {},
+    { newTab = false, toRight = false, groupId, pageId, editing: requestedEditing = false } = {},
   ) {
-    if (!docs.some((d) => d.id === id) || !(await flush())) return;
+    if (!(await flush())) return;
+    const destination = docs.find((d) => d.id === id);
+    if (pageId && !destination?.pages?.some((p) => p.id === pageId)) {
+      toast('The linked page is no longer available.');
+      return;
+    }
+    if (!destination) return;
     captureAllTabs();
     if (groupId) {
       const group = workspace.groups.find((group) => group.id === groupId);
@@ -1141,6 +1147,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     else replaceTab(workspace, 'document', id, requestedEditing);
     adoptTab();
     render();
+    if (pageId) canvasHandle?.revealPage(pageId);
     document.body.classList.remove('nav-open');
   }
   async function activateTabNow(id) {

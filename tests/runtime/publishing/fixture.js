@@ -1,3 +1,4 @@
+import { verifyBookEntries } from './book-entries.js';
 import { verifyTables } from './tables.js';
 import { verifySubjectIndex } from './subject-index.js';
 import { verifyContents } from './contents.js';
@@ -48,6 +49,7 @@ try {
   const host = document.querySelector('#host');
   await verifyTables(host, assert);
   await verifyContents(host, assert);
+  await verifyBookEntries(host, assert);
   await verifySubjectIndex(host, assert);
   await verifyTextControls(host);
   await verifyNestedLayers(host, assert);

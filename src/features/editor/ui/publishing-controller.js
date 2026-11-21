@@ -310,13 +310,23 @@ export function installPublishingControls(
       },
       { once: true },
     );
-    dialog.querySelector('form').addEventListener('submit', (event) => {
+    let submitting = false;
+    dialog.querySelector('form').addEventListener('submit', async (event) => {
       event.preventDefault();
       try {
-        onSubmit(new FormData(event.currentTarget));
-        dialog.close();
+        if (submitting) return;
+        submitting = true;
+        const result = onSubmit(new FormData(event.currentTarget));
+        if (result instanceof Promise) {
+          dialog.setAttribute('aria-busy', 'true');
+          await result;
+        }
+        if (dialog.open) dialog.close();
       } catch (error) {
         dialog.querySelector('[role=alert]').textContent = error.message;
+      } finally {
+        submitting = false;
+        dialog.removeAttribute('aria-busy');
       }
     });
     dialog.showModal();
@@ -983,26 +993,36 @@ export function installPublishingControls(
     },
     choosePageLink() {
       const owner = doc(),
-        folios = pageFolios(owner.pages);
+        others = documents().filter((d) => d.id !== owner.id && d.pages?.length);
       return new Promise((resolve) => {
         const dialog = form(
           'Insert Page Link',
-          '<label>Page<select name="destination">' +
-            owner.pages
-              .map(
-                (p, i) =>
-                  '<option value="' +
-                  esc(p.id) +
-                  '">' +
-                  esc(folios[i] + ' · ' + p.name) +
-                  '</option>',
-              )
-              .join('') +
-            '</select></label>',
-          (data) => resolve(data.get('destination')),
+          (others.length
+            ? '<label>Document<select name="chapter">' +
+              [owner, ...others]
+                .map((d) => '<option value="' + esc(d.id) + '">' + esc(d.title) + '</option>')
+                .join('') +
+              '</select></label>'
+            : '') + '<label>Page<select name="destination"></select></label>',
+          (data) =>
+            resolve({
+              documentId: data.get('chapter') || owner.id,
+              pageId: data.get('destination'),
+            }),
         );
         dialog.setAttribute('aria-label', 'Insert Page Link');
-        dialog.querySelector('select').value = state.activePage;
+        const fields = dialog.querySelector('form').elements;
+        function showPages(chapter) {
+          const folios = pageFolios(chapter.pages);
+          fields.destination.replaceChildren(
+            ...chapter.pages.map((p, i) => new Option(folios[i] + ' · ' + p.name, p.id)),
+          );
+          if (chapter.id === owner.id) fields.destination.value = state.activePage;
+        }
+        showPages(owner);
+        if (fields.chapter)
+          fields.chapter.onchange = () =>
+            showPages([owner, ...others].find((d) => d.id === fields.chapter.value));
         dialog.addEventListener('close', () => resolve(null), { once: true });
       });
     },
@@ -1070,29 +1090,44 @@ export function installPublishingControls(
           picked = objects().length === 1 ? objects()[0] : null;
         const { kind, update, title } = generatedTextCommands[name];
         const saved = generatedTextFlow(owner, picked)?.[kind];
+        let dialog;
+        const valid = () =>
+          (!dialog || dialog.open) &&
+          dialogAllowed() &&
+          doc() === owner &&
+          (!picked || (owner.blocks.includes(picked) && objects().includes(picked)));
         const apply = (settings, placement) => {
-          if (!dialogAllowed() || doc() !== owner || (picked && !owner.blocks.includes(picked)))
-            throw Error('The selected document or frame changed.');
+          if (!valid()) throw Error('The selected document or frame changed.');
           const target = saved || placement === 'selection' ? picked : null;
           const generate = kind === 'index' ? indexHTML : contentsHTML;
-          const html = generate(owner, readContents(settings, kind), settings, {
-            allowEmpty: !!saved,
-          });
-          let written;
-          mutate(() => {
-            written = writePublicationText(owner, target, html, settings, {
-              kind,
-              update: !!saved,
+          const write = (pages) => {
+            if (!valid()) throw Error('The selected document or frame changed.');
+            const html = generate(owner, pages, settings, {
+              allowEmpty: !!saved,
             });
-            state.activePage = written.pageId;
-            state.selection = [written.id];
-          }, title);
-          focusContents(written.id);
+            let written;
+            mutate(() => {
+              written = writePublicationText(owner, target, html, settings, {
+                kind,
+                update: !!saved,
+              });
+              state.activePage = written.pageId;
+              state.selection = [written.id];
+            }, title);
+            focusContents(written.id);
+          };
+          const pages = readContents(settings, kind, valid);
+          return pages instanceof Promise ? pages.then(write) : write(pages);
         };
         if (!update) {
           const open = kind === 'index' ? indexDialog : contentsDialog;
-          open(form, owner, { saved, emptyFrame: canPlacePublicationText(owner, picked) }, apply);
-        } else if (saved) apply(saved);
+          dialog = open(
+            form,
+            owner,
+            { saved, emptyFrame: canPlacePublicationText(owner, picked) },
+            apply,
+          );
+        } else if (saved) return apply(saved) || true;
         else
           notify?.(
             kind === 'index'

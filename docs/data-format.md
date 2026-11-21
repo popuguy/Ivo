@@ -1,5 +1,7 @@
 # Document and vault formats
 
+**Archive 30 / canvas 29** stores optional `includeBook: true` on a generated contents or index flow. Cross-document page links carry the destination document in `data-doc-id` and its page in `data-page-id`. A local page link still uses `#page=…`. Generating references reads saved pages, section folios and printed headings. A closed chapter is never repaginated on disk by this command.
+
 **Archive 19 / canvas 18** adds an optional top margin on each page, measured in points from zero through the page height. An omitted margin resolves to 36 pt. The document grid and individual frame grids accept `relativeTo: "margin"`. The document grid defaults to the page edge. New pages inherit the preceding page’s margin. Opening an archive 18 document preserves its tab stops, frame grids and format.
 
 Custom baseline grids on native text frames use **archive 17 / canvas 16**. When present, `frameOptions.baselineGrid` stores `relativeTo` (`page`, `frame`, or `inset`), `start` in points from 0 to 14,400 and `increment` in points from 1 to 2,000. Omitting the field uses the document grid. The archive reader checks the version, grid values and owning native flow. Opening an archive 16 document preserves its existing grid and format. Find/Change queries are local application preferences outside the document data.

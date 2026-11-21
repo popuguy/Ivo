@@ -1,3 +1,4 @@
+import { attribute } from '../text/html.js';
 import { remapContentsStyles } from './contents-settings.js';
 import { uid } from './model.js';
 import { upgradeDocument } from './scene.js';
@@ -54,6 +55,13 @@ export function copyDocument(
   }
   function remapRichText(holder) {
     remapContentsStyles(holder, ids);
+    if (remapPageLinks && holder.html)
+      holder.html = holder.html.replace(/<a\b[^>]+>/gi, (tag) => {
+        if (attribute(tag, 'data-doc-id') !== source.id) return tag;
+        return tag.replace(/(\sdata-page-id\s*=\s*["'])([\w-]+)(["'])/i, (all, start, id, end) =>
+          ids.has(id) ? start + ids.get(id) + end : all,
+        );
+      });
     if (remapPageLinks && holder.html)
       holder.html = holder.html.replace(
         /(<a\b[^>]*?\shref\s*=\s*["']#page=)([\w-]+)(["'])/gi,

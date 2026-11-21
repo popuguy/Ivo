@@ -161,7 +161,12 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
       priority,
       link:
         target && /^[\w-]{1,120}$/.test(target)
-          ? { documentId: target }
+          ? {
+              documentId: target,
+              ...(/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(anchor.dataset.pageId || '') && {
+                pageId: anchor.dataset.pageId,
+              }),
+            }
           : pageId
             ? { pageId }
             : url

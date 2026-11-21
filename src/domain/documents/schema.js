@@ -35,6 +35,7 @@ import {
   hasContents,
   hasTables,
   hasIndexReferences,
+  hasBookDestinations,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -1088,6 +1089,11 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29)
     )
       fail('Index references require archive 29 and canvas 28.');
+    if (
+      hasBookDestinations(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 29) || payload.schemaVersion < 30)
+    )
+      fail('Book page destinations require archive 30 and canvas 29.');
     if (hasTables(doc) && (!supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29))
       fail('Tables require archive 29 and canvas 28.');
     if (hasContents(doc) && (!supportedCanvas(doc.canvasVersion, 27) || payload.schemaVersion < 28))

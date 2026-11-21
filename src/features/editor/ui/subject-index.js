@@ -1,10 +1,9 @@
 import { indexSettings } from '../../../domain/documents/subject-index.js';
-import { pageFolios } from '../../../domain/documents/page-sections.js';
+import { publicationPageLink } from './publication-page-link.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 
-export function indexHTML(doc, matches, settings, { allowEmpty = false } = {}) {
-  const tree = new Map(),
-    folios = pageFolios(doc.pages);
+export function indexHTML(doc, printed, settings, { allowEmpty = false } = {}) {
+  const tree = new Map();
   const nodes = new Map();
   function topic(path) {
     const key = JSON.stringify(path);
@@ -15,8 +14,8 @@ export function indexHTML(doc, matches, settings, { allowEmpty = false } = {}) {
     nodes.set(key, node);
     return node;
   }
-  doc.pages.forEach((page, i) => {
-    for (const key of new Set((matches.get(page.id) || []).map((hit) => hit.title)))
+  printed.forEach((page, i) => {
+    for (const key of new Set(page.entries.map((hit) => hit.title)))
       topic(JSON.parse(key)).pages.push(i);
   });
   function firstPage(node) {
@@ -42,7 +41,7 @@ export function indexHTML(doc, matches, settings, { allowEmpty = false } = {}) {
   const collator = new Intl.Collator(doc.language || 'en', { numeric: true });
   const rows = [];
   if (settings.title) rows.push('<p><strong>' + esc(settings.title) + '</strong></p>');
-  const link = (i) => '<a href="#page=' + esc(doc.pages[i].id) + '">' + esc(folios[i]) + '</a>';
+  const link = (i, label = printed[i].folio) => publicationPageLink(doc.id, printed[i], label);
   function append(siblings, depth) {
     for (const node of [...siblings.values()].sort(
       (a, b) =>
@@ -58,7 +57,8 @@ export function indexHTML(doc, matches, settings, { allowEmpty = false } = {}) {
           settings.ranges &&
           j + 1 < pages.length &&
           pages[j + 1] === pages[j] + 1 &&
-          !doc.pages[pages[j + 1]].section
+          printed[pages[j + 1]].documentId === printed[first].documentId &&
+          !printed[pages[j + 1]].section
         )
           j++;
         refs.push(first === pages[j] ? link(first) : link(first) + '–' + link(pages[j]));
@@ -67,11 +67,8 @@ export function indexHTML(doc, matches, settings, { allowEmpty = false } = {}) {
         refs.push(
           '<em>' +
             (ref.kind === 'see' ? 'See' : 'See also') +
-            '</em> <a href="#page=' +
-            esc(doc.pages[ref.page].id) +
-            '">' +
-            esc(ref.to.join(' > ')) +
-            '</a>',
+            '</em> ' +
+            link(ref.page, ref.to.join(' > ')),
         );
       rows.push(
         '<p' +
@@ -92,6 +89,9 @@ export function indexDialog(form, doc, { saved, emptyFrame }, apply) {
   const dialog = form(
     'Generate Index',
     '<label>Title<input name="title" maxlength="256"></label>' +
+      (doc.publication?.chapters?.length || saved?.includeBook
+        ? '<label><input type="checkbox" name="includeBook">Include Book Documents</label>'
+        : '') +
       '<label>Topics<textarea name="topics" rows="7"></textarea></label>' +
       '<p>Enter one topic per line. Use &gt; for subtopics, such as Materials &gt; Wool. The last term matches whole words with the same capitalization.</p>' +
       '<details><summary>Topic references and sorting</summary><div data-index-references></div><button type="button" data-add-reference>Add topic reference</button><div data-index-sorts></div><button type="button" data-add-sort>Add sort key</button></details>' +
@@ -107,6 +107,7 @@ export function indexDialog(form, doc, { saved, emptyFrame }, apply) {
       apply(
         indexSettings({
           title: data.get('title'),
+          includeBook: data.has('includeBook'),
           topics: data
             .get('topics')
             .split(/\r?\n/)
@@ -157,6 +158,8 @@ export function indexDialog(form, doc, { saved, emptyFrame }, apply) {
   }
   fields.title.value = saved?.title ?? 'Index';
   fields.topics.value = (saved?.topics || []).map((path) => path.join(' > ')).join('\n');
+  if (fields.includeBook) fields.includeBook.checked = !!saved?.includeBook;
   fields.ranges.checked = saved?.ranges ?? true;
   fields.topics.focus();
+  return dialog;
 }

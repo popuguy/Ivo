@@ -144,6 +144,8 @@ export function cleanHTML(value) {
       const href = safeURL(node.getAttribute('href'));
       if (target && /^[\w-]{1,120}$/.test(target)) {
         out.dataset.docId = target;
+        if (/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(node.dataset.pageId || ''))
+          out.dataset.pageId = node.dataset.pageId;
         out.href = '#doc=' + encodeURIComponent(target);
       } else if (/^#page=[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(node.getAttribute('href') || '')) {
         out.setAttribute('href', node.getAttribute('href'));

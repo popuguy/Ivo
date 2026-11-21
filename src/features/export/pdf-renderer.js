@@ -1,13 +1,12 @@
+import {
+  composePublicationChapter,
+  paintPublicationPage,
+} from '../../rendering/publication-pages.js';
 import { collectPageHeadings } from '../../rendering/text/publication-headings.js';
-import { readyImageWrapResources } from '../../rendering/text/image-contours.js';
 import { pageFolios } from '../../domain/documents/page-sections.js';
 import { prepareVaultFonts } from '../../rendering/text/fonts.js';
-import { parentObjects, orderedPageObjects } from '../../domain/documents/publishing.js';
-import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
-import { sceneObjectHTML, applySceneTypography } from '../../rendering/page-content.js';
-import { readableHTML } from '../../shared/html/sanitize.js';
+import { prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
 import { intersectPDFRect, pdfRectInsidePolygon } from './pdf-plan.js';
-import { composeNativeTextFlows } from '../../rendering/text/native-flow-layout.js';
 import { composedPDFMatrix, composedPDFPolygon, screenToPageMatrix } from './composed-geometry.js';
 
 /** The only renderer used for PDF output: no editor, camera, user scripts or external requests. */
@@ -26,25 +25,15 @@ export async function renderPDFSnapshot(snapshot) {
   root.replaceChildren();
   let rules = '';
   for (const doc of documents) {
-    const imageContours = await readyImageWrapResources(doc, snapshot.assets);
-    const flow = layoutDocumentTextFlows(doc, { imageContours });
-    if (doc.textFlows?.some((f) => f.composition)) {
-      const port = globalThis.ivoTextComposition || globalThis.ivoNative?.textComposition;
-      if (!port) throw Error('This document requires the native text composer for PDF export.');
-      const native = await composeNativeTextFlows(doc, {
-        compose: port.compose,
-        assets: snapshot.assets,
-      });
-      nativeDocuments.set(doc.id, native);
-      for (const [id, part] of native.fragments) flow.fragments.set(id, part);
-      for (const [id, value] of native.status) flow.status.set(id, value);
-    }
-    for (const [_id, part] of flow.fragments)
-      if (!part.native)
-        part.html = readableHTML(part.html, documents, doc.id, {
-          preserveWikiText: true,
-          trustedFlow: true,
-        });
+    const port = globalThis.ivoTextComposition || globalThis.ivoNative?.textComposition;
+    const { flow, native } = await composePublicationChapter(
+      doc,
+      documents,
+      snapshot.assets,
+      port?.compose,
+      true,
+    );
+    if (native) nativeDocuments.set(doc.id, native);
     for (const value of flow.status.values())
       if (value.overset)
         warnings.add(`${doc.title}: document text has overset text that is not included.`);
@@ -63,21 +52,9 @@ export async function renderPDFSnapshot(snapshot) {
       const layout = document.createElement('div');
       layout.className = 'pdf-layout';
       layout.style.cssText = `width:${page.width}px;height:${page.height}px`;
-      const inherited = parentObjects(doc, page),
-        renderDoc = { ...doc, blocks: [...inherited, ...doc.blocks] };
-      layout.innerHTML = [...orderedPageObjects(renderDoc, page.id)]
-        .map((item) =>
-          sceneObjectHTML(item, {
-            document: renderDoc,
-            source,
-            flow,
-            textHTML: (block) => readableHTML(block.html, documents, doc.id),
-          }),
-        )
-        .join('');
       section.append(layout);
       root.append(section);
-      applySceneTypography(layout, renderDoc);
+      const renderDoc = paintPublicationPage(layout, doc, page, { source, flow, documents });
       pages.push({
         documentId: doc.id,
         documentTitle: doc.title,
@@ -176,7 +153,11 @@ export async function renderPDFSnapshot(snapshot) {
       const targetId = anchor.dataset.docId;
       let target;
       if (targetId) {
-        if (destinations.has(targetId)) target = { pageIndex: destinations.get(targetId) };
+        if (anchor.dataset.pageId && destinations.has(targetId)) {
+          const index = pageTargets.get(targetId + '/' + anchor.dataset.pageId);
+          if (index !== undefined) target = { pageIndex: index };
+          else warnings.add('Link to a missing page: ' + anchor.textContent.trim());
+        } else if (destinations.has(targetId)) target = { pageIndex: destinations.get(targetId) };
         else warnings.add(`Link to a document outside this export: ${anchor.textContent.trim()}`);
       } else if (anchor.getAttribute('href')?.startsWith('#page=')) {
         const index = pageTargets.get(page.documentId + '/' + anchor.getAttribute('href').slice(6));

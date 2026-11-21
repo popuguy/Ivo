@@ -1,12 +1,9 @@
 import { contentsSettings } from '../../../domain/documents/contents-settings.js';
-import { pageFolios } from '../../../domain/documents/page-sections.js';
+import { publicationPageLink } from './publication-page-link.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 
-export function contentsHTML(doc, headings, settings, { allowEmpty = false } = {}) {
-  const folios = pageFolios(doc.pages);
-  const entries = doc.pages.flatMap((page, i) =>
-    (headings.get(page.id) || []).map((entry) => ({ ...entry, pageId: page.id, folio: folios[i] })),
-  );
+export function contentsHTML(doc, pages, settings, { allowEmpty = false } = {}) {
+  const entries = pages.flatMap((page) => page.entries.map((entry) => ({ ...entry, page })));
   if (!entries.length && !allowEmpty)
     throw Error(
       'No matching headings on the document pages. Choose a paragraph style or include headings.',
@@ -25,8 +22,8 @@ export function contentsHTML(doc, headings, settings, { allowEmpty = false } = {
     : '';
   const rows = entries.map((e) => {
     const indent = (e.level - firstLevel) * 12;
-    const title = esc(e.title),
-      page = esc(e.folio);
+    const title = e.title,
+      page = e.page.folio;
     const label =
       settings.numbering === 'after'
         ? title + separator + page
@@ -37,11 +34,9 @@ export function contentsHTML(doc, headings, settings, { allowEmpty = false } = {
       '<p' +
       style +
       (indent ? ' data-ivo-left="' + indent + '"' : '') +
-      '><a href="#page=' +
-      esc(e.pageId) +
-      '">' +
-      label +
-      '</a></p>'
+      '>' +
+      publicationPageLink(doc.id, e.page, label) +
+      '</p>'
     );
   });
   if (settings.title) rows.unshift('<p><strong>' + esc(settings.title) + '</strong></p>');
@@ -72,6 +67,9 @@ export function contentsDialog(form, doc, { saved, emptyFrame = false }, apply) 
     'Table of Contents',
     '<label>Title<input name="title" maxlength="256"></label>' +
       '<label class="publishing-check"><input type="checkbox" name="semantic">Include document headings</label>' +
+      (doc.publication?.chapters?.length || settings.includeBook
+        ? '<label class="publishing-check"><input type="checkbox" name="includeBook">Include Book Documents</label>'
+        : '') +
       (styles.length
         ? '<details><summary>Include Paragraph Styles</summary>' + choices + '</details>'
         : '') +
@@ -94,9 +92,10 @@ export function contentsDialog(form, doc, { saved, emptyFrame = false }, apply) 
           .filter((s) => s.value)
           .map((s) => [s.dataset.tocStyle, Number(s.value)]),
       );
-      apply(
+      return apply(
         contentsSettings({
           title: fields.title.value,
+          includeBook: !!fields.includeBook?.checked,
           numbering: fields.numbering.value,
           order: fields.order.value,
           separator: fields.separator.value,
@@ -112,6 +111,7 @@ export function contentsDialog(form, doc, { saved, emptyFrame = false }, apply) 
   modal.setAttribute('aria-label', 'Table of Contents');
   for (const name of ['title', 'numbering', 'order', 'separator', 'entryStyle'])
     fields[name].value = settings[name];
+  if (fields.includeBook) fields.includeBook.checked = !!settings.includeBook;
   fields.semantic.checked = settings.semantic;
   for (const drop of modal.querySelectorAll('[data-toc-style]'))
     drop.value = String(settings.styles[drop.dataset.tocStyle] || '');
@@ -119,4 +119,5 @@ export function contentsDialog(form, doc, { saved, emptyFrame = false }, apply) 
     fields.separator.disabled = fields.numbering.value === 'none';
   };
   fields.numbering.onchange();
+  return modal;
 }

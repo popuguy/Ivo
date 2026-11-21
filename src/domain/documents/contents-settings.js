@@ -12,6 +12,7 @@ export function contentsSettings(value = {}) {
     entryStyle = '',
   } = value;
   if (
+    (value.includeBook !== undefined && typeof value.includeBook !== 'boolean') ||
     typeof title !== 'string' ||
     title.length > 256 ||
     !['after', 'before', 'none'].includes(numbering) ||
@@ -29,7 +30,16 @@ export function contentsSettings(value = {}) {
     (entryStyle && !ID_PATTERN.test(entryStyle))
   )
     throw Error('Check the table of contents settings.');
-  return { title, numbering, order, separator, semantic, styles: { ...styles }, entryStyle };
+  return {
+    ...(value.includeBook && { includeBook: true }),
+    title,
+    numbering,
+    order,
+    separator,
+    semantic,
+    styles: { ...styles },
+    entryStyle,
+  };
 }
 
 export function remapContentsStyles(holder, ids) {
