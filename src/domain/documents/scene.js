@@ -278,7 +278,9 @@ export function removePage(document, id) {
   const index = document.pages.findIndex((page) => page.id === id);
   const section = document.pages[index]?.section,
     next = document.pages[index + 1];
-  if (section && next && !next.section) next.section = section;
+  // Deleting the first page preserves the document's initial section. Other
+  // section starts belong to the removed page, so numbering resumes from above.
+  if (index === 0 && section && next && !next.section) next.section = section;
   document.pages = document.pages.filter((page) => page.id !== id);
   const removed = document.blocks
     .filter((object) => object.pageId === id)

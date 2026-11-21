@@ -152,3 +152,5 @@ Data Merge takes UTF-8 CSV, TSV or semicolon-delimited records. Place `{{column 
 Archive 24 and canvas 23 add optional document `hyphenationExceptions`. Each normalized language key maps to a list of words. Interior tildes specify allowed breaks and a leading tilde prevents automatic breaks. These are layout instructions. The characters typed into the text flow stay intact.
 
 Archive 25 and canvas 24 add an optional `section` to a document page. It stores `style` (decimal, roman-lower or roman-upper), `prefix` and `start` (1–9999 or null to continue numbering). Readers calculate folios from the ordered pages. Page names, page identities, reading order and display numbers are independent.
+
+Archive 26 and canvas 25 extend sections with upper- and lower-case alphabetic folios, two-, three- and four-digit decimal formats, and optional `includePrefix: false`. Hiding a prefix retains its text. Earlier decimal and Roman sections continue to use archive 25.

@@ -1,4 +1,18 @@
-const styles = new Set(['decimal', 'roman-upper', 'roman-lower']);
+export const sectionNumberStyles = {
+  decimal: '1, 2, 3, 4…',
+  'roman-upper': 'I, II, III, IV…',
+  'roman-lower': 'i, ii, iii, iv…',
+  'letters-upper': 'A, B, C, D…',
+  'letters-lower': 'a, b, c, d…',
+  'decimal-2': '01, 02, 03, 04…',
+  'decimal-3': '001, 002, 003, 004…',
+  'decimal-4': '0001, 0002, 0003, 0004…',
+};
+export const extendedPageSection = (section) =>
+  section?.includePrefix === false ||
+  ['letters-upper', 'letters-lower', 'decimal-2', 'decimal-3', 'decimal-4'].includes(
+    section?.style,
+  );
 const romanDigits = [
   [1000, 'M'],
   [900, 'CM'],
@@ -19,8 +33,9 @@ export function pageSection(value) {
   if (
     !value ||
     typeof value !== 'object' ||
-    Object.keys(value).some((k) => !['start', 'style', 'prefix'].includes(k)) ||
-    !styles.has(value.style) ||
+    Object.keys(value).some((k) => !['start', 'style', 'prefix', 'includePrefix'].includes(k)) ||
+    !Object.hasOwn(sectionNumberStyles, value.style) ||
+    (value.includePrefix !== undefined && typeof value.includePrefix !== 'boolean') ||
     (value.start !== null &&
       (!Number.isSafeInteger(value.start) || value.start < 1 || value.start > 9999)) ||
     typeof value.prefix !== 'string' ||
@@ -30,11 +45,25 @@ export function pageSection(value) {
     throw Error(
       'Choose a numbering style, a start from 1 to 9999, and a prefix of up to eight characters without commas or plus signs.',
     );
-  return { start: value.start, style: value.style, prefix: value.prefix };
+  return {
+    start: value.start,
+    style: value.style,
+    prefix: value.prefix,
+    ...(value.includePrefix === false ? { includePrefix: false } : {}),
+  };
 }
 function numberLabel(number, style) {
   if (style === 'decimal') return String(number);
+  if (style.startsWith('decimal-')) return String(number).padStart(Number(style.slice(-1)), '0');
   let label = '';
+  if (style.startsWith('letters-')) {
+    while (number) {
+      number--;
+      label = String.fromCharCode(65 + (number % 26)) + label;
+      number = Math.floor(number / 26);
+    }
+    return style === 'letters-lower' ? label.toLowerCase() : label;
+  }
   for (const [n, symbol] of romanDigits) {
     label += symbol.repeat(Math.floor(number / n));
     number %= n;
@@ -51,6 +80,6 @@ export function pageFolios(pages) {
       section = page.section;
       n = section.start ?? n;
     }
-    return section.prefix + numberLabel(n, section.style);
+    return (section.includePrefix === false ? '' : section.prefix) + numberLabel(n, section.style);
   });
 }

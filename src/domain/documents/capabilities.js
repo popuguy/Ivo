@@ -1,9 +1,10 @@
+import { extendedPageSection } from './page-sections.js';
 import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 25;
-export const CURRENT_CANVAS_VERSION = 24;
+export const CURRENT_ARCHIVE_VERSION = 26;
+export const CURRENT_CANVAS_VERSION = 25;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -332,7 +333,10 @@ function hasAuthoredTextSetting(doc, owns, markup) {
 
 const hasPageSections = (doc) =>
   doc.canvasVersion === 24 || doc.pages?.some((p) => p.section !== undefined);
+export const hasExtendedPageSections = (doc) =>
+  doc.canvasVersion === 25 || doc.pages?.some((p) => extendedPageSection(p.section));
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasExtendedPageSections)) return 26;
   if (documents.some(hasPageSections)) return 25;
   if (documents.some((doc) => doc.hyphenationExceptions !== undefined || doc.canvasVersion === 23))
     return 24;
@@ -365,6 +369,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasExtendedPageSections(document)) {
+    document.canvasVersion = 25;
+    return document;
+  }
   if (hasPageSections(document)) {
     document.canvasVersion = 24;
     return document;

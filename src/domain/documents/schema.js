@@ -26,6 +26,7 @@ import {
   hasSplitLineKeeps,
   hasNoBreak,
   hasHyphenationSettings,
+  hasExtendedPageSections,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -1041,6 +1042,11 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 24) || payload.schemaVersion < 25)
     )
       fail('Numbered sections require archive 25 and canvas 24.');
+    if (
+      hasExtendedPageSections(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 25) || payload.schemaVersion < 26)
+    )
+      fail('Extended section numbering requires archive 26 and canvas 25.');
     if (doc.hyphenationExceptions !== undefined)
       normalized.hyphenationExceptions = hyphenationExceptions(doc.hyphenationExceptions);
     if (doc.publication !== undefined)

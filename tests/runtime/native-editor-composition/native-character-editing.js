@@ -667,13 +667,17 @@ export async function verifyNativeCharacterEditing({
     fields.numbering.dispatchEvent(new Event('change'));
     fields.start.value = '7';
     fields.prefix.value = 'A–';
-    fields.style.value = 'roman-lower';
+    fields.style.value = 'letters-lower';
+    fields.includePrefix.checked = false;
     sectionForm.requestSubmit();
     await settle();
     assert(
       doc.pages.some(
         (p) =>
-          p.section?.prefix === 'A–' && p.section.start === 7 && p.section.style === 'roman-lower',
+          p.section?.prefix === 'A–' &&
+          p.section.start === 7 &&
+          p.section.style === 'letters-lower' &&
+          p.section.includePrefix === false,
       ),
       'Section form failed to apply numbering',
     );
