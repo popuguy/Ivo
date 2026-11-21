@@ -1341,6 +1341,8 @@ function applyHistory(record) {
     ['document-dictionary', canvas.canvasEditing],
     ['load-text-styles', canvas.canvasEditing],
     ['page-link', canvas.canvasEditing],
+    ['generate-index', canvas.canvasEditing],
+    ['update-index', canvas.canvasEditing],
     ['table-of-contents', canvas.canvasEditing],
     ['update-table-of-contents', canvas.canvasEditing],
     ['check-spelling', canvas.canvasEditing],
@@ -1531,6 +1533,18 @@ function installMenu() {
       {
         label: 'Layout',
         submenu: [
+          {
+            id: 'generate-index',
+            label: 'Generate Index…',
+            enabled: false,
+            click: () => sendCommand('generate-index'),
+          },
+          {
+            id: 'update-index',
+            label: 'Update Index',
+            enabled: false,
+            click: () => sendCommand('update-index'),
+          },
           {
             id: 'table-of-contents',
             label: 'Table of Contents…',

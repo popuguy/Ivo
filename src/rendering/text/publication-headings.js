@@ -37,11 +37,19 @@ function headingStarts(root, settings, defaultStyle) {
 /** Find the printed page containing a heading's first character. A subsequent
  * copy of the same paragraph in a continuation cannot create another bookmark. */
 export function collectPageHeadings(doc, flow, pages, settings = doc.publication) {
+  return collectPrintedEntries(doc, flow, pages, {
+    matches: (root, style) => headingStarts(root, settings, style),
+    mayMatch: (html) => Object.keys(settings?.headings || {}).length || /<h[1-6]\b/i.test(html),
+  });
+}
+
+export function collectPrintedEntries(doc, flow, pages, { matches, mayMatch }) {
   const results = new Map(pages.map((page) => [page.pageId, []]));
   const byId = new Map(doc.blocks.map((b) => [b.id, b]));
   const physical = new Map(pages.map((p) => [p.pageId, p]));
   const excluded = new Set(doc.publication?.excluded || []);
-  for (const source of doc.textFlows || []) if (source.contents) excluded.add(source.id);
+  for (const source of doc.textFlows || [])
+    if (source.contents || source.index) excluded.add(source.id);
   function add(id, heading) {
     const block = byId.get(id),
       page = physical.get(block?.pageId);
@@ -63,7 +71,7 @@ export function collectPageHeadings(doc, flow, pages, settings = doc.publication
     if (seen.has(key) || excluded.has(key)) continue;
     seen.add(key);
     const html = source?.html ?? block.html ?? '';
-    if (!Object.keys(settings?.headings || {}).length && !/<h[1-6]\b/i.test(html)) continue;
+    if (mayMatch && !mayMatch(html)) continue;
     const style = source?.style?.paragraphStyle || frameTextSettings(doc, block).paragraphStyle;
     if (!source) {
       const page = physical.get(block.pageId),
@@ -71,7 +79,7 @@ export function collectPageHeadings(doc, flow, pages, settings = doc.publication
       if (!node) continue;
       const frame = node.closest('[data-object]').getBoundingClientRect(),
         sheet = page.section.getBoundingClientRect();
-      for (const h of headingStarts(node, settings, style)) {
+      for (const h of matches(node, style)) {
         const range = document.createRange();
         range.setStart(h.first, h.offset);
         range.setEnd(h.first, h.offset + 1);
@@ -90,7 +98,7 @@ export function collectPageHeadings(doc, flow, pages, settings = doc.publication
     }
     const root = document.createElement('div');
     root.innerHTML = cleanHTML(html);
-    const headings = headingStarts(root, settings, style);
+    const headings = matches(root, style);
     let next = 0;
     for (const id of source.frameIds) {
       const fragment = flow.fragments.get(id);

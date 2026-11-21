@@ -1,4 +1,9 @@
-import { collectPageHeadings } from '../../rendering/text/publication-headings.js';
+import { generatedTextCommands } from './ui/publication-commands.js';
+import { indexMatcher } from '../../rendering/text/subject-index-matches.js';
+import {
+  collectPageHeadings,
+  collectPrintedEntries,
+} from '../../rendering/text/publication-headings.js';
 import { CASE_COMMANDS } from '../../domain/text/change-case.js';
 import { changeSelectedCase } from '../../rendering/text/edit-case.js';
 import { PARENT_FIELDS, parentFieldToken } from '../../domain/documents/running-text.js';
@@ -3043,7 +3048,7 @@ export function mountCanvasEditor(host, options) {
         !objects().length)
     )
       return;
-    if (name === 'table-of-contents' || name === 'update-table-of-contents') {
+    if (Object.hasOwn(generatedTextCommands, name)) {
       if (!options.editing || !canWrite() || options.parentMode) return;
       const owner = doc();
       finishText();
@@ -4608,13 +4613,17 @@ export function mountCanvasEditor(host, options) {
   });
   const publishingControls = installPublishingControls(editor, {
     nativeComposition: !!options.textComposition,
-    readContents(settings) {
+    readContents(settings, kind) {
       if (!canWrite() || pendingContours || nativeSession.pending)
         throw Error('Finish composing the document before generating its contents.');
       const pages = [...world.querySelectorAll('.canvas-page[data-page]')].map((section) => ({
         pageId: section.dataset.page,
         section,
       }));
+      if (kind === 'index')
+        return collectPrintedEntries(doc(), flowPlan, pages, {
+          matches: indexMatcher(settings.topics, doc().language || 'en'),
+        });
       return collectPageHeadings(doc(), flowPlan, pages, {
         semantic: settings.semantic,
         headings: settings.styles,

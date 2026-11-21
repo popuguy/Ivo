@@ -346,7 +346,8 @@ export const hasRunningText = (doc) =>
   );
 export const hasContents = (doc) =>
   doc.canvasVersion === 27 ||
-  (Array.isArray(doc.textFlows) && doc.textFlows.some((flow) => flow?.contents !== undefined));
+  (Array.isArray(doc.textFlows) &&
+    doc.textFlows.some((flow) => flow?.contents !== undefined || flow?.index !== undefined));
 export function archiveVersion(documents, assets = []) {
   if (documents.some(hasContents)) return 28;
   if (

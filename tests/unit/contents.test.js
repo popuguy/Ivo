@@ -5,9 +5,9 @@ import { archiveVersion } from '../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../src/domain/documents/schema.js';
 import { saveTextStyle } from '../../src/domain/documents/publishing.js';
 import {
-  canPlaceContents,
-  writeContents,
-  contentsOwner,
+  canPlacePublicationText,
+  writePublicationText,
+  generatedTextFlow,
 } from '../../src/domain/documents/contents.js';
 import { contentsSettings } from '../../src/domain/documents/contents-settings.js';
 import {
@@ -24,7 +24,7 @@ test('generated contents retain styling and page destinations when duplicating o
   const style = saveTextStyle(doc, 'paragraph', { name: 'Material', attributes: { fontSize: 16 } });
   const settings = contentsSettings({ styles: { [style.id]: 2 }, entryStyle: style.id });
   const markup = '<p><a href="#page=' + pageId + '">Linen</a></p>';
-  const contents = writeContents(doc, null, markup, settings);
+  const contents = writePublicationText(doc, null, markup, settings);
   assert.equal(doc.textFlows[0].automaticPages, true);
   const saved = validateImport({
     schemaVersion: archiveVersion([doc]),
@@ -44,7 +44,7 @@ test('generated contents retain styling and page destinations when duplicating o
   assert(copy.textFlows[0].html.includes('#page=' + copy.pages[0].id));
   const packet = copyObjectSelection(doc, [contents.id]);
   const [pasted] = pasteObjectSelection(doc, packet.archive, { pageId });
-  assert.deepEqual(contentsOwner(doc, pasted).contents.styles, settings.styles);
+  assert.deepEqual(generatedTextFlow(doc, pasted).contents.styles, settings.styles);
   assert(doc.textFlows.find((f) => f.id === pasted.textFlowId).html.includes('#page=' + pageId));
 });
 test('a selected threaded frame owns fixed placement and protected content survives regeneration', () => {
@@ -54,23 +54,26 @@ test('a selected threaded frame owns fixed placement and protected content survi
     b = insertObject(doc, 'text', page, { html: '' });
   const flow = startTextFlow(doc, a.id);
   threadFrame(doc, a.id, b.id);
-  assert(canPlaceContents(doc, b));
-  writeContents(doc, b, '<p>First edition</p>', contentsSettings());
+  assert(canPlacePublicationText(doc, b));
+  writePublicationText(doc, b, '<p>First edition</p>', contentsSettings());
   assert.equal(flow.automaticPages, false);
-  assert.equal(contentsOwner(doc, a).id, flow.id);
-  assert(!canPlaceContents(doc, a));
+  assert.equal(generatedTextFlow(doc, a).id, flow.id);
+  assert(!canPlacePublicationText(doc, a));
   a.locked = true;
-  assert.throws(() => writeContents(doc, b, '', contentsSettings(), { update: true }), /Unlock/);
+  assert.throws(
+    () => writePublicationText(doc, b, '', contentsSettings(), { update: true }),
+    /Unlock/,
+  );
   assert.equal(flow.html, '<p>First edition</p>');
   a.locked = false;
-  writeContents(doc, a, '<p>Second edition</p>', contentsSettings(), { update: true });
+  writePublicationText(doc, a, '<p>Second edition</p>', contentsSettings(), { update: true });
   assert.equal(flow.html, '<p>Second edition</p>');
   removeTextFlowFrames(doc, [b.id]);
   doc.blocks = doc.blocks.filter((block) => block.id !== b.id);
-  writeContents(doc, a, '<p>After deleting the original placement</p>', contentsSettings(), {
+  writePublicationText(doc, a, '<p>After deleting the original placement</p>', contentsSettings(), {
     update: true,
   });
-  assert.equal(contentsOwner(doc, a).id, flow.id);
+  assert.equal(generatedTextFlow(doc, a).id, flow.id);
   assert.equal(doc.pages.length, 1);
   assert.throws(() => contentsSettings({ numbering: 'arbitrary' }), /settings/);
 });

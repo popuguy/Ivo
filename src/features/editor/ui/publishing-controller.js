@@ -1,8 +1,10 @@
+import { generatedTextCommands } from './publication-commands.js';
+import { indexDialog, indexHTML } from './subject-index.js';
 import { contentsDialog, contentsHTML } from './table-of-contents.js';
 import {
-  contentsOwner,
-  canPlaceContents,
-  writeContents,
+  generatedTextFlow,
+  canPlacePublicationText,
+  writePublicationText,
 } from '../../../domain/documents/contents.js';
 import { readyImageWrapResources } from '../../../rendering/text/image-contours.js';
 import { pageFolios } from '../../../domain/documents/page-sections.js';
@@ -1061,40 +1063,41 @@ export function installPublishingControls(
         return true;
       }
       if (!allowed()) return false;
-      if (name === 'table-of-contents' || name === 'update-table-of-contents') {
+      if (Object.hasOwn(generatedTextCommands, name)) {
         if (parentMode) return true;
         const owner = doc(),
           picked = objects().length === 1 ? objects()[0] : null;
-        const contents = contentsOwner(owner, picked),
-          saved = contents?.contents;
+        const { kind, update, title } = generatedTextCommands[name];
+        const saved = generatedTextFlow(owner, picked)?.[kind];
         const apply = (settings, placement) => {
           if (!dialogAllowed() || doc() !== owner || (picked && !owner.blocks.includes(picked)))
             throw Error('The selected document or frame changed.');
-          const target = contents || placement === 'selection' ? picked : null;
-          const html = contentsHTML(owner, readContents(settings), settings, {
-            allowEmpty: !!contents,
+          const target = saved || placement === 'selection' ? picked : null;
+          const generate = kind === 'index' ? indexHTML : contentsHTML;
+          const html = generate(owner, readContents(settings, kind), settings, {
+            allowEmpty: !!saved,
           });
           let written;
-          mutate(
-            () => {
-              written = writeContents(owner, target, html, settings, { update: !!contents });
-              markTypographyVersion(owner);
-              state.activePage = written.pageId;
-              state.selection = [written.id];
-            },
-            contents ? 'Update Table of Contents' : 'Table of Contents',
-          );
+          mutate(() => {
+            written = writePublicationText(owner, target, html, settings, {
+              kind,
+              update: !!saved,
+            });
+            state.activePage = written.pageId;
+            state.selection = [written.id];
+          }, title);
           focusContents(written.id);
         };
-        if (name === 'table-of-contents')
-          contentsDialog(
-            form,
-            owner,
-            { saved, emptyFrame: canPlaceContents(owner, picked) },
-            apply,
+        if (!update) {
+          const open = kind === 'index' ? indexDialog : contentsDialog;
+          open(form, owner, { saved, emptyFrame: canPlacePublicationText(owner, picked) }, apply);
+        } else if (saved) apply(saved);
+        else
+          notify?.(
+            kind === 'index'
+              ? 'Select the index you want to update.'
+              : 'Select the table of contents you want to update.',
           );
-        else if (saved) apply(saved);
-        else notify?.('Select the table of contents you want to update.');
         return true;
       }
       if (name === 'section-options') {

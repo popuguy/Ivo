@@ -4,6 +4,10 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Subject indexes
+
+**Release estimate ~89%.** Generate Index searches for the exact words or phrases specified at the last level of each topic path. Printed occurrences are grouped by topic, sorted and linked to their pages. Ranges end at section boundaries. Generating again updates the selected index and excludes generated material. The five-page editor fixture checks overlapping terms, formatted phrases, duplicates, overset text, and a removed reference. Independent PDFKit inspection verifies the two destinations of a printed range. Individual persistent index markers, custom sort keys, See/See also references and book-wide indexing remain open.
+
 ## Generated tables of contents and page links
 
 **Release estimate ~88% across 63 capabilities.** A single document can generate an editable contents flow from visible headings and named paragraph styles. Placement, regeneration, undo, section folios and persistent settings are exercised in the editor. PDFKit verifies that a linked folio goes to the printed page containing the heading, including a continuation frame in an ordered book. Overset headings are excluded. Page links also work independently through Insert > Page Link. Book-wide contents, named anchors and cross-reference formats remain open.

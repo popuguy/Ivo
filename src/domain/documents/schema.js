@@ -1,3 +1,4 @@
+import { indexSettings } from './subject-index.js';
 import { contentsSettings } from './contents-settings.js';
 import { pageSection } from './page-sections.js';
 import { hyphenationExceptions } from '../text/hyphenation-exceptions.js';
@@ -991,7 +992,10 @@ function validateArchive(payload, parentTemplate) {
           generatedOwners.add(value.pageId);
           return { pageId: value.pageId, frameId: value.frameId };
         });
+        if (textFlow.index !== undefined && textFlow.contents !== undefined)
+          fail('A generated text flow must have a single source.');
         return {
+          ...(textFlow.index !== undefined ? { index: indexSettings(textFlow.index) } : {}),
           id: textFlowId,
           html,
           frameIds,

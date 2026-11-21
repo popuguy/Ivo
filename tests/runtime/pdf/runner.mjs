@@ -1,5 +1,6 @@
+import { indexHTML } from '../../../src/features/editor/ui/subject-index.js';
 import { contentsSettings } from '../../../src/domain/documents/contents-settings.js';
-import { writeContents } from '../../../src/domain/documents/contents.js';
+import { writePublicationText } from '../../../src/domain/documents/contents.js';
 import { contentsHTML } from '../../../src/features/editor/ui/table-of-contents.js';
 import { baselineGridFixture, addGridWrap } from '../../fixtures/text/baseline-grid.js';
 import { verifyPortableTypeSpecimens } from './portable-type.mjs';
@@ -311,7 +312,25 @@ app
         .filter((p) => p.documentId === owner.id)
         .map((p) => [p.pageId, p.headings]),
     );
-    writeContents(withContents, null, contentsHTML(withContents, entries, settings), settings);
+    writePublicationText(
+      withContents,
+      null,
+      contentsHTML(withContents, entries, settings),
+      settings,
+    );
+    const indexOptions = { title: 'Subject index', topics: [['Textiles', 'Weaves']], ranges: true };
+    const matches = new Map(
+      withContents.pages
+        .slice(0, 2)
+        .map((p) => [p.id, [{ title: JSON.stringify(['Textiles', 'Weaves']) }]]),
+    );
+    writePublicationText(
+      withContents,
+      null,
+      indexHTML(withContents, matches, indexOptions),
+      indexOptions,
+      { kind: 'index' },
+    );
     const contentsPDF = await renderPDF(
       createPDFSnapshot([withContents, front], [asset], owner.id, { useBook: true }),
       { project: root },
@@ -326,6 +345,12 @@ app
       tocFile,
     ]);
     const toc = JSON.parse(tocInspected.stdout);
+    assert.match(toc.text[4], /Weaves\s+A–7–A–8/u);
+    for (const dest of [1, 2])
+      assert(
+        toc.pageLinks.some(([from, to]) => from === 4 && to === dest),
+        'Index range endpoint lost its PDF destination',
+      );
     assert.match(toc.text[3], /Woven surfaces\s+A–8/u);
     assert(
       toc.pageLinks.some(([from, to]) => from === 3 && to === 2),
