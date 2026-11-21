@@ -186,6 +186,49 @@ try {
   );
   assert(JSON.stringify(doc) === original, 'Workspace restoration changed document source');
   editor.destroy();
+  localStorage.setItem(
+    'ivo:workspace-panels:1',
+    JSON.stringify({
+      ...saved,
+      groups: [
+        {
+          id: 'first',
+          tabs: ['properties'],
+          active: 'properties',
+          floating: true,
+          rect: { x: 60, y: 50, w: 255, h: 300 },
+        },
+        {
+          id: 'second',
+          tabs: ['pages'],
+          active: 'pages',
+          floating: true,
+          rect: { x: 165, y: 80, w: 255, h: 300 },
+        },
+      ],
+    }),
+  );
+  editor = mountCanvasEditor(host, options);
+  await tick();
+  const first = host.querySelector('[data-context-group="first"]'),
+    second = host.querySelector('[data-context-group="second"]');
+  const a = first.getBoundingClientRect(),
+    b = second.getBoundingClientRect();
+  const frontAtOverlap = () =>
+    document.elementFromPoint(b.left + 30, b.top + 80)?.closest('[data-context-group]');
+  assert(frontAtOverlap() === second, 'The later floating panel should cover the overlap');
+  const exposed = document.elementFromPoint(a.left + 14, a.top + 60);
+  assert(first.contains(exposed), 'Expected an exposed part of the rear panel');
+  pointer(exposed, 'pointerdown', a.left + 14, a.top + 60);
+  pointer(exposed, 'pointerup', a.left + 14, a.top + 60);
+  assert(frontAtOverlap() === first, 'Pressing the exposed panel must raise its entire surface');
+  const tab = second.querySelector('[data-canvas-panel="pages"]');
+  tab.focus();
+  assert(
+    document.activeElement === tab && frontAtOverlap() === second,
+    'Keyboard focus must raise the retained panel without replacing its controls',
+  );
+  editor.destroy();
   console.log(
     'IVO_WORKSPACE_RESULT:' +
       JSON.stringify({

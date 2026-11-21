@@ -5,7 +5,7 @@ import {
   panelPreset,
   DEFAULT_DOCK_WIDTH,
 } from '../../../domain/workspace/panels.js';
-import { createPanelDragPreview, nativeDockHit } from './panel-drag.js';
+import { createPanelDragPreview, nativeDockHit, frontmostPanelGroups } from './panel-drag.js';
 const KEY = 'ivo:workspace-panels:1';
 const finite = (value, fallback) => (Number.isFinite(value) ? value : fallback);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -151,6 +151,21 @@ export function installWorkspacePanels(
     onRender();
     return true;
   }
+  function syncStack() {
+    let rank = 0;
+    for (const element of groups.values()) {
+      const index = element.dataset.floating === 'true' ? String(rank++) : '';
+      if (element.style.getPropertyValue('--panel-stack-index') !== index)
+        element.style.setProperty('--panel-stack-index', index);
+    }
+  }
+  function raiseGroup(element) {
+    if (element?.dataset.floating !== 'true' || [...groups.values()].at(-1) === element) return;
+    const id = element.dataset.contextGroup;
+    groups.delete(id);
+    groups.set(id, element);
+    syncStack();
+  }
   function apply() {
     const bounds = size(),
       used = new Set(),
@@ -177,7 +192,9 @@ export function installWorkspacePanels(
       }
       const parent = value.floating ? editor : dock;
       if (element.parentElement !== parent) parent.append(element);
+      const newlyFloating = value.floating && element.dataset.floating !== 'true';
       element.dataset.floating = String(value.floating);
+      if (newlyFloating) raiseGroup(element);
       element.hidden = value.collapsed || !value.tabs.some(local);
       element.classList.toggle('context-group-collapsed', value.collapsed);
       const rect = panelBounds(value.rect, bounds),
@@ -217,6 +234,7 @@ export function installWorkspacePanels(
         element.remove();
         groups.delete(id);
       }
+    syncStack();
     // Restore dock order without disturbing retained controls in each group.
     let at = 0;
     for (const group of saved.groups.filter((group) => !group.floating)) {
@@ -306,6 +324,8 @@ export function installWorkspacePanels(
       );
     const previousGroup = selectedGroup;
     selectedGroup = group?.id || selectedGroup;
+    if (kind === 'move' && document.activeElement?.matches('.canvas-panel-microbar button'))
+      document.activeElement.blur();
     if (kind === 'resize') {
       target.dataset.pointerFocus = '';
       target.focus({ preventScroll: true });
@@ -335,21 +355,34 @@ export function installWorkspacePanels(
     editor.dataset.panelGesture = kind;
   }
   function hit(event, exclude) {
-    return saved.groups.find((value) => {
-      if (value.id === exclude || value.collapsed) return false;
-      const rect = groups.get(value.id).querySelector('.canvas-panel-tabs').getBoundingClientRect();
-      return (
+    for (const element of frontmostPanelGroups(groups)) {
+      if (element.dataset.contextGroup === exclude) continue;
+      const rect = element.querySelector('.canvas-panel-tabs').getBoundingClientRect();
+      if (
+        rect.width > 0 &&
         event.clientX >= rect.left &&
         event.clientX <= rect.right &&
         event.clientY >= rect.top - 8 &&
         event.clientY <= rect.bottom + 8
-      );
-    });
+      )
+        return saved.groups.find((group) => group.id === element.dataset.contextGroup);
+      const box = element.getBoundingClientRect();
+      if (
+        event.clientX >= box.left &&
+        event.clientX < box.right &&
+        event.clientY >= box.top &&
+        event.clientY < box.bottom
+      )
+        return null;
+    }
+    return null;
   }
+  listen(editor, 'focusin', (event) => raiseGroup(event.target.closest('[data-context-group]')));
   listen(
     editor,
     'pointerdown',
     (event) => {
+      raiseGroup(event.target.closest('[data-context-group]'));
       if (event.target.closest('[data-workspace-action]')) return;
       const group = saved.groups.find(
           (value) =>
@@ -960,7 +993,10 @@ export function installWorkspacePanels(
       if (kind) saved.closed = saved.closed.filter((k) => k !== kind);
       else if (saved.closed.length === panels.size)
         saved.closed = saved.closed.filter((k) => k !== 'properties');
-      if (kind) select(kind);
+      if (kind) {
+        raiseGroup(groups.get(groupFor(kind)?.id));
+        select(kind);
+      }
       for (const group of saved.groups) group.collapsed = false;
       editor.classList.add('show-properties');
       apply();

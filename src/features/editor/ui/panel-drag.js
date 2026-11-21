@@ -1,9 +1,15 @@
 import { panelDockTarget } from '../../../domain/workspace/panel-drag.js';
 
+export function frontmostPanelGroups(groups) {
+  return [...groups.values()]
+    .reverse()
+    .filter((el) => !el.hidden)
+    .sort((a, b) => Number(b.dataset.floating === 'true') - Number(a.dataset.floating === 'true'));
+}
+
 export function nativeDockHit(surface, groups, x, y, guide, preview) {
   const workspace = surface.getBoundingClientRect();
-  const visible = [...groups.values()]
-    .filter((element) => !element.hidden)
+  const visible = frontmostPanelGroups(groups)
     .map((element) => {
       return {
         id: element.dataset.contextGroup,

@@ -6,6 +6,7 @@ import { openVault } from '../../../desktop/vault.mjs';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
 import { createPDFSnapshot } from '../../../src/features/export/pdf-plan.js';
+import { collapsedToHeader, verifyPaletteSurfaces } from './palette-surfaces.mjs';
 import { layersFor } from '../../../src/domain/documents/publishing.js';
 
 const directory = process.env.IVO_WINDOW_TEST_DIR,
@@ -267,18 +268,19 @@ async function verifyPaletteDrag(window, palettes) {
   await capture(palette, 'detached-layers-chrome.png');
   const expanded = palette.getBounds();
   await execute(palette, "document.querySelector('[data-palette-collapse]').click()");
-  await wait(() => palette.getBounds().height === 42, 'Palette collapsed to its two bars');
+  await wait(() => collapsedToHeader(palette), 'Palette collapsed to its two bars');
   await execute(palette, "document.querySelector('[data-palette-collapse]').click()");
   await wait(
     () => palette.getBounds().height === expanded.height,
     'Palette restored its working height',
   );
+  palette.focus();
+  await wait(() => palette.isFocused(), 'Focus the separate panel before dragging its title');
   const header = await center(palette, '[data-palette-name]');
   const destination = await center(window, tab);
   assert.ok(destination);
   // Capture starts in the utility. Derive each destination in the moving window’s coordinates.
   mouse(palette, 'mouseDown', header);
-  mouse(palette, 'mouseMove', { x: header.x + 12, y: header.y });
   const origin = window.getContentBounds();
   const relative = () => {
     const bounds = palette.getContentBounds();
@@ -292,6 +294,14 @@ async function verifyPaletteDrag(window, palettes) {
         "Array.from(document.querySelectorAll('.native-panel-dock-guide')).some(el => !el.hidden)",
       ),
     'Returning the palette over a tab previews its insertion',
+  );
+  assert.equal(
+    await execute(
+      palette,
+      "getComputedStyle(document.querySelector('[data-palette-close]')).outlineStyle",
+    ),
+    'none',
+    'Dragging the title must not paint a focus ring on Close',
   );
   mouse(palette, 'mouseUp', relative());
   await wait(() => palette.isDestroyed(), 'Dropping the held native title tab reattached Layers');
@@ -454,7 +464,7 @@ async function verifyFloatingPalette(first, originalId) {
   await wait(() => locked(true, false), 'Detached document received the shared action');
 
   await execute(palette, "document.querySelector('[data-palette-collapse]').click()");
-  await wait(() => palette.getBounds().height === 42, 'Collapsed palette retained its native menu');
+  await wait(() => collapsedToHeader(palette), 'Collapsed palette retained its native menu');
   Menu.prototype.popup = function (options) {
     assert.equal(options.window, palette);
     assert.ok(this.getMenuItemById('close-panel').enabled);
@@ -517,6 +527,7 @@ async function verifyInspectorPalettes(win, target, neighbor, palettes) {
     links = await openTabMenu('links', '[data-canvas-command=link]'),
     wrap = await openTabMenu('text-wrap', '[data-text-wrap-mode]');
   assert.equal(palettes().length, 4);
+  await verifyPaletteSurfaces(props, pages, wait);
   assert.equal(await execute(wrap, "document.querySelectorAll('[data-text-wrap-mode]').length"), 5);
   assert.ok(
     await execute(

@@ -1,5 +1,9 @@
 /* Interface colors belong to editor chrome. Artboards, text runs and layer colors
    remain owned by the document. Dialogs are portaled outside the scene editor. */
+:root {
+  --panel-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  --panel-shadow-inset: 4px 5px 6px;
+}
 .scene-editor,
 .palette-surface,
 .publishing-style-dialog {
@@ -35,6 +39,12 @@
   font-family: var(--interface-font);
   font-size: 12px;
 }
+.palette-window .canvas-panel-content > :is(.pages-panel, .layers-panel),
+.context-panel-group[data-floating='true']
+  .canvas-panel-content
+  > :is(.pages-panel, .layers-panel) {
+  background: transparent;
+}
 .context-panel-group .canvas-panel-microbar {
   height: 13px;
   min-height: 13px;
@@ -52,6 +62,10 @@
   padding: 0 2px;
   margin: 0;
   min-height: 0;
+}
+.scene-editor .canvas-panel-microbar button:focus-visible {
+  outline: 1px solid var(--panel-accent);
+  outline-offset: -1px;
 }
 .context-panel-group .canvas-panel-microbar .reference-icon {
   width: 10px;
@@ -772,9 +786,8 @@
   overflow: hidden;
   pointer-events: none;
   user-select: none;
-  background: #f0f0f0;
   border: 1px solid #bdbdbd;
-  box-shadow: 0 3px 12px #0003;
+  box-shadow: var(--panel-shadow);
 }
 
 .publishing-style-dialog [data-tab-stops] {

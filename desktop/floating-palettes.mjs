@@ -53,6 +53,22 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     const window = BrowserWindow.getFocusedWindow();
     return [...windows.values()].find((item) => item.window === window);
   }
+  // Keep the sibling order when the app hides and restores its utility windows.
+  function raise(palette) {
+    if (!applicationActive || !palette?.window.isVisible()) return;
+    if ([...windows.values()].at(-1) !== palette) {
+      windows.delete(palette.kind);
+      windows.set(palette.kind, palette);
+      // AppKit keeps a separate stacking order for sibling child windows.
+      // Reinsert this child above its siblings without changing the document target.
+      const parent = palette.window.getParentWindow();
+      if (parent && process.platform === 'darwin') {
+        palette.window.setParentWindow(null);
+        palette.window.setParentWindow(parent);
+      }
+    }
+    palette.window.moveTop();
+  }
   function finishLift(palette) {
     if (!palette.liftSource) return;
     dockPointer(palette.liftSource, 'lifted', palette.kind, null, palette.liftId);
@@ -90,6 +106,7 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     const existing = windows.get(kind);
     if (existing) {
       syncWindow(existing);
+      raise(existing);
       return true;
     }
     const origin = record.window.getBounds();
@@ -116,8 +133,9 @@ export function installFloatingPalettes({ owner, preload, url, session, document
       parent: record.window,
       roundedCorners: false,
       hasShadow: false,
-      transparent: process.platform === 'darwin',
-      backgroundColor: process.platform === 'darwin' ? '#00000000' : '#f0f0f0',
+      transparent: true,
+      backgroundColor: '#00000000',
+      acceptFirstMouse: true,
       minWidth: 190,
       minHeight: 150,
       show: false,
@@ -136,7 +154,10 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     const palette = { window, kind, view: null, revision: null, waitForControls };
     windows.set(kind, palette);
     window.setMenu(null);
-    window.on('focus', () => onMenuChange());
+    window.on('focus', () => {
+      raise(palette);
+      onMenuChange();
+    });
 
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -293,15 +314,17 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     pendingDrop = null;
     if (accepted === true && !palette.window.isDestroyed()) palette.window.close();
   });
-  ipcMain.on('ivo:palette-collapse', (event, collapsed) => {
+  ipcMain.on('ivo:palette-raise', (event) => raise(fromPalette(event)));
+  ipcMain.on('ivo:palette-collapse', (event, collapsed, barHeight) => {
     const palette = fromPalette(event);
     if (!palette || typeof collapsed !== 'boolean' || collapsed === !!palette.expandedHeight)
       return;
     const win = palette.window;
     const [width, height] = win.getSize();
-    const nextHeight = collapsed ? 42 : palette.expandedHeight;
+    if (collapsed && (!Number.isInteger(barHeight) || barHeight < 32 || barHeight > 128)) return;
+    const nextHeight = collapsed ? barHeight : palette.expandedHeight;
     palette.expandedHeight = collapsed ? height : null;
-    win.setMinimumSize(190, collapsed ? 42 : 150);
+    win.setMinimumSize(190, collapsed ? nextHeight : 150);
     win.setSize(width, nextHeight, false);
   });
   function hidePalette(palette) {

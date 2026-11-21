@@ -1,4 +1,5 @@
-html,
+/* The native window, document canvas and shadow gutter must all preserve alpha. */
+:root.floating-window,
 body.palette-window {
   height: 100%;
   margin: 0;
@@ -18,13 +19,22 @@ body.palette-window {
   border: 0;
 }
 .palette-window .palette-surface {
-  padding: 1px 3px 4px;
+  padding: var(--panel-shadow-inset);
+  outline: none;
   background: transparent;
 }
 .palette-window .context-panel-group {
   border-radius: 0;
-  box-shadow: 0 1px 3px #0003;
+  box-shadow: var(--panel-shadow);
+  background: var(--panel-surface-fill, var(--panel-bg));
   border: 1px solid var(--panel-control-border);
+}
+.palette-window [data-palette-handle] button:focus {
+  outline: none;
+}
+.palette-window[data-keyboard-navigation] [data-palette-handle] button:focus-visible {
+  outline: 1px solid var(--panel-accent);
+  outline-offset: -1px;
 }
 .palette-window [data-palette-handle] {
   touch-action: none;

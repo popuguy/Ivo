@@ -190,6 +190,22 @@ const fieldFocus = () =>
   );
 document.addEventListener('focusin', fieldFocus);
 document.addEventListener('focusout', () => queueMicrotask(fieldFocus));
+const surface = document.querySelector('.palette-surface');
+document.addEventListener(
+  'pointerdown',
+  () => {
+    delete document.body.dataset.keyboardNavigation;
+    bridge.raise();
+  },
+  { capture: true },
+);
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (event.key === 'Tab') document.body.dataset.keyboardNavigation = '';
+  },
+  { capture: true },
+);
 const close = document.querySelector('[data-palette-close]');
 const collapse = document.querySelector('[data-palette-collapse]');
 const menuButton = document.querySelector('[data-palette-menu]');
@@ -213,12 +229,20 @@ collapse.addEventListener('click', () => {
   const label = collapsed ? 'Expand panel' : 'Collapse panel';
   collapse.setAttribute('aria-label', label);
   collapse.title = label;
-  bridge.collapse(collapsed);
+  const header = document.querySelector('.context-panel-header');
+  const barHeight = Math.ceil(
+    header.getBoundingClientRect().bottom +
+      parseFloat(getComputedStyle(surface).paddingBottom) +
+      parseFloat(getComputedStyle(header.parentElement).borderBottomWidth),
+  );
+  bridge.collapse(collapsed, barHeight);
 });
 document.addEventListener('pointerdown', (event) => {
   const handle = event.target.closest('[data-palette-handle]');
   if (!handle || event.button !== 0 || event.target.closest('button')) return;
   event.preventDefault();
+  // Keep an active property field editable; a title drag must never arm Close.
+  if (!content.contains(document.activeElement)) surface.focus({ preventScroll: true });
   handle.setPointerCapture(event.pointerId);
   handleDrag = {
     id: crypto.randomUUID(),
@@ -261,6 +285,7 @@ document.addEventListener('pointerup', (event) => finishHandle('drop', event));
 for (const type of ['lostpointercapture', 'pointercancel'])
   document.addEventListener(type, (event) => finishHandle('cancel', event));
 window.addEventListener('blur', () => {
+  delete document.body.dataset.keyboardNavigation;
   finishHandle('cancel');
 });
 window.addEventListener('keydown', (event) => {

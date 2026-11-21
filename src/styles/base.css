@@ -3243,7 +3243,7 @@ dialog li {
   top: 0;
   bottom: 0;
   width: var(--context-panel-width, 224px);
-  z-index: 21;
+  z-index: 29;
   pointer-events: none;
   border: 2px solid #4268d4;
   background: #4268d41c;

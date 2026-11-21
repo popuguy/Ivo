@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('ivoPalette', {
   dock: () => ipcRenderer.send('ivo:palette-close'),
   menu: (x, y) => ipcRenderer.invoke('ivo:palette-menu', x, y),
   drag: (value) => ipcRenderer.send('ivo:palette-drag', value),
-  collapse: (value) => ipcRenderer.send('ivo:palette-collapse', value),
+  raise: () => ipcRenderer.send('ivo:palette-raise'),
+  collapse: (value, barHeight) => ipcRenderer.send('ivo:palette-collapse', value, barHeight),
   close: () => ipcRenderer.send('ivo:palette-hide'),
 });

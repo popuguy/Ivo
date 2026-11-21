@@ -1051,9 +1051,10 @@ body.sidebar-collapsed .workspace-sidebar-resize {
   position: absolute;
   display: flex;
   inset: auto;
-  z-index: 20;
-  border: 1px solid #969da7;
-  box-shadow: 2px 4px 12px #0003;
+  z-index: calc(20 + var(--panel-stack-index, 0));
+  border: 1px solid var(--panel-control-border);
+  background: var(--panel-surface-fill, var(--panel-bg));
+  box-shadow: var(--panel-shadow);
 }
 .scene-editor .context-panel-group.context-group-collapsed {
   display: none !important;
