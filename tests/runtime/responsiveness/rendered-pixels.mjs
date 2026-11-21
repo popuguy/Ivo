@@ -33,14 +33,46 @@ export function observeRenderedActions(contents, viewport) {
       bytes = crop(image, active.region, viewport);
     active.frames.push({ elapsed: now - active.start, bytes });
   });
+  // The compositor sometimes skips a notification for ink already painted on
+  // the window. Read the same surface when the stream is quiet. A sample can
+  // only improve a timing if its pixels match, at the time the read completes.
+  function sampleQuietFrames(sample) {
+    let reading;
+    const timer = setInterval(() => {
+      const last = sample.frames.at(-1)?.elapsed ?? 0;
+      if (reading || performance.now() - sample.start - last < 25) return;
+      const count = sample.frames.length;
+      reading = contents
+        .capturePage()
+        .then((image) => {
+          const elapsed = performance.now() - sample.start;
+          if (active === sample && sample.frames.length === count)
+            sample.frames.push({ elapsed, bytes: crop(image, sample.region, viewport) });
+        })
+        .catch((error) => {
+          sample.error = error;
+        })
+        .finally(() => {
+          reading = null;
+        });
+    }, 17);
+    return async () => {
+      clearInterval(timer);
+      await reading;
+    };
+  }
   async function measure(region, dispatch, label = 'Input') {
     const sample = { region, frames: [] };
+    let stopSampling;
     try {
       const baseline = crop(await contents.capturePage(), region, viewport);
       sample.start = performance.now();
       active = sample;
+      stopSampling = sampleQuietFrames(sample);
       await dispatch();
       await pause(260);
+      await stopSampling();
+      if (sample.error) throw sample.error;
       // Idle or occluded windows can stop delivering callbacks between changes.
       // Independently read the settled surface rather than trusting the last callback.
       const image = await contents.capturePage();
@@ -63,47 +95,27 @@ export function observeRenderedActions(contents, viewport) {
       };
     } finally {
       active = null;
+      await stopSampling?.();
     }
   }
   // The crop sits downstream of the insertion point, beyond the entire typed
   // word. A blinking or moving caret cannot count as progress here.
   async function measureBurst(region, text, dispatch, interval) {
     const sample = { region, frames: [] };
-    let timer, reading;
+    let stopSampling;
     try {
       const baseline = crop(await contents.capturePage(), region, viewport);
       const keys = [];
       sample.start = performance.now();
       active = sample;
-      // Chromium can stop sending compositor callbacks when successive frames
-      // are identical. If the stream goes quiet, independently sample the
-      // window surface. Timestamp its arrival, never an earlier requested time.
-      timer = setInterval(() => {
-        const last = sample.frames.at(-1)?.elapsed ?? 0;
-        if (reading || performance.now() - sample.start - last < 35) return;
-        const count = sample.frames.length;
-        reading = contents
-          .capturePage()
-          .then((image) => {
-            const elapsed = performance.now() - sample.start;
-            if (active === sample && sample.frames.length === count)
-              sample.frames.push({ elapsed, bytes: crop(image, region, viewport) });
-          })
-          .catch((error) => {
-            sample.error = error;
-          })
-          .finally(() => {
-            reading = null;
-          });
-      }, 17);
+      stopSampling = sampleQuietFrames(sample);
       for (const letter of text) {
         if (keys.length) await pause(interval);
         keys.push(performance.now() - sample.start);
         dispatch(letter);
       }
       await pause(400);
-      clearInterval(timer);
-      await reading;
+      await stopSampling();
       if (sample.error) throw sample.error;
       const final = crop(await contents.capturePage(), region, viewport);
       function changes(a, b) {
@@ -133,8 +145,8 @@ export function observeRenderedActions(contents, viewport) {
         whileTyping: paints.filter((time) => time < keys.at(-1)).length,
       };
     } finally {
-      clearInterval(timer);
       active = null;
+      await stopSampling?.();
     }
   }
   async function containsInk(region) {
