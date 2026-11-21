@@ -109,22 +109,24 @@ test(
       if (result.error) throw new Error(result.error);
       return result;
     };
-    const mobile = await createFileVault({
-      directory: folder,
-      hash: async (bytes) => (await call({ method: 'hash', data: encodeBytes(bytes) })).sha256,
-      initialize: () => call({ method: 'initialize' }),
-      read: async (relative) => {
-        const { data } = await call({ method: 'read', path: relative });
-        return data === null ? null : decodeBytes(data);
-      },
-      writeAtomic: (relative, bytes, guard = {}) =>
-        call({
-          method: 'write',
-          path: relative,
-          data: encodeBytes(bytes),
-          expectedHash: guard.expectedHash ?? null,
-        }),
-    });
+    const openMobile = () =>
+      createFileVault({
+        directory: folder,
+        hash: async (bytes) => (await call({ method: 'hash', data: encodeBytes(bytes) })).sha256,
+        initialize: () => call({ method: 'initialize' }),
+        read: async (relative) => {
+          const { data } = await call({ method: 'read', path: relative });
+          return data === null ? null : decodeBytes(data);
+        },
+        writeAtomic: (relative, bytes, guard = {}) =>
+          call({
+            method: 'write',
+            path: relative,
+            data: encodeBytes(bytes),
+            expectedHash: guard.expectedHash ?? null,
+          }),
+      });
+    const mobile = await openMobile();
     assert.deepEqual(await mobile.loadDocuments(), [document, scene]);
     assert.deepEqual(await mobile.loadAssets(), [asset]);
     await mobile.saveDocument({ ...document, title: 'From iPhone', version: 2 });
@@ -271,6 +273,22 @@ test(
       /changed outside/,
     );
     assert.equal(await fs.readFile(path.join(folder, 'atlas.json'), 'utf8'), manifest);
+    const card = createSceneDocument('Supply card'),
+      table = insertObject(card, 'table', card.pages[0].id);
+    table.table.headerRows = 1;
+    table.table.cells[0][0] = 'Fibre';
+    table.table.cells[1][0] = 'Шёлк\n丝';
+    table.table.merges.push({ row: 1, column: 0, rows: 1, columns: 2 });
+    await libraryReopened.saveDocument(card);
+    const phone = await openMobile(),
+      onPhone = (await phone.loadDocuments()).find((d) => d.id === card.id);
+    assert.deepEqual(onPhone.blocks[0].table, table.table);
+    onPhone.blocks[0].table.cells[2][1] = 'Lino';
+    onPhone.version++;
+    await phone.saveDocument(onPhone);
+    const again = await openVault(folder),
+      onMac = (await again.loadDocuments()).find((d) => d.id === card.id);
+    assert.deepEqual(onMac.blocks[0].table, onPhone.blocks[0].table);
     assert.equal(stderr, '');
     child.stdin.end();
     await new Promise((resolve) => child.on('close', resolve));
