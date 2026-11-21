@@ -289,6 +289,16 @@ function fontResolver(assets) {
   };
 }
 
+export function nativeTextColumnWidth(frame) {
+  const f = frame.frameOptions || {};
+  const count = f.columns ?? 1;
+  return (
+    (frame.w - (f.insetLeft || 0) - (f.insetRight || 0) - (count - 1) * (f.gutter ?? 12)) /
+    count /
+    (frame.textScale?.x ?? 1)
+  );
+}
+
 /** Unscaled, inset column slots; physical frame geometry and authored source remain unchanged. */
 export function nativeFlowColumns(doc, flow, useGrid = false) {
   const result = [];
@@ -304,8 +314,7 @@ export function nativeFlowColumns(doc, flow, useGrid = false) {
       sy = frame.textScale?.y ?? 1,
       count = f.columns ?? 1,
       gutter = f.gutter ?? 12,
-      width =
-        (frame.w - (f.insetLeft || 0) - (f.insetRight || 0) - (count - 1) * gutter) / count / sx,
+      width = nativeTextColumnWidth(frame),
       height = (frame.h - (f.insetTop || 0) - (f.insetBottom || 0)) / sy;
     if (
       ![sx, sy, width, height].every((n) => Number.isFinite(n) && n > 0) ||

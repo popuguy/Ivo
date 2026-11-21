@@ -1,6 +1,8 @@
+import { installTabRuler } from './tab-ruler.js';
 import { MAX_TAB_STOPS, tabStopSettings, tabStopsValue } from '../../../domain/text/tab-stops.js';
 
 const stopFields =
+  '<div class="tab-ruler-controls"><div data-tab-ruler role="group" aria-label="Tab ruler in points"></div><button type="button" data-repeat-tab>Repeat Tab</button></div>' +
   '<div data-tab-stops></div><button type="button" data-add-stop>Add tab stop</button>' +
   '<button type="button" data-clear-stops>Clear All</button>';
 
@@ -11,10 +13,10 @@ export const styleTabFields =
   stopFields +
   '</fieldset></details>';
 
-export function installStyleTabs(dialog, value) {
+export function installStyleTabs(dialog, value, width, leftIndent) {
   const mode = dialog.querySelector('[name=tabStopsMode]');
   const controls = dialog.querySelector('[data-custom-stops]');
-  const read = installStops(controls, tabStopSettings(value));
+  const read = installStops(controls, tabStopSettings(value), width, leftIndent);
   mode.value = value === undefined ? 'inherit' : value === 'normal' ? 'normal' : 'custom';
   function sync() {
     controls.hidden = controls.disabled = mode.value !== 'custom';
@@ -25,7 +27,7 @@ export function installStyleTabs(dialog, value) {
     mode.value === 'inherit' ? undefined : mode.value === 'normal' ? 'normal' : read(true);
 }
 
-export function openTabsForm(form, summary, apply) {
+export function openTabsForm(form, summary, apply, width) {
   const mixed = summary.mixed.includes('tabStops');
   const dialog = form(
     'Tabs',
@@ -37,15 +39,26 @@ export function openTabsForm(form, summary, apply) {
       apply(value === undefined ? {} : { tabStops: value });
     },
   );
-  const read = installStops(dialog, mixed ? [] : tabStopSettings(summary.values.tabStops));
+  const read = installStops(
+    dialog,
+    mixed ? [] : tabStopSettings(summary.values.tabStops),
+    width,
+    summary.values.leftIndent,
+  );
   dialog.setAttribute('aria-label', 'Tabs');
   return dialog;
 }
 
-function installStops(dialog, initial) {
+function installStops(dialog, initial, width, leftIndent = 0) {
+  let redraw = () => {};
   let touched = false;
   const list = dialog.querySelector('[data-tab-stops]');
   const add = dialog.querySelector('[data-add-stop]');
+  function removeRow(row) {
+    row.remove();
+    add.disabled = false;
+    redraw();
+  }
   function addRow({ position, alignment, character, leader }) {
     const row = document.createElement('fieldset');
     row.innerHTML =
@@ -63,20 +76,45 @@ function installStops(dialog, initial) {
     };
     select.addEventListener('change', sync);
     row.querySelector('[data-remove-stop]').addEventListener('click', () => {
-      row.remove();
-      add.disabled = false;
+      removeRow(row);
       touched = true;
     });
     sync();
     list.append(row);
     add.disabled = list.childElementCount >= MAX_TAB_STOPS;
+    redraw();
     return number;
   }
+  function readRow(row) {
+    const alignment = row.querySelector('select').value;
+    const leader = row.querySelector('[data-leader]').value;
+    return {
+      ...(leader ? { leader } : {}),
+      position: row.querySelector('[type=number]').valueAsNumber,
+      alignment,
+      ...(alignment === 'decimal'
+        ? { character: row.querySelector('[data-character]').value }
+        : {}),
+    };
+  }
+  redraw = installTabRuler(dialog, width, leftIndent, {
+    list,
+    add: addRow,
+    read: readRow,
+    remove: removeRow,
+    limit: MAX_TAB_STOPS,
+    changed() {
+      touched = true;
+    },
+  });
   initial.forEach(addRow);
-  list.addEventListener('input', () => {
+  redraw();
+  list.addEventListener('input', (e) => {
+    redraw(e.target.closest('fieldset'));
     touched = true;
   });
-  list.addEventListener('change', () => {
+  list.addEventListener('change', (e) => {
+    redraw(e.target.closest('fieldset'));
     touched = true;
   });
   add.addEventListener('click', () => {
@@ -91,25 +129,13 @@ function installStops(dialog, initial) {
   });
   dialog.querySelector('[data-clear-stops]').addEventListener('click', () => {
     list.replaceChildren();
+    redraw();
     add.disabled = false;
     touched = true;
   });
   return (all = false) => {
     if (!touched && !all) return undefined;
-    const stops = [...list.children]
-      .map((row) => {
-        const alignment = row.querySelector('select').value;
-        const leader = row.querySelector('[data-leader]').value;
-        return {
-          ...(leader ? { leader } : {}),
-          position: row.querySelector('[type=number]').valueAsNumber,
-          alignment,
-          ...(alignment === 'decimal'
-            ? { character: row.querySelector('[data-character]').value }
-            : {}),
-        };
-      })
-      .sort((a, b) => a.position - b.position);
+    const stops = [...list.children].map(readRow).sort((a, b) => a.position - b.position);
     return tabStopsValue(stops);
   };
 }

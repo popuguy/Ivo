@@ -780,7 +780,8 @@
 .publishing-style-dialog [data-tab-stops] {
   display: grid;
   gap: 6px;
-  max-height: min(55vh, 440px);
+  height: min(32vh, 208px);
+  align-content: start;
   overflow-y: auto;
 }
 .publishing-style-dialog [data-tab-stops] fieldset {
@@ -801,4 +802,64 @@
 .publishing-style-dialog [data-tab-stops] select {
   min-width: 0;
   width: 100%;
+}
+
+.tab-ruler-controls[hidden] {
+  display: none;
+}
+.tab-ruler-controls {
+  display: grid;
+  gap: 4px;
+  margin: 0 7px 8px;
+}
+.tab-ruler-controls > button {
+  justify-self: end;
+}
+[data-tab-ruler] {
+  position: relative;
+  height: 38px;
+  user-select: none;
+  touch-action: none;
+  border-bottom: 1px solid var(--panel-control-border);
+  background: repeating-linear-gradient(
+      to right,
+      var(--panel-control-border) 0 1px,
+      transparent 1px var(--ruler-step)
+    )
+    left bottom / 100% 11px no-repeat;
+}
+[data-tab-ruler] span {
+  position: absolute;
+  top: 1px;
+  font-size: 10px;
+  pointer-events: none;
+  color: var(--muted);
+}
+.publishing-style-dialog [data-tab-ruler] button {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: 0;
+  bottom: 0;
+  width: 14px;
+  min-width: 0;
+  height: 17px;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+}
+.publishing-style-dialog [data-tab-ruler] button::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 5px;
+  width: 5px;
+  height: 10px;
+  background: currentColor;
+}
+.publishing-style-dialog [data-tab-ruler] button[aria-pressed='true'] {
+  color: var(--panel-accent, #4268d4);
+}
+.tab-stop-selected {
+  outline: 1px solid var(--panel-control-border);
+  outline-offset: -1px;
 }

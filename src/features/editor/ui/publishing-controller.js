@@ -1,3 +1,4 @@
+import { nativeTextColumnWidth } from '../../../rendering/text/native-flow-layout.js';
 import {
   openHyphenationForm,
   hyphenationStyleFields,
@@ -195,9 +196,8 @@ export function installPublishingControls(
     closeWordSpacingDialog();
     const isKeep = name === 'keep-options';
     const title = name === 'tabs' ? 'Tabs' : isKeep ? 'Keep Options' : 'Hyphenation';
-    const openForm =
-      name === 'tabs' ? openTabsForm : isKeep ? openKeepOptionsForm : openHyphenationForm;
-    const dialog = openForm(form, summary, (patch) => {
+    const openForm = isKeep ? openKeepOptionsForm : openHyphenationForm;
+    const apply = (patch) => {
       const current = nativeTextFlow();
       if (
         !dialogAllowed?.() ||
@@ -208,7 +208,11 @@ export function installPublishingControls(
         throw Error(`The text selection changed. Reopen ${title} for the current text.`);
       if (Object.keys(patch).length) applyTextSettings(patch, title);
       render();
-    });
+    };
+    const dialog =
+      name === 'tabs'
+        ? openTabsForm(form, summary, apply, nativeTextColumnWidth(objects()[0]))
+        : openForm(form, summary, apply);
     paragraphDialog = dialog;
     dialog.addEventListener(
       'close',
@@ -445,7 +449,13 @@ export function installPublishingControls(
         );
       },
     );
-    if (nativeParagraphOptions) readStyleTabs = installStyleTabs(dialog, attributes.tabStops);
+    if (nativeParagraphOptions)
+      readStyleTabs = installStyleTabs(
+        dialog,
+        attributes.tabStops,
+        item && nativeTextColumnWidth(item),
+        Number(attributes.leftIndent) || 0,
+      );
     const mode = dialog.querySelector('[data-style-word-spacing-mode]');
     if (mode) {
       const reflect = () => {

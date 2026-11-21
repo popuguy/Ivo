@@ -1057,6 +1057,49 @@ export async function verifyNativeParagraphKeeps({
     await editor.command('tabs');
     const tabs = document.querySelector('dialog[aria-label="Tabs"]');
     assert(tabs?.open, 'Type > Tabs did not open the tab editor');
+    const ruler = tabs.querySelector('[data-tab-ruler]');
+    const bounds = ruler.getBoundingClientRect();
+    const pointer = (target, type, fraction, y = bounds.bottom - 3) =>
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          button: 0,
+          pointerId: 1,
+          clientX: bounds.left + fraction * bounds.width,
+          clientY: y,
+        }),
+      );
+    pointer(ruler, 'pointerdown', 0.2);
+    pointer(ruler, 'pointercancel', 0.2);
+    assert(!ruler.querySelector('button'), 'Cancelling a new stop left a marker');
+    pointer(ruler, 'pointerdown', 0.2);
+    pointer(ruler, 'pointerup', 0.2);
+    const marker = ruler.querySelector('[data-tab-marker]');
+    assert(marker && !marker.hidden, 'Clicking the ruler failed to add a stop');
+    pointer(marker, 'pointerdown', 0.2);
+    pointer(ruler, 'pointermove', 0.25);
+    pointer(ruler, 'pointerup', 0.25);
+    const firstX = tabs.querySelector('[data-tab-stops] input[type=number]');
+    assert(
+      Math.abs(firstX.valueAsNumber - 45) < 0.5,
+      'Ruler pointer did not map to a quarter of the actual frame column: ' + firstX.value,
+    );
+    firstX.value = '45';
+    firstX.dispatchEvent(new Event('input', { bubbles: true }));
+    tabs.querySelector('[data-repeat-tab]').click();
+    assert(
+      [...tabs.querySelectorAll('[data-tab-stops] input[type=number]')]
+        .map((n) => n.value)
+        .join() === '45,90,135,180',
+      'Repeat Tab did not fill the active column at the selected interval',
+    );
+    pointer(marker, 'pointerdown', 0.25);
+    pointer(ruler, 'pointerup', 0.25, bounds.bottom + 20);
+    assert(
+      tabs.querySelectorAll('[data-tab-marker]').length === 3,
+      'Dragging a stop off the ruler retained its hit target',
+    );
+    tabs.querySelector('[data-clear-stops]').click();
     tabs.querySelector('[data-add-stop]').click();
     const stop = tabs.querySelector('fieldset');
     stop.querySelector('input[type=number]').value = '90';
