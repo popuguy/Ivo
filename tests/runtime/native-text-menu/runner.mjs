@@ -308,8 +308,28 @@ void (async () => {
     window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Shift', modifiers: [] });
     // Whole-frame formatting requires a selected text frame; this fixture now
     // also contains independent shape selections from its arrangement cases.
-    const framePoint = await execute(
-      `(()=>{const r=document.querySelector('[data-object="${frame.id}"]').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+    window.setContentSize(960, 700);
+    await wait(() => execute('innerWidth <= 960'), 'Compact document window');
+    send('fit-page');
+    await execute(
+      'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
+    );
+    const framePoint = await wait(
+      () =>
+        execute(`(()=>{
+      const object=document.querySelector('[data-object="${frame.id}"]');
+      const frame=object.getBoundingClientRect();
+      const view=document.querySelector('.canvas-viewport').getBoundingClientRect();
+      const left=Math.max(view.left,frame.left), top=Math.max(view.top,frame.top);
+      const width=Math.min(view.right,frame.right)-left, height=Math.min(view.bottom,frame.bottom)-top;
+      if (width<4 || height<4) return null;
+      for(const fx of [0.5,0.2,0.8]) for(const fy of [0.5,0.2,0.8]){
+        const x=Math.round(left+width*fx), y=Math.round(top+height*fy);
+        if(document.elementFromPoint(x,y)?.closest('[data-object]')===object) return {x,y};
+      }
+      return null;
+    })()`),
+      'Visible hittable text frame',
     );
     for (const type of ['mouseMove', 'mouseDown', 'mouseUp'])
       window.webContents.sendInputEvent({
