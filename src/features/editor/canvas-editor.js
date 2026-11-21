@@ -1,3 +1,6 @@
+import { tableMarkup } from '../../rendering/table.js';
+import { tableText } from '../../domain/documents/table-clipboard.js';
+import { installTableControls } from './ui/table-controls.js';
 import { effectivePPI } from '../../domain/documents/preflight-profiles.js';
 import { generatedTextCommands } from './ui/publication-commands.js';
 import { indexMatcher } from '../../rendering/text/subject-index-matches.js';
@@ -275,6 +278,7 @@ export function mountCanvasEditor(host, options) {
   let parentEditor = null;
   let textSummary = null;
   const ownsInput = () => options.isActive?.() !== false && !parentEditor;
+  let tables;
   const canWrite = () => options.canWrite?.() !== false;
   const flowLayoutKey = () => compositionLayoutKey(doc()) + ':' + canWrite();
   const nativeGeometryReady = (event) => {
@@ -414,8 +418,8 @@ export function mountCanvasEditor(host, options) {
           placedImages.set(image.closest('[data-object]')?.dataset.object, image);
       const frames = new Map();
       if (profile.checks.includes('overset'))
-        for (const el of world.querySelectorAll('[data-scene-text]'))
-          frames.set(el.dataset.sceneText, el);
+        for (const el of world.querySelectorAll('[data-scene-text], .table-frame'))
+          frames.set(el.closest('[data-object]').dataset.object, el);
       return [
         current,
         {
@@ -637,6 +641,7 @@ export function mountCanvasEditor(host, options) {
         }[state.tool];
   }
   function select(id) {
+    tables?.finish();
     endTextEditing();
     setSelectionState(id);
     const item = object();
@@ -645,6 +650,7 @@ export function mountCanvasEditor(host, options) {
     renderSelection(true);
   }
   function mutate(callback, label = 'Edit', lockButton = null) {
+    tables?.finish();
     finishGesture();
     const viewBefore = captureView();
     if (activeTextId) endTextEditing();
@@ -846,6 +852,7 @@ export function mountCanvasEditor(host, options) {
       }
   }
   function paint() {
+    tables?.finish();
     sceneRevision++;
     updateFlowPlan();
     setSelectionState(state.selection);
@@ -900,6 +907,7 @@ export function mountCanvasEditor(host, options) {
     if (selectionDirty) {
       const item = object(),
         items = objects();
+      tables?.mark(items.length === 1 ? item : null);
       editor.style.setProperty('--selection', item ? layerFor(doc(), item).color : '#4268d4');
       selection.replaceChildren();
       selectionFrame = null;
@@ -2520,6 +2528,18 @@ export function mountCanvasEditor(host, options) {
   let lastHit = null;
   function pointerDown(event) {
     if (!ownsInput() || busy || dialogOpen() || (event.button !== 0 && event.button !== 1)) return;
+    if (event.target.closest('[data-table-editor]')) return;
+    if (!space && tables.startDivider(event)) return;
+    if (
+      !space &&
+      event.button === 0 &&
+      state.tool === 'text' &&
+      tables.edit(event.target.closest('[data-table-row]'))
+    ) {
+      event.preventDefault();
+      return;
+    }
+    tables.finish();
     if (
       !space &&
       event.button === 0 &&
@@ -2952,6 +2972,11 @@ export function mountCanvasEditor(host, options) {
   }
   async function command(name, { anchor } = {}) {
     if (!ownsInput() || busy || dialogOpen() || composing) return;
+    tables?.finish();
+    if (name === 'insert-table' || name === 'table-options') {
+      tables.open(name);
+      return;
+    }
     if (
       options.parentMode &&
       [
@@ -3531,8 +3556,13 @@ export function mountCanvasEditor(host, options) {
         ].join('<br>'),
       );
       event.clipboardData.setData(OBJECT_CLIPBOARD_TYPE, value);
-      event.clipboardData.setData('text/html', text.innerHTML);
-      event.clipboardData.setData('text/plain', text.textContent || 'Ivo objects');
+      const copied = payload.archive.documents[0].blocks;
+      const table = copied.length === 1 && copied[0].table;
+      event.clipboardData.setData('text/html', table ? tableMarkup(table) : text.innerHTML);
+      event.clipboardData.setData(
+        'text/plain',
+        table ? tableText(table) : text.textContent || 'Ivo objects',
+      );
       event.preventDefault();
       if (event.type === 'cut')
         mutate(() => {
@@ -3608,7 +3638,10 @@ export function mountCanvasEditor(host, options) {
       }
     }
     if (hit && !state.selection.includes(hit) && !activeTextId) select(hit);
-    const context = { selected: objects().length > 0, textEditing: !!activeTextId };
+    const targetCell = event.target.closest('[data-table-row]');
+    const table = object()?.type === 'table';
+    if (table && targetCell) tables.remember(targetCell);
+    const context = { selected: objects().length > 0, textEditing: !!activeTextId, table };
     if (options.nativeContextMenu !== false && globalThis.ivoNative?.showContextMenu) {
       globalThis.ivoNative
         .showContextMenu(context)
@@ -3619,7 +3652,7 @@ export function mountCanvasEditor(host, options) {
     contextMenu = document.createElement('div');
     contextMenu.className = 'canvas-context-menu';
     contextMenu.setAttribute('role', 'menu');
-    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button>${
+    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="insert-table">Insert table…</button>${table ? '<button role="menuitem" data-canvas-command="table-options">Table options…</button>' : ''}<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button>${
       context.textEditing
         ? Object.entries({
             ...INSERT_CHARACTERS,
@@ -4189,6 +4222,11 @@ export function mountCanvasEditor(host, options) {
   });
   listen(viewport, 'dblclick', (event) => {
     if (!options.editing) return;
+    if (
+      ['text', 'direct', 'select'].includes(state.tool) &&
+      tables.edit(event.target.closest('[data-table-row]'))
+    )
+      return;
     if (event.target.closest('[data-type-circle]')) {
       convertText();
       return;
@@ -4654,6 +4692,7 @@ export function mountCanvasEditor(host, options) {
       }));
       if (kind === 'index')
         return collectPrintedEntries(doc(), flowPlan, pages, {
+          includeTables: true,
           matches: indexMatcher(settings.topics, doc().language || 'en'),
         });
       return collectPageHeadings(doc(), flowPlan, pages, {
@@ -4732,6 +4771,28 @@ export function mountCanvasEditor(host, options) {
     allowed: () =>
       (!!sourceTextFlow()?.composition || activeText()?.hasAttribute('data-flow-wrap')) && alive,
     isComposing: () => composing,
+  });
+  tables = installTableControls({
+    doc,
+    world,
+    selected: object,
+    select,
+    available: objectAvailable,
+    allowed: () =>
+      alive &&
+      options.editing &&
+      ownsInput() &&
+      canWrite() &&
+      !busy &&
+      !composing &&
+      !options.parentMode,
+    mutate,
+    insertionContext,
+    form: publishingControls.openForm,
+    notify: options.onNotify,
+    captureView,
+    onCommit,
+    run: command,
   });
   nativeSession = createCompositionSession({
     getDocument: doc,
@@ -5049,12 +5110,14 @@ export function mountCanvasEditor(host, options) {
     },
     finish() {
       parentEditor?.finish();
+      tables?.finish();
       finishGesture();
       const element = activeText();
       if (element && composing) element.blur();
       finishText();
     },
     async flush() {
+      tables.flush();
       if (parentEditor) await parentEditor.flush();
       await publishingControls.flush();
       finishGesture();
@@ -5081,6 +5144,7 @@ export function mountCanvasEditor(host, options) {
     },
     destroy() {
       findChange.close();
+      tables?.finish();
       spelling.close();
       finishGesture();
       endTextEditing();

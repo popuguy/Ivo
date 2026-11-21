@@ -131,9 +131,15 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
   const parent = parentId && sceneObject(document, parentId);
   if (parent && (parent.type !== 'polygon' || parent.pageId !== pageId))
     throw new Error('Draw inside requires a polygon on this page.');
-  const defaults = ['text', 'quote'].includes(type) && basicParagraph(document);
+  const basic = basicParagraph(document);
+  const defaults = ['text', 'quote'].includes(type) && basic;
   const wrap = document.extensions?.ivoTextWrapDefaults;
   const object = makeObject(type, pageId, {
+    ...(type === 'table' &&
+      basic && {
+        textStyle: basic.attributes.textStyle || 'cmu-serif',
+        fontSize: basic.attributes.fontSize || 16,
+      }),
     ...(wrap && { textWrap: structuredClone(wrap) }),
     ...(defaults && { ...defaults.attributes, paragraphStyle: defaults.id }),
     ...overrides,
@@ -161,6 +167,7 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
     object.h = overrides.h ?? parent.h;
   }
   document.blocks.push(object);
+  if (type === 'table') document.canvasVersion = Math.max(document.canvasVersion || 0, 28);
   if (wrap && object.textWrap?.mode !== 'none') ensureTextWrapFlows(document);
   return object;
 }

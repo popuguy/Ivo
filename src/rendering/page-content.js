@@ -1,3 +1,5 @@
+import { tableMarkup, tableDividers } from './table.js';
+import { fontFamilyFor } from '../domain/text/typography.js';
 import { frameTextSettings } from '../domain/documents/text-flows.js';
 import { objectAvailable, effectiveTextStyle } from '../domain/documents/publishing.js';
 import { applyNamedTextStyles } from './text/styles.js';
@@ -26,6 +28,16 @@ export function sceneObjectHTML(
   let content;
   if (item.type === 'polygon')
     content = `<svg class="canvas-polygon" viewBox="0 0 ${item.w} ${item.h}" preserveAspectRatio="none" aria-label="Polygon"><polygon points="${item.points.map((p) => `${p.x * item.w},${p.y * item.h}`).join(' ')}" fill="${item.fill}" stroke="${item.stroke}" stroke-width="${item.strokeWidth}"/></svg>${kids.length ? `<div class="canvas-clip" style="clip-path:polygon(${item.points.map((p) => `${p.x * 100}% ${p.y * 100}%`).join(',')})">${kids.map(render).join('')}</div>` : ''}`;
+  else if (item.type === 'table')
+    content =
+      '<div class="table-frame" style="font-family:' +
+      esc(fontFamilyFor(item.textStyle) || 'serif') +
+      ';font-size:' +
+      item.fontSize +
+      'px">' +
+      tableMarkup(item.table, { layout: true }) +
+      (editing ? tableDividers(item.table) : '') +
+      '</div>';
   else if (item.type === 'image')
     content = item.src
       ? `<figure><div class="canvas-image-frame"><img draggable="false" src="${esc(source(item.src))}" alt="${esc(item.alt || 'Image')}" style="object-fit:${item.fit === 'contain' ? 'contain' : 'cover'};object-position:${item.crop?.x ?? 50}% ${item.crop?.y ?? 50}%"></div>${item.caption ? `<figcaption>${esc(item.caption)}</figcaption>` : ''}</figure>`

@@ -10,46 +10,29 @@ function separator(text) {
   return ',';
 }
 
-export function parseMergeRecords(source) {
+export function readDelimitedRows(
+  source,
+  { delimiter, keepBlank = false, maxRows = Infinity, maxColumns = Infinity } = {},
+) {
   const text = source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
-  const delim = separator(text);
+  const delim = delimiter || separator(text);
   let row = [],
     field = '',
     quoted = false,
     closed = false,
-    started = false,
-    headers;
+    started = false;
   const records = [];
   const finishField = () => {
+    if (row.length >= maxColumns) throw Error('Too many columns.');
     row.push(field);
     field = '';
     closed = false;
   };
   function finishRow() {
-    if (started) {
+    if (started || keepBlank) {
+      if (records.length >= maxRows) throw Error('Too many rows.');
       finishField();
-      if (!headers) {
-        headers = row.map((s) => s.trim());
-        if (
-          headers.some((s) => !s || /[{}\n]/.test(s) || s === '@') ||
-          new Set(headers).size !== headers.length
-        )
-          throw Error(
-            'Use a unique, nonempty name for every column. Braces and line breaks are reserved.',
-          );
-      } else {
-        if (row.length !== headers.length)
-          throw Error(
-            'Record ' +
-              (records.length + 1) +
-              ' has ' +
-              row.length +
-              ' fields. Expected ' +
-              headers.length +
-              '.',
-          );
-        records.push(row);
-      }
+      records.push(row);
     }
     row = [];
     field = '';
@@ -83,10 +66,28 @@ export function parseMergeRecords(source) {
     else field += c;
   }
   if (quoted) throw Error('Unclosed quotation mark in the data source.');
-  finishRow();
-  if (!headers || !records.length)
-    throw Error('Choose a file with column names and at least one record.');
-  return { headers, records };
+  if (started) finishRow();
+  return records;
+}
+
+export function parseMergeRecords(source) {
+  const [headers, ...records] = readDelimitedRows(source);
+  if (!headers) throw Error('Choose a file with column names and at least one record.');
+  const names = headers.map((s) => s.trim());
+  if (
+    names.some((s) => !s || /[{}\n]/.test(s) || s === '@') ||
+    new Set(names).size !== names.length
+  )
+    throw Error(
+      'Use a unique, nonempty name for every column. Braces and line breaks are reserved.',
+    );
+  for (const [i, row] of records.entries())
+    if (row.length !== names.length)
+      throw Error(
+        'Record ' + (i + 1) + ' has ' + row.length + ' fields. Expected ' + names.length + '.',
+      );
+  if (!records.length) throw Error('Choose a file with column names and at least one record.');
+  return { headers: names, records };
 }
 
 export function mergeRecordRange(first, last, count) {

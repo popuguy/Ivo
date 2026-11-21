@@ -25,6 +25,16 @@ export async function verifySubjectIndex(host, assert) {
     h: 22,
     html: '<p>Body</p><p>Brocade</p>',
   });
+  const samples = insertObject(doc, 'table', pages[1].id, {
+    x: 10,
+    y: 310,
+    w: 300,
+    h: 48,
+    fontSize: 12,
+  }).table;
+  samples.cells[0][0] = 'Mohair';
+  samples.cells[1][0] = 'first\nsecond\nthird\nfourth';
+  samples.cells[3][0] = 'Clipped cell';
   const editor = mountCanvasEditor(host, {
     getDocument: () => doc,
     documents: [doc],
@@ -40,6 +50,13 @@ export async function verifySubjectIndex(host, assert) {
     assert(form, 'Generate Index did not open');
     form.elements.topics.value =
       'Materials > Wool\nGarments > Wool coat\nLining\nBrocade\nMaterials > Wool';
+    form.elements.topics.value += '\nMohair\nClipped cell';
+    form.querySelector('[data-add-reference]').click();
+    form.elements.namedItem('ref-from').value = 'Fleece';
+    form.elements.namedItem('ref-to').value = 'Materials > Wool';
+    form.querySelector('[data-add-sort]').click();
+    form.elements.namedItem('sort-path').value = 'Mohair';
+    form.elements.namedItem('sort-key').value = 'AAA';
     form.requestSubmit();
     const flow = doc.textFlows?.find((f) => f.index);
     assert(
@@ -54,6 +71,19 @@ export async function verifySubjectIndex(host, assert) {
     };
     const row = (name) =>
       [...html().querySelectorAll('p')].find((p) => p.textContent.startsWith(name + '\u2003'));
+    assert(
+      row('Fleece')?.textContent === 'Fleece\u2003See Materials > Wool' &&
+        row('Fleece').querySelector('a').hash === '#page=' + pages[0].id,
+      'Missing or misdirected See reference',
+    );
+    assert(
+      row('Mohair')?.textContent === 'Mohair\u2003ii' && !row('Clipped cell'),
+      'Incorrect table index page: ' + flow.html,
+    );
+    assert(
+      [...html().querySelectorAll('p')][1].textContent.startsWith('Mohair'),
+      'Custom sort key ignored',
+    );
     assert(row('Wool')?.textContent === 'Wool\u2003i–iii, A–20', 'Bad page ranges: ' + flow.html);
     assert(
       row('Wool coat')?.textContent === 'Wool coat\u2003i, A–20',
@@ -70,7 +100,7 @@ export async function verifySubjectIndex(host, assert) {
       'Incorrect alphabetical order',
     );
     assert(
-      flow.index.topics.length === 4 && doc.pages.length === 6,
+      flow.index.topics.length === 6 && doc.pages.length === 6,
       'Duplicate topics or unexpected pagination',
     );
     copy[1].html = '<p>Other material.</p>';

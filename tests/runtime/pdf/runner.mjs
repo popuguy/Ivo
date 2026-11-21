@@ -284,6 +284,17 @@ app
     threadFrame(owner, intro.id, continuation.id);
     enableNativeComposition(owner, indexedFlow, 'single-line');
     markTypographyVersion(owner);
+    const swatches = insertObject(owner, 'table', {
+      pageId: owner.pages[0].id,
+      x: 40,
+      y: 320,
+      w: 270,
+      h: 108,
+      fontSize: 10,
+    }).table;
+    swatches.headerRows = 1;
+    swatches.cells[0][0] = 'Weave sample';
+    swatches.cells[1][0] = 'Linen twill';
     const book = createPDFSnapshot([owner, front], [asset], owner.id, { useBook: true });
     const bookPDF = await renderPDF(book, { project: root });
     assert.deepEqual(
@@ -300,6 +311,7 @@ app
       bookFile,
     ]);
     const outline = JSON.parse(inspected.stdout);
+    assert.match(outline.text[1], /Linen twill/);
     assert.deepEqual(outline.labels, ['i', 'A–7', 'A–8']);
     assert(
       outline.pageLinks.some(([from, to]) => from === 1 && to === 2),

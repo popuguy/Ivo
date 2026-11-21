@@ -1,3 +1,4 @@
+import { verifyTables } from './tables.js';
 import { verifySubjectIndex } from './subject-index.js';
 import { verifyContents } from './contents.js';
 import { verifyNestedLayers } from './nested-layers.js';
@@ -45,6 +46,7 @@ try {
   });
   frame.html = `<p data-ivo-pstyle="${body.id}">Precision in proportion.</p><p>Text, geometry and materials work together.</p>`;
   const host = document.querySelector('#host');
+  await verifyTables(host, assert);
   await verifyContents(host, assert);
   await verifySubjectIndex(host, assert);
   await verifyTextControls(host);

@@ -166,6 +166,12 @@ export async function renderPDFSnapshot(snapshot) {
         composedText.set(composition.token, layer);
       }
     }
+    for (const table of page.section.querySelectorAll('.table-frame')) {
+      if (table.scrollHeight > table.clientHeight + 1 || table.scrollWidth > table.clientWidth + 1)
+        warnings.add(
+          `${page.doc.title}: table content extends outside its frame on page ${pageIndex + 1}.`,
+        );
+    }
     for (const anchor of page.section.querySelectorAll('a')) {
       const targetId = anchor.dataset.docId;
       let target;

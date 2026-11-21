@@ -1,3 +1,4 @@
+import { tableMarkup } from '../../rendering/table.js';
 import { publicationHeadingLevel } from '../../rendering/text/publication-headings.js';
 import { orderPublicationEntries } from '../../domain/documents/publication-order.js';
 import { objectAvailable, effectiveTextStyle } from '../../domain/documents/publishing.js';
@@ -263,7 +264,8 @@ export async function exportReflowableBook(
             (item.caption ? '<figcaption>' + xml(item.caption) + '</figcaption>' : '') +
             '</figure>',
         );
-      } else if (item.type === 'rule') body.push('<hr/>');
+      } else if (item.type === 'table') body.push(tableMarkup(item.table, { escape: xml }));
+      else if (item.type === 'rule') body.push('<hr/>');
       else body.push(chapterText(entry, doc, documents, paths, headings));
     }
     add(

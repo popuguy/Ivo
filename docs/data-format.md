@@ -160,3 +160,9 @@ Archive 27 and canvas 26 support intrinsic picture contours and running text. A 
 Archive 28 and canvas 27 support a generated table of contents. Its source text flow stores a `contents` object with title, heading selection, style IDs, level assignments, sorting, separator and page-number placement. The flow HTML is an editable snapshot. Only an explicit update regenerates it. Internal page hyperlinks use the stable page ID in `#page=…`. Duplicating an entire document remaps its destinations.
 
 In the same format, a generated subject index stores `index` on its text flow. It contains a title, up to 256 distinct paths of one to four topic levels, and a switch for combining consecutive page references within a numbering section. A flow can own one type of generated publication text.
+
+## Archive 29 and canvas 28
+
+A page object of type `table` owns its cell strings exclusively in `table.cells`. It carries positive relative column widths, rectangular merges, header and footer row counts, cell inset, rule weight and vertical alignment. A merge is owned by its top-left cell. Covered cells must be empty. A merge stays within a single row group. At least one body row is required. Limits are 256 rows, 64 columns, 4,096 cells, 16,000 UTF-16 code units per cell and one million per table. A table is unthreaded. Resizing its frame does not discard overset text.
+
+An index flow may also retain `index.references` (source topic path, See or See also, destination path) and `index.sortKeys` (topic path and collation text). Documents using these fields or table objects require archive 29 and canvas 28. Existing documents without either feature can retain earlier format versions. Profile exchange uses a separate versioned JSON file and does not change the vault document format.

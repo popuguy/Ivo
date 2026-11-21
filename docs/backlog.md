@@ -172,6 +172,10 @@ Equation/TeX editing, citations, bibliographies, figures and scientific cross-re
 
 The 15 November architecture pass reorganizes the shared engine and feature owners, adds explicit compatibility migration, standard builds and automated boundary checks. See [architecture](architecture.md), [current state](development/STATE.md) and [contributor guide](../CONTRIBUTING.md). Cloud, mobile validation and the other queued requirements above remain outstanding; moving modules does not change their feature status.
 
+## Remaining table and publishing work
+
+Page tables now support structural editing, column dragging and spreadsheet paste. The next table milestone is placing one table in a threaded text flow, keeping merged rows together where possible and repeating header and footer rows on continuation pages. Richer cell text, table and cell styles, and iPhone/iPad input checks remain outstanding. Subject indexes support See/See also and custom sorting. Persistent individual markers and book-wide regeneration remain outstanding. Preflight profiles can be exchanged as files. Print color and separation checks remain outstanding.
+
 ## Progress discipline
 
 Continue without a per-increment review stop. For each increment: link its tests/reference evidence and material limits, update this list, update the current development state, and provide a reviewable app build. Preserve existing documents and keep native tests in separate atlases/profiles. A stronger native study or a new review may change the order; adding an observation is never “jumping the gun.”

@@ -51,6 +51,8 @@ async function verifyBook(window) {
       chapter.includes('start="3"') &&
       chapter.includes('<ol start="5"><li>Denim</li><li value="8">Silk</li></ol>') &&
       !chapter.includes('data-ivo-list-series') &&
+      chapter.includes('<th scope="col">Fiber &amp; finish</th>') &&
+      chapter.includes('<td colspan="2">&lt;twill&gt;</td>') &&
       chapter.includes('Orange triangular swatch') &&
       chapter.includes('href="chapter-2.xhtml"'),
     'EPUB chapter semantics',

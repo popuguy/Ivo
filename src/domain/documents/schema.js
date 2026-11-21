@@ -1,3 +1,4 @@
+import { validateTable } from './tables.js';
 import { indexSettings } from './subject-index.js';
 import { contentsSettings } from './contents-settings.js';
 import { pageSection } from './page-sections.js';
@@ -32,6 +33,8 @@ import {
   hasRasterWrap,
   hasRunningText,
   hasContents,
+  hasTables,
+  hasIndexReferences,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -487,6 +490,17 @@ function validateArchive(payload, parentTemplate) {
         crop: position(block.crop, `${key}.crop`),
         objectPosition: position(block.objectPosition ?? block.crop, `${key}.objectPosition`),
       };
+      if (block.type === 'table') {
+        if (!paged || !supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29)
+          fail('Tables require archive 29 and canvas 28.');
+        if (html || block.textFlowId) fail('A table must have one cell source.');
+        normalized.table = validateTable(block.table);
+        totalHtml += normalized.table.cells.reduce(
+          (n, row) => row.reduce((v, cell) => v + cell.length, n),
+          0,
+        );
+        if (totalHtml > 20_000_000) fail('Total document text exceeds 20 million characters.');
+      } else if (block.table !== undefined) fail('Only table objects can own cells.');
       if (['text', 'quote'].includes(block.type)) {
         typography(block, normalized, key);
         normalized.textKind = enumeration(
@@ -1069,6 +1083,13 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 25) || payload.schemaVersion < 26)
     )
       fail('Extended section numbering requires archive 26 and canvas 25.');
+    if (
+      hasIndexReferences(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29)
+    )
+      fail('Index references require archive 29 and canvas 28.');
+    if (hasTables(doc) && (!supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29))
+      fail('Tables require archive 29 and canvas 28.');
     if (hasContents(doc) && (!supportedCanvas(doc.canvasVersion, 27) || payload.schemaVersion < 28))
       fail('Generated contents require archive 28 and canvas 27.');
     if (doc.hyphenationExceptions !== undefined)

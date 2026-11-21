@@ -3,8 +3,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 28;
-export const CURRENT_CANVAS_VERSION = 27;
+export const CURRENT_ARCHIVE_VERSION = 29;
+export const CURRENT_CANVAS_VERSION = 28;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -344,11 +344,18 @@ export const hasRunningText = (doc) =>
   [...(doc.blocks || []), ...(doc.publishing?.parents || []).flatMap((p) => p.blocks || [])].some(
     (b) => b.extensions?.ivoRunningText === true,
   );
+export const hasTables = (doc) =>
+  doc.canvasVersion === 28 ||
+  doc.blocks?.some((b) => b?.type === 'table') ||
+  doc.publishing?.parents?.some((p) => p.blocks?.some((b) => b?.type === 'table'));
+export const hasIndexReferences = (doc) =>
+  doc.textFlows?.some((f) => f?.index?.references?.length || f?.index?.sortKeys?.length);
 export const hasContents = (doc) =>
   doc.canvasVersion === 27 ||
   (Array.isArray(doc.textFlows) &&
     doc.textFlows.some((flow) => flow?.contents !== undefined || flow?.index !== undefined));
 export function archiveVersion(documents, assets = []) {
+  if (documents.some((doc) => hasTables(doc) || hasIndexReferences(doc))) return 29;
   if (documents.some(hasContents)) return 28;
   if (
     documents.some((doc) => doc.canvasVersion === 26 || hasRasterWrap(doc) || hasRunningText(doc))
@@ -387,6 +394,10 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasTables(document) || hasIndexReferences(document)) {
+    document.canvasVersion = 28;
+    return document;
+  }
   if (hasContents(document)) {
     document.canvasVersion = 27;
     return document;

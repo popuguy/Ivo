@@ -1,3 +1,4 @@
+import { tableMarkup } from '../../rendering/table.js';
 import { attribute, decodeEntities, plainText } from '../../domain/text/html.js';
 import { createDocumentResolver as resolver } from '../../domain/knowledge/index.js';
 function markdownText(text) {
@@ -83,6 +84,7 @@ export function exportMarkdown(doc, documents = []) {
       meta.push(
         `[${markdownText(block.caption || block.alt || 'PDF document')}](${markdownUrl(source)})`,
       );
+    else if (block.type === 'table') meta.push(tableMarkup(block.table));
     else if (block.type === 'rule') meta.push('---');
     else if (block.type === 'quote')
       meta.push(

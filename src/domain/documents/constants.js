@@ -7,6 +7,7 @@ export const BLOCK_TYPES = new Set([
   'equation',
   'citation',
   'polygon',
+  'table',
 ]);
 
 export const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/;

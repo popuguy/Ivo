@@ -46,3 +46,24 @@ export function effectivePPI({ pixelsWide, pixelsHigh, width, height, fit }) {
   const ratio = (fit === 'contain' ? Math.max : Math.min)(pixelsWide / width, pixelsHigh / height);
   return ratio * 72;
 }
+
+export function encodePreflightProfile(profile) {
+  return JSON.stringify(
+    { format: 'ivo-preflight-profile', version: 1, profile: preflightProfile(profile) },
+    null,
+    2,
+  );
+}
+export function decodePreflightProfile(source) {
+  if (typeof source !== 'string' || source.length > 32768)
+    throw Error('Choose an Ivo preflight profile under 32 KB.');
+  let value;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    throw Error('This file is not a JSON preflight profile.');
+  }
+  if (value?.format !== 'ivo-preflight-profile' || value.version !== 1 || !value.profile)
+    throw Error('Unsupported preflight profile file.');
+  return preflightProfile(value.profile);
+}

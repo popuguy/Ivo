@@ -43,7 +43,12 @@ export function collectPageHeadings(doc, flow, pages, settings = doc.publication
   });
 }
 
-export function collectPrintedEntries(doc, flow, pages, { matches, mayMatch }) {
+export function collectPrintedEntries(
+  doc,
+  flow,
+  pages,
+  { matches, mayMatch, includeTables = false },
+) {
   const results = new Map(pages.map((page) => [page.pageId, []]));
   const byId = new Map(doc.blocks.map((b) => [b.id, b]));
   const physical = new Map(pages.map((p) => [p.pageId, p]));
@@ -60,7 +65,7 @@ export function collectPrintedEntries(doc, flow, pages, { matches, mayMatch }) {
   const seen = new Set(),
     rank = new Map((doc.publication?.order || []).map((id, i) => [id, i]));
   const sorted = doc.blocks
-    .filter((b) => ['text', 'quote'].includes(b.type))
+    .filter((b) => ['text', 'quote'].includes(b.type) || (includeTables && b.type === 'table'))
     .sort((a, b) => {
       const order = (id) => rank.get(id) ?? rank.size;
       return order(a.textFlowId || a.id) - order(b.textFlowId || b.id) || a.y - b.y || a.x - b.x;
@@ -74,26 +79,31 @@ export function collectPrintedEntries(doc, flow, pages, { matches, mayMatch }) {
     if (mayMatch && !mayMatch(html)) continue;
     const style = source?.style?.paragraphStyle || frameTextSettings(doc, block).paragraphStyle;
     if (!source) {
-      const page = physical.get(block.pageId),
-        node = page?.section.querySelector('[data-scene-text="' + CSS.escape(block.id) + '"]');
-      if (!node) continue;
-      const frame = node.closest('[data-object]').getBoundingClientRect(),
+      const page = physical.get(block.pageId);
+      const container = page?.section.querySelector('[data-object="' + CSS.escape(block.id) + '"]');
+      if (!container) continue;
+      const nodes =
+        block.type === 'table'
+          ? container.querySelectorAll('.page-table [data-table-row]')
+          : container.querySelectorAll(':scope > [data-scene-text]');
+      const frame = container.getBoundingClientRect(),
         sheet = page.section.getBoundingClientRect();
-      for (const h of matches(node, style)) {
-        const range = document.createRange();
-        range.setStart(h.first, h.offset);
-        range.setEnd(h.first, h.offset + 1);
-        const glyph = range.getBoundingClientRect();
-        if (
-          glyph.width &&
-          glyph.height &&
-          glyph.right > Math.max(frame.left, sheet.left) &&
-          glyph.left < Math.min(frame.right, sheet.right) &&
-          glyph.bottom > Math.max(frame.top, sheet.top) &&
-          glyph.top < Math.min(frame.bottom, sheet.bottom)
-        )
-          add(block.id, h);
-      }
+      for (const node of nodes)
+        for (const h of matches(node, style)) {
+          const range = document.createRange();
+          range.setStart(h.first, h.offset);
+          range.setEnd(h.first, h.offset + 1);
+          const glyph = range.getBoundingClientRect();
+          if (
+            glyph.width &&
+            glyph.height &&
+            glyph.right > Math.max(frame.left, sheet.left) &&
+            glyph.left < Math.min(frame.right, sheet.right) &&
+            glyph.bottom > Math.max(frame.top, sheet.top) &&
+            glyph.top < Math.min(frame.bottom, sheet.bottom)
+          )
+            add(block.id, h);
+        }
       continue;
     }
     const root = document.createElement('div');

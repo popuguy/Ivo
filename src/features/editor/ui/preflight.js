@@ -1,5 +1,7 @@
 import {
   preflightPresets,
+  decodePreflightProfile,
+  encodePreflightProfile,
   preflightProfile,
 } from '../../../domain/documents/preflight-profiles.js';
 import { editPreflightProfile } from './preflight-profile-dialog.js';
@@ -15,7 +17,9 @@ export function createPreflightPanel({ editor, publication, reveal }) {
     timer,
     target,
     lastHTML,
-    dialog;
+    dialog,
+    profileError,
+    importSequence = 0;
   function readProfiles() {
     try {
       const stored = JSON.parse(localStorage.getItem(definitionsKey) || '{}');
@@ -77,6 +81,8 @@ export function createPreflightPanel({ editor, publication, reveal }) {
       (Object.hasOwn(custom, selected)
         ? '<button type="button" data-edit-profile>Edit profile…</button>'
         : '') +
+      '<button type="button" data-import-profile>Load profile…</button><input type="file" hidden accept=".json" data-profile-file><button type="button" data-export-profile>Export profile…</button>' +
+      (profileError ? '<p role="alert">' + esc(profileError) + '</p>' : '') +
       '<p role="status">' +
       summary +
       '</p>' +
@@ -149,39 +155,83 @@ export function createPreflightPanel({ editor, publication, reveal }) {
     },
     options,
   );
+  function openProfile(profile, edit = false, initialName) {
+    if (dialog?.open) return;
+    const id = edit ? selected : uid('profile-');
+    dialog = editPreflightProfile(profile, {
+      editing: !!edit,
+      initialName,
+      save(profile) {
+        readProfiles();
+        if (edit && !Object.hasOwn(custom, id))
+          throw Error('This profile was removed in another window.');
+        if (!edit && Object.keys(custom).length >= 64)
+          throw Error('Up to 64 custom profiles can be saved.');
+        if (
+          Object.entries({ ...preflightPresets, ...custom }).some(
+            ([key, p]) => key !== id && p.name.toLowerCase() === profile.name.toLowerCase(),
+          )
+        )
+          throw Error('Choose a different profile name.');
+        storeProfiles({ ...custom, [id]: profile });
+        choose(id);
+      },
+      remove() {
+        readProfiles();
+        const next = { ...custom };
+        delete next[id];
+        storeProfiles(next);
+        choose('basic');
+      },
+    });
+  }
+  editor.addEventListener(
+    'change',
+    async (event) => {
+      if (!event.target.matches('[data-profile-file]')) return;
+      const file = event.target.files[0],
+        activeImport = ++importSequence;
+      event.target.value = '';
+      if (!file) return;
+      try {
+        if (file.size > 32768) throw Error('Choose an Ivo preflight profile under 32 KB.');
+        const profile = decodePreflightProfile(await file.text());
+        if (listeners.signal.aborted || activeImport !== importSequence || !target) return;
+        profileError = '';
+        refresh();
+        openProfile(profile, false, profile.name);
+      } catch (error) {
+        if (listeners.signal.aborted || activeImport !== importSequence || !target) return;
+        profileError = error.message;
+        refresh();
+      }
+    },
+    options,
+  );
   editor.addEventListener(
     'click',
     (event) => {
       const edit = event.target.closest('[data-edit-profile]'),
         create = event.target.closest('[data-new-profile]');
+      if (event.target.closest('[data-import-profile]')) {
+        editor.querySelector('[data-profile-file]')?.click();
+        return;
+      }
+      if (event.target.closest('[data-export-profile]')) {
+        const profile = active(),
+          url = URL.createObjectURL(
+            new Blob([encodePreflightProfile(profile)], { type: 'application/json' }),
+          );
+        const a = document.createElement('a');
+        a.href = url;
+        a.download =
+          (profile.name.replace(/[^\p{L}\p{N}._-]+/gu, '-') || 'profile') + '.ivo-preflight.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return;
+      }
       if (edit || create) {
-        if (dialog?.open) return;
-        const id = edit ? selected : uid('profile-');
-        dialog = editPreflightProfile(active(), {
-          editing: !!edit,
-          save(profile) {
-            readProfiles();
-            if (edit && !Object.hasOwn(custom, id))
-              throw Error('This profile was removed in another window.');
-            if (!edit && Object.keys(custom).length >= 64)
-              throw Error('Up to 64 custom profiles can be saved.');
-            if (
-              Object.entries({ ...preflightPresets, ...custom }).some(
-                ([key, p]) => key !== id && p.name.toLowerCase() === profile.name.toLowerCase(),
-              )
-            )
-              throw Error('Choose a different profile name.');
-            storeProfiles({ ...custom, [id]: profile });
-            choose(id);
-          },
-          remove() {
-            readProfiles();
-            const next = { ...custom };
-            delete next[id];
-            storeProfiles(next);
-            choose('basic');
-          },
-        });
+        openProfile(active(), !!edit);
         return;
       }
       const button = event.target.closest('[data-preflight-object],[data-preflight-parent]');

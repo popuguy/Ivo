@@ -1,3 +1,4 @@
+import { createTable, validateTable } from './tables.js';
 import { BLOCK_TYPES } from './constants.js';
 export function uid(prefix = '') {
   return `${prefix}${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`}`;
@@ -41,6 +42,9 @@ export function createBlock(type = 'text', overrides = {}) {
     crop: { x: 50, y: 50 },
     objectPosition: { x: 50, y: 50 },
     ...overrides,
+    ...(type === 'table'
+      ? { table: overrides.table === undefined ? createTable() : validateTable(overrides.table) }
+      : {}),
     type,
   };
 }

@@ -88,7 +88,7 @@ export function inspectPublication(
     if (
       checks.has('overset') &&
       !item.textFlowId &&
-      ['text', 'quote'].includes(item.type) &&
+      ['text', 'quote', 'table'].includes(item.type) &&
       item.textKind !== 'point'
     ) {
       const overflow = frameOverflow(item);

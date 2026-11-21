@@ -2,7 +2,7 @@ import { preflightChecks, preflightProfile } from '../../../domain/documents/pre
 import { dialogMarkup, installDialogDismissal } from '../../../shared/ui/dialog.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 
-export function editPreflightProfile(profile, { editing, save, remove }) {
+export function editPreflightProfile(profile, { editing, save, remove, initialName }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'modal publishing-style-dialog';
   dialog.setAttribute('aria-label', 'Define Preflight Profile');
@@ -28,7 +28,7 @@ export function editPreflightProfile(profile, { editing, save, remove }) {
     form = dialog.querySelector('form');
   const name = form.elements.namedItem('name'),
     ppi = form.elements.ppi;
-  name.value = editing ? profile.name : profile.name + ' copy';
+  name.value = initialName ?? (editing ? profile.name : profile.name + ' copy');
   ppi.value = profile.ppi;
   const boxes = [...form.querySelectorAll('[name=check]')];
   boxes.forEach((box) => {

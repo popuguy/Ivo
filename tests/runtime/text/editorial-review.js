@@ -130,6 +130,39 @@ export async function verifyEditorialReview() {
       ),
       'Profile was not saved',
     );
+    let exported;
+    const oldClick = HTMLAnchorElement.prototype.click;
+    try {
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.download.endsWith('.ivo-preflight.json'))
+          exported = fetch(this.href).then((r) => r.text());
+        else oldClick.call(this);
+      };
+      host.querySelector('[data-export-profile]').click();
+    } finally {
+      HTMLAnchorElement.prototype.click = oldClick;
+    }
+    const bytes = await exported;
+    check(JSON.parse(bytes).profile.ppi === 150, 'Exported profile lost its threshold');
+    const file = host.querySelector('[data-profile-file]'),
+      dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'proof.ivo-preflight.json', { type: 'application/json' }));
+    file.files = dt.files;
+    file.dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() =>
+      document.querySelector('dialog[open][aria-label="Define Preflight Profile"]'),
+    );
+    const imported = document.querySelector(
+      'dialog[open][aria-label="Define Preflight Profile"] form',
+    );
+    imported.requestSubmit();
+    check(
+      imported.querySelector('[role=alert]').textContent.includes('different'),
+      'Import overwrote an existing profile',
+    );
+    imported.elements.namedItem('name').value = 'Imported proof';
+    imported.requestSubmit();
+    check(profile().selectedOptions[0].text === 'Imported proof', 'Imported profile unavailable');
     host.querySelector('[data-preflight-object="' + b.id + '"]').click();
     check(editor.getState().selected === b.id, 'Preflight selects the object on its page');
   } finally {

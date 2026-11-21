@@ -939,6 +939,7 @@ export function installPublishingControls(
     onEditParent,
   });
   return {
+    openForm: form,
     prepareLegacyFonts,
     chooseFont(value) {
       return fontTransaction(() => resolveFont(value));

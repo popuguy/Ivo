@@ -113,6 +113,7 @@ export function filterDocuments(documents, query = '', tag = '') {
         ...(doc.aliases ?? []),
         ...tags,
         ...[...(doc.blocks ?? []), ...(doc.textFlows ?? [])].flatMap((block) => [
+          block.table?.cells.map((row) => row.join(' ')).join(' '),
           plainText(block.html),
           block.caption,
           block.alt,

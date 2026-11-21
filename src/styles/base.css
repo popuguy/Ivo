@@ -3989,3 +3989,83 @@ dialog .prompt-instructions {
   width: 13px;
   height: 13px;
 }
+
+.table-frame {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  line-height: 1.2;
+}
+.page-table {
+  width: 100%;
+  height: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  color: inherit;
+}
+.page-table :is(td, th) {
+  position: relative;
+  padding: var(--cell-inset);
+  border: var(--table-stroke) solid currentColor;
+  vertical-align: var(--cell-vertical);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  text-align: start;
+}
+.page-table textarea {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  resize: none;
+  padding: var(--cell-inset);
+  border: 0;
+  outline: 1px solid var(--blue, #385ad1);
+  background: var(--paper, white);
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  user-select: text;
+}
+
+.table-frame {
+  position: relative;
+}
+.table-dividers {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.table-frame[data-selected-table] > .table-dividers {
+  display: block;
+}
+.table-dividers i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 0;
+  width: 0;
+}
+.table-dividers i[data-table-end] {
+  left: 100%;
+}
+.table-dividers span {
+  position: absolute;
+  inset-block: 0;
+  width: calc(6 * var(--baseline-guide-width, 1px));
+  transform: translateX(-50%);
+  touch-action: none;
+  cursor: col-resize;
+  pointer-events: auto;
+}
+.table-dividers span:hover::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: var(--baseline-guide-width, 1px);
+  background: var(--selection);
+}

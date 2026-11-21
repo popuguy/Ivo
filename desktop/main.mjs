@@ -578,6 +578,10 @@ else {
         const send = (name) => record.window.webContents.send('ivo:command', name),
           items = [
             { label: 'Insert Document Link…', click: () => send('link') },
+            { label: 'Insert Table…', click: () => send('insert-table') },
+            ...(context.table === true
+              ? [{ label: 'Table Options…', click: () => send('table-options') }]
+              : []),
             { label: 'Insert Page Link…', click: () => send('page-link') },
             { type: 'separator' },
           ];
@@ -1341,6 +1345,7 @@ function applyHistory(record) {
     ['document-dictionary', canvas.canvasEditing],
     ['load-text-styles', canvas.canvasEditing],
     ['page-link', canvas.canvasEditing],
+    ['insert-table', canvas.canvasEditing],
     ['generate-index', canvas.canvasEditing],
     ['update-index', canvas.canvasEditing],
     ['table-of-contents', canvas.canvasEditing],
@@ -1577,6 +1582,12 @@ function installMenu() {
         label: 'Insert',
         submenu: [
           { label: 'Document Link…', enabled: hasVault, click: () => sendCommand('link') },
+          {
+            id: 'insert-table',
+            label: 'Table…',
+            enabled: false,
+            click: () => sendCommand('insert-table'),
+          },
           {
             id: 'page-link',
             label: 'Page Link…',

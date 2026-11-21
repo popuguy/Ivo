@@ -135,7 +135,7 @@ export function propertiesContent({
       field('Name', `<input data-scene-meta="title" value="${esc(doc.title)}" ${disabled}>`) +
         `<div class="property-transform-grid">${dimensions}</div>`,
     )}${section('Page', `<div class="property-page-row">${pageSelect}${parentMode ? '' : pageAction('add-page', 'Create new page', 'panel-new', editing && doc.pages.length < 128) + pageAction('delete-page', 'Delete selected page', 'panel-trash', editing && doc.pages.length > 1)}</div><button class="property-wide-action" data-canvas-command="show-pages">Edit Page</button>`)}${gridControls}
-    ${section('Quick Actions', `<button class="property-wide-action" data-canvas-command="image" ${disabled}>Import File</button>`)}
+    ${section('Quick Actions', `<button class="property-wide-action" data-canvas-command="image" ${disabled}>Import File</button><button class="property-wide-action" data-canvas-command="insert-table" ${disabled}>Insert Table…</button>`)}
     </div>`;
   }
   const composer =
@@ -165,6 +165,8 @@ export function propertiesContent({
     );
   const sections = [
     transformProperties(item, state, movePage),
+    item.type === 'table' &&
+      section('Table', '<button data-canvas-command="table-options">Table Options…</button>'),
     isText && styleProperties(item, doc, state),
     appearanceProperties(item),
     isText &&

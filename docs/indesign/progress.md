@@ -4,6 +4,16 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Page tables, index references and portable preflight profiles
+
+A document can now contain editable page tables. Double-click a cell to type. Tab and Shift-Tab move between uncovered cells. Tab at the end appends a row. Drag a divider to size two adjacent columns together. Table Options supports structural edits, merging, splitting, headers, footers, inset, rule weight and vertical alignment. Pasting tab-separated spreadsheet cells expands the table as a single undoable edit.
+
+A Mac editor fixture covers cell editing, divider cancellation, undo/redo, spreadsheet paste, reading view, locks and archive reopen. PDFKit reads cell text from the exported PDF. The EPUB fixture inspects actual XHTML header cells, spans and escaped text. Table content extending below its frame is reported by Preflight and PDF export. Tables remain independent page objects. Rich text and nested selections inside cells, table and cell styles, flowing tables across pages, and repeating header and footer rows still require implementation.
+
+Generated indexes now support custom sort keys and See/See also entries, including destinations under a parent topic. Each reference links to the first printed page of its target. Indexing also searches printed table cells. Preflight profiles can be exported, validated and imported under a new name.
+
+Of the 63 included capabilities, 31 are recorded as foundations, 18 as partial implementations and 14 as open. This gives a reproducible breadth measure of **49/63 with implementation evidence**. The previous ~90% was an informal engineering estimate. The ledger does not provide a verified fraction of total effort or a basis for declaring 95% or 100%. See the remaining acceptance criteria for each capability.
+
 ## Preflight profiles for print layouts
 
 **Release estimate ~90% across 63 capabilities.** Preflight now locates broken page references and checks the effective resolution of a placed picture at its printed size. The same artwork can pass at one size and fail after enlargement. The Print preset uses 300 ppi. Named local profiles control six checks and the minimum resolution. In the Mac editor a 72-pixel square in a 144-point frame measured 36 ppi, passed a 30 ppi threshold and failed at 150 ppi. Undecoded images and unavailable layout appear as incomplete checks. Profile exchange and color/separation checks remain open.

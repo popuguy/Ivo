@@ -53,6 +53,11 @@ export async function exportFixture() {
     alt: 'Orange triangular swatch',
     caption: 'First dye bath',
   });
+  const grid = insertObject(doc, 'table', next).table;
+  grid.headerRows = 1;
+  grid.cells[0][0] = 'Fiber & finish';
+  grid.cells[1][0] = '<twill>';
+  grid.merges = [{ row: 1, column: 0, rows: 1, columns: 2 }];
   const initial = JSON.stringify(doc);
   const bytes = await exportReflowableBook([doc, ref, hidden], doc.id, {
     includeLinked: true,
