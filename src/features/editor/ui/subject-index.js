@@ -113,13 +113,11 @@ export function indexDialog(form, doc, { saved, emptyFrame }, apply) {
             .filter((s) => s.trim())
             .map((s) => s.split('>')),
           ranges: data.has('ranges'),
-          references: data
-            .getAll('ref-from')
-            .map((s, i) => ({
-              from: s.split('>'),
-              kind: data.getAll('ref-kind')[i],
-              to: data.getAll('ref-to')[i].split('>'),
-            })),
+          references: data.getAll('ref-from').map((s, i) => ({
+            from: s.split('>'),
+            kind: data.getAll('ref-kind')[i],
+            to: data.getAll('ref-to')[i].split('>'),
+          })),
           sortKeys: data
             .getAll('sort-path')
             .map((s, i) => ({ path: s.split('>'), key: data.getAll('sort-key')[i] })),
