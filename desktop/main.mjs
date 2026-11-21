@@ -902,7 +902,10 @@ function createWindow(
   window.on('move', rememberBounds);
   window.on('resize', rememberBounds);
   window.on('close', (event) => {
-    if (record.mayClose || record.startupFailed) return;
+    if (record.mayClose || record.startupFailed) {
+      palettes.beforeOwnerCloses(record);
+      return;
+    }
     event.preventDefault();
     if (record.exportingPDF) {
       record.closeAfterPDF = true;
@@ -1314,7 +1317,7 @@ function applyHistory(record) {
   const panelAvailable =
     !!record.vault && !!record.group?.lease.canWrite(record) && !record.nativeDialogOpen;
   const panelCommands = [
-    ...Object.keys(PANEL_LABELS).map((kind) => ['show-panel-' + kind, canvas.canvasView]),
+    ...Object.keys(PANEL_LABELS).map((kind) => ['show-panel-' + kind, canvas.canvasEditing]),
     ['show-contextual', canvas.canShowContextual],
     ['wrap-preferences', canvas.canvasEditing],
     ['find-change', canvas.canvasEditing],

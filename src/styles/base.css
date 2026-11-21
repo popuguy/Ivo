@@ -3951,10 +3951,20 @@ dialog .prompt-instructions {
 .scene-editor.panels-hidden:not(.tools-hidden) {
   grid-template-columns: 44px minmax(0, 1fr);
 }
-.scene-editor.panels-hidden.tools-hidden,
-.scene-editor.scene-reading.panels-hidden {
+.scene-editor.scene-reading {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+.scene-editor.panels-hidden.tools-hidden {
   grid-template-columns: minmax(0, 1fr);
 }
+.scene-reading
+  > :is(
+    .canvas-tools,
+    .canvas-panel-dock,
+    .context-panel-group,
+    .canvas-contextual-bar,
+    .workspace-panel-menu
+  ),
 .scene-editor.panels-hidden .canvas-panel-dock,
 .scene-editor.panels-hidden .context-panel-group,
 .scene-editor.panels-hidden .canvas-contextual-bar,

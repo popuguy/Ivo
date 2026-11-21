@@ -17,7 +17,7 @@ export function installSplitControls(shell) {
     );
     shell.classList.toggle(
       'split-has-dock',
-      !!classes &&
+      !!classes?.contains('scene-editing') &&
         !classes.contains('panels-hidden') &&
         !classes.contains('panel-floating') &&
         !classes.contains('panel-collapsed'),

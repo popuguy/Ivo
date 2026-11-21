@@ -2,6 +2,7 @@ html,
 body.palette-window {
   height: 100%;
   margin: 0;
+  background: transparent;
   overflow: hidden;
 }
 .palette-window .palette-surface,
@@ -16,7 +17,13 @@ body.palette-window {
   min-height: 0;
   border: 0;
 }
+.palette-window .palette-surface {
+  padding: 1px 3px 4px;
+  background: transparent;
+}
 .palette-window .context-panel-group {
+  border-radius: 0;
+  box-shadow: 0 1px 3px #0003;
   border: 1px solid var(--panel-control-border);
 }
 .palette-window [data-palette-handle] {

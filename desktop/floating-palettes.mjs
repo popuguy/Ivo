@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, Menu, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron';
 import { PANEL_LABELS } from '../src/domain/workspace/panels.js';
 import { draggedPalettePosition, palettePosition } from '../src/domain/workspace/panel-drag.js';
 
@@ -11,6 +11,7 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     bounds = new Map();
   let target = null,
     epoch = 0,
+    applicationActive = process.platform !== 'darwin' || app.isActive(),
     drag = null,
     pendingDrop = null;
   const usable = (record) => record?.vault && !record.window.isDestroyed();
@@ -34,6 +35,9 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     target = record;
     epoch++;
     for (const palette of windows.values()) {
+      palette.visibleInView = false;
+      syncWindow(palette);
+      palette.window.setParentWindow(record?.window ?? null);
       palette.revision = null;
       palette.view = null;
       if (palette.subscribed)
@@ -54,18 +58,38 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     dockPointer(palette.liftSource, 'lifted', palette.kind, null, palette.liftId);
     palette.liftSource = null;
   }
-  function showPalette(palette) {
-    if (!palette.readyToShow || (palette.waitForControls && !palette.painted)) return;
+  function syncWindow(palette) {
     if (palette.window.isDestroyed()) return;
+    if (
+      !palette.visibleInView ||
+      !usable(target) ||
+      !applicationActive ||
+      target.window.isMinimized()
+    ) {
+      if (palette.window.isVisible()) palette.window.hide();
+      return;
+    }
+    if (!palette.readyToShow || (palette.waitForControls && !palette.painted)) return;
     if (!palette.window.isVisible()) palette.window.showInactive();
     finishLift(palette);
+  }
+  if (process.platform === 'darwin') {
+    for (const [event, active] of [
+      ['did-become-active', true],
+      ['did-resign-active', false],
+    ]) {
+      app.on(event, () => {
+        applicationActive = active;
+        for (const palette of windows.values()) syncWindow(palette);
+      });
+    }
   }
   function open(record, kind, point, grip = { x: 30, y: 12 }, waitForControls = false) {
     if (!known(kind) || !usable(record) || !record.group.lease.canWrite(record)) return false;
     activate(record);
     const existing = windows.get(kind);
     if (existing) {
-      existing.window.show();
+      syncWindow(existing);
       return true;
     }
     const origin = record.window.getBounds();
@@ -89,7 +113,11 @@ export function installFloatingPalettes({ owner, preload, url, session, document
       height,
       ...palettePosition(anchor, atPointer ? grip : { x: 0, y: 0 }, { width, height }, area),
       frame: false,
-      backgroundColor: '#f0f0f0',
+      parent: record.window,
+      roundedCorners: false,
+      hasShadow: false,
+      transparent: process.platform === 'darwin',
+      backgroundColor: process.platform === 'darwin' ? '#00000000' : '#f0f0f0',
       minWidth: 190,
       minHeight: 150,
       show: false,
@@ -97,7 +125,6 @@ export function installFloatingPalettes({ owner, preload, url, session, document
       fullscreenable: false,
       maximizable: false,
       minimizable: false,
-      ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
       webPreferences: {
         preload,
         session,
@@ -130,7 +157,7 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     });
     window.once('ready-to-show', () => {
       palette.readyToShow = true;
-      showPalette(palette);
+      syncWindow(palette);
     });
     window.loadURL(url).catch(() => {
       if (!window.isDestroyed()) window.destroy();
@@ -304,7 +331,7 @@ export function installFloatingPalettes({ owner, preload, url, session, document
     const palette = fromPalette(event);
     if (palette && !palette.painted) {
       palette.painted = true;
-      showPalette(palette);
+      syncWindow(palette);
     }
   });
   ipcMain.handle('ivo:palette-initial', (event) => {
@@ -343,17 +370,20 @@ export function installFloatingPalettes({ owner, preload, url, session, document
         (typeof view.html !== 'string' && !(view.html === undefined && palette.view)))
     )
       return;
+    palette.visibleInView = value.visible === true;
     palette.view = view ? { ...palette.view, ...view } : null;
     palette.revision = view?.revision;
     palette.published = true;
     if (palette.subscribed)
       palette.window.webContents.send('ivo:palette-view', view, palette.kind, true);
+    syncWindow(palette);
   });
   ipcMain.on('ivo:palette-action', (event, value) => {
     const palette = fromPalette(event);
     if (
       !palette ||
       !usable(target) ||
+      !palette.visibleInView ||
       !target.group.lease.canWrite(target) ||
       target.nativeDialogOpen ||
       !palette.revision ||
@@ -365,8 +395,12 @@ export function installFloatingPalettes({ owner, preload, url, session, document
   return {
     activate(record) {
       activate(record);
-      if (record?.vault)
-        for (const { window } of windows.values()) if (window.isVisible()) window.moveTop();
+      for (const palette of windows.values()) syncWindow(palette);
+    },
+    beforeOwnerCloses(record) {
+      for (const { window } of windows.values())
+        if (!window.isDestroyed() && window.getParentWindow() === record.window)
+          window.setParentWindow(null);
     },
     focused,
     // ready/lease notifications may follow the native focus change.

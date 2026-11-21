@@ -1900,7 +1900,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
                   {
                     id: 'toggle-panels',
                     label: 'Show/Hide Panels',
-                    enabled: canvasMenu.canvasView,
+                    enabled: canvasMenu.canvasEditing,
                   },
                   {
                     id: 'wrap-preferences',
@@ -1910,7 +1910,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
                   ...Object.entries(PANEL_LABELS).map(([kind, label]) => ({
                     id: 'show-panel-' + kind,
                     label,
-                    enabled: canvasMenu.canvasView,
+                    enabled: canvasMenu.canvasEditing,
                   })),
                   {
                     id: 'show-contextual',

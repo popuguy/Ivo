@@ -136,6 +136,23 @@ export async function verifyFindChange() {
     key(viewport, 'f', { metaKey: true });
     let panel = host.querySelector('.canvas-find-change');
     assert(panel, 'Command-F opens the active editor panel');
+    for (const width of [900, 315]) {
+      host.style.width = width + 'px';
+      const bounds = panel.getBoundingClientRect();
+      assert(
+        panel.scrollWidth <= panel.clientWidth + 1,
+        'Find/Change clips horizontally at ' + width,
+      );
+      for (const control of panel.querySelectorAll('button, input, select, output')) {
+        if (!control.getClientRects().length) continue;
+        const r = control.getBoundingClientRect();
+        assert(
+          r.left >= bounds.left && r.right <= bounds.right,
+          'Off-panel control: ' + control.name,
+        );
+      }
+    }
+    host.style.width = '900px';
     const input = (name, value) => {
       const el = panel.elements.namedItem(name);
       if (el.type === 'checkbox') el.checked = value;

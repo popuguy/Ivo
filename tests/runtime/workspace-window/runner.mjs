@@ -187,6 +187,15 @@ async function verifyPaletteDrag(window, palettes) {
       modifiers: type === 'mouseUp' ? [] : ['leftButtonDown'],
     });
   await focus(window);
+  if (
+    !(await execute(window, "!!document.querySelector('.workspace-view.active .scene-editing')"))
+  ) {
+    window.webContents.send('ivo:command', 'toggle-edit');
+    await wait(
+      () => execute(window, "!!document.querySelector('.workspace-view.active .scene-editing')"),
+      'Edit before detaching a panel',
+    );
+  }
   window.setBounds({ ...frame, width: 820 });
   window.webContents.send('ivo:command', 'show-panel-layers');
   await wait(
@@ -339,7 +348,9 @@ async function verifyFloatingPalette(first, originalId) {
   assert.equal(await execute(palette, 'typeof window.ivoNative'), 'undefined');
   assert.equal(await execute(palette, 'typeof window.ivoPalette.act'), 'function');
   assert.equal(palette.isModal(), false);
-  assert.equal(palette.getParentWindow(), null);
+  assert.equal(palette.getParentWindow(), first);
+  assert.equal(palette.isAlwaysOnTop(), false);
+  assert.equal(palette.hasShadow(), false);
   assert.equal(palettes().length, 1);
   const showTarget = (doc, state) =>
     wait(
@@ -353,6 +364,43 @@ async function verifyFloatingPalette(first, originalId) {
     );
   const toggle = () => execute(palette, `document.querySelector(${JSON.stringify(lock)}).click()`);
   await showTarget(right, false);
+  first.webContents.send('ivo:command', 'toggle-edit');
+  await wait(() => !palette.isVisible(), 'Reading view hides detached Layers');
+  assert.ok(
+    await execute(
+      first,
+      `[...document.querySelectorAll('.workspace-view.active .canvas-tools,.workspace-view.active .canvas-panel-dock,.workspace-view.active .context-panel-group')].every(el=>!el.getClientRects().length)`,
+    ),
+  );
+  first.webContents.send('ivo:command', 'toggle-edit');
+  await wait(() => palette.isVisible(), 'Editing restores the same Layers window');
+  const noteTab = await execute(
+    first,
+    "document.querySelector('.workspace-pane.active [role=tab][data-tab-id][aria-selected=true]').dataset.tabId",
+  );
+  first.webContents.send('ivo:command', 'new-tab');
+  await wait(() => !palette.isVisible(), 'Empty tab hides detached panels');
+  await execute(first, "document.querySelector('[data-action=graph]').click()");
+  await wait(
+    () => execute(first, "!!document.querySelector('.workspace-view.active .ivo-graph-canvas')"),
+    'Graph opens',
+  );
+  assert.equal(palette.isVisible(), false);
+  await execute(first, `document.querySelector('[data-tab-id="${noteTab}"]').click()`);
+  await wait(() => palette.isVisible(), 'Returning from graph restores Layers');
+  await showTarget(right, false);
+  if (process.platform === 'darwin') {
+    await focus(first);
+    app.hide();
+    await wait(() => !app.isActive() && !palette.isVisible(), 'Leaving Ivo hides detached Layers');
+    app.show();
+    app.focus({ steal: true });
+    await focus(first);
+    await wait(
+      () => app.isActive() && palette.isVisible(),
+      'Returning to Ivo restores detached Layers',
+    );
+  }
   // A real utility window can extend beyond its source document's content bounds.
   const previous = first.getBounds(),
     box = palette.getBounds();
@@ -400,6 +448,7 @@ async function verifyFloatingPalette(first, originalId) {
   await ready(detached);
   await focus(detached);
   await showTarget(right, true);
+  assert.equal(palette.getParentWindow(), detached);
   assert.equal(await openPalette(detached), palette, 'Opening Layers twice duplicated its window');
   await toggle();
   await wait(() => locked(true, false), 'Detached document received the shared action');

@@ -477,7 +477,7 @@ try {
   const reading = document.querySelector('.scene-editor');
   assert(
     reading.classList.contains('scene-reading') &&
-      reading.classList.contains('panels-hidden') &&
+      !reading.querySelector('.canvas-panel-dock').getClientRects().length &&
       Math.abs(
         reading.querySelector('.canvas-center').getBoundingClientRect().width - reading.clientWidth,
       ) < 1,

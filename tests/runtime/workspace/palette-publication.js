@@ -21,6 +21,7 @@ export async function verifyPalettePublication(assert) {
   content.querySelector('button').addEventListener('click', () => clicks++);
   const editor = {
     setExternalPanels() {},
+    panelsVisible: () => true,
     paletteContext() {
       reads++;
       return { title: 'Text frame', scope, entries: [{ kind: 'properties', content }] };

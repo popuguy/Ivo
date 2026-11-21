@@ -119,7 +119,8 @@ export function installDesktopPalettes(bridge, activeEditor) {
       for (const slot of views.values()) slot.dirty = true;
     }
     if (!active) return;
-    const context = editor?.paletteContext();
+    const visible = !!editor && editor.panelsVisible();
+    const context = visible ? editor.paletteContext() : null;
     for (const kind of kinds) {
       const content = context?.entries.find((entry) => entry.kind === kind)?.content;
       let slot = views.get(kind);
@@ -142,7 +143,9 @@ export function installDesktopPalettes(bridge, activeEditor) {
         }
       }
       if (!content) {
-        if (!slot.empty) bridge.publish({ epoch, kind, view: null });
+        if (!slot.empty || slot.visible !== visible)
+          bridge.publish({ epoch, kind, view: null, visible });
+        slot.visible = visible;
         slot.empty = true;
         slot.revision = null;
         continue;
@@ -176,6 +179,7 @@ export function installDesktopPalettes(bridge, activeEditor) {
       bridge.publish({
         epoch,
         kind,
+        visible,
         view: {
           ...(changedMarkup ? { html } : {}),
           revision: slot.revision,

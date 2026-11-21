@@ -4,7 +4,10 @@
   right: min(22px, 3%);
   z-index: 80;
   box-sizing: border-box;
-  width: min(352px, calc(100% - 20px));
+  width: min(400px, calc(100% - 16px));
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  overflow-wrap: anywhere;
   max-height: calc(100% - 24px);
   overflow: auto;
   padding: 12px;
@@ -24,7 +27,7 @@
 .canvas-find-change > label {
   display: grid;
   align-items: center;
-  grid-template-columns: 65px minmax(0, 1fr);
+  grid-template-columns: min(32%, 88px) minmax(0, 1fr);
   gap: 8px;
 }
 .canvas-find-change input[type='text'],
@@ -92,6 +95,14 @@
   line-height: 1.45;
   margin: 6px 0;
 }
-.canvas-find-change > label {
-  grid-template-columns: 88px minmax(0, 1fr);
+.canvas-find-change .find-query {
+  flex-wrap: wrap;
+}
+.canvas-find-change .find-query label {
+  flex: 1 1 150px;
+}
+.canvas-find-change select,
+.canvas-find-change input[type='text'] {
+  width: 100%;
+  box-sizing: border-box;
 }

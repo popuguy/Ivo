@@ -2814,6 +2814,12 @@ export function mountCanvasEditor(host, options) {
       }
       return;
     }
+    if (
+      !options.editing &&
+      (name.startsWith('show-panel-') ||
+        ['show-contextual', 'toggle-panels', 'toggle-side-panels'].includes(name))
+    )
+      return;
     if (name === 'show-contextual') {
       editor.classList.remove('panels-hidden', 'tools-hidden');
       state.contextBarHidden = false;
@@ -4612,6 +4618,9 @@ export function mountCanvasEditor(host, options) {
       if (!alive || (value.action !== 'clear' && (!ownsInput() || host.closest('[inert]'))))
         return false;
       return workspacePanels.dockPaletteAt(value);
+    },
+    panelsVisible() {
+      return alive && options.editing && !editor.classList.contains('panels-hidden');
     },
     paletteContext() {
       if (!alive || !ownsInput() || host.closest('[inert]') || busy || composing || dialogOpen())
