@@ -975,14 +975,28 @@ print(String(data: summaryData, encoding: .utf8)!)
       src: 'asset:' + ringAsset.id,
       caption: '',
     });
+    // The unrelated columns share the picture's page and must retain their own layout.
+    const sideNote = insertObject(ringDoc, 'text', {
+      pageId: ringDoc.pages[0].id,
+      x: 365,
+      y: 30,
+      w: 130,
+      h: 160,
+      html: '<p>Side column.</p>',
+    });
+    sideNote.frameOptions = { columns: 2, gutter: 6 };
+    startTextFlow(ringDoc, sideNote.id, { automaticPages: false });
     setTextWrap(ringDoc, [wrapObject.id], { mode: 'none' });
     setTextWrap(ringDoc, [ringPic.id], { mode: 'contour', contour: { source: 'alpha' } });
     for (const insideEdges of [false, true]) {
       setTextWrap(ringDoc, [ringPic.id], { contour: { insideEdges } });
-      let interiorGlyphs;
+      let interiorGlyphs, sideColumnText;
       const exported = await renderPDF(createPDFSnapshot([ringDoc], [ringAsset], ringDoc.id), {
         project: root,
         onRendered: async (window) => {
+          sideColumnText = await window.webContents.executeJavaScript(
+            'document.querySelector(\'[data-object="' + sideNote.id + '"]\')?.textContent',
+          );
           interiorGlyphs = await window.webContents.executeJavaScript(`(()=>{
             const page=document.querySelector('.pdf-layout').getBoundingClientRect(),scale=page.width/500;
             return [...document.querySelectorAll('svg[data-composed-text] use')].filter(g=>{
@@ -992,6 +1006,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           })()`);
         },
       });
+      assert.match(sideColumnText, /Side column/);
       assert.equal((await PDFDocument.load(exported.bytes)).getPageCount(), 1);
       assert.equal(
         interiorGlyphs > 0,

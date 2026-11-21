@@ -118,7 +118,7 @@ export function layoutDocumentTextFlows(
   // scene for page ownership checks, but never enter browser line composition.
   if (doc.textFlows?.some((flow) => flow.composition)) {
     const projection = { ...doc, textFlows: doc.textFlows.filter((flow) => !flow.composition) };
-    const result = layoutDocumentTextFlows(projection, { allowPages, imageContours });
+    const result = layoutDocumentTextFlows(projection, { allowPages, objectWrap, imageContours });
     doc.pages = projection.pages;
     doc.blocks = projection.blocks;
     return result;
@@ -316,7 +316,9 @@ function layoutFrameColumns(doc, { allowPages }) {
       flow.deleteEmptyPages = false;
       flow.autoPages = [];
     }
-    const result = layoutDocumentTextFlows(projection, { allowPages: false });
+    // Real frame geometry already determined which flows intersect artwork.
+    // Synthetic column slots only divide the remaining, unobstructed source.
+    const result = layoutDocumentTextFlows(projection, { allowPages: false, objectWrap: false });
     let added = false;
     for (const flow of doc.textFlows || []) {
       const extra = result.status.get(flow.id)?.additionalFrames || 0;
