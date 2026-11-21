@@ -72,6 +72,8 @@ export function inheritEmptyParagraphTypography(root, range, pending = {}) {
     }
   }
   if (!reference) return false;
+  const style = paragraph.closest('[data-ivo-pstyle]')?.dataset.ivoPstyle;
+  if (style && reference.closest('[data-ivo-pstyle]')?.dataset.ivoPstyle !== style) return false;
   const previous = attributes(reference, root),
     current = attributes(node, root),
     explicit = new Set(Object.keys(pending).map((field) => CHARACTER_FIELDS[field]));

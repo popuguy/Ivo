@@ -1,3 +1,4 @@
+import { listMarkers } from '../../shared/dom/list-numbering.js';
 import { cleanHTML } from '../../shared/html/sanitize.js';
 import { textIndexMap, textIndexAt } from '../../shared/dom/text-selection.js';
 
@@ -6,7 +7,8 @@ export function annotatedSource(html) {
   const root = document.createElement('div');
   root.innerHTML = cleanHTML(html);
   const map = textIndexMap(root),
-    origins = new Map();
+    origins = new Map(),
+    markers = listMarkers(root);
   let serial = 0;
   for (const element of root.querySelectorAll('*')) {
     const id = String(serial++);
@@ -33,11 +35,7 @@ export function annotatedSource(html) {
     origins.set(id, {
       tag: element.tagName,
       before: Number(element.dataset.flowBefore),
-      listIndex:
-        element.tagName === 'LI'
-          ? [...element.parentNode.children].filter((n) => n.tagName === 'LI').indexOf(element)
-          : 0,
-      listStart: element.tagName === 'OL' ? element.start || 1 : 1,
+      ordinal: markers.get(element)?.number,
     });
   }
   for (const segment of map.segments) {
@@ -101,10 +99,12 @@ export function copyRange(range, start) {
 }
 export function displayHTML(fragment, origins, start, _end) {
   for (const list of fragment.querySelectorAll('ol')) {
-    const first = list.querySelector('li'),
-      source = first && origins.get(first.dataset.flowOrigin),
-      original = origins.get(list.dataset.flowOrigin);
-    if (source) list.start = (original?.listStart || 1) + source.listIndex;
+    const first = list.querySelector(':scope > li'),
+      source = first && origins.get(first.dataset.flowOrigin);
+    if (source && Number.isInteger(source.ordinal)) {
+      list.start = source.ordinal;
+      list.dataset.flowListSlice = '';
+    }
   }
   for (const element of fragment.querySelectorAll('[data-flow-origin]')) {
     const source = origins.get(element.dataset.flowOrigin);

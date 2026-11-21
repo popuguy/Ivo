@@ -1,3 +1,4 @@
+import { MAX_TAB_STOPS, tabStopsValue } from '../src/domain/text/tab-stops.js';
 const CHANNEL = 'ivo:text-composition',
   MAX_REQUEST = 32_000_000;
 const fields = {
@@ -63,6 +64,7 @@ const fields = {
     'rightIndent',
     'firstLineIndent',
     'wordSpacing',
+    'tabStops',
   ],
   wordSpacing: ['minimum', 'desired', 'maximum'],
   typographyLimits: [
@@ -99,7 +101,7 @@ function record(value, allowed) {
 export function validateCompositionRequest(request) {
   record(request, fields.request);
   if (
-    ![1, 2, 3, 4, 5, 6].includes(request.protocol) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8].includes(request.protocol) ||
     (request.protocol === 1 && request.paragraphs !== undefined) ||
     (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
     (request.protocol < 3 && request.placements !== undefined) ||
@@ -202,7 +204,7 @@ export function validateCompositionRequest(request) {
           ['wordPercent', 'letterPercent', 'glyphPercent'].some((k) => Object.hasOwn(row, k))
         ) {
           if (
-            request.protocol !== 6 ||
+            request.protocol < 6 ||
             ![row.wordPercent, row.letterPercent, row.glyphPercent].every(Number.isFinite) ||
             row.wordPercent < 0 ||
             row.glyphPercent < 50 ||
@@ -252,12 +254,27 @@ export function validateCompositionRequest(request) {
               if (typeof value !== 'boolean') throw Error('Invalid native character feature.');
           }
         }
+        if (shape === 'paragraph' && Object.hasOwn(row, 'tabStops')) {
+          if (
+            request.protocol < 7 ||
+            !Array.isArray(row.tabStops) ||
+            !row.tabStops.length ||
+            row.tabStops.length > MAX_TAB_STOPS
+          )
+            throw Error('Invalid native paragraph tab stops.');
+          for (const stop of row.tabStops) {
+            record(stop, ['position', 'alignment', 'character', 'leader']);
+            if (Object.values(stop).some((v) => !['string', 'number'].includes(typeof v)))
+              throw Error('Invalid native tab stop property.');
+          }
+          tabStopsValue(row.tabStops);
+        }
         if (shape === 'paragraph' && Object.hasOwn(row, 'wordSpacing')) {
           if (request.protocol < 5) throw Error('Word spacing requires protocol 5.');
           const advanced = Object.hasOwn(row.wordSpacing ?? {}, 'letterDesired');
           record(
             row.wordSpacing,
-            advanced && request.protocol === 6
+            advanced && request.protocol >= 6
               ? [...fields.wordSpacing, ...fields.typographyLimits]
               : fields.wordSpacing,
           );
@@ -290,14 +307,16 @@ export function validateCompositionRequest(request) {
         for (const [key, cell] of Object.entries(row)) {
           if (shape === 'run' && (key === 'features' || key === 'variations'))
             for (const flag of Object.values(cell)) atom(flag);
-          else if (shape === 'paragraph' && key === 'wordSpacing')
+          else if (shape === 'paragraph' && key === 'tabStops') {
+            for (const stop of cell) for (const value of Object.values(stop)) atom(value);
+          } else if (shape === 'paragraph' && key === 'wordSpacing')
             for (const value of Object.values(cell)) atom(value);
           else atom(cell);
         }
       }
     }
   }
-  if (request.protocol === 6 && request.placements) {
+  if (request.protocol >= 6 && request.placements) {
     let start = 0,
       paragraphIndex = 0;
     for (const placement of request.placements) {

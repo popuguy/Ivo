@@ -1,7 +1,10 @@
+import { LIST_COMMANDS } from '../../domain/text/list-numbering.js';
+import { applyListCommand } from '../../rendering/text/edit-lists.js';
 import {
   BASELINE_GRID_DEFAULTS,
   gridInsideFrame,
   nextGridBaseline,
+  pageGridStart,
 } from '../../domain/text/baseline-grid.js';
 import { customHyphenation } from '../../domain/text/hyphenation.js';
 import { INSERT_CHARACTERS } from '../../domain/text/native-commands.js';
@@ -9,6 +12,7 @@ import { PANEL_LABELS } from '../../domain/workspace/panels.js';
 import { reflectPropertyFormatting } from './ui/publishing-properties.js';
 import { patchComposedFrame } from './text/composed-frame.js';
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
+import { createSpellingPanel } from './ui/spelling-panel.js';
 import { createFindChangePanel } from './ui/find-change-panel.js';
 import { findTextSources, findSelection } from './text/find-change.js';
 import { textClipboardHTML } from './text/clipboard.js';
@@ -75,6 +79,7 @@ import {
 import { inheritEmptyParagraphTypography } from '../../rendering/text/insertion.js';
 import { wordSpacingSettings } from '../../domain/text/word-spacing.js';
 import { readImageFile } from './assets/image-import.js';
+import { createPreflightPanel } from './ui/preflight.js';
 import { propertiesContent } from './ui/properties.js';
 import { documentContent } from '../../domain/history/document-history.js';
 import {
@@ -316,7 +321,7 @@ export function mountCanvasEditor(host, options) {
     if (flow?.composition && nativePlanKey !== compositionLayoutKey(doc())) return null;
     return flowPlan.fragments.get(id);
   }
-  const findChange = createFindChangePanel({
+  const editorialContext = {
     host: editor,
     allowed: () =>
       ownsInput() && canWrite() && options.editing && !busy && !composing && !dialogOpen(),
@@ -376,6 +381,43 @@ export function mountCanvasEditor(host, options) {
     finished(focus) {
       CSS.highlights?.delete('ivo-find-match');
       if (focus) (activeText() || viewport).focus({ preventScroll: true });
+    },
+  };
+  const findChange = createFindChangePanel(editorialContext);
+  const spelling = createSpellingPanel(editorialContext, globalThis.ivoNative?.spelling);
+  const preflight = createPreflightPanel({
+    editor,
+    publication(digital) {
+      const current = doc();
+      const nativeReady =
+        !current.textFlows?.some((flow) => flow.composition) ||
+        (!nativeError && nativePlanKey === compositionLayoutKey(current));
+      const frames = new Map(
+        Array.from(world.querySelectorAll('[data-scene-text]'), (el) => [el.dataset.sceneText, el]),
+      );
+      return [
+        current,
+        {
+          digital,
+          assets: options.assets?.() || options.fonts?.() || [],
+          documents: options.documents,
+          flowStatus: (flow) => (!flow.composition || nativeReady) && flowPlan.status.get(flow.id),
+          frameOverflow: (item) => {
+            const el = frames.get(item.id);
+            return el?.getClientRects().length ? textIsOverset(el) : null;
+          },
+        },
+      ];
+    },
+    reveal(id, parent) {
+      if (!ownsInput() || busy || composing) return;
+      if (parent && doc().publishing?.parents?.some((p) => p.id === parent)) editParent(parent);
+      else if (id && sceneObject(doc(), id)) {
+        const item = sceneObject(doc(), id);
+        select(id);
+        state.activePage = item.pageId;
+        fit();
+      }
     },
   });
   const workspacePanels = installWorkspacePanels(editor, {
@@ -666,6 +708,11 @@ export function mountCanvasEditor(host, options) {
       throw Error(
         'Extended paragraph keeps require native composition in every text flow using this paragraph style.',
       );
+    if (
+      (summary.values.tabStops && summary.values.tabStops !== 'normal') ||
+      summary.mixed.includes('tabStops')
+    )
+      throw Error('Custom tab stops require native composition in this text flow.');
     if (summary.mixed.includes('wordSpacing') || wordSpacingSettings(summary.values.wordSpacing))
       throw Error(
         'Word spacing requires native composition in every text flow using this paragraph style.',
@@ -711,7 +758,12 @@ export function mountCanvasEditor(host, options) {
     const f = frame.frameOptions;
     element.toggleAttribute('data-custom-frame-grid', !!f?.baselineGrid);
     if (!f?.baselineGrid) return;
-    const grid = gridInsideFrame(frame, byId);
+    const grid = gridInsideFrame(
+      frame,
+      byId,
+      undefined,
+      doc().pages.find((p) => p.id === frame.pageId),
+    );
     if (!grid) {
       element.removeAttribute('data-custom-frame-grid');
       return;
@@ -731,13 +783,16 @@ export function mountCanvasEditor(host, options) {
     element.style.setProperty('--frame-grid-step', grid.increment * sy + 'px');
   }
   function paintBaselineGrid() {
-    const { start, increment } = doc().publishing?.baselineGrid || BASELINE_GRID_DEFAULTS;
+    const grid = doc().publishing?.baselineGrid || BASELINE_GRID_DEFAULTS;
     world.toggleAttribute('data-show-baseline-grid', !!state.showBaselineGrid);
-    if (state.showBaselineGrid)
-      world.style.setProperty('--baseline-guide-width', 1 / state.camera.zoom + 'px');
-    world.style.setProperty('--baseline-grid-start', start + 'px');
-    world.style.setProperty('--baseline-grid-increment', increment + 'px');
     if (!state.showBaselineGrid) return;
+    world.style.setProperty('--baseline-guide-width', 1 / state.camera.zoom + 'px');
+    world.style.setProperty('--baseline-grid-increment', grid.increment + 'px');
+    const pages = new Map(doc().pages.map((p) => [p.id, p]));
+    for (const element of world.children) {
+      const p = pages.get(element.dataset.page);
+      if (p) element.style.setProperty('--baseline-grid-start', pageGridStart(grid, p) + 'px');
+    }
     const byId = new Map(doc().blocks.map((b) => [b.id, b]));
     for (const frame of byId.values())
       if (frame.frameOptions?.baselineGrid) {
@@ -982,7 +1037,14 @@ export function mountCanvasEditor(host, options) {
             !visibleOnly || !content.hidden || workspacePanels.isExternal(kind),
         ),
       index = panelEntries.some(({ kind }) => kind === 'links') ? options.index?.() : undefined;
+    const report = workspacePanels.entries().find(({ kind }) => kind === 'preflight');
+    preflight.render(
+      report && (!report.content.hidden || workspacePanels.isExternal('preflight'))
+        ? report.content
+        : null,
+    );
     for (const { kind, content } of panelEntries) {
+      if (kind === 'preflight') continue;
       if (kind === 'text-wrap' && content.hidden && !workspacePanels.isExternal(kind)) {
         content.replaceChildren();
         panelHTML.delete(content);
@@ -1488,7 +1550,7 @@ export function mountCanvasEditor(host, options) {
       );
     } else if (
       hasNativeTextSettings(doc()) ||
-      /\bdata-ivo-(?:wordspace|nextlines|previous|pstart|keepedges|nobreak|hyp(?:word|first|last|limit|zone|caps|final))\s*=/i.test(
+      /\bdata-ivo-(?:tabstops|wordspace|nextlines|previous|pstart|keepedges|nobreak|hyp(?:word|first|last|limit|zone|caps|final))\s*=/i.test(
         canonical,
       )
     )
@@ -1741,6 +1803,7 @@ export function mountCanvasEditor(host, options) {
   function deactivate() {
     composerChange = null;
     findChange.close();
+    spelling.close();
     flowSelection?.cancel();
     if (composing) return false;
     finishGesture(true);
@@ -1825,6 +1888,8 @@ export function mountCanvasEditor(host, options) {
           'Choose native composition for this text flow before applying hyphenation options.';
       if (settings.noBreak)
         message = 'Choose native composition for this text flow before applying No Break.';
+      if (settings.tabStops && settings.tabStops !== 'normal')
+        message = 'Choose native composition for this text flow before applying tab stops.';
       if (wordSpacingSettings(settings.wordSpacing ?? 'normal'))
         message = 'Choose native text composition for this text flow before applying word spacing.';
       if (message) {
@@ -2038,6 +2103,40 @@ export function mountCanvasEditor(host, options) {
     syncTextStyle();
     requestFrame();
     return true;
+  }
+  function applyStyleSequence(first) {
+    const item = object(),
+      definitions = doc().publishing?.paragraphStyles || [];
+    if (!item || !canWrite() || !definitions.some((s) => s.id === first)) return;
+    finishText();
+    const view = captureView();
+    const flow = textFlowForFrame(doc(), item);
+    const owner = editorialContext.sources().find((o) => o.id === (flow?.id || item.id));
+    if (!owner) throw Error('Choose editable text to apply the style sequence.');
+    const root = document.createElement('div');
+    root.innerHTML = owner.html;
+    const bookmark = activeTextId ? view.textSelection : null;
+    const range = bookmark ? rangeFromBookmark(root, bookmark) : document.createRange();
+    if (!range) return;
+    if (!bookmark) range.selectNodeContents(root);
+    const bounds = owner.regions ? textIndexMap(root).boundaries : null;
+    const changed = formatParagraphs(root, range, 'paragraphStyle', first, {
+      requireStructuralParagraphs: true,
+      followingValue: (current) => definitions.find((s) => s.id === current)?.nextStyle || current,
+      beforeParagraph:
+        bounds &&
+        ((node) => {
+          const offsets = bounds.get(node);
+          if (
+            !offsets ||
+            !owner.regions.some((r) => r.start <= offsets[0] && r.end >= offsets.at(-1))
+          )
+            throw Error('This paragraph extends into protected or overset text.');
+        }),
+    });
+    if (!changed) return;
+    mutate(() => writeText(item, root.innerHTML), 'Apply Style Sequence');
+    if (bookmark) restoreView(view);
   }
   function clearTextOverrides() {
     const item = object();
@@ -2785,6 +2884,31 @@ export function mountCanvasEditor(host, options) {
       options.onNotify?.('Parent frames are independent text containers.');
       return;
     }
+    if (Object.hasOwn(LIST_COMMANDS, name)) {
+      const text = activeText(),
+        range = preserveRange();
+      if (!options.editing || !text?.isContentEditable || !range) return;
+      text.focus({ preventScroll: true });
+      const selection = text.ownerDocument.getSelection();
+      if (
+        !selection.rangeCount ||
+        !text.contains(selection.anchorNode) ||
+        !text.contains(selection.focusNode)
+      ) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      if (sourceTextFlow(text)) projectFlowInput(text, 0);
+      finishText();
+      beginTextInput('formatList');
+      const changed = applyListCommand(text, selection.getRangeAt(0), name);
+      finishDocumentInput(text, changed ? 'edited' : 'unchanged');
+      if (!changed)
+        options.onNotify?.(
+          'This command needs consecutive paragraphs at the same list level, or a number to continue.',
+        );
+      return;
+    }
     if (Object.hasOwn(INSERT_CHARACTERS, name)) {
       const text = activeText(),
         range = preserveRange();
@@ -2807,10 +2931,16 @@ export function mountCanvasEditor(host, options) {
       }
       return;
     }
-    if (name === 'find-change') {
+    if (name === 'find-change' || name === 'check-spelling') {
       if (options.editing && canWrite()) {
         finishText();
-        findChange.open();
+        if (name === 'check-spelling') {
+          findChange.close();
+          spelling.open();
+        } else {
+          spelling.close();
+          findChange.open();
+        }
       }
       return;
     }
@@ -3325,12 +3455,23 @@ export function mountCanvasEditor(host, options) {
     contextMenu.setAttribute('role', 'menu');
     contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="link">Insert document link…</button>${
       context.textEditing
-        ? Object.entries(INSERT_CHARACTERS)
+        ? Object.entries({
+            ...INSERT_CHARACTERS,
+            ...Object.fromEntries(
+              Object.entries(LIST_COMMANDS).map(([id, label]) => [id, { label }]),
+            ),
+          })
             .map(
               ([id, { label }]) =>
                 `<button role="menuitem" data-canvas-command="${id}">${label}</button>`,
             )
-            .join('')
+            .join('') +
+          `<details><summary>Bulleted &amp; Numbered Lists</summary>${Object.entries(LIST_COMMANDS)
+            .map(
+              ([id, label]) =>
+                `<button role="menuitem" data-canvas-command="${id}">${label}</button>`,
+            )
+            .join('')}</details>`
         : ''
     }<div class="menu-separator"></div><button role="menuitem" data-canvas-command="duplicate" ${context.selected ? '' : 'disabled'}>Duplicate</button><button role="menuitem" data-canvas-command="delete" ${context.selected ? '' : 'disabled'}>Delete</button><div class="menu-separator"></div><button role="menuitem" data-canvas-command="select-all">Select all</button><button role="menuitem" data-canvas-command="deselect">Deselect</button>`;
     editor.append(contextMenu);
@@ -3545,13 +3686,22 @@ export function mountCanvasEditor(host, options) {
       });
     }
     if (el.dataset.pageProp) {
-      const key = el.dataset.pageProp,
-        value =
-          key === 'name'
-            ? el.value.slice(0, 120)
-            : Math.max(72, Math.min(14400, Number(el.value) || 72));
+      const key = el.dataset.pageProp;
+      if (key === 'topMargin') {
+        if (!el.validity.valid || !Number.isFinite(el.valueAsNumber)) return;
+        mutate(() => {
+          page().topMargin = el.valueAsNumber;
+          markTypographyVersion(doc());
+        }, 'Page top margin');
+        return;
+      }
+      const value =
+        key === 'name'
+          ? el.value.slice(0, 120)
+          : Math.max(72, Math.min(14400, Number(el.value) || 72));
       mutate(() => {
         page()[key] = value;
+        if (key === 'height' && page().topMargin > value) page().topMargin = value;
       });
     }
     if (el.dataset.sceneMeta) {
@@ -3704,6 +3854,12 @@ export function mountCanvasEditor(host, options) {
           element.ownerDocument.getSelection().isCollapsed
           ? flowSelection.lineDeletionRange(event.inputType.endsWith('Backward'))
           : undefined,
+        (block) => {
+          const style =
+            block?.closest('[data-ivo-pstyle]')?.dataset.ivoPstyle ||
+            frameTextSettings(doc(), sceneObject(doc(), activeTextId))?.paragraphStyle;
+          return doc().publishing?.paragraphStyles.find((s) => s.id === style)?.nextStyle;
+        },
       );
     if (handled) {
       event.preventDefault();
@@ -4315,6 +4471,7 @@ export function mountCanvasEditor(host, options) {
     objects,
     mutate,
     applyTextProperty,
+    applyStyleSequence,
     render: renderPanel,
     select,
     preserveRange,
@@ -4706,6 +4863,7 @@ export function mountCanvasEditor(host, options) {
     },
     destroy() {
       findChange.close();
+      spelling.close();
       finishGesture();
       endTextEditing();
       alive = false;
@@ -4719,6 +4877,7 @@ export function mountCanvasEditor(host, options) {
       inputAnchor.destroy();
       parentEditor?.destroy();
 
+      preflight.destroy();
       workspacePanels.destroy();
       controller.abort();
       observer.disconnect();

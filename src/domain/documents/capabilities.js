@@ -2,8 +2,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 17;
-export const CURRENT_CANVAS_VERSION = 16;
+export const CURRENT_ARCHIVE_VERSION = 21;
+export const CURRENT_CANVAS_VERSION = 20;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -119,6 +119,46 @@ export function hasWordSpacing(doc) {
       settings?.wordSpacing !== undefined || settings?.textOverrides?.wordSpacing !== undefined,
     markup = (html) => /\bdata-ivo-wordspace\s*=/i.test(html || '');
   return doc.canvasVersion === 9 || hasAuthoredTextSetting(doc, owns, markup);
+}
+
+export function hasMarginGrid(doc) {
+  return (
+    doc.canvasVersion === 18 ||
+    (Array.isArray(doc.pages) && doc.pages.some((page) => page?.topMargin !== undefined)) ||
+    doc.publishing?.baselineGrid?.relativeTo === 'margin' ||
+    [...(doc.blocks || []), ...(doc.publishing?.parents || []).flatMap((p) => p.blocks || [])].some(
+      (b) => b.frameOptions?.baselineGrid?.relativeTo === 'margin',
+    )
+  );
+}
+
+export function hasNextStyle(doc) {
+  return (
+    doc.canvasVersion === 20 ||
+    (doc.publishing?.paragraphStyles || []).some((s) => s?.nextStyle !== undefined)
+  );
+}
+
+export function hasListNumbering(doc) {
+  const counters = (html) =>
+    /<(?:ol\b[^>]*?\s(?:start|data-ivo-list-series)|li\b[^>]*?\svalue)\s*=/i.test(html || '');
+  return (
+    doc.canvasVersion === 19 ||
+    hasAuthoredTextSetting(doc, () => false, counters) ||
+    (doc.textFlows || []).some((flow) => flow.composition && /<(?:ol|ul)\b/i.test(flow.html || ''))
+  );
+}
+
+export function hasTabStops(doc) {
+  return (
+    doc.canvasVersion === 17 ||
+    hasAuthoredTextSetting(
+      doc,
+      (settings) =>
+        settings?.tabStops !== undefined || settings?.textOverrides?.tabStops !== undefined,
+      (html) => /\bdata-ivo-tabstops\s*=/i.test(html || ''),
+    )
+  );
 }
 
 export function hasFrameGrid(doc) {
@@ -251,7 +291,9 @@ export function hasHyphenationSettings(doc) {
 export function hasNativeTextSettings(doc) {
   return (
     doc.canvasVersion >= 9 ||
+    hasListNumbering(doc) ||
     hasBaselineGrid(doc) ||
+    hasTabStops(doc) ||
     hasWordSpacing(doc) ||
     hasExtendedKeeps(doc) ||
     hasParagraphStarts(doc) ||
@@ -275,6 +317,10 @@ function hasAuthoredTextSetting(doc, owns, markup) {
 }
 
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasNextStyle)) return 21;
+  if (documents.some(hasListNumbering)) return 20;
+  if (documents.some(hasMarginGrid)) return 19;
+  if (documents.some(hasTabStops)) return 18;
   if (documents.some(hasFrameGrid)) return 17;
   if (documents.some(hasJustification)) return 16;
   if (documents.some(hasHyphenationSettings)) return 15;
@@ -298,6 +344,22 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasNextStyle(document)) {
+    document.canvasVersion = 20;
+    return document;
+  }
+  if (hasListNumbering(document)) {
+    document.canvasVersion = 19;
+    return document;
+  }
+  if (hasMarginGrid(document)) {
+    document.canvasVersion = 18;
+    return document;
+  }
+  if (hasTabStops(document)) {
+    document.canvasVersion = 17;
+    return document;
+  }
   if (hasFrameGrid(document)) {
     document.canvasVersion = 16;
     return document;

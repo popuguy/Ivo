@@ -1,3 +1,5 @@
+import { listMarkers, paintListNumbers } from '../../../src/shared/dom/list-numbering.js';
+import { cleanHTML } from '../../../src/shared/html/sanitize.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { createDocumentHistory } from '../../../src/domain/history/document-history.js';
@@ -295,6 +297,51 @@ export async function verifyListOperations(host, bridge) {
     assert(
       owned.length >= 7 && owned.every(Boolean),
       'List edits escaped document operation ownership',
+    );
+    const item = (caption) =>
+      [...root().querySelectorAll('li')].find((el) => el.textContent === caption);
+    const choose = async (node, offset = 0) => {
+      root().focus();
+      getSelection().collapse(node, offset);
+      await tick();
+    };
+    await choose(root().lastElementChild.firstChild);
+    await editor.command('apply-numbering');
+    await tick();
+    const third = item('X');
+    assert(third, 'List command did not apply in the browser');
+    await choose(third.firstChild);
+    await editor.command('increase-list-level');
+    await tick();
+    assert(
+      root().querySelector('li > ol > li')?.textContent === 'X',
+      'Browser did not nest the item',
+    );
+    const owner = root().querySelector('li > ol').parentElement;
+    await choose(owner.firstChild, 1);
+    const count = owned.length;
+    await bridge.key('Enter');
+    await tick();
+    assert(owned.length === count + 1 && owned.at(-1), 'Browser handled the parent split');
+    assert(
+      root().querySelector('li > ol > li')?.textContent === 'X',
+      'Splitting a parent erased its nested list',
+    );
+    const imported = document.createElement('div');
+    imported.innerHTML = cleanHTML('<ol start="7"><li>A</li><li value="12">B</li><li>C</li></ol>');
+    assert(
+      [...imported.querySelectorAll('li')]
+        .map((li) => listMarkers(imported).get(li).number)
+        .join() === '7,12,13',
+      'Imported HTML list start/restart lost',
+    );
+    imported.innerHTML =
+      '<ol data-ivo-list-series="default"><li>A</li><li>B</li></ol><p>Interruption</p><ol data-ivo-list-series="default"><li>C</li></ol>';
+    const markup = imported.innerHTML;
+    paintListNumbers(imported);
+    assert(
+      imported.lastElementChild.start === 3 && cleanHTML(imported.innerHTML) === markup,
+      'Browser list continuity leaked a generated start into the archive',
     );
   } finally {
     host.removeEventListener('beforeinput', watch);

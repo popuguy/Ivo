@@ -1,3 +1,4 @@
+import { LIST_COMMANDS } from './list-numbering.js';
 export const CHARACTER_MENUS = Object.freeze([
   {
     path: ['Insert Special Character', 'Hyphens and Dashes'],
@@ -47,13 +48,16 @@ export const NATIVE_TEXT_COMMANDS = Object.freeze([
   'italic',
   'underline',
   'keep-options',
+  'tabs',
   ...Object.keys(INSERT_CHARACTERS),
+  ...Object.keys(LIST_COMMANDS),
 ]);
 export function textCommandEnabled(name, state) {
   return (
     state.canFormat &&
-    (name !== 'keep-options' || state.canKeepOptions === true) &&
-    (!Object.hasOwn(INSERT_CHARACTERS, name) || state.canInsertCharacter === true)
+    (!['keep-options', 'tabs'].includes(name) || state.canKeepOptions === true) &&
+    ((!Object.hasOwn(INSERT_CHARACTERS, name) && !Object.hasOwn(LIST_COMMANDS, name)) ||
+      state.canInsertCharacter === true)
   );
 }
 export const NATIVE_TEXT_ACCELERATORS = Object.freeze({

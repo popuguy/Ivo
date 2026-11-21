@@ -215,7 +215,7 @@ export function formatParagraphs(
   range,
   field,
   value,
-  { requireStructuralParagraphs = false } = {},
+  { requireStructuralParagraphs = false, followingValue, beforeParagraph } = {},
 ) {
   const attr = PARAGRAPH_FIELDS[field];
   if (!attr) return false;
@@ -240,6 +240,7 @@ export function formatParagraphs(
       'p,div,li,h2,h3,h4,blockquote',
     );
     if (block && block !== element && element.contains(block)) {
+      beforeParagraph?.(block);
       setTextAttribute(block, attr, value);
       return true;
     }
@@ -258,7 +259,9 @@ export function formatParagraphs(
         range.compareBoundaryPoints(Range.START_TO_END, whole) <= 0)
     )
       continue;
+    beforeParagraph?.(node);
     setTextAttribute(node, attr, value);
+    if (followingValue) value = followingValue(value);
     changed = true;
   }
   return changed;

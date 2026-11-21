@@ -1,3 +1,4 @@
+import { hasListNumbering, markTypographyVersion } from './capabilities.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 import { uid, createBlock } from './model.js';
 const STYLE_KEYS = Object.keys({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS });
@@ -11,6 +12,7 @@ export function enableNativeComposition(document, textFlow, composer = 'paragrap
     throw new Error('Choose a document text flow and a supported composer.');
   textFlow.composition = { version: 1, composer };
   document.canvasVersion = Math.max(document.canvasVersion || 1, 7);
+  if (hasListNumbering(document)) markTypographyVersion(document);
   return textFlow;
 }
 

@@ -21,8 +21,14 @@ The source archive remains **9 / canvas 8** when wrapping is used; native compos
 
 The owned paragraph optimizer now fits unequal physical columns with exact per-alternative widths and vertical metrics. Layout-only changes reuse exact-font measurements; tab-containing paragraphs additionally key measurements by their first/rest tab origins. Decisions retain at most four geometry/cursor keys per paragraph, with bounded caches and whole-flow work limits. Indents outside all available frames reject synchronously; a narrow unusable frame can hand source to a wider following frame.
 
-The Paragraph preview still uses its declared ragged-right quadratic fitting policy before default native line justification. This is not Adobe's complete justified-paragraph cost function. Both native previews support unequal column widths. Native contour exclusions, spacing min/desired/max and glyph-scale constraints, hyphenation, keeps, grids, custom tabs/leaders, advanced shaping, structured content, physical input and cross-device qualification remain open. Native wrapping remains the next composition priority.
+The Paragraph preview still uses its declared ragged-right quadratic fitting policy before default native line justification. This is not Adobe's complete justified-paragraph cost function. Both native previews support unequal column widths. Later additions cover object wrap, justification limits, hyphenation, keeps, grids and tab stops. See the current release scope for the outstanding cases.
 
 ## Verification
 
 Domain, byte-transport, real Core Text and actual-editor regressions cover the source/layout boundaries above. The new independent PDFKit witness checks shifted selectable text, while the production export fixture retains rotated/scaled/masked mixed-face text with paragraph alignment. Trusted typing, exact undo/redo, archive/cold reopening, transformed caret queries, sparse style definitions and rejected-width/overhang/ambiguous-scope transactions use disposable CMU data. The [verification record](verification.md) contains the final run and package results; native reference captures and generated artifacts stay outside Git.
+
+## Custom tabs
+
+**Type → Tabs…** and **Properties → Paragraph → More Options → Tabs…** edit stops on the selected paragraphs in a native flow. The same settings are available in a native paragraph style. Positions are in points from the column origin. Left, center and right align the field to the stop. Decimal aligns the leading edge of the first matching character. A missing character aligns the end of the field. After the last custom stop, implicit stops resume on the column's 36 pt grid.
+
+Leaders repeat up to eight printable characters in the tab's typeface and color. The phase starts at the column origin so labels of different widths can share vertical rows of dots. Editor display and PDF draw the same outlines. Copying or editing the source sees a single tab. Dialogs support precise numeric positions. Dragging markers on a ruler, a panel snapped to the current frame, and the right-indent tab character remain open.

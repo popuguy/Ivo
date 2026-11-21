@@ -510,6 +510,81 @@ test('vertical Justify spends its paragraph spacing allowance before distributin
   );
 });
 
+test('vertical alignment distributes whole grid increments across an ordinary frame', async () => {
+  const composer = createParagraphComposer(frameBackend().measure);
+  const req = flowRequest('cut\u2028hem\u2028sew\u2029');
+  // Three local baselines at 30, 49 and 68; the frame has space for one extra 19 pt step.
+  for (const [verticalAlign, expected] of [
+    ['top', [30, 49, 68]],
+    ['center', [30, 49, 68]],
+    ['bottom', [49, 68, 87]],
+    ['justify', [30, 58.5, 87]],
+  ]) {
+    const columns = [
+      {
+        width: 80,
+        height: 94.5,
+        firstBaseline: 'fixed',
+        minimumFirstBaseline: 12,
+        grid: { start: -8, increment: 19 },
+        verticalAlign,
+      },
+    ];
+    const plan = await composer.compose(req, columns, { baselineAlignment: ['all'] });
+    assert.deepEqual(
+      plan.placements.map((l) => l.baseline),
+      expected,
+    );
+  }
+});
+
+test('a box in the space between lines reserves width on the following baseline', async () => {
+  const composer = createParagraphComposer(frameBackend().measure);
+  const req = flowRequest('cut\u2028hem\u2029');
+  const bounds = { left: 0, right: 23, top: 9, bottom: 10 };
+  const obstacle = {
+    mode: 'bounds',
+    side: 'both',
+    bounds,
+    polygons: [
+      [
+        { x: 0, y: 9 },
+        { x: 23, y: 9 },
+        { x: 23, y: 10 },
+        { x: 0, y: 10 },
+      ],
+    ],
+  };
+  const plan = await composer.compose(req, [{ width: 80, height: 20, obstacles: [obstacle] }]);
+  assert.deepEqual(
+    plan.placements.map((l) => [l.baseline, l.left]),
+    [
+      [8, 0],
+      [20, 23],
+    ],
+  );
+});
+
+test('a last baseline on the bottom inset fits while a line crossing it flows forward', async () => {
+  const composer = createParagraphComposer(frameBackend().measure);
+  const req = flowRequest('cut\u2028gyp\u2029');
+  for (const [height, expectedFrame] of [
+    [19.99, 1],
+    [20, 0],
+    [20.01, 0],
+  ]) {
+    const columns = [
+      { width: 50, height },
+      { width: 50, height: 80 },
+    ];
+    const plan = await composer.compose(req, columns);
+    assert.deepEqual(
+      plan.placements.map((l) => l.frame),
+      [0, expectedFrame],
+    );
+  }
+});
+
 test('invalid exact metric batches are atomic and retryable', async () => {
   for (const corrupt of [
     (r) => {

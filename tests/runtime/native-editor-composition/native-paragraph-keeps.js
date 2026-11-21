@@ -1050,7 +1050,89 @@ export async function verifyNativeParagraphKeeps({
         history.size === 0,
       'Passive kept overset created pages/source/history',
     );
+    ownFixture('Custom tab stops', '<p>A\t123.45</p><p>B\t123.45</p>');
+    mount();
+    await settle();
+    await selectWord('123.45');
+    await editor.command('tabs');
+    const tabs = document.querySelector('dialog[aria-label="Tabs"]');
+    assert(tabs?.open, 'Type > Tabs did not open the tab editor');
+    tabs.querySelector('[data-add-stop]').click();
+    const stop = tabs.querySelector('fieldset');
+    stop.querySelector('input[type=number]').value = '90';
+    stop.querySelector('select').value = 'decimal';
+    stop.querySelector('[data-leader]').value = '.';
+    stop.querySelector('select').dispatchEvent(new Event('change', { bubbles: true }));
+    tabs.querySelector('form').requestSubmit();
+    await settle();
+    const tabbed = painted();
+    assert(
+      tabbed.request.protocol === 7 && tabbed.request.text === 'A\t123.45\u2029B\t123.45\u2029',
+      'Changing paragraph stops changed the source tab or omitted its shaping request',
+    );
+    assert(
+      paragraphMark(0, 'tabstops') === '90:decimal:46|46' && !paragraphMark(1, 'tabstops'),
+      'Custom stops escaped the selected paragraph',
+    );
+    assert(host.querySelector('[data-tab-leader]'), 'The editor omitted the chosen tab leader');
+    near(
+      tabbed.result.layout.lines[0].carets.find(({ index }) => index === 5).primary,
+      90,
+      'Real editor decimal caret',
+    );
+    assert(
+      archiveVersion([doc]) === 18 &&
+        validateImport({ schemaVersion: 18, documents: [doc], assets: [] }).documents[0]
+          .textFlows[0].html === source(),
+      'Tab stops failed to reopen',
+    );
+    await editor.command('undo');
+    await settle();
+    assert(!paragraphMark(0, 'tabstops'), 'Undo retained the custom stop');
+    await editor.command('redo');
+    await settle();
+    assert(paragraphMark(0, 'tabstops') === '90:decimal:46|46', 'Redo lost the custom stop');
+
+    ownFixture('Named tab stops', '<p>A\t42</p><p data-ivo-tabstops="normal">B\t42</p>');
+    doc.publishing.paragraphStyles.push({
+      id: 'price-list',
+      name: 'Price list',
+      basedOn: null,
+      attributes: {},
+    });
+    doc.textFlows[0].style.paragraphStyle = 'price-list';
+    resetOwner();
+    mount();
+    await settle();
+    await editor.command('edit-paragraph-style');
+    const named = document.querySelector('dialog.publishing-style-dialog[open]');
+    const mode = named.querySelector('[name=tabStopsMode]');
+    assert(mode.value === 'inherit', 'An inherited ruler was turned into a local override');
+    mode.value = 'custom';
+    mode.dispatchEvent(new Event('change'));
+    named.querySelector('[data-add-stop]').click();
+    named.querySelector('[data-tab-stops] input[type=number]').value = '72';
+    named.querySelector('button[type=submit]').click();
+    await settle();
+    const styledTabs = painted();
+    near(
+      styledTabs.result.layout.lines[0].carets.find(({ index }) => index === 2).primary,
+      72,
+      'Inherited tab position',
+    );
+    near(
+      styledTabs.result.layout.lines[1].carets.find(
+        ({ index }) => index === styledTabs.result.layout.lines[1].start + 2,
+      ).primary,
+      36,
+      'Paragraph reset to default tabs',
+    );
+    assert(
+      doc.publishing.paragraphStyles[0].attributes.tabStops === '72:left',
+      'Style editor lost authored ruler',
+    );
     return {
+      authoredParagraphTabs: true,
       nativeKeepDefaultCountersInactive: true,
       nativeKeepAllInspectorHandoff: true,
       nativeKeepNextFinalRowInspectorHandoff: true,

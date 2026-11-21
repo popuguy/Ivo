@@ -1,3 +1,4 @@
+import { listMarkers, inlineListPrefix, firstListText } from '../../shared/dom/list-numbering.js';
 import { HYPHENATION_DEFAULTS } from '../../domain/text/hyphenation.js';
 import {
   dictionaryForLanguage,
@@ -18,10 +19,26 @@ import {
 } from '../../domain/text/native-character-style.js';
 
 const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE']),
-  supportedTags = new Set(['P', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'A', 'BR']),
+  supportedTags = new Set([
+    'P',
+    'DIV',
+    'SPAN',
+    'B',
+    'STRONG',
+    'I',
+    'EM',
+    'U',
+    'S',
+    'A',
+    'BR',
+    'OL',
+    'UL',
+    'LI',
+  ]),
   paragraphFields = [
     ...PARAGRAPH_LAYOUT_FIELDS,
     ...PARAGRAPH_KEEP_FIELDS,
+    'tabStops',
     'wordSpacing',
     'baselineAlignment',
     'hyphenate',
@@ -98,6 +115,7 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   const sourceHTML = root.innerHTML,
     map = textIndexMap(root),
     logicalLength = map.boundaries.get(root).at(-1),
+    markers = listMarkers(root),
     tokens = [],
     styles = new WeakMap(),
     base = { ...TEXT_DEFAULTS, ...settings },
@@ -125,7 +143,7 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
       if (paragraphFields.some((key) => style[key] !== paragraphStyle[key]))
         throw new UnsupportedComposition('paragraph properties on inline text');
     }
-    const anchor = node.closest?.('a'),
+    const anchor = kind === 'list-marker' ? null : node.closest?.('a'),
       target = anchor?.getAttribute('data-doc-id'),
       url = safeURL(anchor?.getAttribute('href'));
     tokens.push({
@@ -144,6 +162,32 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
     const points = map.boundaries.get(node);
     if (blockTags.has(node.tagName)) {
       add('structure', points[0] - 1, points[0], '', node);
+      if (node.tagName === 'LI') {
+        const marker = markers.get(node);
+        const prefix = inlineListPrefix(node);
+        if (!marker || !prefix) throw new UnsupportedComposition('complex list item contents');
+        add(
+          'list-marker',
+          points[0],
+          points[0],
+          marker.text,
+          firstListText(node)?.parentElement || node,
+          -1,
+        );
+        if (
+          prefix.length < node.childNodes.length &&
+          !prefix.some(
+            (child) =>
+              /[^ \t\r\n\f]/.test(child.textContent) ||
+              child.nodeName === 'BR' ||
+              child.querySelector?.('br'),
+          )
+        ) {
+          const beforeChildren = points[prefix.length];
+          add('paragraph', beforeChildren, beforeChildren, '\u2029', node, 0);
+          paragraphEnds.add(beforeChildren);
+        }
+      }
       const leaf = !node.querySelector('p,div,li,h1,h2,h3,h4,h5,h6,blockquote');
       if (leaf) {
         leafBlocks.add(node);
@@ -293,6 +337,7 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
             .filter(
               (key) =>
                 (key !== 'baselineAlignment' || token.style[key] !== 'none') &&
+                (key !== 'tabStops' || token.style[key] !== 'normal') &&
                 (key !== 'wordSpacing' || token.style[key] !== 'normal') &&
                 (key !== 'hyphenate' || token.style.hyphenate) &&
                 (!Object.hasOwn(HYPHENATION_DEFAULTS, key) ||
@@ -333,13 +378,17 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   }
   return {
     ...(hyphenationPoints.length ? { hyphenationPoints } : {}),
-    protocol: paragraphs.some((paragraph) => paragraph.wordSpacing?.includes('|'))
-      ? 6
-      : paragraphs.some((paragraph) => wordSpacingSettings(paragraph.wordSpacing))
-        ? 5
-        : runs.some(hasNondefaultNativeCharacter)
-          ? 4
-          : 2,
+    protocol: spans.some((span) => span.kind === 'list-marker')
+      ? 8
+      : paragraphs.some((paragraph) => paragraph.tabStops)
+        ? 7
+        : paragraphs.some((paragraph) => paragraph.wordSpacing?.includes('|'))
+          ? 6
+          : paragraphs.some((paragraph) => wordSpacingSettings(paragraph.wordSpacing))
+            ? 5
+            : runs.some(hasNondefaultNativeCharacter)
+              ? 4
+              : 2,
     id,
     mode: 'greedy-geometry-proof',
     // DOM serialization may spell a literal hard space as &nbsp;. Bind the proof

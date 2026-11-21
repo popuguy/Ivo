@@ -377,3 +377,28 @@ test('explicit overset belongs to the planned source prefix, including a complet
   ])
     assert.throws(() => validateCompositionRequest({ ...valid, ...change }));
 });
+
+test('paragraph tab transport bounds positions, scalar markers and leaders and rejects old workers', () => {
+  const base = { ...request(), protocol: 7, mode: 'measure-lines-proof', candidates: [] };
+  const withStops = (tabStops) => ({ ...base, paragraphs: [{ start: 0, end: 4, tabStops }] });
+  const input = withStops([
+    { position: 24, alignment: 'left' },
+    { position: 60.5, alignment: 'decimal', character: ',', leader: '-·' },
+  ]);
+  assert.equal(validateCompositionRequest(input), input);
+  assert.throws(() => validateCompositionRequest({ ...input, protocol: 6 }), /tab stops/);
+  for (const stops of [
+    [],
+    [{ position: 10, alignment: 'right', character: '.' }],
+    [{ position: 0, alignment: 'left' }],
+    [{ position: 12, alignment: 'decimal', character: '' }],
+    [{ position: 12, alignment: 'left', leader: '\n' }],
+    [{ position: 12, alignment: 'left', leader: '123456789' }],
+    [{ position: 12, alignment: 'left', path: 'file.txt' }],
+    [
+      { position: 12, alignment: 'left' },
+      { position: 11, alignment: 'center' },
+    ],
+  ])
+    assert.throws(() => validateCompositionRequest(withStops(stops)));
+});

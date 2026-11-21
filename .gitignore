@@ -21,3 +21,6 @@ src/shared/ui/reference-art-data.js
 
 # Compiled read-only platform font helper and compiler cache.
 desktop/native/bin/
+
+/public/vendor/epub-zip.js
+/public/vendor/fflate-LICENSE.txt

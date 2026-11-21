@@ -1,3 +1,4 @@
+import { LIST_COMMANDS } from '../src/domain/text/list-numbering.js';
 import { ARRANGE_COMMANDS } from '../src/domain/documents/arrange.js';
 import { editorMenuState } from '../src/domain/workspace/editor-commands.js';
 import { PANEL_LABELS } from '../src/domain/workspace/panels.js';
@@ -581,6 +582,7 @@ else {
         if (context.textEditing)
           items.push(
             ...characterMenuItems(true),
+            listMenu(true),
             { type: 'separator' },
             { role: 'cut' },
             { role: 'copy' },
@@ -1274,6 +1276,16 @@ function sendCommand(name) {
   if (!record.vault && name === 'close-tab') return record.window.close();
   record.window.webContents.send('ivo:command', name);
 }
+function listMenu(contextMenu) {
+  return {
+    label: 'Bulleted & Numbered Lists',
+    submenu: Object.entries(LIST_COMMANDS).map(([name, label]) => ({
+      ...(contextMenu ? {} : { id: 'type-' + name, enabled: false }),
+      label,
+      click: () => sendTextCommand(name),
+    })),
+  };
+}
 function characterMenuItems(contextMenu) {
   return CHARACTER_MENUS.map(({ path, commands }) => {
     const items = Object.entries(commands).map(([name, item]) => ({
@@ -1321,6 +1333,7 @@ function applyHistory(record) {
     ['show-contextual', canvas.canShowContextual],
     ['wrap-preferences', canvas.canvasEditing],
     ['find-change', canvas.canvasEditing],
+    ['check-spelling', canvas.canvasEditing],
   ];
   for (const [id, enabled] of panelCommands) {
     const item = menu?.getMenuItemById(id);
@@ -1436,6 +1449,11 @@ function installMenu() {
             accelerator: 'CmdOrCtrl+Shift+E',
             click: () => sendCommand('export-pdf'),
           },
+          {
+            label: 'Export Reflowable EPUB…',
+            enabled: hasVault,
+            click: () => sendCommand('export-epub'),
+          },
         ],
       },
       {
@@ -1475,6 +1493,17 @@ function installMenu() {
             accelerator: 'CmdOrCtrl+F',
             click: () => sendCommand('find-change'),
           },
+          {
+            label: 'Spelling',
+            submenu: [
+              {
+                id: 'check-spelling',
+                label: 'Check Spelling…',
+                enabled: false,
+                click: () => sendCommand('check-spelling'),
+              },
+            ],
+          },
         ],
       },
       {
@@ -1498,17 +1527,23 @@ function installMenu() {
       {
         label: 'Type',
         submenu: [
-          ...NATIVE_TEXT_COMMANDS.filter((name) => !Object.hasOwn(INSERT_CHARACTERS, name)).map(
-            (name) => ({
-              id: 'type-' + name,
-              label:
-                name === 'keep-options' ? 'Keep Options…' : name[0].toUpperCase() + name.slice(1),
-              enabled: false,
-              accelerator: NATIVE_TEXT_ACCELERATORS[name],
-              click: () => sendTextCommand(name),
-            }),
-          ),
+          ...NATIVE_TEXT_COMMANDS.filter(
+            (name) =>
+              !Object.hasOwn(INSERT_CHARACTERS, name) && !Object.hasOwn(LIST_COMMANDS, name),
+          ).map((name) => ({
+            id: 'type-' + name,
+            label:
+              name === 'tabs'
+                ? 'Tabs…'
+                : name === 'keep-options'
+                  ? 'Keep Options…'
+                  : name[0].toUpperCase() + name.slice(1),
+            enabled: false,
+            accelerator: NATIVE_TEXT_ACCELERATORS[name],
+            click: () => sendTextCommand(name),
+          })),
           { type: 'separator' },
+          listMenu(false),
           ...characterMenuItems(false),
         ],
       },

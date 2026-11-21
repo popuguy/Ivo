@@ -149,6 +149,7 @@ export function styleProperties(item, doc, state) {
     'Text Style',
     `<div class="style-kind-tabs" role="group" aria-label="Text style kind">${['paragraph', 'character'].map((value) => `<button data-style-kind="${value}" aria-pressed="${kind === value}">${value === 'paragraph' ? 'Paragraph' : 'Character'} Styles</button>`).join('')}</div>
      <div class="property-style-picker"><span aria-hidden="true">Ag</span>${choose(kind + 'Style', item[kind + 'Style'] || 'none', styles, kind === 'paragraph' ? 'Paragraph Styles' : 'Character Styles')}</div>
+     ${kind === 'paragraph' && definitions.some((s) => s.nextStyle) ? '<button type="button" data-canvas-command="apply-next-styles">Apply Style Sequence…</button>' : ''}
      <div class="property-style-actions">${button('edit-' + kind + '-style', 'Edit ' + kind + ' style', 'edit')}${button('clear-overrides', 'Clear overrides in selection', 'clear-overrides')}${button('new-' + kind + '-style', 'New ' + kind + ' style', 'plus')}</div>`,
   );
 }
@@ -361,7 +362,9 @@ export function textProperties(item, fonts, installed = [], state = {}, nativeFl
               'Direction',
             ) +
             (nativeFlow
-              ? button('keep-options', 'Keep Options…') + button('word-spacing', 'Justification…')
+              ? button('keep-options', 'Keep Options…') +
+                button('word-spacing', 'Justification…') +
+                button('tabs', 'Tabs…')
               : ''),
           state,
         ),

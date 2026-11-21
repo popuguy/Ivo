@@ -1,3 +1,5 @@
+import { inlineListPrefix } from '../../shared/dom/list-numbering.js';
+import { applyListCommand } from './edit-lists.js';
 import { blankParagraphBreak } from './insertion.js';
 import { editParagraphs, isDocumentTextEdit } from '../../domain/text/edit-paragraphs.js';
 import { CHARACTER_FIELDS } from '../../domain/text/typography.js';
@@ -19,12 +21,7 @@ function endpoint(root, container, offset, end) {
     offset = previous ? node.childNodes.length : 0;
   }
   const item = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('li');
-  if (
-    item &&
-    root.contains(item) &&
-    item.parentElement?.matches('ol,ul') &&
-    !item.querySelector(structural)
-  )
+  if (item && root.contains(item) && item.parentElement?.matches('ol,ul') && inlineListPrefix(item))
     return { block: item, container, offset };
   while (node !== root && node.parentNode !== root) node = node.parentNode;
   const block = node !== root && node.matches?.(blocks) ? node : root;
@@ -56,7 +53,8 @@ function readParagraph(block, root, points, placeholder = blankParagraphBreak(bl
       length += node.length;
       return;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.nodeType !== Node.ELEMENT_NODE || (block.matches('li') && node.matches('ol,ul')))
+      return;
     if (node.nodeName === 'BR') {
       record(node, 0, style);
       if (node !== placeholder) {
@@ -138,7 +136,7 @@ function paintParagraph(paragraph, content, caretOffset) {
   return caret;
 }
 
-function applyChange(root, local, change, type, data, marks) {
+function applyChange(root, local, change, type, data, marks, nextStyle) {
   const { start, end } = change.range;
   const paragraph = local[start.paragraph];
   const leaf =
@@ -169,8 +167,17 @@ function applyChange(root, local, change, type, data, marks) {
       : part.block
         ? cloneShell(part.block)
         : document.createElement('p');
+    if (i > 0 && block.nodeName === 'LI') block.removeAttribute('value');
+    const advance =
+      i === 1 && nextStyle && !part.runs.length && block.nodeType === Node.ELEMENT_NODE;
+    if (advance) {
+      for (const attr of [...block.attributes])
+        if (attr.name.startsWith('data-ivo-') || attr.name === 'style')
+          block.removeAttribute(attr.name);
+      block.dataset.ivoPstyle = nextStyle;
+    }
     const point = paintParagraph(
-      part,
+      advance ? { ...part, emptyStyle: [] } : part,
       block,
       i === change.caret.paragraph ? change.caret.offset : -1,
     );
@@ -181,6 +188,10 @@ function applyChange(root, local, change, type, data, marks) {
     if (caret[0] === result) caret[0] = root;
     root.replaceChildren(result);
   } else {
+    if (paragraph.block.matches('li') && change.through === change.from) {
+      for (const children of [...paragraph.block.children].filter((el) => el.matches('ol,ul')))
+        result.lastElementChild.append(children);
+    }
     paragraph.block.before(result);
     for (const part of local.slice(change.from, change.through + 1)) part.block.remove();
   }
@@ -188,9 +199,17 @@ function applyChange(root, local, change, type, data, marks) {
 }
 
 // The retained input supplies the OS selection/marked-text surface. Only the
-// touched flat paragraphs are decoded. Nested lists and noncancelable platform
-// edits stay on their existing input path until they have structural commands.
-export function applyDocumentInput(root, type, data, pending, targets = [], lineRange) {
+// touched paragraphs are decoded. Child lists stay attached during a parent split.
+// Selections spanning different outline levels use the platform editing path.
+export function applyDocumentInput(
+  root,
+  type,
+  data,
+  pending,
+  targets = [],
+  lineRange,
+  nextParagraphStyle,
+) {
   if (!isDocumentTextEdit(type)) return false;
   let pasted;
   if (type === 'insertInlineFragment') {
@@ -222,11 +241,16 @@ export function applyDocumentInput(root, type, data, pending, targets = [], line
   const a = endpoint(root, range.startContainer, range.startOffset, false);
   const b = range.collapsed ? a : endpoint(root, range.endContainer, range.endOffset, true);
   if (!a || !b || a.block.parentNode !== b.block.parentNode) return false;
+  const ownsOutline = a.block === b.block && a.block.matches('li') && inlineListPrefix(a.block);
   const points = a === b ? [a] : [a, b];
   const local = [];
   let block = a.block;
   for (;;) {
-    if (!block || (block !== root && (!block.matches?.(blocks) || block.querySelector(structural))))
+    if (
+      !block ||
+      (block !== root &&
+        (!block.matches?.(blocks) || (!ownsOutline && block.querySelector(structural))))
+    )
       return false;
     const paragraph = readParagraph(block, root, points);
     if (!paragraph) return false;
@@ -243,7 +267,9 @@ export function applyDocumentInput(root, type, data, pending, targets = [], line
   // Keep both surrounding lists in order when the blank item is in the middle.
   if (range.collapsed && type === 'insertParagraph' && !first.length && a.block.matches('li')) {
     const list = a.block.parentElement;
-    if (list.parentElement !== root) return false;
+    if (list.parentElement.matches('li'))
+      return applyListCommand(root, range, 'decrease-list-level') ? 'edited' : false;
+    if (list.parentElement !== root || a.block.querySelector('ol,ul')) return false;
     const paragraph = root.ownerDocument.createElement('p');
     for (const attr of a.block.attributes) {
       if (attr.name.startsWith('data-ivo-') || attr.name === 'style')
@@ -267,6 +293,7 @@ export function applyDocumentInput(root, type, data, pending, targets = [], line
     const adjacent = backwards ? a.block.previousSibling : forwards ? a.block.nextSibling : null;
     if (!adjacent && (backwards || forwards) && a.block.matches('li')) return false;
     if (adjacent) {
+      if (a.block.querySelector('ol,ul')) return false;
       if (!adjacent.matches?.(blocks) || adjacent.querySelector(structural)) return false;
       const neighbor = readParagraph(adjacent, root, []);
       if (!neighbor) return false;
@@ -312,6 +339,9 @@ export function applyDocumentInput(root, type, data, pending, targets = [], line
         : pasted?.map((run) => ({ ...run, style })),
     },
   );
-  if (change) applyChange(root, local, change, type, data, style);
+  if (change) {
+    const next = type === 'insertParagraph' && nextParagraphStyle && nextParagraphStyle(a.block);
+    applyChange(root, local, change, type, data, style, next);
+  }
   return change ? 'edited' : 'unchanged';
 }

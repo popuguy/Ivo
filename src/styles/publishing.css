@@ -776,3 +776,29 @@
   border: 1px solid #bdbdbd;
   box-shadow: 0 3px 12px #0003;
 }
+
+.publishing-style-dialog [data-tab-stops] {
+  display: grid;
+  gap: 6px;
+  max-height: min(55vh, 440px);
+  overflow-y: auto;
+}
+.publishing-style-dialog [data-tab-stops] fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 5px 8px;
+  border: 1px solid var(--panel-control-border);
+  margin: 0;
+}
+.publishing-style-dialog [data-tab-stops] label {
+  margin: 0;
+}
+.publishing-style-dialog [data-tab-stops] [hidden] {
+  display: none;
+}
+.publishing-style-dialog [data-tab-stops] input,
+.publishing-style-dialog [data-tab-stops] select {
+  min-width: 0;
+  width: 100%;
+}

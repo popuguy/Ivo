@@ -50,6 +50,7 @@ export function copyDocument(source, { title = source.title + ' (copy)', templat
     ]) {
       style.id = ids.get(style.id);
       if (style.basedOn) style.basedOn = ids.get(style.basedOn);
+      if (style.nextStyle) style.nextStyle = ids.get(style.nextStyle);
     }
     for (const parent of document.publishing.parents) {
       parent.id = ids.get(parent.id);

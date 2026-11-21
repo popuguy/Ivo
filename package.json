@@ -110,6 +110,7 @@
   "dependencies": {
     "@capacitor/core": "8.6.0",
     "@capacitor/ios": "8.6.0",
+    "fflate": "0.8.2",
     "pdf-lib": "1.17.1"
   }
 }

@@ -2,13 +2,13 @@
 
 ## Remaining text work
 
-- **Long wrapped flows.** The six-page contour benchmark still diverges from InDesign at the sixth box. Compare the line fragments on page three. Keep measuring the first visible glyph after idle, distinct consecutive edits, and propagation through the final frame. Investigate delays between the completed layout and the first window frame showing it.
+- **Long wrapped flows.** The six-page contour benchmark still diverges from InDesign at the sixth box. On page three Adobe’s Paragraph Composer skips a narrow row used by its Single-line Composer and Ivo. Investigate paragraph candidate selection across same-row fragments. Keep measuring the first visible glyph after idle, distinct consecutive edits, and propagation through the final frame. Investigate delays between the completed layout and the first window frame showing it.
 
 - **Line breaks and spacing.** Refine paragraph break choices in narrow columns, especially emergency compression. Extend hyphenation beyond the seven offline dictionaries and test longer mixed-language prose.
-- **Page layout.** Add decimal/right-aligned tabs and leaders, wrapping to image outlines and top-margin-relative frame grids. Qualify grid with vertical Justify and more complex wrap contours. Check the last unaligned baseline near the bottom inset of a frame. Refine sloped contour intersections.
+- **Page layout.** Extend the Tabs ruler with dragging, repeated stops and right-indent tabs. Add image-outline wrap and refine automatically broken paragraphs around overlapping objects. Refine sloped contour intersections.
 - **Type and input.** Prioritize everyday European-language editing, font fallback and short horizontal Chinese passages. LaTeX-style equation layout is a later release milestone. Specialist multilingual publishing is on the [broader-edition wishlist](indesign/text-parity-programme.md#broader-edition-wishlist). See [language and math priorities](indesign/text-parity-programme.md#early-language-and-math-priorities). Exercise selection, typing, menus, keyboard shortcuts and undo with real keyboards, touch and language input methods.
-- **Structured text.** Finish nested lists and numbering, tables, anchored objects, text on paths, and footnotes and endnotes.
-- **Long documents and publishing.** Extend Find/Change to per-font glyph IDs, additional formatting attributes, ICU-specific expressions and cross-document scopes. Add proofing, cross-references, contents and indexes, then accessible PDF and preflight. Check reflow and export on long mixed-layout documents.
+- **Structured text.** Add named counters across flows, compound list labels and imported multi-paragraph list items. Build tables, anchored objects, text on paths, footnotes and endnotes.
+- **Long documents and publishing.** Extend Find/Change to per-font glyph IDs, additional formatting attributes, ICU-specific expressions and cross-document scopes. Extend proofing to authored language dictionaries and portable devices. Add cross-references, generated contents and indexes, then tagged PDF and configurable preflight profiles. Check reflow and export on long mixed-layout documents.
 
 The [current development state](development/STATE.md) tracks the estimate across the 63 release capabilities. The [text programme](indesign/text-parity-programme.md) lists the individual features and acceptance criteria.
 

@@ -1,3 +1,4 @@
+import { paintListNumbers } from '../../shared/dom/list-numbering.js';
 import { applyTextDecorations } from './decorations.js';
 import { resolvedTextStyle } from '../../domain/documents/publishing.js';
 import {
@@ -16,6 +17,7 @@ const featureSelector = features.map(([, tag]) => '[data-ivo-' + tag + ']').join
 
 /** Resolve style references into disposable CSS only. Definitions/overrides remain the source. */
 export function applyNamedTextStyles(root, doc) {
+  paintListNumbers(root);
   for (const node of root.querySelectorAll('[data-ivo-pstyle],[data-ivo-cstyle]')) {
     const p = node.getAttribute('data-ivo-pstyle'),
       c = node.getAttribute('data-ivo-cstyle');

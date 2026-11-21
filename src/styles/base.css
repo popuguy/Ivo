@@ -2942,6 +2942,14 @@ summary {
   box-shadow: 2px 3px 9px #0003;
   font-size: 11px;
 }
+.canvas-context-menu {
+  max-height: 90%;
+  overflow-y: auto;
+}
+.canvas-context-menu summary {
+  padding: 5px 12px;
+  cursor: default;
+}
 .canvas-context-menu button {
   display: flex;
   align-items: center;

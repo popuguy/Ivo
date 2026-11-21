@@ -55,7 +55,7 @@ for (const file of source) {
       continue;
     }
     const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), spec));
-    if (target === 'public/vendor/capacitor.js') continue; // Supplied from the pinned package at build time.
+    if (['public/vendor/capacitor.js', 'public/vendor/epub-zip.js'].includes(target)) continue; // Supplied from the pinned package at build time.
     try {
       await access(path.join(root, target));
     } catch {

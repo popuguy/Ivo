@@ -215,8 +215,46 @@ export async function verifyBaselineGrid({ host, compose }) {
     open();
     await settle();
     checkCustom();
+    editor.restoreView({ tool: 'select', selection: [], activePage: doc.pages[0].id });
+    await settle();
+    await set('[data-baseline-grid-setting="relativeTo"]', 'margin');
+    await set('[data-page-prop="topMargin"]', 21);
+    host.querySelector('input[data-show-baseline-grid]').click();
+    const guide = () =>
+      host
+        .querySelector(`[data-page="${doc.pages[0].id}"]`)
+        .style.getPropertyValue('--baseline-grid-start');
+    assert(guide() === '38px', 'Page guides lost the margin origin');
+    await editor.command('undo');
+    await settle();
+    assert(guide() === '53px', 'Undo left old margin guides on the rendered page');
+    await set('[data-page-prop="topMargin"]', 21);
+    editor.restoreView({ tool: 'select', selection: [ids[1]], activePage: doc.pages[0].id });
+    await settle();
+    await set('[data-frame-grid="relativeTo"]', 'margin');
+    editor.destroy();
+    doc = validateImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] })
+      .documents[0];
+    open();
+    await settle();
+    const frame = doc.blocks.find((b) => b.id === ids[1]);
+    assert(
+      doc.pages[0].topMargin === 21 && frame.frameOptions.baselineGrid.relativeTo === 'margin',
+      'Page or frame margin origin did not survive reopening',
+    );
+    const reopenedToken = host.querySelector(`[data-flow-frame="${ids[1]}"] svg`).dataset
+      .compositionToken;
+    const reopenedResult = calls.findLast((c) => c.result.token === reopenedToken).result;
+    const firstOnMargin = reopenedResult.layout.lines.find(
+      (line) => line.frame === ids[1] + '-column-0',
+    );
+    assert(
+      Math.abs(firstOnMargin.baseline + frame.y + frame.frameOptions.insetTop - 66) < 0.05,
+      'Reopened editor did not align the first line to the page margin',
+    );
     assert(!notices.length, 'Grid acceptance produced a notification: ' + notices.join('; '));
     return {
+      nativeMarginRelativeGuidesAndText: true,
       nativeFrameGridsAndObjectWrap: true,
       nativeDocumentBaselineGrid: true,
       nativeFirstLineGridAcrossLinkedPages: true,

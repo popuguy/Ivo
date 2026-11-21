@@ -16,7 +16,7 @@ export const originalLineGeometry = (line) => translations.get(line)?.origin || 
 function vectorIds(line) {
   let ids = lineVectors.get(line.runs);
   if (!ids) {
-    const unique = new Set();
+    const unique = new Set((line.leaders || []).map((ink) => ink.vector));
     for (const run of line.runs)
       for (const glyph of run.glyphs) if (glyph.vector) unique.add(glyph.vector);
     ids = [...unique];

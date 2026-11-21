@@ -1,3 +1,4 @@
+import { prepareEpubZip } from './epub-zip.mjs';
 import { prepareReferenceArt } from './reference-art.mjs';
 import { writeOfflineShell } from './offline.mjs';
 import { buildPortable } from './portable.mjs';
@@ -5,6 +6,7 @@ import { cp, mkdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 await prepareReferenceArt();
+await prepareEpubZip();
 await rm(new URL('../dist/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('../dist/', import.meta.url), { recursive: true });
 for (const item of [

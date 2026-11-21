@@ -1,3 +1,4 @@
+import { prepareEpubZip } from './epub-zip.mjs';
 import { writeOfflineShell } from './offline.mjs';
 import { prepareReferenceArt } from './reference-art.mjs';
 import http from 'node:http';
@@ -6,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 await prepareReferenceArt();
+await prepareEpubZip();
 await writeOfflineShell(root);
 const port = Number(process.env.PORT || 4173);
 const types = {

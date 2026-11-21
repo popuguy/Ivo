@@ -231,7 +231,7 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
     }
     const { result, responseBytes } = response;
     if (
-      ![1, 2, 3, 4, 5, 6].includes(request.protocol) ||
+      ![1, 2, 3, 4, 5, 6, 7, 8].includes(request.protocol) ||
       result.protocol !== request.protocol ||
       result.requestDigest !== hash(payload) ||
       result.sourceDigest !== request.sourceDigest ||

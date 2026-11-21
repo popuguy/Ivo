@@ -139,7 +139,7 @@ export function effectiveTextStyle(doc, settings) {
 export function saveTextStyle(
   doc,
   kind,
-  { id = uid('style-'), name, basedOn = null, attributes = {} },
+  { id = uid('style-'), name, basedOn = null, nextStyle = null, attributes = {} },
 ) {
   const fields = { ...CHARACTER_FIELDS, ...(kind === 'paragraph' ? PARAGRAPH_FIELDS : {}) },
     clean = {};
@@ -164,10 +164,17 @@ export function saveTextStyle(
         .trim()
         .slice(0, 120) || 'New style',
     basedOn,
+    ...(nextStyle && nextStyle !== id ? { nextStyle } : {}),
     attributes: clean,
   };
   const definitions = (p?.[key] || []).filter((s) => s.id !== id);
   if (definitions.length >= 256) throw new Error('Use up to 256 text styles of each kind.');
+  if (
+    nextStyle &&
+    (kind !== 'paragraph' ||
+      (nextStyle !== id && !definitions.some((style) => style.id === nextStyle)))
+  )
+    throw Error('Choose an existing next paragraph style.');
   const preview = { ...doc, publishing: { ...p, [key]: [...definitions, next] } };
   resolvedTextStyle(preview, kind, id);
   enablePublishing(doc)[key] = [...definitions, next];

@@ -264,6 +264,11 @@ test(
       { end: firstEnd, frame: 0, baseline: 20, left: 0, width: 300 },
       { end: req.text.length, frame: 0, baseline: 40, left: 0, width: 300 },
     ];
+    const edge = await service.compose({
+      ...req,
+      placements: [req.placements[0], { ...req.placements[1], baseline: req.frames[0].height }],
+    });
+    assert.equal(edge.layout.lines.at(-1).baseline, req.frames[0].height);
     const changes = [
       { placements: undefined },
       { placements: [] },
@@ -280,7 +285,12 @@ test(
       { placements: [req.placements[0], { ...req.placements[1], frame: 128 }] },
       { placements: [req.placements[0], { ...req.placements[1], baseline: 19 }] },
       { placements: [req.placements[0], { ...req.placements[1], baseline: 20 }] },
-      { placements: [req.placements[0], { ...req.placements[1], baseline: 299 }] },
+      {
+        placements: [
+          req.placements[0],
+          { ...req.placements[1], baseline: req.frames[0].height + 0.01 },
+        ],
+      },
       { placements: [{ ...req.placements[0], left: -1 }, req.placements[1]] },
       { placements: [{ ...req.placements[0], left: 1 }, req.placements[1]] },
       { placements: [{ ...req.placements[0], width: 0 }, req.placements[1]] },
@@ -660,5 +670,153 @@ for i in 0..<pdf.pageCount { print(pdf.page(at: i)!.string ?? "") }
     assert.deepEqual(stdout.trim().split(/\s+/), ['type', 'setting']);
     req.placements[0].width -= 0.1;
     await assert.rejects(service.compose(req), /exceeds its indented line area/);
+  },
+);
+
+test(
+  'authored tabs align complete fields and resume the frame grid, matching InDesign',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    for (const [alignment, character, content, fieldStart, nextTab] of [
+      ['left', undefined, '123.45', 80, 144],
+      ['center', undefined, '123.45', 63.332, 108],
+      ['right', undefined, '123.45', 46.664, 108],
+      ['decimal', '.', '123.45', 62, 108],
+      ['decimal', ',', '123,45', 62, 108],
+      ['decimal', '.', '12345', 50, 108],
+    ]) {
+      const req = await request('A\t' + content + '\t2\t3', [
+        {
+          tabStops: [{ position: 80, alignment, ...(character ? { character } : {}) }],
+          leftIndent: 18,
+        },
+      ]);
+      req.protocol = 7;
+      req.placements[0].left = 18;
+      req.placements[0].width -= 18;
+      const metrics = await measure(service, req, [{ start: 0, end: req.text.length, offset: 18 }]);
+      const result = await service.compose(req),
+        line = result.layout.lines[0];
+      const x = (offset) => line.carets.find(({ index }) => index === offset).primary;
+      assert.ok(
+        Math.abs(x(2) - fieldStart) < 0.03,
+        alignment + ': expected ' + fieldStart + ', got ' + x(2),
+      );
+      close(x(3 + content.length), nextTab, alignment + ' grid after custom stop');
+      close(line.visibleWidth, metrics[0].width);
+      assert.equal(result.layout.coveredLength, req.text.length);
+    }
+  },
+);
+
+test(
+  'exported tabbed fields keep selectable text at the same anchor as the editor',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t),
+      req = await request('A\t123.45', [
+        {
+          tabStops: [{ position: 80, alignment: 'decimal', character: '.', leader: '.' }],
+        },
+      ]);
+    req.protocol = 7;
+    const result = await service.compose(req);
+    const dir = await mkdtemp(path.join(tmpdir(), 'ivo-tabbed-pdf-'));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const file = path.join(dir, 'tabs.pdf'),
+      reader = path.join(dir, 'read.swift');
+    await writeFile(
+      file,
+      Buffer.from((await service.pdf(result.token, { invisible: false })).data, 'base64'),
+    );
+    await writeFile(
+      reader,
+      `import PDFKit
+let page = PDFDocument(url: URL(fileURLWithPath: CommandLine.arguments[1]))!.page(at: 0)!
+let text = (page.string ?? "") as NSString
+let field = text.range(of: "123.45")
+guard field.location != NSNotFound, let selection = page.selection(for:NSRange(location:field.location+3,length:1)) else { exit(2) }
+let scale = 4
+let bitmap = CGContext(data:nil, width:300*scale, height:300*scale, bitsPerComponent:8, bytesPerRow:300*scale, space:CGColorSpaceCreateDeviceGray(), bitmapInfo:CGImageAlphaInfo.none.rawValue)!
+bitmap.setFillColor(gray:1,alpha:1)
+bitmap.fill(CGRect(x:0,y:0,width:300*scale,height:300*scale))
+bitmap.scaleBy(x:CGFloat(scale),y:CGFloat(scale))
+bitmap.drawPDFPage(page.pageRef!)
+let pixels = bitmap.data!.assumingMemoryBound(to:UInt8.self)
+var wasInk = false, count = 0
+for x in 9*scale..<61*scale {
+  let ink = (0..<300*scale).contains { pixels[$0*300*scale+x] < 160 }
+  if ink && !wasInk { count += 1 }
+  wasInk = ink
+}
+print(selection.bounds(for: page).minX, count)
+`,
+    );
+    const { stdout } = await exec(
+      '/usr/bin/xcrun',
+      ['swift', '-module-cache-path', path.join(dir, 'cache'), reader, file],
+      { timeout: 120000 },
+    );
+    const { leaders, carets } = result.layout.lines[0];
+    const caret = carets.find(({ index }) => index === 5);
+    assert.equal(leaders.length, 15);
+    assert.ok(Math.abs(leaders[0].x - 10.0) < 0.03);
+    assert.ok(Math.abs(leaders.at(-1).x - 56.71) < 0.03);
+    assert.ok(leaders.every((ink) => result.vectors.some(({ id }) => id === ink.vector)));
+    const [decimalX, printedDots] = stdout.trim().split(/\s+/).map(Number);
+    close(decimalX, caret.primary, 'Selectable PDF decimal anchor');
+    assert.equal(printedDots, leaders.length, 'Independent rasterized PDF leader count');
+  },
+);
+
+test(
+  'a field too wide to align starts at the preceding character and a passed stop resumes the ruler',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    for (const [alignment, position, expected] of [
+      ['right', 25, 18],
+      ['center', 25, 18],
+      ['decimal', 25, 18],
+      ['right', 10, 36],
+    ]) {
+      const req = await request('AA\t123.45', [
+        {
+          tabStops: [
+            { position, alignment, ...(alignment === 'decimal' ? { character: '.' } : {}) },
+          ],
+        },
+      ]);
+      req.protocol = 7;
+      const {
+        layout: {
+          lines: [line],
+        },
+      } = await service.compose(req);
+      close(
+        line.carets.find((c) => c.index === 3).primary,
+        expected,
+        alignment + ' crowded field at ' + position,
+      );
+    }
+  },
+);
+
+test(
+  'a two-character leader retains its ruler phase with the shorter field gap of a right tab',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t);
+    const req = await request('A\t123.45', [
+      { tabStops: [{ position: 80, alignment: 'right', leader: '.-' }] },
+    ]);
+    req.protocol = 7;
+    const result = await service.compose(req);
+    const dots = result.layout.lines[0].leaders.toSorted((a, b) => a.x - b.x);
+    assert.equal(dots.length, 9);
+    assert.ok(Math.abs(dots[0].x - 10.658) < 0.02);
+    for (let i = 1; i < dots.length; i++) assert.notEqual(dots[i].vector, dots[i - 1].vector);
+    assert.equal(result.layout.lines[0].carets.length, req.text.length + 1);
   },
 );

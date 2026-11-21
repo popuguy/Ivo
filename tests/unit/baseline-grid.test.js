@@ -1,7 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { baselineGridSettings, nextGridBaseline } from '../../src/domain/text/baseline-grid.js';
+import { addPage } from '../../src/domain/documents/scene.js';
+import {
+  baselineGridSettings,
+  nextGridBaseline,
+  pageGridStart,
+} from '../../src/domain/text/baseline-grid.js';
 import { nativeFlowColumns } from '../../src/rendering/text/native-flow-layout.js';
 import {
   archiveVersion,
@@ -118,4 +123,49 @@ test('a frozen archive 16 retains its page grid and authored flow without adopti
   assert.deepEqual(doc.publishing.baselineGrid, input.documents[0].publishing.baselineGrid);
   assert.equal(doc.blocks[0].frameOptions?.baselineGrid, undefined);
   assert.equal(doc.textFlows[0].html, input.documents[0].textFlows[0].html);
+});
+
+test('a margin-relative grid follows its own page while pages inherit an authored top margin', () => {
+  const { doc, frames } = baselineGridFixture({ aligned: true });
+  const [p1, p2] = doc.pages;
+  p1.topMargin = 21;
+  p2.topMargin = 0;
+  doc.publishing.baselineGrid = { relativeTo: 'margin', start: 2, increment: 17 };
+  frames[0].frameOptions.baselineGrid = { relativeTo: 'margin', start: 5, increment: 19 };
+  frames[0].textScale = { x: 1, y: 2 };
+  assert.deepEqual(
+    nativeFlowColumns(doc, doc.textFlows[0], true).map((c) => c.grid),
+    [
+      { start: -4, increment: 9.5 },
+      { start: -30, increment: 17 },
+      { start: -61, increment: 17 },
+    ],
+  );
+  assert.equal(pageGridStart(doc.publishing.baselineGrid, {}), 38);
+  assert.equal(addPage(doc, p2.id).topMargin, 0);
+  const open = (version) =>
+    validateImport({ schemaVersion: version, documents: [doc], assets: [] }).documents[0];
+  assert.throws(() => open(19), /archive 19/);
+  markTypographyVersion(doc);
+  assert.equal(archiveVersion([doc]), 19);
+  assert.throws(() => open(18), /archive 19/);
+  assert.deepEqual(open(19).pages, doc.pages);
+  assert.deepEqual(open(19).publishing.baselineGrid, doc.publishing.baselineGrid);
+  assert.deepEqual(
+    open(19).blocks[0].frameOptions.baselineGrid,
+    frames[0].frameOptions.baselineGrid,
+  );
+  p1.topMargin = p1.height + 1;
+  assert.throws(() => open(19), /topMargin/);
+});
+
+test('opening archive 18 keeps its custom tab and original page-relative grid', async () => {
+  const input = JSON.parse(
+    await readFile(new URL('../fixtures/legacy/archive-v18.json', import.meta.url), 'utf8'),
+  );
+  const [doc] = validateImport(input).documents;
+  assert.equal(archiveVersion([doc]), 18);
+  assert.equal(doc.pages[0].topMargin, undefined);
+  assert.deepEqual(doc.textFlows[0].html, input.documents[0].textFlows[0].html);
+  assert.deepEqual(doc.publishing.baselineGrid, input.documents[0].publishing.baselineGrid);
 });

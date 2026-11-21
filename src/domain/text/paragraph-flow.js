@@ -182,7 +182,7 @@ function placement(
     baselineAlignment === 'all' || (baselineAlignment === 'first' && measured.start === 0);
   const nextBaseline =
     aligned && column.grid ? nextGridBaseline(naturalBaseline, column.grid) : naturalBaseline;
-  if (nextBaseline + (column.grid ? 0 : measured.descent) > column.height + 0.000001) return null;
+  if (nextBaseline > column.height + 0.000001) return null;
   return {
     start: measured.start,
     end: measured.end,

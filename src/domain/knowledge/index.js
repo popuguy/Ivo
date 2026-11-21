@@ -36,20 +36,18 @@ export function resolveDocumentLink(documents, target, source = null) {
   return createDocumentResolver(documents).resolve(target, source);
 }
 
-function documentTargets(doc) {
+export function textLinkTargets(source) {
   const targets = [];
-  for (const block of [...(doc.blocks ?? []), ...(doc.textFlows ?? [])]) {
-    let html = String(block.html ?? '').replace(/<(pre|code)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
-    html = html.replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (whole, attributes) => {
-      const id = attribute(attributes, 'data-doc-id');
-      if (id === null) return whole;
-      targets.push({ target: id, canonical: true });
-      return '';
-    });
-    const text = decodeEntities(html.replace(/<[^>]*>/g, ''));
-    for (const match of text.matchAll(/\[\[([^\]\n]+)\]\]/g))
-      targets.push({ target: match[1], canonical: false });
-  }
+  let html = String(source ?? '').replace(/<(pre|code)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+  html = html.replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (whole, attributes) => {
+    const id = attribute(attributes, 'data-doc-id');
+    if (id === null) return whole;
+    targets.push({ target: id, canonical: true });
+    return '';
+  });
+  const text = decodeEntities(html.replace(/<[^>]*>/g, ''));
+  for (const match of text.matchAll(/\[\[([^\]\n]+)\]\]/g))
+    targets.push({ target: match[1], canonical: false });
   return targets;
 }
 
@@ -69,7 +67,9 @@ export function buildIndex(documents = []) {
   const edgeMap = new Map();
   const unresolvedMap = new Map();
   for (const doc of documents) {
-    for (const link of documentTargets(doc)) {
+    for (const link of [...(doc.blocks ?? []), ...(doc.textFlows ?? [])].flatMap((source) =>
+      textLinkTargets(source.html),
+    )) {
       const target = link.canonical
         ? byId.has(link.target)
           ? link.target

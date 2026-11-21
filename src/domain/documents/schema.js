@@ -13,6 +13,10 @@ import {
   hasWordSpacing,
   hasJustification,
   hasFrameGrid,
+  hasMarginGrid,
+  hasTabStops,
+  hasListNumbering,
+  hasNextStyle,
   hasExtendedKeeps,
   hasParagraphStarts,
   hasSplitLineKeeps,
@@ -324,6 +328,23 @@ function validateArchive(payload, parentTemplate) {
     if (paged && doc.canvasVersion === 7 && payload.schemaVersion < 8)
       fail(`${label} requires native-text-composition archive schema 8`);
     if (
+      hasMarginGrid(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 18) || payload.schemaVersion < 19)
+    )
+      fail(`${label} page margin grids require archive 19 / canvas 18`);
+    if (
+      hasNextStyle(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 20) || payload.schemaVersion < 21)
+    )
+      fail('Next Style requires archive 21 and canvas 20.');
+    if (
+      hasListNumbering(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 19) || payload.schemaVersion < 20)
+    )
+      fail('Authored list counters and natively composed lists require canvas 19 and archive 20');
+    if (hasTabStops(doc) && (!supportedCanvas(doc.canvasVersion, 17) || payload.schemaVersion < 18))
+      fail('Custom paragraph tab stops require canvas 17 and archive 18');
+    if (
       hasFrameGrid(doc) &&
       (!supportedCanvas(doc.canvasVersion, 16) || payload.schemaVersion < 17)
     )
@@ -379,6 +400,11 @@ function validateArchive(payload, parentTemplate) {
           name: string(page.name, `${key}.name`, 180, `Page ${index + 1}`),
           width: number(page.width, `${key}.width`, 72, 14400),
           height: number(page.height, `${key}.height`, 72, 14400),
+          ...(page.topMargin === undefined
+            ? {}
+            : {
+                topMargin: number(page.topMargin, `${key}.topMargin`, 0, page.height),
+              }),
         };
       });
     }
@@ -682,6 +708,11 @@ function validateArchive(payload, parentTemplate) {
           fail(`${label} has invalid style definitions`);
         return values.map((value) => {
           record(value, label);
+          if (value.nextStyle !== undefined) {
+            if (kind !== 'paragraphStyles') fail('Next Style requires a paragraph style.');
+            if (typeof value.nextStyle !== 'string' || !ID_PATTERN.test(value.nextStyle))
+              fail('Invalid next paragraph style ID.');
+          }
           const attributes = {};
           typography(record(value.attributes, label), attributes, label);
           if (
@@ -693,6 +724,9 @@ function validateArchive(payload, parentTemplate) {
           return {
             id: id(value.id, label),
             name: string(value.name, label, 120),
+            ...(value.nextStyle !== undefined
+              ? { nextStyle: string(value.nextStyle, label, 120) }
+              : {}),
             basedOn: value.basedOn === null ? null : string(value.basedOn, label, 120),
             attributes,
           };
@@ -708,6 +742,10 @@ function validateArchive(payload, parentTemplate) {
         characterStyles: styleList('characterStyles'),
         parents: [],
       };
+      const paragraphIds = new Set(normalized.publishing.paragraphStyles.map((s) => s.id));
+      for (const style of normalized.publishing.paragraphStyles)
+        if (style.nextStyle && !paragraphIds.has(style.nextStyle))
+          fail('Missing next paragraph style.');
       for (const kind of ['paragraph', 'character'])
         for (const style of normalized.publishing[kind + 'Styles'])
           resolvedTextStyle(normalized, kind, style.id);

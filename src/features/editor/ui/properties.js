@@ -1,4 +1,8 @@
-import { BASELINE_GRID_DEFAULTS } from '../../../domain/text/baseline-grid.js';
+import {
+  BASELINE_GRID_DEFAULTS,
+  DOCUMENT_GRID_ORIGINS,
+  DEFAULT_TOP_MARGIN,
+} from '../../../domain/text/baseline-grid.js';
 import { effectiveTextStyle } from '../../../domain/documents/publishing.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { icon } from '../../../shared/ui/icons.js';
@@ -97,9 +101,26 @@ export function propertiesContent({
         ? section(
             'Baseline Grid',
             field(
-              'Start from top of page · pt',
-              `<input type="number" min="0" max="14400" step="any" data-baseline-grid-setting="start" value="${grid.start}" aria-label="Baseline grid start in points" ${gridDisabled}>`,
+              'Relative To',
+              `<select data-baseline-grid-setting="relativeTo" aria-label="Baseline grid relative to" ${gridDisabled}>${Object.entries(
+                DOCUMENT_GRID_ORIGINS,
+              )
+                .map(
+                  ([key, label]) =>
+                    `<option value="${key}" ${(grid.relativeTo || 'page') === key ? 'selected' : ''}>${label}</option>`,
+                )
+                .join('')}</select>`,
             ) +
+              (parentMode
+                ? ''
+                : field(
+                    'Page top margin · pt',
+                    `<input type="number" min="0" max="${activePage.height}" step="any" data-page-prop="topMargin" value="${activePage.topMargin ?? DEFAULT_TOP_MARGIN}" aria-label="Page top margin in points" ${gridDisabled}>`,
+                  )) +
+              field(
+                'Start · pt',
+                `<input type="number" min="0" max="14400" step="any" data-baseline-grid-setting="start" value="${grid.start}" aria-label="Baseline grid start in points" ${gridDisabled}>`,
+              ) +
               field(
                 'Increment Every · pt',
                 `<input type="number" min="1" max="2000" step="any" data-baseline-grid-setting="increment" value="${grid.increment}" aria-label="Baseline grid increment in points" ${gridDisabled}>`,

@@ -41,10 +41,19 @@ function caretChoices(native, at) {
   let index = caretIndexes.get(native);
   if (!index || index.lines !== native.lines || index.spans !== native.spans) {
     const rows = [];
+    const hasMarkers = native.spans.some((span) => span.kind === 'list-marker');
     for (const [lineIndex, line] of native.lines.entries())
       for (const caret of line.carets || []) {
         const range = candidates(caret);
-        if (range && finite(caret.primary)) rows.push({ line, caret, lineIndex, range });
+        if (
+          range &&
+          finite(caret.primary) &&
+          (!hasMarkers ||
+            !sourceAt(native, caret.index).some(
+              (span) => span.kind === 'list-marker' && caret.index < span.end,
+            ))
+        )
+          rows.push({ line, caret, lineIndex, range });
       }
     rows.sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
     index = {
@@ -106,6 +115,8 @@ function candidates(caret) {
 function canonicalCaret(native, line, caret, affinity) {
   const index = caret.index,
     spans = sourceAt(native, index);
+  const marker = spans.find((span) => span.kind === 'list-marker' && index < span.end);
+  if (marker) return marker.logicalStart;
   if (line.contentEnd === line.start && index === line.start) {
     const placeholder = spans.find((span) => span.kind === 'placeholder'),
       paragraph = spans.find((span) => span.kind === 'paragraph' && span.start === index);

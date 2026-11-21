@@ -1,4 +1,6 @@
 import { CURRENT_ARCHIVE_VERSION } from '../../../src/domain/documents/capabilities.js';
+import { verifyNextStyle } from './next-style.js';
+import { verifyEditorialReview } from './editorial-review.js';
 import { verifyFindChange } from './find-change.js';
 import { verifyFlowCaretGeometry } from './flow-geometry.js';
 import { verifyTextDecorations } from './decorations.js';
@@ -25,6 +27,8 @@ const wait = async (predicate) => {
 };
 try {
   await verifyFindChange();
+  await verifyEditorialReview();
+  await verifyNextStyle();
   await verifyClipboardWhitespace();
   verifyNativeTextFormatting();
   await verifyTextDecorations();

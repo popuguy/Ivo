@@ -1,5 +1,7 @@
 # Document and vault formats
 
+**Archive 19 / canvas 18** adds an optional top margin on each page, measured in points from zero through the page height. An omitted margin resolves to 36 pt. The document grid and individual frame grids accept `relativeTo: "margin"`. The document grid defaults to the page edge. New pages inherit the preceding page’s margin. Opening an archive 18 document preserves its tab stops, frame grids and format.
+
 Custom baseline grids on native text frames use **archive 17 / canvas 16**. When present, `frameOptions.baselineGrid` stores `relativeTo` (`page`, `frame`, or `inset`), `start` in points from 0 to 14,400 and `increment` in points from 1 to 2,000. Omitting the field uses the document grid. The archive reader checks the version, grid values and owning native flow. Opening an archive 16 document preserves its existing grid and format. Find/Change queries are local application preferences outside the document data.
 
 Authored **Justification** settings with letter-spacing or glyph-scaling limits use **archive 16 / canvas 15**. The paragraph, named style, direct override or inline `data-ivo-wordspace` value stores three triples as `wordMin:desired:max|letterMin:desired:max|glyphMin:desired:max` in percent. An existing word-only triple retains its original format and behavior. A document that has used the new capability keeps its version after removing the setting. Derived line breaks, actual per-line percentages and glyph positions stay out of the document.
@@ -124,3 +126,17 @@ The frozen archive 10 fixture contains a legacy one-line join and word-spacing p
 ## Paragraph starts
 
 Archive 12 / canvas 11 adds the paragraph field `paragraphStart`, encoded in rich source as `data-ivo-pstart`. Allowed values are `anywhere`, `column`, `frame`, `page`, `odd` and `even`. An explicit setting or reset requires the new format. Opening existing documents without a setting keeps their original version. Page numbers, continuation slots and resolved line destinations are derived. The frozen archive 11 fixture preserves its counted keep and its existing composer choice.
+
+### Paragraph tab stops
+
+Archive 18 and canvas 17 can store `tabStops` on a paragraph style, a text flow or a paragraph override. Rich text uses `data-ivo-tabstops` on its paragraph. A missing setting inherits. An explicit `normal` restores the 36 pt default ruler. Each custom stop records its position from the column origin and its alignment. Decimal alignment also stores the Unicode scalar of its alignment character. An optional suffix stores up to eight leader characters as decimal scalar values. For example, `72:left,144:decimal:44|46` places a left stop at 72 pt and aligns a comma at 144 pt with a dotted leader. The source retains a single tab character between fields. The measured positions and repeated leader outlines belong to the displayed layout.
+
+## List numbering
+
+Archive 20 and canvas 19 preserve authored list starts, explicit item values and numbering that continues across intervening paragraphs. The flow stores nested HTML lists and their numbering instructions. A generated bullet or number has no source character offset. Converting numbering to text inserts the visible label into the source.
+
+## Paragraph style sequences
+
+Archive 21 and canvas 20 add an optional `nextStyle` ID to a paragraph style. Omission means [Same Style]. The target belongs to the same document’s paragraph definitions. Cycles are valid here, since one paragraph advances a sequence by exactly one step. The separate `basedOn` relationship continues to reject cycles. Copying a document remaps the successor ID. Object clipboard export retains reachable successors and their base styles.
+
+The EPUB file is an independent publication. Its spine orders chapters, its navigation file links to headings, and each text flow is emitted once. Crops and polygon masks are baked into its image pixels. It contains reader text and used illustrations. Vault font files, hidden objects and parent-page furniture stay in the vault.

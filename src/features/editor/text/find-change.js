@@ -152,6 +152,16 @@ function matchRange(prep, selection, from, to) {
   };
 }
 
+/** Editable dictionary words mapped to the same logical positions used by Find/Change. */
+export function* proofingWords(owner) {
+  const prep = prepared(owner);
+  for (const { index, segment, isWordLike } of words.segment(prep.index.text)) {
+    if (!isWordLike || segment.length > 256 || !/\p{Letter}/u.test(segment)) continue;
+    const match = matchRange(prep, null, index, index + segment.length);
+    if (match) yield match;
+  }
+}
+
 function formatOnly(prep, selection) {
   const { index, owner, formatted } = prep,
     matches = [];

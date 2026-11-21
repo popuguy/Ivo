@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+import { unzipSync, strFromU8 } from 'fflate';
+import { writeFile } from 'node:fs/promises';
 const root = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   profile = await mkdtemp(path.join(tmpdir(), 'ivo-build-'));
 app.setPath('userData', profile);
@@ -28,6 +30,60 @@ async function poll(window, expression) {
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
   throw new Error('Timed out: ' + expression);
+}
+async function verifyBook(window) {
+  const bytes = Uint8Array.from(
+    await window.webContents.executeJavaScript(
+      "import('/tests/runtime/build/epub-fixture.js').then(m=>m.exportFixture())",
+    ),
+  );
+  const files = unzipSync(bytes);
+  assert(
+    new DataView(bytes.buffer).getUint16(8, true) === 0 &&
+      strFromU8(bytes.slice(30, 38)) === 'mimetype' &&
+      strFromU8(files.mimetype) === 'application/epub+zip',
+    'First stored EPUB entry',
+  );
+  const chapter = strFromU8(files['EPUB/chapter-1.xhtml']),
+    nav = strFromU8(files['EPUB/nav.xhtml']);
+  assert(
+    chapter.includes('<em>lining</em>') &&
+      chapter.includes('start="3"') &&
+      chapter.includes('<ol start="5"><li>Denim</li><li value="8">Silk</li></ol>') &&
+      !chapter.includes('data-ivo-list-series') &&
+      chapter.includes('Orange triangular swatch') &&
+      chapter.includes('href="chapter-2.xhtml"'),
+    'EPUB chapter semantics',
+  );
+  assert(
+    (chapter.match(/Colour tests/g) || []).length === 1 &&
+      !chapter.includes('secret-only') &&
+      !files['EPUB/chapter-3.xhtml'],
+    'EPUB flow ownership and hidden sources',
+  );
+  assert(
+    nav.includes('#heading-1') &&
+      strFromU8(files['EPUB/chapter-2.xhtml']).includes('href="chapter-1.xhtml"'),
+    'EPUB navigation and cycle',
+  );
+  const xml = Object.entries(files)
+    .filter(([name]) => /\.(xml|opf|xhtml)$/.test(name))
+    .map(([, data]) => strFromU8(data));
+  assert(
+    await window.webContents.executeJavaScript(
+      JSON.stringify(xml) +
+        ".every(x=>!new DOMParser().parseFromString(x,'application/xml').querySelector('parsererror'))",
+    ),
+    'EPUB XML parses',
+  );
+  const image = Buffer.from(files['EPUB/image-1.png']).toString('base64');
+  assert(
+    await window.webContents.executeJavaScript(
+      `(async()=>{const i=new Image(); i.src='data:image/png;base64,${image}'; await i.decode();const c=document.createElement('canvas');c.width=i.width;c.height=i.height;const ctx=c.getContext('2d');ctx.drawImage(i,0,0);return ctx.getImageData(2,2,1,1).data[3]===255 && ctx.getImageData(i.width-2,i.height-2,1,1).data[3]===0;})()`,
+    ),
+    'EPUB image pixels follow the polygon mask',
+  );
+  if (process.env.IVO_EPUB_FIXTURE) await writeFile(process.env.IVO_EPUB_FIXTURE, bytes);
 }
 async function inspect(url) {
   const window = new BrowserWindow({
@@ -75,13 +131,39 @@ async function inspect(url) {
     await window.webContents.executeJavaScript(
       "document.querySelector('[data-find-action=done]').click()",
     );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-action="view-options"]').click();
+    `);
+    await poll(window, "!!document.querySelector('[data-navigation-action=export-epub]')");
+    await window.webContents.executeJavaScript(
+      "document.querySelector('[data-navigation-action=export-epub]').click()",
+    );
+    await poll(
+      window,
+      "document.querySelector('dialog[open] h2')?.textContent === 'Export reflowable EPUB'",
+    );
+    await window.webContents.executeJavaScript(`
+      const originalClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function() {
+        if (!this.download.endsWith('.epub')) return originalClick.call(this);
+        HTMLAnchorElement.prototype.click = originalClick;
+        fetch(this.href).then(r=>r.arrayBuffer()).then(b=>globalThis.__downloadedBook = new Uint8Array(b)[0] === 80);
+      };
+      document.querySelector('dialog[open] form').requestSubmit();
+    `);
+    await poll(window, 'globalThis.__downloadedBook === true');
     await window.webContents.executeJavaScript(
       `globalThis.__workerMessages=0;globalThis.__workerErrors=[];const OriginalWorker=Worker;globalThis.Worker=class extends OriginalWorker {constructor(...args){super(...args);this.addEventListener('message',()=>globalThis.__workerMessages++);this.addEventListener('error',event=>globalThis.__workerErrors.push(event.message));}};document.querySelector('[data-action=graph]').click()`,
     );
+    if (url.startsWith('ivo-build-test:')) await verifyBook(window);
     await poll(window, 'globalThis.__workerMessages > 0 || globalThis.__workerErrors.length > 0');
     const workerErrors = await window.webContents.executeJavaScript('globalThis.__workerErrors');
     assert(!workerErrors.length, 'Built graph worker failed: ' + JSON.stringify(workerErrors));
     assert(!errors.length, 'Built app console errors: ' + errors.join('\n'));
+  } catch (error) {
+    throw new Error(error.message + (errors.length ? '\n' + errors.join('\n') : ''), {
+      cause: error,
+    });
   } finally {
     window.destroy();
   }

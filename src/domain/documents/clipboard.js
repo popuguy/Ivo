@@ -59,8 +59,9 @@ export function copyObjectSelection(doc, selection, assets = []) {
     for (const kind of ['paragraph', 'character']) {
       const styles = fragment.publishing[kind + 'Styles'];
       for (const id of used[kind]) {
-        const parent = styles.find((style) => style.id === id)?.basedOn;
-        if (parent) used[kind].add(parent);
+        const definition = styles.find((style) => style.id === id);
+        if (definition?.basedOn) used[kind].add(definition.basedOn);
+        if (definition?.nextStyle) used[kind].add(definition.nextStyle);
       }
       fragment.publishing[kind + 'Styles'] = styles.filter((style) => used[kind].has(style.id));
     }
@@ -139,6 +140,8 @@ export function pasteObjectSelection(
       toBasic &&
       !fromBasic.basedOn &&
       !toBasic.basedOn &&
+      !fromBasic.nextStyle &&
+      !toBasic.nextStyle &&
       fromBasic.name === toBasic.name &&
       Object.keys(fromBasic.attributes).length === Object.keys(toBasic.attributes).length &&
       Object.entries(fromBasic.attributes).every(
@@ -155,8 +158,10 @@ export function pasteObjectSelection(
           remap.set(style.id, existing.id);
       }
       const additions = incoming.publishing[key].filter((s) => !remap.has(s.id));
-      for (const style of additions)
+      for (const style of additions) {
         if (remap.has(style.basedOn)) style.basedOn = remap.get(style.basedOn);
+        if (remap.has(style.nextStyle)) style.nextStyle = remap.get(style.nextStyle);
+      }
       publishing[key].push(...additions);
     }
     for (const holder of [

@@ -300,7 +300,7 @@ export function textWrapBand(
   for (const obstacle of obstacles) {
     const polygons = obstacle.polygons,
       bounds = obstacle.bounds;
-    // Native Shape and Jump inspect the space leading up to this baseline.
+    // Native Box, Shape and Jump inspect the space leading up to this baseline.
     // Inverse contours still need the whole ink box inside the path.
     const slice =
       obstacle.mode === 'jump'

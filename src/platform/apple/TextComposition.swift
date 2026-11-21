@@ -120,6 +120,12 @@ public final class TextCompositionEngine {
     let letterMinimum, letterDesired, letterMaximum: Double?
     let glyphMinimum, glyphDesired, glyphMaximum: Double?
   }
+  struct TabStop: Decodable {
+    let position: Double
+    let alignment: String
+    let character: String?
+    let leader: String?
+  }
   struct Paragraph: Decodable {
     let start: Int
     let end: Int
@@ -129,11 +135,12 @@ public final class TextCompositionEngine {
     let leftIndent: Double
     let rightIndent: Double
     let firstLineIndent: Double
+    let tabStops: [TabStop]?
     let wordSpacing: WordSpacing?
     enum CodingKeys: String, CodingKey {
       case start, end, align, paragraphBefore, paragraphAfter, leftIndent, rightIndent,
         firstLineIndent
-      case wordSpacing
+      case wordSpacing, tabStops
     }
     init(from decoder: Decoder) throws {
       let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -145,6 +152,7 @@ public final class TextCompositionEngine {
       leftIndent = try values.decode(Double.self, forKey: .leftIndent)
       rightIndent = try values.decode(Double.self, forKey: .rightIndent)
       firstLineIndent = try values.decode(Double.self, forKey: .firstLineIndent)
+      tabStops = try values.decodeIfPresent([TabStop].self, forKey: .tabStops)
       wordSpacing =
         values.contains(.wordSpacing)
         ? try values.decode(WordSpacing.self, forKey: .wordSpacing) : nil
@@ -187,6 +195,15 @@ public final class TextCompositionEngine {
     let oversetStart: Int?
     let retainedLines: [RetainedLine]?
   }
+  struct LeaderInk: Encodable {
+    let vector: String
+    let x, y: Double
+    let color: String
+  }
+  struct FrozenLeader {
+    let ink: LeaderInk
+    let path: CGPath
+  }
   struct FrozenLine {
     let page: Int
     let start: Int
@@ -196,6 +213,7 @@ public final class TextCompositionEngine {
     let descent: Double
     let line: CTLine
     let hyphen: BreakHyphen?
+    let leaders: [FrozenLeader]
     let letterOffsets: LetterOffsets
     let scaleX: Double
     let bodyWidth: Double
@@ -223,7 +241,7 @@ public final class TextCompositionEngine {
   func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
     try require(
-      [1, 2, 3, 4, 5, 6].contains(request.protocol)
+      [1, 2, 3, 4, 5, 6, 7, 8].contains(request.protocol)
         && [
           "greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof",
           "planned-lines-proof",
@@ -293,8 +311,8 @@ public final class TextCompositionEngine {
             && ["planned-lines-proof", "measure-lines-proof"].contains(request.mode)),
         "Unsupported vertical alignment")
       if frame.baselineGrid == true {
-        try require((frame.verticalAlign ?? "top") == "top" && ["planned-lines-proof", "measure-lines-proof"].contains(request.mode),
-          "Document baseline grids require a top-aligned planned frame")
+        try require(["planned-lines-proof", "measure-lines-proof"].contains(request.mode),
+          "Document baseline grids require a planned frame")
       }
     }
     try require(!request.spans.isEmpty && request.spans.count <= 30_000, "Invalid source map")
@@ -336,13 +354,40 @@ public final class TextCompositionEngine {
             && finite(paragraph.firstLineIndent, -2000, 2000), "Invalid paragraph geometry")
         let value = string.substring(
           with: NSRange(location: paragraph.start, length: paragraph.end - paragraph.start))
+        if let stops = paragraph.tabStops {
+          try require(request.protocol >= 7 && (1...64).contains(stops.count), "Invalid tab stops")
+          var previous = 0.0
+          for stop in stops {
+            try require(
+              stop.position > previous && finite(stop.position, 0, 14400)
+                && ["left", "center", "right", "decimal"].contains(stop.alignment),
+              "Invalid tab position or alignment")
+            if stop.alignment == "decimal" {
+              guard let scalars = stop.character?.unicodeScalars, scalars.count == 1,
+                let scalar = scalars.first,
+                !CharacterSet.controlCharacters.union(.whitespacesAndNewlines).contains(scalar)
+              else { throw fail("Invalid tab alignment character") }
+            } else {
+              try require(stop.character == nil, "Unexpected tab alignment character")
+            }
+            if let leader = stop.leader {
+              try require(
+                (1...8).contains(leader.unicodeScalars.count)
+                  && !leader.unicodeScalars.contains {
+                    CharacterSet.controlCharacters.union(.newlines).contains($0)
+                  },
+                "Invalid tab leader")
+            }
+            previous = stop.position
+          }
+        }
         if let spacing = paragraph.wordSpacing {
           try require(request.protocol >= 5, "Word spacing requires composition protocol 5")
           if [
             spacing.letterMinimum, spacing.letterDesired, spacing.letterMaximum,
             spacing.glyphMinimum, spacing.glyphDesired, spacing.glyphMaximum,
           ].contains(where: { $0 != nil }) {
-            guard request.protocol == 6,
+            guard request.protocol >= 6,
               let lmin = spacing.letterMinimum, let ldes = spacing.letterDesired,
               let lmax = spacing.letterMaximum,
               let gmin = spacing.glyphMinimum, let gdes = spacing.glyphDesired,
@@ -409,6 +454,11 @@ public final class TextCompositionEngine {
         try require(sourceLength >= 1 && textLength == 0, "Invalid virtual whitespace")
       case "structure", "placeholder":
         try require(sourceLength == 1 && textLength == 0, "Invalid virtual mark")
+      case "list-marker":
+        let label = string.substring(with: NSRange(location: native, length: textLength))
+        try require(request.protocol >= 8 && sourceLength == 0 && textLength <= 14 &&
+          (label == "•\t" || label.range(of: #"^-?[0-9]{1,10}\.\t$"#, options: .regularExpression) != nil),
+          "Invalid generated list marker")
       case "soft-break":
         try require(
           sourceLength == 1 && textLength == 1
@@ -809,23 +859,26 @@ public final class TextCompositionEngine {
       xHeight: struts.map { CTFontGetXHeight($0) }.max() ?? 0,
       inkAscent: inkAscent, inkDescent: inkDescent)
   }
-  func attributedSource(_ request: Request, fonts: [String: CGFont]) throws
-    -> NSMutableAttributedString
-  {
-    // Equal-length engine normalization: paragraph identity remains in the source map.
-    var shapingText = request.text.replacingOccurrences(of: "\u{2029}", with: "\n")
-    // An owned break plan retains NBSP in the canonical source. Shape its
-    // advance with the actual face's ordinary space, even if it lacks U+00A0.
-    if request.mode == "planned-lines-proof" || request.mode == "measure-lines-proof" {
-      shapingText = shapingText.replacingOccurrences(of: "\u{00A0}", with: " ")
-        .replacingOccurrences(of: "\u{202F}", with: " ")
+  func tabStyle(_ stops: [TabStop], corrections: [Double: Double] = [:]) -> CTParagraphStyle {
+    var tabs = stops.map { stop -> CTTextTab in
+      let alignment: CTTextAlignment =
+        stop.alignment == "left" ? .left : (stop.alignment == "center" ? .center : .right)
+      let options = stop.character.map {
+        [
+          kCTTabColumnTerminatorsAttributeName as String: CharacterSet(charactersIn: $0)
+            as NSCharacterSet
+        ] as CFDictionary
+      }
+      return CTTextTabCreate(alignment, stop.position + (corrections[stop.position] ?? 0), options)
     }
-    let attributed = NSMutableAttributedString(string: shapingText)
-    // Repeating half-inch stops. Custom/decimal/right-indent tabs remain a
-    // separate paragraph capability; U+0009 stays source text, never spaces.
+    // After the last custom stop InDesign resumes its original 36 pt grid.
+    // Core Text repeats relative to its last stop. Anchor it back to the grid.
+    if let last = stops.last?.position {
+      tabs.append(CTTextTabCreate(.left, (floor(last / 36) + 1) * 36, nil))
+    }
     var interval: CGFloat = 36
-    var stops: CFArray = [] as CFArray
-    let paragraph = withUnsafePointer(to: &interval) { intervalPointer in
+    var stops: CFArray = tabs as CFArray
+    return withUnsafePointer(to: &interval) { intervalPointer in
       withUnsafePointer(to: &stops) { stopsPointer in
         var settings = [
           CTParagraphStyleSetting(
@@ -838,9 +891,176 @@ public final class TextCompositionEngine {
         return CTParagraphStyleCreate(&settings, settings.count)
       }
     }
-    attributed.addAttribute(
+  }
+
+  final class DecimalTabParagraph: NSObject {
+    let stops: [TabStop]
+    init(_ stops: [TabStop]) { self.stops = stops }
+  }
+  let decimalTabKey = NSAttributedString.Key("IvoDecimalTabParagraph")
+  struct DecimalTabKey: Hashable {
+    let source: ObjectIdentifier
+    let paragraphStart: Int
+    let shifts: [Double]
+  }
+  typealias DecimalTabCache = [DecimalTabKey: (NSAttributedString, CTTypesetter)]
+
+  // Core Text centers the terminating glyph on a decimal stop. InDesign puts
+  // its leading caret there. Correct only fields with a resolved terminator,
+  // using the actual shaped run so mixed faces, sizes and transforms survive.
+  func tabbedLine(
+    _ typesetter: CTTypesetter, source: NSAttributedString, text: NSString,
+    start: Int, end: Int, offset: Double, hasCustomTabs: Bool, cache: inout DecimalTabCache
+  ) -> CTLine {
+    let range = CFRange(location: start, length: end - start)
+    let line = CTTypesetterCreateLineWithOffset(typesetter, range, offset)
+    guard hasCustomTabs else { return line }
+    var paragraphRange = NSRange()
+    guard
+      let paragraph = source.attribute(decimalTabKey, at: start, effectiveRange: &paragraphRange)
+        as? DecimalTabParagraph
+    else { return line }
+    var corrections = [Double: Double]()
+    var tab = text.range(
+      of: "\t", options: [], range: NSRange(location: start, length: end - start))
+    while tab.location != NSNotFound {
+      let fieldStart = NSMaxRange(tab)
+      let next = text.range(
+        of: "\t", options: [], range: NSRange(location: fieldStart, length: end - fieldStart))
+      let field = NSRange(
+        location: fieldStart,
+        length: (next.location == NSNotFound ? end : next.location) - fieldStart)
+      for stop in paragraph.stops {
+        guard let character = stop.character else { continue }
+        let match = text.range(of: character, options: .literal, range: field)
+        if match.location == NSNotFound { continue }
+        let leading = offset + CTLineGetOffsetForStringIndex(line, match.location, nil)
+        let trailing = offset + CTLineGetOffsetForStringIndex(line, NSMaxRange(match), nil)
+        if abs((leading + trailing) / 2 - stop.position) < 0.001 {
+          corrections[stop.position] = stop.position - leading
+          break
+        }
+      }
+      tab = next
+    }
+    guard !corrections.isEmpty else { return line }
+    let key = DecimalTabKey(
+      source: ObjectIdentifier(source), paragraphStart: paragraphRange.location,
+      shifts: paragraph.stops.map { corrections[$0.position] ?? 0 })
+    if let existing = cache[key] {
+      return CTTypesetterCreateLineWithOffset(existing.1, range, offset)
+    }
+    let corrected = NSMutableAttributedString(attributedString: source)
+    corrected.addAttribute(
       NSAttributedString.Key(kCTParagraphStyleAttributeName as String),
-      value: paragraph, range: NSRange(location: 0, length: attributed.length))
+      value: tabStyle(paragraph.stops, corrections: corrections), range: paragraphRange)
+    let adjusted = CTTypesetterCreateWithAttributedString(corrected)
+    // Candidate break ranges often shape the same field with the same face.
+    // Keep a bounded, request-local cache. Retaining the original source also
+    // distinguishes successive discretionary-hyphen alternatives.
+    if cache.count >= 4, let first = cache.keys.first { cache.removeValue(forKey: first) }
+    cache[key] = (source, adjusted)
+    return CTTypesetterCreateLineWithOffset(adjusted, range, offset)
+  }
+  // Align leader glyphs to a repeating ruler starting at the column origin.
+  // Two rows with different labels therefore share the same pattern phase.
+  // Only whole glyph advances inside the tab gap contribute ink.
+  func tabLeaders(
+    stops: [TabStop], line: CTLine, text: NSString, attributed: NSAttributedString,
+    start: Int, end: Int, offset: Double, originX: Double, request: Request,
+    glyphBudget: inout Int, vectors: inout [String: String]
+  ) throws -> [FrozenLeader] {
+    guard stops.contains(where: { $0.leader != nil }) else { return [] }
+    var result = [FrozenLeader]()
+    let rulerX = { (index: Int) in offset + CTLineGetOffsetForStringIndex(line, index, nil) }
+    var tab = text.range(
+      of: "\t", options: [], range: NSRange(location: start, length: end - start))
+    while tab.location != NSNotFound {
+      let at = tab.location, after = NSMaxRange(tab)
+      tab = text.range(of: "\t", options: [], range: NSRange(location: after, length: end - after))
+      let limit = tab.location == NSNotFound ? end : tab.location
+      let left = rulerX(at), right = rulerX(after), fieldEnd = rulerX(limit)
+      guard right > left else { continue }
+      let resolved = stops.first { stop in
+        guard stop.position > left else { return false }
+        let anchor: Double
+        switch stop.alignment {
+        case "left": anchor = right
+        case "right": anchor = fieldEnd
+        case "center": anchor = (right + fieldEnd) / 2
+        default:
+          guard let character = stop.character else { return false }
+          let match = text.range(
+            of: character, options: .literal,
+            range: NSRange(location: after, length: limit - after))
+          anchor = match.location == NSNotFound ? fieldEnd : rulerX(match.location)
+        }
+        return abs(anchor - stop.position) < 0.01
+      }
+      guard let leader = resolved?.leader else { continue }
+      let attrs = attributed.attributes(at: at, effectiveRange: nil)
+      let motif = CTLineCreateWithAttributedString(
+        NSAttributedString(string: leader, attributes: attrs))
+      try validateFallback(motif, request: request)
+      let repeatWidth = CTLineGetTypographicBounds(motif, nil, nil, nil)
+      guard repeatWidth > 0.001 else { continue }
+      for run in CTLineGetGlyphRuns(motif) as! [CTRun] {
+        let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+        let n = CTRunGetGlyphCount(run)
+        var glyphs = [CGGlyph](repeating: 0, count: n),
+          positions = [CGPoint](repeating: .zero, count: n)
+        var advances = [CGSize](repeating: .zero, count: n)
+        CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
+        CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+        CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
+        let color =
+          request.runs.first(where: { $0.start <= at && $0.end > at })?.textColor ?? "#252525"
+        for i in 0..<n {
+          guard let path = CTFontCreatePathForGlyph(font, glyphs[i], nil) else { continue }
+          let point = positions[i].applying(CTRunGetTextMatrix(run))
+          let id = vectorIdentity(font: font, glyph: glyphs[i], request: request)
+          if request.includeVectors == true, vectors[id] == nil {
+            vectors[id] = try vectorPath(font: font, glyph: glyphs[i], id: id)
+          }
+          var x = point.x + ceil((left - point.x - 0.000001) / repeatWidth) * repeatWidth
+          while x + advances[i].width <= right + 0.000001 {
+            glyphBudget += 1
+            try require(glyphBudget <= 100_000, "Tab leader glyph budget exceeded")
+            result.append(
+              FrozenLeader(
+                ink: LeaderInk(
+                  vector: id, x: originX + x - offset,
+                  y: point.y, color: color), path: path))
+            x += repeatWidth
+          }
+        }
+      }
+    }
+    return result
+  }
+  func attributedSource(_ request: Request, fonts: [String: CGFont]) throws
+    -> NSMutableAttributedString
+  {
+    // Equal-length engine normalization: paragraph identity remains in the source map.
+    var shapingText = request.text.replacingOccurrences(of: "\u{2029}", with: "\n")
+    // An owned break plan retains NBSP in the canonical source. Shape its
+    // advance with the actual face's ordinary space, even if it lacks U+00A0.
+    if request.mode == "planned-lines-proof" || request.mode == "measure-lines-proof" {
+      shapingText = shapingText.replacingOccurrences(of: "\u{00A0}", with: " ")
+        .replacingOccurrences(of: "\u{202F}", with: " ")
+    }
+    let attributed = NSMutableAttributedString(string: shapingText)
+    let key = NSAttributedString.Key(kCTParagraphStyleAttributeName as String)
+    attributed.addAttribute(
+      key, value: tabStyle([]), range: NSRange(location: 0, length: attributed.length))
+    for paragraph in request.paragraphs ?? [] {
+      guard let stops = paragraph.tabStops else { continue }
+      let range = NSRange(location: paragraph.start, length: paragraph.end - paragraph.start)
+      attributed.addAttribute(key, value: tabStyle(stops), range: range)
+      if stops.contains(where: { $0.alignment == "decimal" }) {
+        attributed.addAttribute(decimalTabKey, value: DecimalTabParagraph(stops), range: range)
+      }
+    }
     for run in request.runs {
       let font = characterFont(run, fonts: fonts)
       attributed.addAttributes(
@@ -1282,6 +1502,7 @@ public final class TextCompositionEngine {
     let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let string = request.text as NSString
     let candidates = request.candidates!
+    var decimalTabs = DecimalTabCache()
     let automaticEnds = Set(request.hyphenationPoints ?? [])
     var hyphenWidths: [Int: CGFloat] = [:]
     // Multiple candidate starts can share the same conditional ending. Keep only
@@ -1290,18 +1511,20 @@ public final class TextCompositionEngine {
       request.text.contains("\u{00AD}")
       ? candidates.indices.sorted { candidates[$0].end < candidates[$1].end }
       : Array(candidates.indices)
-    var alternate: (end: Int, typesetter: CTTypesetter)?
+    var alternate: (end: Int, typesetter: CTTypesetter, source: NSAttributedString)?
     var rows = Array<Measurement?>(repeating: nil, count: candidates.count)
     for index in order {
       let candidate = candidates[index]
       var lineTypesetter = typesetter
+      var lineSource: NSAttributedString = attributed
       if candidate.end - candidate.start >= 2 && discretionaryBreak(string, at: candidate.end) {
         if alternate?.end != candidate.end {
           let copy = NSMutableAttributedString(attributedString: attributed)
           try showDiscretionaryHyphen(copy, at: candidate.end)
-          alternate = (candidate.end, CTTypesetterCreateWithAttributedString(copy))
+          alternate = (candidate.end, CTTypesetterCreateWithAttributedString(copy), copy)
         }
         lineTypesetter = alternate!.typesetter
+        lineSource = alternate!.source
       }
       var end = candidate.end
       while end > candidate.start
@@ -1309,9 +1532,10 @@ public final class TextCompositionEngine {
       { end -= 1 }
       let line =
         end > candidate.start
-        ? CTTypesetterCreateLineWithOffset(
-          lineTypesetter, CFRange(location: candidate.start, length: end - candidate.start),
-          candidate.offset ?? 0)
+        ? tabbedLine(
+          lineTypesetter, source: lineSource, text: string, start: candidate.start,
+          end: end, offset: candidate.offset ?? 0, hasCustomTabs: request.protocol >= 7,
+          cache: &decimalTabs)
         : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
       try validateFallback(line, request: request)
       var ascent = CGFloat.zero
@@ -1458,6 +1682,7 @@ public final class TextCompositionEngine {
     var retainedGeometry: Bool?
     var placementIndex: Int?
     var inkAscent, inkDescent: Double?
+    var leaders: [LeaderInk]?
     var wordSpacing: SpacingGeometry?
   }
 
@@ -1469,6 +1694,7 @@ public final class TextCompositionEngine {
   func compose(_ request: Request, fonts: [String: CGFont]) throws -> (
     [FrozenLine], [LineGeometry], [String], [[String: String]]
   ) {
+    var decimalTabs = DecimalTabCache()
     let canonicalString = request.text as NSString
     let base = try attributedSource(request, fonts: fonts)
     let automaticEnds = Set(request.hyphenationPoints ?? [])
@@ -1561,8 +1787,10 @@ public final class TextCompositionEngine {
         { contentEnd -= 1 }
         var line =
           contentEnd > position
-          ? CTTypesetterCreateLineWithOffset(
-            lineTypesetter, CFRange(location: position, length: contentEnd - position), indent)
+          ? tabbedLine(
+            lineTypesetter, source: base, text: nativeString, start: position,
+            end: contentEnd, offset: indent, hasCustomTabs: paragraph?.tabStops != nil,
+            cache: &decimalTabs)
           : CTLineCreateWithAttributedString(NSAttributedString(string: ""))
         var ascent = CGFloat.zero
         var descent = CGFloat.zero
@@ -1744,10 +1972,9 @@ public final class TextCompositionEngine {
         }
         if placement != nil {
           try require(
-            baseline + ((frame.verticalAlign ?? "top") == "top" && frame.baselineGrid != true ? Double(descent) : 0)
-              <= frame.height + 0.000001,
+            baseline <= frame.height + 0.000001,
             "Planned line exceeds frame height")
-        } else if baseline + Double(descent) > frame.height {
+        } else if baseline > frame.height + 0.000001 {
           break
         }
         // A full column hands this same decision to the next authored frame,
@@ -1758,7 +1985,7 @@ public final class TextCompositionEngine {
             "Explicit line exceeds its indented line area")
         }
         var runRows: [RunGeometry] = []
-        let reuseDetails = request.protocol != 6 && (retained[position].map {
+        let reuseDetails = request.protocol < 6 && (retained[position].map {
           $0.end == end && $0.availableWidth == availableWidth && $0.originX == originX
             && $0.width == width
         } ?? false)
@@ -1943,10 +2170,18 @@ public final class TextCompositionEngine {
                 : originalWordSpaceLine != nil ? "native-word-space" : "native-line",
             hitIndex: hyphen != nil && index == end ? end : nativeHit)
         }
+        let leaders =
+          try paragraph?.tabStops.map {
+            try tabLeaders(
+              stops: $0, line: line, text: nativeString, attributed: base,
+              start: position, end: contentEnd, offset: indent, originX: originX, request: request,
+              glyphBudget: &glyphBudget, vectors: &vectors)
+          } ?? []
         frozen.append(
           FrozenLine(
             page: page, start: position, end: end, baseline: baseline, ascent: Double(ascent),
-            descent: Double(descent), line: line, hyphen: hyphen, letterOffsets: letters,
+            descent: Double(descent), line: line, hyphen: hyphen, leaders: leaders,
+            letterOffsets: letters,
             scaleX: scaleX, bodyWidth: bodyWidth, originX: originX))
         var row = LineGeometry(
           frame: frame.id, page: page, start: position, end: end, contentEnd: contentEnd,
@@ -1959,6 +2194,7 @@ public final class TextCompositionEngine {
           row.paragraphStart = paragraph!.start
           row.paragraphEnd = paragraph!.end
         }
+        if !leaders.isEmpty && request.includeVectors == true { row.leaders = leaders.map(\.ink) }
         if reuseDetails { row.retainedGeometry = true }
         if placement != nil { row.placementIndex = output.count }
         if let character = character {
@@ -2299,6 +2535,17 @@ public final class TextCompositionEngine {
           }
         }
         context.restoreGState()
+        if !invisible {
+          for leader in line.leaders {
+            context.saveGState()
+            context.translateBy(
+              x: margin + leader.ink.x, y: box.height - margin - line.baseline + leader.ink.y)
+            context.setFillColor(color(leader.ink.color))
+            context.addPath(leader.path)
+            context.fillPath()
+            context.restoreGState()
+          }
+        }
         if !invisible, let hyphen = line.hyphen,
           let path = CTFontCreatePathForGlyph(hyphen.font, hyphen.glyph, nil)
         {

@@ -1,3 +1,4 @@
+import { verifyStructuredLists } from './structured-lists.js';
 import { verifyNativeFindChange } from './find-change.js';
 import { verifyThreadedDeletion } from '../flow-selection/threaded-deletion.js';
 import { createInteractiveTextPort } from '../../../src/rendering/text/retained-geometry.js';
@@ -633,6 +634,7 @@ try {
       save: window.nativeEditorTest.save,
       load: window.nativeEditorTest.load,
     });
+    await verifyStructuredLists(host, window.nativeEditorTest, native.compose);
     nativeBaselineGrid = await verifyBaselineGrid({ host, compose: native.compose });
     nativeCharacterEditing = await verifyNativeCharacterEditing({
       host,

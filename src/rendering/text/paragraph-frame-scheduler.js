@@ -186,18 +186,41 @@ export async function fitFrameParagraphs(
   const lines = scheduled.lines;
   if (lines.length > MAX_LINES) failed('flow line budget');
   const paragraphStarts = new Set(paragraphs.map((p) => p.start));
+  const gridPolicies = new Map();
+  if (actualColumns.some((column) => column.grid && column.verticalAlign !== 'top')) {
+    let index = 0;
+    for (const line of lines) {
+      while (index + 1 < paragraphs.length && line.start >= paragraphs[index + 1].start) index++;
+      gridPolicies.set(line, paragraphs[index].baselineAlignment);
+    }
+  }
   // Cache rows remain top-aligned; only owned copies receive final translation.
   for (const [index, column] of columns.entries()) {
+    if (column.verticalAlign === 'top' || column.obstacles?.length) continue;
     const own = lines.filter((line) => line.frame === index);
-    if (!own.length || column.obstacles?.length) continue;
+    if (!own.length) continue;
     const last = own.at(-1),
-      remaining = Math.max(0, column.height - last.baseline),
-      offset =
-        column.verticalAlign === 'bottom'
-          ? remaining
-          : column.verticalAlign === 'center'
-            ? remaining / 2
-            : 0;
+      freeHeight = Math.max(0, column.height - last.baseline);
+    // The last paragraph sets the eligible bottom position for Justify.
+    // Intermediate baselines may land between grid lines after distribution.
+    const step = column.grid?.increment;
+    const snappedSpace = (v) => (step ? Math.floor(v / step + 1e-8) * step : v);
+    const remaining =
+      step && gridPolicies.get(last) !== 'none' ? snappedSpace(freeHeight) : freeHeight;
+    const shift =
+      column.verticalAlign === 'bottom'
+        ? freeHeight
+        : column.verticalAlign === 'center'
+          ? freeHeight / 2
+          : 0;
+    const offset =
+      step &&
+      own.some((line) => {
+        const policy = gridPolicies.get(line);
+        return policy === 'all' || (policy === 'first' && paragraphStarts.has(line.start));
+      })
+        ? snappedSpace(shift)
+        : shift;
     if (column.verticalAlign === 'justify' && own.length > 1) {
       const boundaries = own.slice(1).filter((line) => paragraphStarts.has(line.start)).length,
         paragraphExtra = boundaries

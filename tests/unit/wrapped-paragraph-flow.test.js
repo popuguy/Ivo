@@ -106,7 +106,7 @@ function rectangularOracle(input) {
           consumed = frame === currentFrame && !initial && !mandatory ? after : null;
         let firstRow = frame !== currentFrame || currentBaseline === null;
         let rowTop = firstRow ? 0 : consumed === null ? y - uniform.advance : priorRowTop;
-        while (y + uniform.descent <= column.height) {
+        while (y <= column.height + 1e-6) {
           let segments = [{ left, right }],
             nextColumn = false,
             jumpEnd = null;
@@ -128,8 +128,8 @@ function rectangularOracle(input) {
             if (!(
               b.left < right - 1e-7 &&
               b.right > left + 1e-7 &&
-              b.top < bottom - 1e-7 &&
-              b.bottom > top + 1e-7
+              b.top < (obstacle.mode === 'bounds' ? Math.max(y, rowTop + 1e-6) : bottom) - 1e-7 &&
+              b.bottom > (obstacle.mode === 'bounds' ? rowTop : top) + 1e-7
             ))
               continue;
             if (obstacle.mode === 'next-column') {

@@ -1359,6 +1359,29 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       `<h2>Vault options</h2><p>${globalThis.ivoNative?.store ? 'Documents and original media are saved in your vault folder.' : 'Documents and original media are saved on this device.'}</p><div class="options-list">${globalThis.ivoNative?.showFolder ? button('show-folder', 'Show vault folder', 'book') : ''}${globalThis.ivoNative?.vaults ? button('manage-vaults', 'Manage vaults…') : ''}${button('new-layout', 'New layout or template…')}${button('split-right', 'Split right')}${button('split-down', 'Split down')}${workspace.groups.length > 1 ? button('merge-pane', 'Merge this pane') : ''}${button('go-back', 'Back')}${button('go-forward', 'Forward')}${button('export', 'Export vault backup')}${button('import', 'Import atlas backup')}${view === 'document' ? (globalThis.ivoNative?.exportPDF ? button('export-pdf', 'Export PDF…') : '') + button('markdown', 'Export document as Markdown') + button('history', 'Document history') + button('duplicate-document', 'Duplicate document') + button('save-template', 'Save as template…') + button('insert-link', 'Insert document link…') : ''}</div>`,
     );
   }
+  function epubDialog() {
+    if (view !== 'document' || !current()) return;
+    showDialog(
+      '<h2>Export reflowable EPUB</h2><p>Includes the full text of visible flows, including overset text. Text follows page order, then frame position. The reader sets the type size. Images retain their crops and masks.</p><label class="pdf-scope"><input type="checkbox" name="linked"> Include linked documents as chapters</label><button type="submit" class="button-primary">Export…</button>',
+      async (data) => {
+        if (!(await flush())) return;
+        const submit = dialog.querySelector('button[type=submit]');
+        const name = current().title.replace(/[\\/:*?"<>|]/g, '-') || 'Document';
+        submit.disabled = true;
+        try {
+          const { exportReflowableBook } = await import('../features/export/epub.js');
+          const bytes = await exportReflowableBook(docs, activeId, {
+            getSource: source,
+            includeLinked: data.has('linked'),
+          });
+          download(name + '.epub', bytes, 'application/epub+zip');
+          dialog.close();
+        } finally {
+          submit.disabled = false;
+        }
+      },
+    );
+  }
   function pdfDialog() {
     if (view !== 'document' || !current()) return;
     showDialog(
@@ -1950,9 +1973,21 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
           ? [
               { id: 'toggle-edit', label: editing ? 'Reading view' : 'Editing view' },
               { id: 'find-change', label: 'Find/Change…', enabled: canvasMenu.canvasEditing },
+              ...(globalThis.ivoNative?.spelling
+                ? [
+                    {
+                      id: 'check-spelling',
+                      label: 'Check Spelling…',
+                      enabled: canvasMenu.canvasEditing,
+                    },
+                  ]
+                : []),
               { id: 'history', label: 'Open version history' },
               { id: 'rename', label: 'Rename…' },
               { id: 'insert-link', label: 'Insert document link…' },
+              ...(globalThis.ivoNative?.platform === 'ios'
+                ? []
+                : [{ id: 'export-epub', label: 'Export reflowable EPUB…' }]),
               ...(globalThis.ivoNative?.exportPDF
                 ? [{ id: 'export-pdf', label: 'Export PDF…' }]
                 : []),
@@ -1969,6 +2004,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       choice === 'toggle-panels' ||
       choice === 'wrap-preferences' ||
       choice === 'find-change' ||
+      choice === 'check-spelling' ||
       choice === 'show-contextual' ||
       choice.startsWith('show-panel-')
     ) {
@@ -2025,6 +2061,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       saveTemplateDialog();
       return;
     }
+    if (name === 'export-epub') return epubDialog();
     if (name === 'export-pdf') {
       if (globalThis.ivoNative?.exportPDF) pdfDialog();
       return;
@@ -2827,7 +2864,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     )
       return runAction(name);
     if (name === 'quick-switcher') return quickSwitcher();
-    if (name === 'export-pdf') return runAction(name);
+    if (name === 'export-pdf' || name === 'export-epub') return runAction(name);
     if (name === 'toggle-edit') return runAction(name);
     if (view === 'document') {
       if (name === 'link' && !editing) return runAction('insert-link');

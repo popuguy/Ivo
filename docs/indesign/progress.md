@@ -4,6 +4,17 @@ The [current development state](../development/STATE.md) records the latest engi
 
 On 20 November 2026 the estimate was rebased from **~48% across the original 66 capabilities** to **~50% of Ivo release text parity**. Three largely unfinished specialist publishing capabilities moved to the [broader-edition wishlist](text-parity-programme.md#broader-edition-wishlist). The same implementation and verification evidence underlies both estimates. As a rough check on the scale of the adjustment, 48% × 66 / 63 is about 50%. The individual capabilities vary in size, so future estimates still require engineering judgment about the work remaining.
 
+## Structured text and reflowable publishing
+
+**Ivo release text parity is estimated at ~73% across the same 63 capabilities, up from ~65%.** This is an engineering estimate. The largest gains are in structured paragraph editing and publishing. Specialist language exemptions and the release denominator are unchanged.
+
+- Native flows support left, center, right and decimal stops with custom alignment characters and patterned leaders. The live type controls, named styles, undo, archive reopen, selectable decimal positions and independently rasterized PDF leaders were exercised. Ruler dragging, Repeat Tab and right-indent tab characters remain open.
+- Ordered and bulleted paragraphs have editable levels, restart and continue commands. A numbering sequence can continue across ordinary paragraphs in one flow. Markers have their own paint and caret mapping. Named counters spanning separate flows and compound numbering remain open.
+- A paragraph style can specify its successor. Return at the end of a paragraph advances to it. Apply Style Sequence formats existing consecutive paragraphs in one undo operation. Style references survive document duplication and vault import.
+- Page margins, grid-aligned Center, Bottom and Justify and the bottom inset were checked against InDesign. All 760 clear-frame cases and 396 earlier grid and wrap cases matched. Overlapping objects matched 104 of 120 cases. Page three of the six-page fixture separates paragraph-composer line choices from contour geometry. See [frame composition](../frame-composition.md).
+- Desktop Check Spelling uses the system dictionary for suggested corrections, Skip, Ignore All, Change and Change All. The editable range and history are shared with Find/Change. A dockable Preflight panel reports overset text, incomplete layout and missing vault resources. Its Digital publication profile also checks document links and image descriptions.
+- Reflowable EPUB export includes linked chapters on request, chapter and heading navigation, actual text and lists, and cropped, masked illustrations. Hidden source stays out. The test export passed EPUBCheck, with zero errors and warnings. Tagged PDF, reading-order authoring, advanced preflight and independent physical reader and phone qualification remain open.
+
 ## Editorial search and frame grids
 
 **Engineering estimate on the 63-capability release scope is ~65%, up from ~60%.** Editorial search adds an estimated two points. Frame grids and grid-aware wrapping add three. The estimate includes the remaining structured text, font, publishing and physical-device work.

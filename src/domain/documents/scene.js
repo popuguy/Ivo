@@ -10,7 +10,13 @@ import { basicParagraph, effectiveTextStyle, saveTextStyle } from './publishing.
 export const DEFAULT_PAGE = Object.freeze({ width: 612, height: 792 });
 export const isSceneDocument = (document) => supportedCanvas(document.canvasVersion);
 export function makePage(size = DEFAULT_PAGE, name = 'Page 1') {
-  return { id: uid('page-'), name, width: size.width, height: size.height };
+  return {
+    id: uid('page-'),
+    name,
+    width: size.width,
+    height: size.height,
+    ...(size.topMargin === undefined ? {} : { topMargin: size.topMargin }),
+  };
 }
 export function createSceneDocument(title = 'Untitled', size = DEFAULT_PAGE, defaultFont) {
   const document = createDocument(title || 'Untitled');

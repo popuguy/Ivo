@@ -77,7 +77,7 @@ function exhaustive(input) {
               current +
               row.advance +
               (position === input.start ? (input.previousAfter ?? 0) + style.paragraphBefore : 0);
-          if (area >= 1 && row.width <= area + 0.000001 && y + row.descent <= column.height)
+          if (area >= 1 && row.width <= area + 0.000001 && y <= column.height + 1e-6)
             fits.push({ row, y });
         }
         // Fill the first column that accepts anything, even when another column

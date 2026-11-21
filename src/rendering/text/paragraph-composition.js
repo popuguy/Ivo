@@ -155,6 +155,7 @@ function paragraphIdentity(request, paragraph) {
     text: paragraph.text,
     ...(paragraph.automatic ? { automatic: paragraph.automatic } : {}),
     ...(paragraph.hasNoBreak ? { breaks: paragraph.opportunities.map((p) => p.index) } : {}),
+    ...(paragraph.tabStops ? { tabStops: paragraph.tabStops } : {}),
     ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),
     ...(paragraph.text.includes('\t')
       ? { tabOrigins: [paragraph.layout.leftIndent, paragraph.layout.firstLineIndent] }
@@ -363,9 +364,10 @@ export function createParagraphComposer(measure) {
           throw new UnsupportedComposition('word spacing without native protocol 5');
         if (Object.hasOwn(authored ?? {}, 'wordSpacing') && authored.wordSpacing == null)
           throw Error('Native word-spacing policy must contain three percentages.');
+        paragraph.tabStops = authored?.tabStops;
         paragraph.wordSpacing = normalizeWordSpacingPolicy(authored?.wordSpacing);
         if (paragraph.wordSpacing) {
-          if (paragraph.wordSpacing.letterDesired !== undefined && request.protocol !== 6)
+          if (paragraph.wordSpacing.letterDesired !== undefined && request.protocol < 6)
             throw new UnsupportedComposition(
               'letter spacing and glyph scaling without native protocol 6',
             );

@@ -1,3 +1,4 @@
+import { listOrdinal } from '../../domain/text/list-numbering.js';
 import { nativeTextAttributes } from '../dom/native-text-format.js';
 import { normalizeInlineMetrics } from '../dom/inline-metrics.js';
 import { resolveDocumentLink } from '../../domain/knowledge/index.js';
@@ -108,6 +109,13 @@ export function cleanHTML(value) {
     }
     const attributes = { ...native, ...authored };
     const out = document.createElement(node.tagName.toLowerCase());
+    const counter = node.tagName === 'OL' ? 'start' : node.tagName === 'LI' ? 'value' : null;
+    if (node.tagName === 'OL' && node.dataset.ivoListSeries === 'default')
+      out.dataset.ivoListSeries = 'default';
+    if (counter && !node.hasAttribute('data-flow-list-start')) {
+      const ordinal = listOrdinal(node.getAttribute(counter));
+      if (ordinal !== null) out.setAttribute(counter, String(ordinal));
+    }
     node.childNodes.forEach((c) => out.append(clean(c)));
     // Older editors nested a new run for each OpenType toggle. A lone child
     // inherits all flags, with its own flags taking precedence (including Off).

@@ -19,6 +19,23 @@ const methods = [
 contextBridge.exposeInMainWorld('ivoNative', {
   platform: 'macos',
   textComposition,
+  spelling: Object.freeze({
+    available: () => webFrame.isWordMisspelled('zxqvvvplmnt'),
+    misspelled(words) {
+      if (
+        !Array.isArray(words) ||
+        words.length > 64 ||
+        words.some((word) => typeof word !== 'string' || !word.length || word.length > 256)
+      )
+        throw Error('Invalid dictionary request.');
+      return words.filter((word) => webFrame.isWordMisspelled(word));
+    },
+    suggestions(word) {
+      return typeof word === 'string' && word.length <= 256
+        ? webFrame.getWordSuggestions(word).slice(0, 12)
+        : [];
+    },
+  }),
   fonts: Object.freeze({
     list: (refresh = false) => ipcRenderer.invoke('ivo:fonts', 'list', refresh),
     read: (postscript) => ipcRenderer.invoke('ivo:fonts', 'read', postscript),

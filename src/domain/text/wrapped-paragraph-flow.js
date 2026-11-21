@@ -381,22 +381,9 @@ function* fitWrappedParagraph(
           // Fragments on the far side of an object keep their physical row.
           // Recheck the exclusion at the actual baseline after *every* clearance move.
           if (alignRow && after === null) baseline = nextGridBaseline(baseline, column.grid);
-          if (
-            baseline + (column.grid || column.verticalAlign === 'bottom' ? 0 : metrics.descent) >
-            column.height + EPS
-          )
-            break;
+          if (baseline > column.height + EPS) break;
           if (!(yield* checkpoint())) return [];
-          const gridRow = !!(alignRow || (after !== null && state.gridAligned));
-          const key = [
-            frame,
-            baseline,
-            rowTop,
-            left,
-            metrics.ascent,
-            metrics.descent,
-            gridRow,
-          ].join(':');
+          const key = [frame, baseline, rowTop, left, metrics.ascent, metrics.descent].join(':');
           let band = bands.get(key);
           if (!band) {
             if (column.cooperativeBand) yield { stage: 'geometry', states, candidates };
@@ -411,7 +398,7 @@ function* fitWrappedParagraph(
             const slices = {
               jumpBand: lineBand,
               shapeBand: lineBand,
-              boundsBand: aligned || gridRow ? lineBand : undefined,
+              boundsBand: lineBand,
               // A lowered first row cannot jump past a Next Column object.
               nextColumnBand: aligned ? { top: 0, bottom: baseline } : undefined,
             };
@@ -513,7 +500,6 @@ function* fitWrappedParagraph(
               available.push({
                 line,
                 rowTop,
-                gridAligned: gridRow,
                 after: segment.right,
                 mandatory: measured.mandatory,
                 clearance: baseline - naturalBaseline,
@@ -555,7 +541,6 @@ function* fitWrappedParagraph(
         cursor: { frame: choice.line.frame, baseline: choice.line.baseline },
         after: choice.after,
         rowTop: choice.rowTop,
-        gridAligned: choice.gridAligned,
         mandatory: choice.mandatory,
         cost: state.cost + choice.line.cost,
         line: choice.line,

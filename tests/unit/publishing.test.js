@@ -277,3 +277,50 @@ test('font registration publishes atomically and rejects stale passive generatio
     else globalThis.FontFace = oldFace;
   }
 });
+
+test('Next paragraph styles retain their separate references through cycling, copy and archive import', () => {
+  const doc = createSceneDocument('Styles');
+  const body = saveTextStyle(doc, 'paragraph', { name: 'Body', attributes: { fontSize: 11 } });
+  const heading = saveTextStyle(doc, 'paragraph', {
+    name: 'Heading',
+    nextStyle: body.id,
+    attributes: { fontSize: 18 },
+  });
+  saveTextStyle(doc, 'paragraph', { ...body, nextStyle: heading.id });
+  assert.equal(archiveVersion([doc]), 21);
+  const archive = { schemaVersion: 21, assets: [], documents: [doc] };
+  const restored = validateImport(archive).documents[0];
+  assert.equal(
+    restored.publishing.paragraphStyles.find((s) => s.id === heading.id).nextStyle,
+    body.id,
+  );
+  assert.deepEqual(resolvedTextStyle(doc, 'paragraph', heading.id), { fontSize: 18 });
+  const copy = copyDocument(doc, { title: 'Copied' });
+  const styles = copy.publishing.paragraphStyles;
+  assert.equal(
+    styles.find((s) => s.name === 'Body').nextStyle,
+    styles.find((s) => s.name === 'Heading').id,
+  );
+  assert.throws(() => validateImport({ ...archive, schemaVersion: 20 }), /Next Style/);
+  const bad = structuredClone(archive);
+  bad.documents[0].publishing.paragraphStyles[0].nextStyle = 'missing-style';
+  assert.throws(() => validateImport(bad), /Missing next paragraph style/);
+  for (const value of ['', 42]) {
+    bad.documents[0].publishing.paragraphStyles[0].nextStyle = value;
+    assert.throws(() => validateImport(bad), /Invalid next paragraph style ID/);
+  }
+});
+
+test('Margin and list archives remain readable without adopting paragraph style sequences', async () => {
+  for (const version of [19, 20]) {
+    const archived = JSON.parse(
+      await readFile(
+        new URL('../fixtures/legacy/archive-v' + version + '.json', import.meta.url),
+        'utf8',
+      ),
+    );
+    const result = validateImport(archived);
+    assert.deepEqual(result, archived);
+    assert.equal(archiveVersion(result.documents), version);
+  }
+});

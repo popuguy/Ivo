@@ -85,10 +85,12 @@ export async function buildPortable() {
     ['icon', 'public/icons/obsidian/LICENSE.txt'],
     ['font', 'public/fonts/cmu-serif/OFL.txt'],
     ['geist-font', 'public/fonts/geist/OFL.txt'],
+    ['epub-zip', 'public/vendor/fflate-LICENSE.txt'],
   ]) {
+    const license = await read(file);
     html = html.replace(
-      '</body>',
-      `<script type="text/plain" id="ivo-${id}-license">${await read(file)}</script></body>`,
+      /<\/body>\s*<\/html>\s*$/i,
+      () => `<script type="text/plain" id="ivo-${id}-license">${license}</script></body></html>`,
     );
   }
   await fs.mkdir(path.join(root, 'dist'), { recursive: true });

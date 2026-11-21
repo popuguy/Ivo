@@ -123,7 +123,7 @@ function validatePlan(request, plan) {
     const advanced = paragraph.policy?.glyphDesired !== undefined;
     if (advanced) {
       if (
-        request.protocol !== 6 ||
+        request.protocol < 6 ||
         !nonnegative(placement.wordPercent) ||
         !Number.isFinite(placement.letterPercent) ||
         placement.letterPercent < -100 ||
@@ -193,7 +193,7 @@ function validatePlan(request, plan) {
 export function validateWordSpacingResult(result, request, plan) {
   if (
     !request ||
-    ![5, 6].includes(request.protocol) ||
+    ![5, 6, 7].includes(request.protocol) ||
     typeof request.text !== 'string' ||
     result?.protocol !== request.protocol ||
     result.sourceDigest !== request.sourceDigest ||

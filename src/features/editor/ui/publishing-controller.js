@@ -43,6 +43,7 @@ import { prepareFont } from '../assets/font-import.js';
 import { dialogMarkup, installDialogDismissal } from '../../../shared/ui/dialog.js';
 import { escapeHTML as esc } from '../../../shared/html/sanitize.js';
 import { createOpenTypePopover } from './opentype-popover.js';
+import { openTabsForm, installStyleTabs, styleTabFields } from './tab-stops-dialog.js';
 import { openKeepOptionsForm } from './keep-options-dialog.js';
 import {
   createWordSpacingDialog,
@@ -59,6 +60,7 @@ export function installPublishingControls(
     objects,
     mutate,
     applyTextProperty,
+    applyStyleSequence,
     render,
     select,
     allowed,
@@ -192,8 +194,9 @@ export function installPublishingControls(
     closePopover();
     closeWordSpacingDialog();
     const isKeep = name === 'keep-options';
-    const title = isKeep ? 'Keep Options' : 'Hyphenation';
-    const openForm = isKeep ? openKeepOptionsForm : openHyphenationForm;
+    const title = name === 'tabs' ? 'Tabs' : isKeep ? 'Keep Options' : 'Hyphenation';
+    const openForm =
+      name === 'tabs' ? openTabsForm : isKeep ? openKeepOptionsForm : openHyphenationForm;
     const dialog = openForm(form, summary, (patch) => {
       const current = nativeTextFlow();
       if (
@@ -356,6 +359,17 @@ export function installPublishingControls(
       ? [...keepFields, ['noBreak', 'No Break', [false, true]]]
       : [];
     const nativeParagraphOptions = kind === 'paragraph' && nativeTextFlow();
+    let readStyleTabs;
+    const nextStyleField =
+      kind === 'paragraph'
+        ? `<label>Next Style<select name="nextStyle"><option value="">[Same Style]</option>${definitions
+            .filter((s) => s.id !== existing?.id)
+            .map(
+              (s) =>
+                `<option value="${esc(s.id)}" ${existing?.nextStyle === s.id ? 'selected' : ''}>${esc(s.name)}</option>`,
+            )
+            .join('')}</select></label>`
+        : '';
     const keepControls = styleOptions
       .map(
         ([key, label, values]) =>
@@ -372,7 +386,7 @@ export function installPublishingControls(
         )
         .join(
           '',
-        )}</select></label><label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}${nativeParagraphOptions ? hyphenationStyleFields(attributes) : ''}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
+        )}</select></label>${nextStyleField}<label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}${nativeParagraphOptions ? hyphenationStyleFields(attributes) + styleTabFields : ''}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
         nativeParagraphOptions
           ? `<label>Justification<select name="wordSpacingMode" data-style-word-spacing-mode>${[
               ['inherit', 'Inherited'],
@@ -402,6 +416,9 @@ export function installPublishingControls(
           }
         }
         if (nativeParagraphOptions) {
+          const tabStops = readStyleTabs();
+          if (tabStops === undefined) delete next.tabStops;
+          else next.tabStops = tabStops;
           const mode = data.get('wordSpacingMode');
           if (mode === 'inherit') delete next.wordSpacing;
           else
@@ -421,12 +438,14 @@ export function installPublishingControls(
               ...(existing ? { id: existing.id } : {}),
               name: data.get('name'),
               basedOn: data.get('basedOn') || null,
+              nextStyle: data.get('nextStyle') || null,
               attributes: next,
             }),
           edit ? 'Edit text style' : 'New text style',
         );
       },
     );
+    if (nativeParagraphOptions) readStyleTabs = installStyleTabs(dialog, attributes.tabStops);
     const mode = dialog.querySelector('[data-style-word-spacing-mode]');
     if (mode) {
       const reflect = () => {
@@ -739,7 +758,8 @@ export function installPublishingControls(
         if (!nativeComposition) throw Error('Set document baseline grids in the native app.');
         const settings = baselineGridSettings({
           ...(doc().publishing?.baselineGrid || BASELINE_GRID_DEFAULTS),
-          [t.dataset.baselineGridSetting]: t.valueAsNumber,
+          [t.dataset.baselineGridSetting]:
+            t.dataset.baselineGridSetting === 'relativeTo' ? t.value : t.valueAsNumber,
         });
         mutate(() => {
           enablePublishing(doc()).baselineGrid = settings;
@@ -915,6 +935,20 @@ export function installPublishingControls(
         );
         return true;
       }
+      if (name === 'apply-next-styles') {
+        const definitions = doc().publishing?.paragraphStyles || [];
+        const options = definitions
+          .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`)
+          .join('');
+        form(
+          'Apply Style Sequence',
+          '<label>First paragraph style<select name="start">' + options + '</select></label>',
+          (data) => {
+            applyStyleSequence(data.get('start'));
+          },
+        );
+        return true;
+      }
       if (name.startsWith('show-panel-')) {
         const kind = name.slice(11);
         if (PANEL_KINDS.includes(kind)) {
@@ -942,7 +976,7 @@ export function installPublishingControls(
         openType(anchor);
         return true;
       }
-      if (name === 'keep-options' || name === 'hyphenation-options') {
+      if (['tabs', 'keep-options', 'hyphenation-options'].includes(name)) {
         openParagraphOptions(name);
         return true;
       }

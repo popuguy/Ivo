@@ -25,6 +25,7 @@ import {
   wordSpacingSettings,
   wordSpacingSourceError,
 } from '../../domain/text/word-spacing.js';
+import { tabStopSettings } from '../../domain/text/tab-stops.js';
 import { validateWordSpacingResult } from './word-spacing-result.js';
 import {
   PARAGRAPH_KEEP_FIELDS,
@@ -52,6 +53,7 @@ function geometrySize(result) {
   for (const header of result.layout.lines) {
     const line = originalLineGeometry(header);
     bytes += 1024 + (line.carets?.length || 0) * 384;
+    bytes += (line.leaders?.length || 0) * 256;
     for (const run of line.runs || []) {
       bytes += 512;
       for (const glyph of run.glyphs) bytes += 512 + 64 * (glyph.sourceRanges?.length || 0);
@@ -89,7 +91,11 @@ function composeRequest(compose, request, wordSpacingPlan) {
     .then(() => compose(request))
     .then((result) => {
       validateResult(result, request);
-      if (request.protocol >= 5) validateWordSpacingResult(result, request, wordSpacingPlan);
+      if (
+        request.protocol >= 5 &&
+        (request.protocol < 7 || request.paragraphs.some((p) => p.wordSpacing))
+      )
+        validateWordSpacingResult(result, request, wordSpacingPlan);
       if (cache.entries.get(key) === entry) {
         const cost = geometrySize(result);
         entry.cost += cost;
@@ -314,7 +320,8 @@ export function nativeFlowColumns(doc, flow, useGrid = false) {
       throw Error('Frame insets, columns or text scaling leave an invalid native text area.');
     if (f.verticalAlign && !['top', 'center', 'bottom', 'justify'].includes(f.verticalAlign))
       throw new UnsupportedComposition('unknown vertical frame alignment');
-    const localGrid = grid && gridInsideFrame(frame, byId, grid);
+    const localGrid =
+      grid && gridInsideFrame(frame, byId, grid, doc.pages[pageNumbers.get(frame.pageId) - 1]);
     if (grid && !localGrid)
       throw new UnsupportedComposition(
         'page-relative baseline grids in rotated text frames or groups',
@@ -539,19 +546,16 @@ function fragmentsFor(source, result, columns, flow, fragments, prefix) {
         logicalEnd = nativeSourceBoundary(source, nativeEnd);
         return {
           ...column,
-          // Center and Bottom align the last baseline. Descenders can print
-          // below the frame while its sides, page bounds and authored masks still clip.
-          bottomOverhang:
-            column.verticalAlign === 'top' && !column.grid
-              ? 0
-              : lines.reduce(
-                  (extent, line) =>
-                    Math.max(
-                      extent,
-                      line.baseline + Math.max(line.descent, line.inkDescent ?? 0) - column.height,
-                    ),
-                  0,
-                ),
+          // The final baseline fits at the bottom inset, even if its ink descends below it.
+          // The column sides, page bounds and authored masks still clip.
+          bottomOverhang: lines.reduce(
+            (extent, line) =>
+              Math.max(
+                extent,
+                line.baseline + Math.max(line.descent, line.inkDescent ?? 0) - column.height,
+              ),
+            0,
+          ),
           start,
           end: logicalEnd,
           paint,
@@ -657,10 +661,6 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false, session
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
-  if (useGrid && columns.some((column) => column.verticalAlign !== 'top'))
-    throw new UnsupportedComposition(
-      'combining baseline grid alignment with a vertically centered, bottom-aligned or justified frame',
-    );
   const planned = selectParagraphPlan(required, source);
   normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
@@ -860,6 +860,7 @@ export async function composeNativeTextFlows(
           start,
           end,
           ...Object.fromEntries(PARAGRAPH_LAYOUT_FIELDS.map((key) => [key, metadata[key]])),
+          ...(metadata.tabStops ? { tabStops: tabStopSettings(metadata.tabStops) } : {}),
           ...(wordSpacingSettings(metadata.wordSpacing)
             ? { wordSpacing: wordSpacingSettings(metadata.wordSpacing) }
             : {}),

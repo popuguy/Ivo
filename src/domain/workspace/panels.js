@@ -4,16 +4,18 @@ export const PANEL_LABELS = Object.freeze({
   layers: 'Layers',
   links: 'Links',
   'text-wrap': 'Text Wrap',
+  preflight: 'Preflight',
 });
 export const PANEL_KINDS = Object.keys(PANEL_LABELS);
 export const DEFAULT_DOCK_WIDTH = 254;
 const KINDS = PANEL_KINDS;
+const optionalPanels = ['text-wrap', 'preflight'];
 const number = (value, fallback, min, max) =>
   Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
 export function defaultPanels() {
   return {
     version: 3,
-    closed: ['text-wrap'],
+    closed: [...optionalPanels],
     dock: DEFAULT_DOCK_WIDTH,
     textFlow: null,
     groups: [
@@ -37,7 +39,7 @@ export function normalizePanels(input) {
           {
             ...input,
             id: 'context-main',
-            tabs: KINDS.filter((kind) => kind !== 'text-wrap'),
+            tabs: KINDS.filter((kind) => !optionalPanels.includes(kind)),
             active: 'properties',
           },
         ]
@@ -82,7 +84,7 @@ export function normalizePanels(input) {
       ...new Set(
         [
           ...(Array.isArray(input.closed) ? input.closed : []),
-          ...(!used.has('text-wrap') ? ['text-wrap'] : []),
+          ...optionalPanels.filter((kind) => !used.has(kind)),
         ].filter((kind) => KINDS.includes(kind)),
       ),
     ],

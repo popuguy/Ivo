@@ -5,6 +5,7 @@ import {
 } from './hyphenation.js';
 import { BASELINE_ALIGNMENT } from './baseline-grid.js';
 import { PARAGRAPH_STARTS } from './paragraph-keep-policy.js';
+import { tabStopSettings } from './tab-stops.js';
 import { normalizeWordSpacing } from './word-spacing.js';
 
 export const TEXT_FONTS = Object.freeze({
@@ -64,6 +65,7 @@ export const TEXT_DEFAULTS = Object.freeze({
   leftIndent: 0,
   rightIndent: 0,
   firstLineIndent: 0,
+  tabStops: 'normal',
   wordSpacing: 'normal',
   hyphenate: false,
   ...HYPHENATION_DEFAULTS,
@@ -119,6 +121,7 @@ export const PARAGRAPH_FIELDS = Object.freeze({
   leftIndent: 'left',
   rightIndent: 'right',
   firstLineIndent: 'first',
+  tabStops: 'tabstops',
   wordSpacing: 'wordspace',
   hyphenate: 'hyphens',
   ...HYPHENATION_ATTRIBUTES,
@@ -183,6 +186,14 @@ export function validTextAttribute(name, value) {
   if (name.startsWith('hyp') && name !== 'hyphens') return validHyphenationAttribute(name, value);
   if (name === 'pstart') return Object.hasOwn(PARAGRAPH_STARTS, value) ? value : null;
   if (name === 'nextlines') return /^[1-5]$/.test(value) ? String(value) : null;
+  if (name === 'tabstops') {
+    try {
+      tabStopSettings(value);
+      return value;
+    } catch {
+      return null;
+    }
+  }
   if (name === 'wordspace') {
     try {
       return normalizeWordSpacing(value);

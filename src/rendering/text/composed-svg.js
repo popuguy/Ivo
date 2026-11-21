@@ -131,6 +131,19 @@ export function composedSVG(
       continue;
     }
     const rowVectors = identity && new Set();
+    if (line.leaders !== undefined) {
+      if (!Array.isArray(line.leaders) || line.leaders.length > 100000)
+        throw Error('Invalid tab leader geometry.');
+      for (const { vector, x, y, color: inkColor } of line.leaders) {
+        if (!vectors.has(vector) || !finite(x) || !finite(y))
+          throw Error('Invalid tab leader outline.');
+        used.add(vector);
+        if (rowVectors) rowVectors.add(vector);
+        ink.push(
+          `<use data-tab-leader="" href="#${idPrefix}-${vector}" transform="translate(${x} ${line.baseline - y}) scale(1 -1)" fill="${color(inkColor)}"/>`,
+        );
+      }
+    }
     const carets = new Map(),
       geometry = new Map();
     for (const caret of line.carets || [])

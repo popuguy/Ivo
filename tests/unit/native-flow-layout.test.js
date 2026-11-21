@@ -707,15 +707,22 @@ function blocker(doc, mode = 'bounds') {
   doc.blocks.push(object);
   return object;
 }
-test('baseline grid accepts wrapped top-aligned frames and rejects incompatible vertical alignment', () => {
+test('baseline grids combine with vertical alignment in clear frames and with wrapping objects at the top', () => {
   const doc = fixture({ composer: 'paragraph', width: 120, height: 100 });
   const flow = doc.textFlows[0];
   flow.style.baselineAlignment = 'all';
   const frame = doc.blocks[0];
   frame.frameOptions = { verticalAlign: 'justify' };
-  assert.throws(() => validateNativeFlowSource(doc, flow), /combining baseline grid alignment/);
-  frame.frameOptions.verticalAlign = 'top';
+  for (const verticalAlign of ['center', 'bottom', 'justify']) {
+    frame.frameOptions.verticalAlign = verticalAlign;
+    assert.doesNotThrow(() => validateNativeFlowSource(doc, flow));
+  }
   blocker(doc);
+  assert.throws(
+    () => validateNativeFlowSource(doc, flow),
+    /vertical Justify in a column with wrapping objects/,
+  );
+  frame.frameOptions.verticalAlign = 'top';
   assert.doesNotThrow(() => validateNativeFlowSource(doc, flow));
   frame.ignoreTextWrap = true;
   assert.doesNotThrow(() => validateNativeFlowSource(doc, flow));
