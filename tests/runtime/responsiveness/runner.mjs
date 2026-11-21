@@ -124,7 +124,12 @@ void (async () => {
     async function focusDocument() {
       let nextAttempt = 0;
       await until(async () => {
-        if (win.isFocused() && (await execute('document.hasFocus()'))) return true;
+        if (
+          (process.platform !== 'darwin' || app.isActive()) &&
+          win.isFocused() &&
+          (await execute('document.hasFocus()'))
+        )
+          return true;
         if (performance.now() >= nextAttempt) {
           app.focus({ steal: true });
           win.show();
@@ -233,6 +238,7 @@ void (async () => {
     if (panel === 'properties') {
       await execute(`document.querySelector('[data-canvas-panel="properties"]').click()`);
     } else if (panel === 'detached-properties') {
+      await focusDocument();
       assert.equal(await execute("ivoNative.palettes.open('properties')"), true);
       const inspector = await until(
         () =>
@@ -249,7 +255,18 @@ void (async () => {
             "!!document.querySelector('[data-palette-control]')",
           ),
         'floating Properties controls',
-      );
+      ).catch(async (error) => {
+        console.error('Floating Properties state', {
+          appActive: process.platform === 'darwin' ? app.isActive() : null,
+          visible: inspector.isVisible(),
+          ownerFocused: win.isFocused(),
+          editor: await execute("document.querySelector('.scene-editor')?.className"),
+          view: await inspector.webContents.executeJavaScript(
+            "ivoPalette.initial().then(p=>[p?.kind,!!p?.view,document.querySelector('[data-palette-context]')?.textContent])",
+          ),
+        });
+        throw error;
+      });
       await focusDocument();
     }
     function typeKey(letter) {
@@ -278,6 +295,7 @@ void (async () => {
       );
       return onFrame && next;
     }, 'clickable glyph in the settled document');
+    await focusDocument();
     const textPoint = {
       x: Math.round(glyph.x + glyph.width / 2),
       y: Math.round(glyph.y + glyph.height / 2),
@@ -291,7 +309,16 @@ void (async () => {
           "document.querySelector('.canvas-flow-input')?.isContentEditable && document.activeElement===document.querySelector('.canvas-flow-input')",
         ),
       'editable text',
-    );
+    ).catch(async (error) => {
+      console.error('Text focus after click', {
+        appActive: process.platform === 'darwin' ? app.isActive() : null,
+        ownerFocused: win.isFocused(),
+        editor: await execute(
+          `({focus:document.activeElement?.className,input:document.querySelector('.canvas-flow-input')?.isContentEditable,target:document.elementFromPoint(${textPoint.x},${textPoint.y})?.closest('[data-flow-frame]')?.dataset.flowFrame, intended:${JSON.stringify(frames[0].id)}})`,
+        ),
+      });
+      throw error;
+    });
     async function caret(offset) {
       await execute(
         `(()=>{const input=document.querySelector('.canvas-flow-input'),walker=document.createTreeWalker(input,NodeFilter.SHOW_TEXT);

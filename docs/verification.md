@@ -1,5 +1,21 @@
 # Verification
 
+## Six-page contour reflow — 21 November 2026
+
+The earlier magazine case measures editing one frame among 71 independent credits. The contour study edits one continuous flow threaded through twelve boxes on six pages. Each box intersects three original 15-vertex masks with placed 3072 × 2048 textile images. The final box has additional room for the inserted material. `npm run test:threaded-wrap` builds and reopens a disposable vault, verifies the decoded images, inserts text at the beginning through the editor, checks every frame and removes the insertion. It also moves a mask using Properties and checks the resulting local line geometry and restoration.
+
+To reproduce the paired study on a Mac with InDesign and CMU Serif Roman installed, use a new output directory. The output contains a portable Ivo vault, an editable InDesign document and its linked images.
+
+```sh
+node tests/runtime/threaded-wrap/generate.mjs ../contour-study --indesign
+IVO_TEST_BACKGROUND=1 IVO_WRAP_STUDY_DIR=../contour-study npm run test:threaded-wrap
+node tests/runtime/threaded-wrap/compare.mjs ../contour-study
+```
+
+The full run uses nine different insertions, reports the first separately, then measures the median of the remaining eight. The Ivo endpoint requires all twelve frames to expose the same completed native composition. InDesign recomposes and reads the final frame. Physical typing and display latency use the separate release checks. One mask move is a geometry smoke test and an individual timing observation.
+
+Detached editing panels now follow their native document and active view. The native window suite covers switching between editing, reading, an empty tab and the graph, switching apps on macOS, and retargeting a palette across document windows. Find/Change bounds are exercised in wide and narrow viewports.
+
 ## Formatted text input and caret placement after a redraw — 20 November 2026
 
 The previous release could resolve a trusted click at character 6 to character 0 after the visible text in a retained frame was replaced. With a missing platform caret hit, it could also resolve character 198 to the end of the run at 367. The threaded-selection fixture covers both cases and clicks on a later page after deactivating and restoring a selected range. It checks the logical caret position and verifies that selection alone leaves document history untouched.

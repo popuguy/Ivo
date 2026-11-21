@@ -18,6 +18,7 @@ const runtime = [
   'text-composition-bridge',
   'native-composition-geometry',
   'native-editor-composition',
+  'threaded-wrap',
   'native-controls',
   'inline-metrics',
   'browser-storage',
@@ -59,6 +60,7 @@ const backgroundRuntime = [
   'text-flows',
   'native-composition-geometry',
   'native-editor-composition',
+  'threaded-wrap',
 ];
 const background = process.argv.includes('--background-runtime');
 const fullRuntime = process.argv.includes('--runtime');

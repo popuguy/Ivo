@@ -127,7 +127,10 @@ export async function fitFrameParagraphs(
       });
       let step = steps.next();
       while (!step.done) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        // Yield to input at each geometry checkpoint. Nested zero-delay timers
+        // are clamped in Chromium, adding idle time for every contour band.
+        if (globalThis.scheduler?.yield) await globalThis.scheduler.yield();
+        else await new Promise((resolve) => setTimeout(resolve, 0));
         step = steps.next();
       }
       chosen = step.value;

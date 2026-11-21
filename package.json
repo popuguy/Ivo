@@ -82,6 +82,7 @@
     "pretest:native-text-menu": "node scripts/reference-art.mjs",
     "test:text-composition-bridge": "electron tests/runtime/text-composition-bridge/runner.mjs",
     "test:native-composition-geometry": "electron tests/runtime/native-composition-geometry/runner.mjs",
+    "test:threaded-wrap": "electron tests/runtime/threaded-wrap/runner.mjs",
     "test:native-editor-composition": "electron tests/runtime/native-editor-composition/runner.mjs",
     "pretest:native-editor-composition": "node scripts/reference-art.mjs",
     "preview:composition": "node scripts/build-composition-preview.mjs",

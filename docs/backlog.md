@@ -2,6 +2,8 @@
 
 ## Remaining text work
 
+- **Long wrapped flows.** The six-page contour benchmark still diverges from InDesign at the sixth box. Compare the line fragments on page three and reduce the time from an upstream text edit to the last box updating. Keep the held-key visual feedback check as an independent measure.
+
 - **Line breaks and spacing.** Refine paragraph break choices in narrow columns, especially emergency compression. Extend hyphenation beyond the seven offline dictionaries and test longer mixed-language prose.
 - **Page layout.** Add decimal/right-aligned tabs and leaders, wrapping to image outlines and top-margin-relative frame grids. Qualify grid with vertical Justify and more complex wrap contours. Check the last unaligned baseline near the bottom inset of a frame. Refine sloped contour intersections.
 - **Type and input.** Prioritize everyday European-language editing, font fallback and short horizontal Chinese passages. LaTeX-style equation layout is a later release milestone. Specialist multilingual publishing is on the [broader-edition wishlist](indesign/text-parity-programme.md#broader-edition-wishlist). See [language and math priorities](indesign/text-parity-programme.md#early-language-and-math-priorities). Exercise selection, typing, menus, keyboard shortcuts and undo with real keyboards, touch and language input methods.
