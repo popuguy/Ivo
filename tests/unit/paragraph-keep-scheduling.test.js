@@ -96,6 +96,38 @@ function sourceRows(result, text) {
   ]);
 }
 
+test('paragraphs share one exact contour identity without evicting their measurements', async () => {
+  const req = request(
+    Array.from({ length: 30 }, (_, i) => 'Sample ' + i + ' words').join('\u2029'),
+  );
+  const polygon = Array.from({ length: 120 }, (_, i) => ({
+    x: 80 + 10 * Math.cos((i * Math.PI) / 60),
+    y: 45 + 10 * Math.sin((i * Math.PI) / 60),
+  }));
+  const obstacle = {
+    mode: 'contour',
+    side: 'both',
+    bounds: { left: 70, right: 90, top: 35, bottom: 55 },
+    polygons: [polygon],
+  };
+  const columns = [column(160, 700)];
+  const wrapped = [{ ...columns[0], obstacles: [obstacle] }];
+  const composer = createParagraphComposer(backend().measure);
+  const plain = await createParagraphComposer(backend().measure).compose(req, columns);
+  const detailed = await composer.compose(req, wrapped);
+  assert.ok(detailed.work.cacheBytes - plain.work.cacheBytes < 4 * JSON.stringify(wrapped).length);
+  const reused = await composer.compose(req, structuredClone(wrapped));
+  assert.equal(reused.work.reusedDecisions, req.paragraphs.length);
+  const moved = structuredClone(wrapped);
+  moved[0].obstacles[0].polygons[0][3].x += 0.0001;
+  const changed = await composer.compose(req, moved);
+  assert.equal(changed.work.reusedDecisions, 0, 'Fractional contour edits invalidate placement');
+  assert.equal(changed.work.measuredParagraphs, 0, 'Contour edits preserve text measurements');
+  const fresh = await createParagraphComposer(backend().measure).compose(req, moved);
+  assert.deepEqual(changed.placements, fresh.placements);
+  assert.deepEqual(changed.keepViolations, fresh.keepViolations);
+});
+
 test('All moves a paragraph wholly from occupied space and recomputes top spacing', async () => {
   const service = backend(),
     composer = createParagraphComposer(service.measure),

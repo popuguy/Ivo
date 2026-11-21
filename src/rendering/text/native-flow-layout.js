@@ -3,6 +3,7 @@ import { hasBaselineGrid } from '../../domain/documents/capabilities.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { compositionSource, UnsupportedComposition } from './composition-source.js';
 import { composedSVG } from './composed-svg.js';
+import { originalLineGeometry, restoreInteractiveLayout } from './retained-geometry.js';
 import { createParagraphComposer, validateParagraphSource } from './paragraph-composition.js';
 import { fontVariantAsset, regularFace } from '../../domain/text/font-catalog.js';
 import { shippedTextFontURL, SHIPPED_TEXT_FONT_METADATA } from './font-resources.js';
@@ -48,7 +49,8 @@ function geometrySize(result) {
   let bytes = 2048;
   for (const vector of result.vectors || [])
     bytes += 128 + 2 * (vector.id.length + vector.pathD.length);
-  for (const line of result.layout.lines) {
+  for (const header of result.layout.lines) {
+    const line = originalLineGeometry(header);
     bytes += 1024 + (line.carets?.length || 0) * 384;
     for (const run of line.runs || []) {
       bytes += 512;
@@ -69,7 +71,7 @@ function composeRequest(compose, request, wordSpacingPlan) {
   if (prior) {
     cache.entries.delete(key);
     cache.entries.set(key, prior);
-    return prior.promise;
+    return prior.promise.then(restoreInteractiveLayout);
   }
   const entry = { cost: key.length * 2, promise: null };
   cache.entries.set(key, entry);
@@ -357,9 +359,9 @@ const transportFrames = (columns) =>
       verticalAlign,
     }),
   );
-function compositionColumns(doc, flow, useGrid) {
+function compositionColumns(doc, flow, useGrid, session) {
   const columns = nativeFlowColumns(doc, flow, useGrid);
-  return documentHasObjectWrap(doc) ? nativeWrapColumns(doc, columns) : columns;
+  return documentHasObjectWrap(doc) ? nativeWrapColumns(doc, columns, session) : columns;
 }
 
 /** Canonical boundary before a native character, including virtual marks only once. */
@@ -468,8 +470,8 @@ function validateResult(result, request) {
         ) && value.inkAscent + value.inkDescent >= 0;
       if (
         !validInk(line) ||
-        !Array.isArray(line.runs) ||
-        line.runs.some(
+        !Array.isArray(originalLineGeometry(line).runs) ||
+        originalLineGeometry(line).runs.some(
           (run) =>
             !validInk(run) ||
             !Number.isFinite(run.baselineShift) ||
@@ -616,7 +618,7 @@ function selectParagraphPlan(required, source) {
   }
 }
 
-function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) {
+function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false, session } = {}) {
   const root = document.createElement('div');
   root.innerHTML = flow.html;
   const effective = effectiveTextStyle(doc, flow.style),
@@ -635,7 +637,7 @@ function projectNativeFlow(doc, flow, fonts, { deferUnavailable = false } = {}) 
   const useGrid = source.paragraphs.some(
     (paragraph) => paragraph.baselineAlignment && paragraph.baselineAlignment !== 'none',
   );
-  const columns = compositionColumns(doc, flow, useGrid),
+  const columns = compositionColumns(doc, flow, useGrid, session),
     wrapped = columns.some((column) => column.obstacles?.length),
     required =
       flow.composition?.composer === 'paragraph' ||
@@ -761,13 +763,15 @@ export async function composeNativeTextFlows(
       previous?.id === doc.id && previous?.compose === compose && same(previous.assets, signature)
         ? previous
         : null;
-  if (prior?.key === key && prior.context === context)
+  if (prior?.key === key && prior.context === context) {
+    for (const item of prior.compositions) restoreInteractiveLayout(item.result);
     return {
       fragments: new Map(prior.fragments),
       status: new Map(prior.status),
       compositions: prior.compositions,
       changed: false,
     };
+  }
   const projection = {
       ...doc,
       pages: [...doc.pages],
@@ -807,7 +811,10 @@ export async function composeNativeTextFlows(
         columns: initial,
         wrapped,
         planned,
-      } = projectNativeFlow(projection, flow, fonts, { deferUnavailable: true });
+      } = projectNativeFlow(projection, flow, fonts, {
+        deferUnavailable: true,
+        session: editorSession,
+      });
     const resources = await fonts.resources();
     fonts.validateFeatures(source, { resources });
     // Whitelist transport fields. Editorial paragraph/link metadata stays in the renderer.
@@ -873,13 +880,9 @@ export async function composeNativeTextFlows(
             source.paragraphs.map((p) => p.baselineAlignment || 'none'),
           )
         : null;
-    let result, columns;
+    let result,
+      columns = initial;
     for (let attempt = 0; attempt <= 128; attempt++) {
-      columns = compositionColumns(
-        projection,
-        flow,
-        initial.some((column) => column.grid),
-      );
       const input = {
         ...request,
         frames: transportFrames(columns),
@@ -924,6 +927,12 @@ export async function composeNativeTextFlows(
         break;
       if (!appendTextFlowPage(projection, flow)) break;
       changed = true;
+      columns = compositionColumns(
+        projection,
+        flow,
+        initial.some((column) => column.grid),
+        editorSession,
+      );
     }
     // Outline IDs already include immutable face/size/transform identity.
     const prefix = 'ivo-' + (await sha(new TextEncoder().encode(flow.id))).slice(0, 24),
@@ -1005,7 +1014,7 @@ export async function composeNativeTextFlows(
     id: doc.id,
     context,
     flowEntries,
-    key: semanticKey(doc, allowPages),
+    key: changed ? semanticKey(doc, allowPages) : key,
     assets: signature,
     compose,
     fragments,

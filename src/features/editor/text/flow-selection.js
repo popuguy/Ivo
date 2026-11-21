@@ -373,7 +373,12 @@ export function installFlowSelection(
       painted.every((v, i) => v === baseKey[i])
     )
       return range;
-    const columnList = columns({ measureBounds: false }),
+    const allColumns = columns({ measureBounds: false });
+    // Asking for an SVG's screen transform can force layout of that whole
+    // frame. Only the caret owner or columns touched by a selection need one.
+    const columnList = range.collapsed
+        ? [caretInterval(range.focus, allColumns)].filter(Boolean)
+        : allColumns.filter((column) => range.end > column.start && range.start < column.end),
       nativeColumns = columnList.filter((column) => {
         if (!column.native) return false;
         column.screenMatrix = column.element

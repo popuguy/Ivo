@@ -31,9 +31,11 @@ export function createCompositionSession({
     lastTypingFlow,
     lastScope,
     delivering = false;
+  const keyFor = (doc, currentScope) =>
+    JSON.stringify(currentScope) + '\n' + compositionLayoutKey(doc);
   const generation = () => {
     const doc = getDocument();
-    return doc ? JSON.stringify([compositionLayoutKey(doc), scope()]) : null;
+    return doc ? keyFor(doc, scope()) : null;
   };
   async function run() {
     while (alive && queued) {
@@ -77,7 +79,7 @@ export function createCompositionSession({
   function request(doc, options = {}) {
     if (!alive || delivering) return;
     const currentScope = scope();
-    const key = JSON.stringify([compositionLayoutKey(doc), currentScope]);
+    const key = keyFor(doc, currentScope);
     if (key === requested) return;
     requested = key;
     if (!options.typingFlow || options.typingFlow !== lastTypingFlow || currentScope !== lastScope)

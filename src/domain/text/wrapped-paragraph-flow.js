@@ -21,53 +21,7 @@ const EPS = 0.000001,
     Number.isFinite(value) && value >= minimum && value <= maximum,
   metricFields = ['ascent', 'descent', 'advance', 'capHeight', 'xHeight', 'leading'];
 
-function* prepare(input) {
-  const {
-    start,
-    end,
-    opportunities,
-    measurements,
-    columns,
-    cursor,
-    layout,
-    previousAfter,
-    mode,
-    maxStates,
-    maxCandidates,
-    wordSpacing,
-  } = input;
-  if (
-    !integer(start) ||
-    !integer(end) ||
-    end <= start ||
-    !Array.isArray(opportunities) ||
-    opportunities.length < 2 ||
-    opportunities.length > 1024 ||
-    !Array.isArray(measurements) ||
-    measurements.length > 100000 ||
-    !Array.isArray(columns) ||
-    !columns.length ||
-    columns.length > 128 ||
-    !cursor ||
-    typeof cursor !== 'object' ||
-    Array.isArray(cursor) ||
-    !integer(cursor.frame) ||
-    cursor.frame > columns.length ||
-    !(cursor.baseline === null || finite(cursor.baseline, 0, 14400)) ||
-    !finite(previousAfter, 0, 2000) ||
-    !['paragraph', 'single-line'].includes(mode) ||
-    !integer(maxStates) ||
-    maxStates < 1 ||
-    maxStates > 100000 ||
-    !integer(maxCandidates) ||
-    maxCandidates < 1 ||
-    maxCandidates > 1000000 ||
-    (layout !== undefined && (!layout || typeof layout !== 'object' || Array.isArray(layout)))
-  )
-    throw Error('Invalid wrapped paragraph-flow input');
-  const style = paragraphLayout(layout);
-  if (style.leftIndent < 0 || style.rightIndent < 0 || style.leftIndent + style.firstLineIndent < 0)
-    throw Error('Wrapped paragraph-flow indents cannot place text outside the column.');
+function* prepareColumns(columns) {
   let work = 0,
     vertices = 0;
   const checkpoint = () => ({ stage: 'prepare', work, states: 1, candidates: 0 }),
@@ -143,6 +97,65 @@ function* prepare(input) {
       ),
     });
   }
+  return { frames, work };
+}
+
+function* prepare(input, columnCache) {
+  const {
+    start,
+    end,
+    opportunities,
+    measurements,
+    columns,
+    cursor,
+    layout,
+    previousAfter,
+    mode,
+    maxStates,
+    maxCandidates,
+    wordSpacing,
+  } = input;
+  if (
+    !integer(start) ||
+    !integer(end) ||
+    end <= start ||
+    !Array.isArray(opportunities) ||
+    opportunities.length < 2 ||
+    opportunities.length > 1024 ||
+    !Array.isArray(measurements) ||
+    measurements.length > 100000 ||
+    !Array.isArray(columns) ||
+    !columns.length ||
+    columns.length > 128 ||
+    !cursor ||
+    typeof cursor !== 'object' ||
+    Array.isArray(cursor) ||
+    !integer(cursor.frame) ||
+    cursor.frame > columns.length ||
+    !(cursor.baseline === null || finite(cursor.baseline, 0, 14400)) ||
+    !finite(previousAfter, 0, 2000) ||
+    !['paragraph', 'single-line'].includes(mode) ||
+    !integer(maxStates) ||
+    maxStates < 1 ||
+    maxStates > 100000 ||
+    !integer(maxCandidates) ||
+    maxCandidates < 1 ||
+    maxCandidates > 1000000 ||
+    (layout !== undefined && (!layout || typeof layout !== 'object' || Array.isArray(layout)))
+  )
+    throw Error('Invalid wrapped paragraph-flow input');
+  const style = paragraphLayout(layout);
+  if (style.leftIndent < 0 || style.rightIndent < 0 || style.leftIndent + style.firstLineIndent < 0)
+    throw Error('Wrapped paragraph-flow indents cannot place text outside the column.');
+  let geometry = columnCache?.get(columns);
+  if (!geometry) {
+    geometry = yield* prepareColumns(columns);
+    columnCache?.set(columns, geometry);
+  }
+  if (geometry.geometryBudget) return geometry;
+  const { frames } = geometry;
+  let work = geometry.work;
+  const checkpoint = () => ({ stage: 'prepare', work, states: 1, candidates: 0 });
   const points = Array.from(opportunities, (point, index) => {
     if (
       !point ||
@@ -243,42 +256,59 @@ function firstBaseline(column, metrics) {
  * Rows own ordered fragments; leaving a fragment consumes its full available
  * segment even when the selected break is ragged. Mandatory breaks end the row.
  * Preparation and search yield cooperatively; only the terminal value is a fit. */
-export function* wrappedParagraphFlowSteps({
-  start,
-  end,
-  opportunities,
-  measurements,
-  columns,
-  layout,
-  cursor = { frame: 0, baseline: null },
-  previousAfter = 0,
-  mode = 'paragraph',
-  retainOversetPrefix = false,
-  maxStates = 100000,
-  maxCandidates = 1000000,
-  hyphenation,
-  priorHyphens = 0,
-  baselineAlignment = 'none',
-  wordSpacing: inputWordSpacing,
-}) {
+export function wrappedParagraphFlowSteps(input) {
+  return fitWrappedParagraph(input);
+}
+
+// The scheduler owns immutable column geometry for one layout pass. Validate
+// each distinct column set once, including the prefix used in a Keep probe.
+export function createWrappedParagraphFitter() {
+  const columnCache = new WeakMap();
+  return (input) => fitWrappedParagraph(input, columnCache);
+}
+
+function* fitWrappedParagraph(
+  {
+    start,
+    end,
+    opportunities,
+    measurements,
+    columns,
+    layout,
+    cursor = { frame: 0, baseline: null },
+    previousAfter = 0,
+    mode = 'paragraph',
+    retainOversetPrefix = false,
+    maxStates = 100000,
+    maxCandidates = 1000000,
+    hyphenation,
+    priorHyphens = 0,
+    baselineAlignment = 'none',
+    wordSpacing: inputWordSpacing,
+  },
+  columnCache,
+) {
   if (!BASELINE_ALIGNMENT.includes(baselineAlignment))
     throw Error('Invalid wrapped baseline alignment');
   const wordSpacing = normalizeWordSpacingPolicy(inputWordSpacing);
   const costPolicy = wordSpacing ? wordSpacingCostPolicy(wordSpacing) : policy;
-  const prepared = yield* prepare({
-      start,
-      end,
-      opportunities,
-      measurements,
-      columns,
-      layout,
-      cursor,
-      previousAfter,
-      mode,
-      maxStates,
-      maxCandidates,
-      wordSpacing,
-    }),
+  const prepared = yield* prepare(
+      {
+        start,
+        end,
+        opportunities,
+        measurements,
+        columns,
+        layout,
+        cursor,
+        previousAfter,
+        mode,
+        maxStates,
+        maxCandidates,
+        wordSpacing,
+      },
+      columnCache,
+    ),
     { style, frames, points, edges, minimumWidths, metrics, mixed, geometryBudget } = prepared;
   let states = 1,
     candidates = 0,

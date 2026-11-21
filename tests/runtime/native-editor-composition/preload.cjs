@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('nativeEditorTest', {
   compose: (request) => ipcRenderer.invoke('ivo:text-composition', 'compose', request),
+  composePacket: (request) => ipcRenderer.invoke('ivo:text-composition', 'composePacket', request),
   insert: (text) => ipcRenderer.invoke('ivo-native-editor-test', 'insert', text),
   key: (key, modifiers = []) =>
     ipcRenderer.invoke('ivo-native-editor-test', 'key', { key, modifiers }),

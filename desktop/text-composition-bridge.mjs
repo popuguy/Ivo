@@ -379,9 +379,13 @@ export function installTextCompositionBridge({ ipcMain, authorize, createService
     const owner = authorize(event);
     if (!owner || (typeof owner !== 'object' && typeof owner !== 'function'))
       throw Error('Invalid text composition owner.');
-    if (action === 'compose') {
+    if (action === 'compose' || action === 'composePacket') {
       validateCompositionRequest(value);
-      const result = await (await backend()).compose(value);
+      const service = await backend();
+      const result =
+        action === 'composePacket'
+          ? await service.composePacket(value)
+          : await service.compose(value);
       // Recheck authorization after asynchronous native work, before returning private data.
       if (authorize(event) !== owner) throw Error('Text composition window changed.');
       if (result.token) {
@@ -391,7 +395,7 @@ export function installTextCompositionBridge({ ipcMain, authorize, createService
         owned.add(result.token);
         while (owned.size > 256) owned.delete(owned.values().next().value);
       }
-      return result;
+      return action === 'composePacket' ? result.packet : result;
     }
     if (action === 'pdf') return pdfFor(event, value, options, owner);
     throw Error('Unknown text composition action.');

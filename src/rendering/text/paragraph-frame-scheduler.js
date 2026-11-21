@@ -2,13 +2,16 @@ import { alignWrappedColumns } from './vertical-wrap-alignment.js';
 import { retainedHyphenCount } from '../../domain/text/line-hyphenation.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
-import { wrappedParagraphFlowSteps } from '../../domain/text/wrapped-paragraph-flow.js';
+import { createWrappedParagraphFitter } from '../../domain/text/wrapped-paragraph-flow.js';
 import { UnsupportedComposition } from './composition-source.js';
 import { paragraphStartLocations } from './paragraph-start-locations.js';
 import { scheduleParagraphKeeps } from './paragraph-keep-scheduling.js';
 import { wordSpacingCostPolicy } from '../../domain/text/word-spacing-adjustment.js';
 
 const MAX_LINES = 2048;
+// A complex contour has a checkpoint before every exclusion query. Limit
+// uninterrupted geometry work while leaving room for input at high refresh rates.
+const GEOMETRY_SLICE_MS = 2;
 const frameShape = (column) => ({
   width: column.width,
   ...(column.grid ? { grid: column.grid } : {}),
@@ -28,15 +31,17 @@ export async function fitFrameParagraphs(
   paragraphs,
   actualColumns,
   work,
-  rememberDecision,
+  { identifyLayout, rememberDecision },
   mode,
   { states: maxStates = 100000, candidates: maxCandidates = 1000000 } = {},
 ) {
   const columns = actualColumns.map(frameShape),
-    wrapped = columns.some((column) => column.obstacles?.length);
+    wrapped = columns.some((column) => column.obstacles?.length),
+    columnKey = identifyLayout(columns);
   while (columns.length < 128) columns.push({ ...columns.at(-1), obstacles: [] });
-  const columnKey = JSON.stringify(actualColumns.map(frameShape));
-  let offsetKey = '',
+  let fitSteps = wrapped ? createWrappedParagraphFitter() : paragraphFlowSteps;
+  let lastYield = performance.now(),
+    offsetKey = '',
     states = 0,
     candidates = 0,
     fitProbes = 0,
@@ -101,7 +106,7 @@ export async function fitFrameParagraphs(
     let chosen = entry.decisions.get(key);
     if (chosen) work.reusedDecisions++;
     else {
-      const steps = (wrapped ? wrappedParagraphFlowSteps : paragraphFlowSteps)({
+      const steps = fitSteps({
         start: sourceStart,
         end: paragraph.text.length,
         opportunities: paragraph.opportunities.filter((point) => point.index >= sourceStart),
@@ -127,10 +132,13 @@ export async function fitFrameParagraphs(
       });
       let step = steps.next();
       while (!step.done) {
-        // Yield to input at each geometry checkpoint. Nested zero-delay timers
-        // are clamped in Chromium, adding idle time for every contour band.
-        if (globalThis.scheduler?.yield) await globalThis.scheduler.yield();
-        else await new Promise((resolve) => setTimeout(resolve, 0));
+        // A few cheap bands can share one task. Preparation and search retain
+        // their existing work checkpoints even when the clock barely advances.
+        if (step.value.stage !== 'geometry' || performance.now() - lastYield >= GEOMETRY_SLICE_MS) {
+          if (globalThis.scheduler?.yield) await globalThis.scheduler.yield();
+          else await new Promise((resolve) => setTimeout(resolve, 0));
+          lastYield = performance.now();
+        }
         step = steps.next();
       }
       chosen = step.value;
@@ -161,6 +169,7 @@ export async function fitFrameParagraphs(
   const initial = await schedule();
   const scheduled = await alignWrappedColumns(columns, initial, async (offsets) => {
     offsetKey = JSON.stringify(offsets);
+    fitSteps = createWrappedParagraphFitter();
     for (const [index, offset] of offsets.entries()) columns[index].alignmentOffset = offset ?? 0;
     try {
       return await schedule();

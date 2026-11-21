@@ -49,7 +49,16 @@ export function patchComposedFrame(element, before, after) {
     }
     for (let plane = 0; plane < 3; plane++) {
       const parent = svg.children[plane + 1],
-        rows = next.planes[plane];
+        rows = next.planes[plane],
+        previousRows = old.planes[plane];
+      // A new paragraph can displace every painted line in a frame. Parse that
+      // plane once. On a local edit keep each unaffected line and its glyphs.
+      if (plane === 1 && rows.length > 1 && rows.every((row, j) => row !== previousRows[j])) {
+        parent.innerHTML = rows
+          .map((row, j) => '<g data-line-start="' + next.starts[j] + '">' + row + '</g>')
+          .join('');
+        continue;
+      }
       while (parent.childElementCount > rows.length) parent.lastElementChild.remove();
       for (let j = 0; j < rows.length; j++) {
         let group = parent.children[j];
@@ -59,7 +68,7 @@ export function patchComposedFrame(element, before, after) {
         }
         if (plane === 1 && old.starts[j] !== next.starts[j])
           group.dataset.lineStart = next.starts[j];
-        if (old.planes[plane][j] !== rows[j]) group.innerHTML = rows[j];
+        if (previousRows[j] !== rows[j]) group.innerHTML = rows[j];
       }
     }
     if (old.label !== next.label) svg.setAttribute('aria-label', next.label);

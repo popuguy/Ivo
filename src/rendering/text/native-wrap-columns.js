@@ -1,10 +1,29 @@
 import { textWrapObstacles } from '../../domain/geometry/text-wrap.js';
 import { UnsupportedComposition } from './composition-source.js';
 
+const wrappedLayouts = new WeakMap();
+
 /** Disposable exclusion geometry uses the same unscaled coordinate system as native columns. */
-export function nativeWrapColumns(document, columns) {
+export function nativeWrapColumns(document, columns, session) {
+  // Typing changes a flow's source independently of the scene that excludes ink.
+  // Keep one bounded set per editor. The exact key includes parent art, layer
+  // order, masking, stacking, physical columns and every object property.
+  const key =
+    session &&
+    JSON.stringify([
+      columns,
+      document.blocks,
+      document.pages,
+      document.publishing?.parents,
+      document.publishing?.layers,
+      document.textWrapPreferences,
+    ]);
+  const previous = session && wrappedLayouts.get(session);
+  if (previous && previous.key === key)
+    return columns.map((column, i) => ({ ...column, obstacles: previous.obstacles[i] }));
+
   const frames = new Map(document.blocks.map((block) => [block.id, block]));
-  return columns.map((column) => ({
+  const result = columns.map((column) => ({
     ...column,
     obstacles: textWrapObstacles(document, frames.get(column.frameId), { column }).filter(
       ({ bounds, invert }) =>
@@ -15,6 +34,16 @@ export function nativeWrapColumns(document, columns) {
           bounds.top < column.height),
     ),
   }));
+  if (session) {
+    const obstacles = result.map((column) => column.obstacles);
+    let vertices = 0;
+    for (const column of obstacles)
+      for (const obstacle of column)
+        for (const polygon of obstacle.polygons) vertices += polygon.length;
+    if (key.length <= 524288 && vertices <= 16384) wrappedLayouts.set(session, { key, obstacles });
+    else wrappedLayouts.delete(session);
+  }
+  return result;
 }
 
 /** Character transforms move ink and carets within the composed fragments.

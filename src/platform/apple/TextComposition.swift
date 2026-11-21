@@ -564,7 +564,19 @@ public final class TextCompositionEngine {
     try require(position == length, "Runs lost source text")
     if request.mode != "greedy-geometry-proof" {
       try require(length <= 10_000, "Paragraph source budget exceeded")
-      let boundaries = Set(graphemeBoundaries(request.text))
+      // Thousands of candidate ranges overlap. Index the next forced-break endpoint
+      // for every grapheme start once. An interior UTF-16 offset stays -1.
+      var lineEnds = Array(repeating: -1, count: length + 1)
+      lineEnds[length] = length
+      var cursor = length
+      var nextBreak = length
+      for character in request.text.reversed() {
+        if character == "\n" || character == "\u{2028}" || character == "\u{2029}" {
+          nextBreak = cursor
+        }
+        cursor -= character.utf16.count
+        lineEnds[cursor] = nextBreak
+      }
       if request.mode == "measure-lines-proof" {
         guard let candidates = request.candidates else { throw fail("Missing line alternatives") }
         try require(
@@ -577,13 +589,9 @@ public final class TextCompositionEngine {
             "Invalid line-alternative origin")
           try require(
             candidate.start >= 0 && candidate.end > candidate.start && candidate.end <= length
-              && boundaries.contains(candidate.start) && boundaries.contains(candidate.end),
+              && lineEnds[candidate.start] >= 0 && lineEnds[candidate.end] >= 0,
             "Invalid line alternative or grapheme boundary")
-          let value = string.substring(
-            with: NSRange(location: candidate.start, length: candidate.end - candidate.start))
-          try require(
-            !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }
-            ), "Line alternative crosses a forced break")
+          try require(candidate.end <= lineEnds[candidate.start], "Line alternative crosses a forced break")
         }
       } else if request.mode == "explicit-lines-proof" {
         guard let breaks = request.breaks else { throw fail("Missing explicit line decisions") }
@@ -593,12 +601,9 @@ public final class TextCompositionEngine {
         var previous = 0
         for end in breaks {
           try require(
-            end > previous && end <= length && boundaries.contains(end),
+            end > previous && end <= length && lineEnds[end] >= 0,
             "Invalid explicit line order or grapheme boundary")
-          let value = string.substring(with: NSRange(location: previous, length: end - previous))
-          try require(
-            !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }
-            ), "Explicit line crosses a forced break")
+          try require(end <= lineEnds[previous], "Explicit line crosses a forced break")
           previous = end
         }
       } else {
@@ -612,18 +617,13 @@ public final class TextCompositionEngine {
         for placement in placements {
           try require(
             placement.end > previousEnd && placement.end <= length
-              && boundaries.contains(placement.end), "Invalid planned source boundary")
+              && lineEnds[placement.end] >= 0, "Invalid planned source boundary")
           try require(
             placement.frame >= 0 && placement.frame < 128
               && finite(placement.baseline, 0, 14400)
               && finite(placement.left, 0, 14400) && finite(placement.width, 1, 14400),
             "Invalid planned line geometry")
-          let value = string.substring(
-            with: NSRange(location: previousEnd, length: placement.end - previousEnd))
-          try require(
-            !value.dropLast().contains(where: { $0 == "\n" || $0 == "\u{2028}" || $0 == "\u{2029}" }
-            ),
-            "Planned line crosses a forced break")
+          try require(placement.end <= lineEnds[previousEnd], "Planned line crosses a forced break")
           while paragraphIndex + 1 < request.paragraphs!.count
             && previousEnd >= request.paragraphs![paragraphIndex].end
           { paragraphIndex += 1 }
@@ -1039,7 +1039,7 @@ public final class TextCompositionEngine {
   func wordSpaceCapacities(
     _ shape: WordSpaceShape, line: CTLine, naturalWidth: Double, policy: WordSpacing,
     letterBasis: Double
-  ) -> [String: Any] {
+  ) -> MeasuredWordSpace {
     // The exact native font's transformed U+0020 advances are the affine slope;
     // tracking stays additive and trailing spaces do not contribute visible width.
     func width(_ percent: Double) -> Double {
@@ -1055,20 +1055,17 @@ public final class TextCompositionEngine {
           (naturalWidth + shape.nominalSpaceWidth * (w / 100 - 1) + letterBasis * l / 100) * g / 100
         )
       }
-      return [
-        "minimumWidth": adjusted(policy.minimum, lmin, gmin),
-        "desiredWidth": adjusted(policy.desired, ldes, gdes),
-        "maximumWidth": adjusted(policy.maximum, lmax, gmax), "eligibleGaps": shape.gapCount,
-        "nominalSpaceWidth": shape.nominalSpaceWidth, "letterBasis": letterBasis,
-        "physicalMinimum": adjusted(0, lmin, gmin),
-      ]
+      return MeasuredWordSpace(
+        minimumWidth: adjusted(policy.minimum, lmin, gmin),
+        desiredWidth: adjusted(policy.desired, ldes, gdes),
+        maximumWidth: adjusted(policy.maximum, lmax, gmax), eligibleGaps: shape.gapCount,
+        nominalSpaceWidth: shape.nominalSpaceWidth, letterBasis: letterBasis,
+        physicalMinimum: adjusted(0, lmin, gmin))
     }
-    return [
-      "minimumWidth": width(policy.minimum), "desiredWidth": width(policy.desired),
-      "maximumWidth": width(policy.maximum), "eligibleGaps": shape.gapCount,
-      "nominalSpaceWidth": shape.nominalSpaceWidth,
-      "canSpreadGlyphs": canSpreadGlyphs(line, shape: shape),
-    ]
+    return MeasuredWordSpace(
+      minimumWidth: width(policy.minimum), desiredWidth: width(policy.desired),
+      maximumWidth: width(policy.maximum), eligibleGaps: shape.gapCount,
+      nominalSpaceWidth: shape.nominalSpaceWidth, canSpreadGlyphs: canSpreadGlyphs(line, shape: shape))
   }
   func wordSpacedLine(
     _ source: NSAttributedString, text: NSString, shape: WordSpaceShape, percent: Double,
@@ -1265,7 +1262,22 @@ public final class TextCompositionEngine {
       advance: advance, color: attributes[NSAttributedString.Key(kCTForegroundColorAttributeName as String)] as! CGColor)
   }
 
-  func measureCandidates(_ request: Request, fonts: [String: CGFont]) throws -> [[String: Any]] {
+  struct MeasuredWordSpace: Encodable {
+    let minimumWidth, desiredWidth, maximumWidth: Double
+    let eligibleGaps: Int
+    let nominalSpaceWidth: Double
+    var letterBasis, physicalMinimum: Double?
+    var canSpreadGlyphs: Bool?
+  }
+
+  struct Measurement: Encodable {
+    let start, end: Int
+    let width, ascent, descent, leading, advance, capHeight, xHeight: Double
+    let inkAscent, inkDescent: Double?
+    var wordSpacing: MeasuredWordSpace?
+  }
+
+  func measureCandidates(_ request: Request, fonts: [String: CGFont]) throws -> [Measurement] {
     let attributed = try attributedSource(request, fonts: fonts)
     let typesetter = CTTypesetterCreateWithAttributedString(attributed)
     let string = request.text as NSString
@@ -1279,7 +1291,7 @@ public final class TextCompositionEngine {
       ? candidates.indices.sorted { candidates[$0].end < candidates[$1].end }
       : Array(candidates.indices)
     var alternate: (end: Int, typesetter: CTTypesetter)?
-    var rows = Array(repeating: [String: Any](), count: candidates.count)
+    var rows = Array<Measurement?>(repeating: nil, count: candidates.count)
     for index in order {
       let candidate = candidates[index]
       var lineTypesetter = typesetter
@@ -1338,32 +1350,28 @@ public final class TextCompositionEngine {
           ($0.leading ?? 0) > 0 ? $0.leading! : $0.size * ($0.autoLeading ?? 120) / 100
         }.max() ?? 14.4
       let measuredWidth = width + (hyphenWidths[candidate.end] ?? 0)
-      var row: [String: Any] = [
-        "start": candidate.start, "end": candidate.end, "width": measuredWidth,
-        "ascent": Double(ascent), "descent": Double(descent), "leading": Double(leading),
-        "advance": advance,
-        "capHeight": character.map { Double($0.capHeight) }
+      var row = Measurement(
+        start: candidate.start, end: candidate.end, width: measuredWidth,
+        ascent: Double(ascent), descent: Double(descent), leading: Double(leading), advance: advance,
+        capHeight: character.map { Double($0.capHeight) }
           ?? (actualFonts.map { Double(CTFontGetCapHeight($0)) }.max() ?? 0),
-        "xHeight": character.map { Double($0.xHeight) }
+        xHeight: character.map { Double($0.xHeight) }
           ?? (actualFonts.map { Double(CTFontGetXHeight($0)) }.max() ?? 0),
-      ]
-      if let character = character {
-        row["inkAscent"] = Double(character.inkAscent)
-        row["inkDescent"] = Double(character.inkDescent)
-      }
+        inkAscent: character.map { Double($0.inkAscent) },
+        inkDescent: character.map { Double($0.inkDescent) })
       if let policy = request.paragraphs?.first(where: {
         $0.start <= candidate.start && $0.end > candidate.start
       })?.wordSpacing {
         try validateWordSpaceDirection(line)
         let shape = try wordSpaceShape(
           attributed, text: string, start: candidate.start, contentEnd: end)
-        row["wordSpacing"] = wordSpaceCapacities(
+        row.wordSpacing = wordSpaceCapacities(
           shape, line: line, naturalWidth: measuredWidth, policy: policy,
           letterBasis: policy.letterDesired == nil ? 0 : try letterOffsets(line, shape: shape, text: string, generatedHyphen: automaticEnds.contains(candidate.end), percent: 100).total)
       }
       rows[index] = row
     }
-    return rows
+    return rows.map { $0! } // The order above visits each candidate exactly once.
   }
   // Centered text hugs the interruption at the outer fragments of an occupied
   // row. A lone fragment and any interior fragments center in their own space.
@@ -1388,8 +1396,78 @@ public final class TextCompositionEngine {
     return after ? 1 : 0
   }
 
+  struct GlyphGeometry: Encodable {
+    let glyph, index, end: Int
+    let position, advance: [Double]
+    let sourceRanges: [[Int]]
+    var generated: Bool?
+    var vector: String?
+    var vectorUnavailable: Bool?
+  }
+
+  struct RunGeometry: Encodable {
+    let font: String
+    let size: Double
+    let rtl: Bool
+    let start, end: Int
+    let glyphs: [GlyphGeometry]
+    let underlinePosition, underlineThickness: Double
+    var xHeight, capHeight: Double
+    var textColor: String?
+    var leading, autoLeading, ascent, descent, inkAscent, inkDescent: Double?
+    var baselineShift, horizontalScale, verticalScale: Double?
+  }
+
+  struct CaretGeometry: Encodable {
+    let index: Int
+    let primary, secondary: Double
+    let logicalCandidates: [Int]
+    let measurement: String
+    let hitIndex: Int
+  }
+
+  struct SpacingGeometry: Encodable {
+    let percentage: Double
+    let eligibleGaps: Int
+    let nominalSpaceWidth: Double
+    let justified: Bool
+    var offPreference: Bool
+    // Consumers distinguish a null fallback from a missing word-spacing policy.
+    struct Fallback: Encodable {
+      let name: String?
+      func encode(to encoder: Encoder) throws {
+        var value = encoder.singleValueContainer()
+        try value.encode(name)
+      }
+    }
+    let fallback: Fallback
+    var letterPercentage, glyphPercentage: Double?
+    var collapsedTrailingStart: Int?
+  }
+
+  struct LineGeometry: Encodable {
+    let frame: String
+    let page, start, end, contentEnd: Int
+    var baseline: Double
+    let ascent, descent, leading, width, visibleWidth, advance: Double
+    let sourceRanges: [[Int]]
+    let runs: [RunGeometry]
+    let carets: [CaretGeometry]
+    var originX, availableWidth: Double?
+    var paragraphStart, paragraphEnd: Int?
+    var retainedGeometry: Bool?
+    var placementIndex: Int?
+    var inkAscent, inkDescent: Double?
+    var wordSpacing: SpacingGeometry?
+  }
+
+  struct LayoutGeometry: Encodable {
+    let lines: [LineGeometry]
+    let coveredLength, textLength: Int
+  }
+
   func compose(_ request: Request, fonts: [String: CGFont]) throws -> (
-    [FrozenLine], [[String: Any]], [String], [[String: String]]
+    [FrozenLine], [LineGeometry], [String], [[String: String]]
   ) {
     let canonicalString = request.text as NSString
     let base = try attributedSource(request, fonts: fonts)
@@ -1415,7 +1493,8 @@ public final class TextCompositionEngine {
     var caretBudget = 0
     var position = 0
     var frozen: [FrozenLine] = []
-    var output: [[String: Any]] = []
+    var output: [LineGeometry] = []
+    var nextBoundary = 0
     var diagnostics = Set<String>()
     let known = Set(request.resources.map { $0.postscript })
     var paragraphIndex = 0
@@ -1500,7 +1579,7 @@ public final class TextCompositionEngine {
         let scaleX = (fitted?.glyph ?? 100) / 100
         var letters = LetterOffsets()
         let bodyArea = availableWidth / scaleX - (hyphen?.advance ?? 0)
-        var wordSpacingRow: [String: Any]?
+        var wordSpacingRow: SpacingGeometry?
         var collapsedShape: WordSpaceShape?
         var collapsedEdge: Double?
         var originalWordSpaceLine: CTLine?
@@ -1571,21 +1650,18 @@ public final class TextCompositionEngine {
             originalWordSpaceLine = original
             wordSpaceChanges = try self.wordSpaceChanges(original, final: line, shape: shape)
           }
-          wordSpacingRow = [
-            "percentage": max(0, percentage), "eligibleGaps": shape.gapCount,
-            "nominalSpaceWidth": nominal, "justified": adjustsToArea,
-            "offPreference": percentage < policy.minimum - 0.000001
+          wordSpacingRow = SpacingGeometry(
+            percentage: max(0, percentage), eligibleGaps: shape.gapCount,
+            nominalSpaceWidth: nominal, justified: adjustsToArea,
+            offPreference: percentage < policy.minimum - 0.000001
               || percentage > policy.maximum + 0.000001,
-            "fallback": fallback ? "single-word" : NSNull(),
-          ]
+            fallback: .init(name: fallback ? "single-word" : nil))
           if let fitted {
-            wordSpacingRow?["letterPercentage"] = fitted.letter
-            wordSpacingRow?["glyphPercentage"] = fitted.glyph
-            if fitted.letterOutsidePreference { wordSpacingRow?["offPreference"] = true }
+            wordSpacingRow?.letterPercentage = fitted.letter
+            wordSpacingRow?.glyphPercentage = fitted.glyph
+            if fitted.letterOutsidePreference { wordSpacingRow?.offPreference = true }
           }
-          if let collapsed = collapsedShape {
-            wordSpacingRow!["collapsedTrailingStart"] = collapsed.trailingStart
-          }
+          wordSpacingRow?.collapsedTrailingStart = collapsedShape?.trailingStart
         } else if justified && visibleWidth > 0 && visibleWidth < bodyArea,
           let expanded = CTLineCreateJustifiedLine(line, 1, bodyArea)
         {
@@ -1681,7 +1757,7 @@ public final class TextCompositionEngine {
             visibleWidth <= availableWidth + 0.000001,
             "Explicit line exceeds its indented line area")
         }
-        var runRows: [[String: Any]] = []
+        var runRows: [RunGeometry] = []
         let reuseDetails = request.protocol != 6 && (retained[position].map {
           $0.end == end && $0.availableWidth == availableWidth && $0.originX == originX
             && $0.width == width
@@ -1723,23 +1799,22 @@ public final class TextCompositionEngine {
           let edges = Array(Set(indices + [source.location + source.length])).sorted()
           let nextEdge = Dictionary(uniqueKeysWithValues: zip(edges, edges.dropFirst()))
           var outlineIDs: [CGGlyph: String] = [:]
-          var rows: [[String: Any]] = try (0..<n).map { i in
+          var rows: [GlyphGeometry] = try (0..<n).map { i in
             let a = indices[i]
             let b = nextEdge[a] ?? source.location + source.length
-            var row: [String: Any] = [
-              "glyph": Int(glyphs[i]), "index": a, "end": b,
-              "position": [
+            var row = GlyphGeometry(
+              glyph: Int(glyphs[i]), index: a, end: b,
+              position: [
                 (Double(positions[i].x) + letters.through(a)) * scaleX + originX,
                 Double(positions[i].y),
               ],
-              "advance": [
+              advance: [
                 (Double(advances[i].width)
                   + (i + 1 == n || indices[i + 1] != a
                     ? letters.through(b) - letters.through(a) : 0))
                   * scaleX, Double(advances[i].height),
               ],
-              "sourceRanges": logicalRanges(a, b, request.spans),
-            ]
+              sourceRanges: logicalRanges(a, b, request.spans))
             if request.includeVectors == true {
               let glyph = glyphs[i]
               let key: String
@@ -1749,7 +1824,7 @@ public final class TextCompositionEngine {
                 outlineIDs[glyph] = key
               }
               if let path = try vectorPath(font: font, glyph: glyphs[i], id: key) {
-                row["vector"] = key
+                row.vector = key
                 vectors[key] = path
               } else if advances[i].width != 0 && glyphs[i] != 0 {
                 let value = (request.text as NSString).substring(
@@ -1758,7 +1833,7 @@ public final class TextCompositionEngine {
                   CharacterSet.whitespacesAndNewlines.contains($0)
                     || $0.properties.isDefaultIgnorableCodePoint
                 }) {
-                  row["vectorUnavailable"] = true
+                  row.vectorUnavailable = true
                   diagnostics.insert("glyph-outline-unavailable:" + name)
                 }
               }
@@ -1767,58 +1842,59 @@ public final class TextCompositionEngine {
           }
           if let hyphen = hyphen, source.location + source.length == end {
             let x = originX + bodyWidth + hyphen.offset.x * scaleX
-            var ink: [String: Any] = [
-              "glyph": Int(hyphen.glyph), "index": end, "end": end, "generated": true,
-              "position": [x, hyphen.offset.y], "advance": [hyphen.advance * scaleX, 0], "sourceRanges": [],
-            ]
+            var ink = GlyphGeometry(
+              glyph: Int(hyphen.glyph), index: end, end: end,
+              position: [x, hyphen.offset.y], advance: [hyphen.advance * scaleX, 0],
+              sourceRanges: [], generated: true)
             if request.includeVectors == true {
               let id = vectorIdentity(font: hyphen.font, glyph: hyphen.glyph, request: request)
               guard let path = try vectorPath(font: hyphen.font, glyph: hyphen.glyph, id: id)
               else { throw fail("Generated hyphen outline unavailable") }
               vectors[id] = path
-              ink["vector"] = id
+              ink.vector = id
             }
             rows.append(ink)
             glyphBudget += 1
             try require(glyphBudget <= 100_000, "Glyph budget exceeded")
           }
-          var row: [String: Any] = [
-            "font": name, "size": Double(CTFontGetSize(font)),
-            "rtl": CTRunGetStatus(run).contains(.rightToLeft), "start": source.location,
-            "end": source.location + source.length, "glyphs": rows,
-            "underlinePosition": Double(CTFontGetUnderlinePosition(font)),
-            "underlineThickness": Double(CTFontGetUnderlineThickness(font)),
-            "xHeight": Double(CTFontGetXHeight(font)),
-            "capHeight": Double(CTFontGetCapHeight(font)),
-          ]
+          var row = RunGeometry(
+            font: name, size: Double(CTFontGetSize(font)), rtl: CTRunGetStatus(run).contains(.rightToLeft),
+            start: source.location, end: source.location + source.length, glyphs: rows,
+            underlinePosition: Double(CTFontGetUnderlinePosition(font)),
+            underlineThickness: Double(CTFontGetUnderlineThickness(font)),
+            xHeight: Double(CTFontGetXHeight(font)), capHeight: Double(CTFontGetCapHeight(font)))
           if let input = sourceRuns.first(where: {
             $0.start <= source.location && $0.end > source.location
           }) {
-            row["textColor"] = input.textColor ?? "#252525"
-            row["leading"] = input.leading ?? 0
-            row["autoLeading"] = input.autoLeading ?? 120
+            row.textColor = input.textColor ?? "#252525"
+            row.leading = input.leading ?? 0
+            row.autoLeading = input.autoLeading ?? 120
             if request.protocol >= 4 {
               let strut = untransformedFont(font)
               let shift = (attrs[kCTBaselineOffsetAttributeName] as? NSNumber)?.doubleValue ?? 0
-              row["ascent"] = Double(CTFontGetAscent(strut))
-              row["descent"] = Double(CTFontGetDescent(strut))
-              row["xHeight"] = Double(CTFontGetXHeight(strut))
-              row["capHeight"] = Double(CTFontGetCapHeight(strut))
-              row["inkAscent"] = Double(CTFontGetAscent(font)) + shift
-              row["inkDescent"] = Double(CTFontGetDescent(font)) - shift
-              row["baselineShift"] = shift
-              row["horizontalScale"] = input.horizontalScale ?? 100
-              row["verticalScale"] = input.verticalScale ?? 100
+              row.ascent = Double(CTFontGetAscent(strut))
+              row.descent = Double(CTFontGetDescent(strut))
+              row.xHeight = Double(CTFontGetXHeight(strut))
+              row.capHeight = Double(CTFontGetCapHeight(strut))
+              row.inkAscent = Double(CTFontGetAscent(font)) + shift
+              row.inkDescent = Double(CTFontGetDescent(font)) - shift
+              row.baselineShift = shift
+              row.horizontalScale = input.horizontalScale ?? 100
+              row.verticalScale = input.verticalScale ?? 100
             }
           }
           runRows.append(row)
         }
-        let lineBoundaries = boundaries.filter { $0 >= position && $0 <= end }
+        // Lines consume ordered source ranges and share their boundary caret.
+        let firstBoundary = nextBoundary
+        while nextBoundary < boundaries.count && boundaries[nextBoundary] < end { nextBoundary += 1 }
+        let includesEnd = nextBoundary < boundaries.count && boundaries[nextBoundary] == end
+        let lineBoundaries = boundaries[firstBoundary..<(nextBoundary + (includesEnd ? 1 : 0))]
         caretBudget += lineBoundaries.count
         try require(caretBudget <= 110_000, "Caret budget exceeded")
         var spaceCursor = 0
         var spaceDelta = 0.0
-        let carets: [[String: Any]] = reuseDetails ? [] : lineBoundaries.map { index in
+        let carets: [CaretGeometry] = reuseDetails ? [] : lineBoundaries.map { index in
           var secondary = CGFloat.zero
           let boundary = min(index, contentEnd)
           while spaceCursor < wordSpaceChanges.count
@@ -1848,53 +1924,48 @@ public final class TextCompositionEngine {
             primary = CGFloat(edge)
             secondary = primary
           }
-            let nativeHit =
-              contentEnd == position
-              ? position : CTLineGetStringIndexForPosition(line, CGPoint(x: primary, y: 0))
-            primary = (primary + letters.through(boundary)) * scaleX
-            secondary = (secondary + letters.through(boundary)) * scaleX
-            if hyphen != nil && index == end {
-              primary = visibleWidth
-              secondary = primary
-            }
-            return [
-            "index": index, "primary": Double(primary) + originX,
-            "secondary": Double(secondary) + originX,
-            "logicalCandidates": logicalCandidates(index, request.spans),
-            "measurement": collapsed
+          let nativeHit =
+            contentEnd == position
+            ? position : CTLineGetStringIndexForPosition(line, CGPoint(x: primary, y: 0))
+          primary = (primary + letters.through(boundary)) * scaleX
+          secondary = (secondary + letters.through(boundary)) * scaleX
+          if hyphen != nil && index == end {
+            primary = visibleWidth
+            secondary = primary
+          }
+          return CaretGeometry(
+            index: index, primary: Double(primary) + originX, secondary: Double(secondary) + originX,
+            logicalCandidates: logicalCandidates(index, request.spans),
+            measurement: collapsed
               ? "native-collapsed-space"
               : contentEnd == position
                 ? "empty-paragraph-origin"
                 : originalWordSpaceLine != nil ? "native-word-space" : "native-line",
-            "hitIndex": hyphen != nil && index == end ? end : nativeHit,
-          ]
+            hitIndex: hyphen != nil && index == end ? end : nativeHit)
         }
         frozen.append(
           FrozenLine(
             page: page, start: position, end: end, baseline: baseline, ascent: Double(ascent),
             descent: Double(descent), line: line, hyphen: hyphen, letterOffsets: letters,
             scaleX: scaleX, bodyWidth: bodyWidth, originX: originX))
-        var row: [String: Any] = [
-          "frame": frame.id, "page": page, "start": position, "end": end, "contentEnd": contentEnd,
-          "baseline": baseline, "ascent": Double(ascent), "descent": Double(descent),
-          "leading": Double(leading), "width": width, "visibleWidth": visibleWidth,
-          "advance": advance,
-          "sourceRanges": logicalRanges(position, end, request.spans), "runs": runRows,
-          "carets": carets,
-        ]
+        var row = LineGeometry(
+          frame: frame.id, page: page, start: position, end: end, contentEnd: contentEnd,
+          baseline: baseline, ascent: Double(ascent), descent: Double(descent),
+          leading: Double(leading), width: width, visibleWidth: visibleWidth, advance: advance,
+          sourceRanges: logicalRanges(position, end, request.spans), runs: runRows, carets: carets)
         if request.protocol >= 2 {
-          row["originX"] = originX
-          row["availableWidth"] = availableWidth
-          row["paragraphStart"] = paragraph!.start
-          row["paragraphEnd"] = paragraph!.end
+          row.originX = originX
+          row.availableWidth = availableWidth
+          row.paragraphStart = paragraph!.start
+          row.paragraphEnd = paragraph!.end
         }
-        if reuseDetails { row["retainedGeometry"] = true }
-        if placement != nil { row["placementIndex"] = output.count }
+        if reuseDetails { row.retainedGeometry = true }
+        if placement != nil { row.placementIndex = output.count }
         if let character = character {
-          row["inkAscent"] = Double(character.inkAscent)
-          row["inkDescent"] = Double(character.inkDescent)
+          row.inkAscent = Double(character.inkAscent)
+          row.inkDescent = Double(character.inkDescent)
         }
-        if let spacing = wordSpacingRow { row["wordSpacing"] = spacing }
+        if let spacing = wordSpacingRow { row.wordSpacing = spacing }
         output.append(row)
         position = end
         previousBaseline = baseline
@@ -1908,7 +1979,7 @@ public final class TextCompositionEngine {
         if offset > 0 {
           for index in frameStart..<frozen.count {
             frozen[index].baseline += offset
-            output[index]["baseline"] = frozen[index].baseline
+            output[index].baseline = frozen[index].baseline
           }
         }
       }
@@ -2023,7 +2094,26 @@ public final class TextCompositionEngine {
     return value
   }
 
-  /// The input/output JSON protocol is shared by desktop and future Apple clients.
+  private enum GeometryField: String { case measurements, layout }
+
+  // The header includes the original source map (including extension keys).
+  // Encode its small JSON object and the typed high-volume payload separately.
+  // This avoids boxing every glyph and caret scalar into Foundation dictionaries.
+  private func encodeResult<T: Encodable>(_ header: [String: Any], _ geometry: T, field: GeometryField) throws -> Data {
+    var result = try JSONSerialization.data(withJSONObject: header, options: [.sortedKeys])
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let payload = try encoder.encode(geometry)
+    let key = (",\"" + field.rawValue + "\":").utf8
+    try require(result.count + key.count + payload.count <= 32_000_000, "Composition result exceeds bounds")
+    result.removeLast() // Closing brace of the compact, non-empty JSON object above.
+    result.append(contentsOf: key)
+    result.append(payload)
+    result.append(0x7D)
+    return result
+  }
+
+  /// The input/output JSON protocol is shared by desktop and Apple mobile clients.
   public func execute(_ input: Data) throws -> Data {
     lock.lock()
     defer { lock.unlock() }
@@ -2043,13 +2133,12 @@ public final class TextCompositionEngine {
     if request.mode == "measure-lines-proof" {
       // A candidate measurement owns neither a frozen layout nor a PDF token.
       // The source and byte digest still identify every measured alternative.
-      result["measurements"] = try measureCandidates(request, fonts: fonts)
+      let measurements = try measureCandidates(request, fonts: fonts)
       result["spans"] = request.spans.map { span -> [String: Any] in
         ["kind": span.kind, "logicalStart": span.logicalStart, "logicalEnd": span.logicalEnd,
          "start": span.start, "end": span.end]
       }
-      let output = try JSONSerialization.data(withJSONObject: result)
-      try require(output.count <= 32_000_000, "Composition result exceeds bounds")
+      let output = try encodeResult(result, measurements, field: .measurements)
       return output
     }
     var canonical = try JSONSerialization.jsonObject(with: input) as! [String: Any]
@@ -2073,15 +2162,12 @@ public final class TextCompositionEngine {
     }
     let (lines, rows, diagnostics, vectors) = try compose(request, fonts: fonts)
     result["token"] = token
-    result["layout"] = [
-      "lines": rows, "coveredLength": lines.last?.end ?? 0,
-      "textLength": request.text.utf16.count,
-    ]
+    let layout = LayoutGeometry(
+      lines: rows, coveredLength: lines.last?.end ?? 0, textLength: request.text.utf16.count)
     result["diagnostics"] = diagnostics
     if request.includeVectors == true { result["vectors"] = vectors }
     result["spans"] = canonical["spans"]
-    let output = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
-    try require(output.count <= 32_000_000, "Composition result exceeds bounds")
+    let output = try encodeResult(result, layout, field: .layout)
     let cost =
       output.count * 2 + request.text.utf8.count * 8
       + request.resources.reduce(0) { $0 + (fontCache[$1.digest]?.bytes ?? 0) }

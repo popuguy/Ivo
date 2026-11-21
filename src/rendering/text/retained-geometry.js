@@ -1,5 +1,29 @@
-const geometryOrigins = new WeakMap();
-export const glyphGeometryIdentity = (runs) => geometryOrigins.get(runs) || runs;
+const rememberedLayouts = new WeakMap();
+// Undo and tab navigation may restore an already-finished native result without
+// sending another request to the worker. Use that result for the following edit.
+export function restoreInteractiveLayout(result) {
+  rememberedLayouts.get(result)?.();
+  return result;
+}
+
+const translations = new WeakMap();
+const lineVectors = new WeakMap();
+
+// Each retained line uses its own absolute source coordinates. Ink shape,
+// outline identities and memory estimates can use the original arrays directly.
+export const originalLineGeometry = (line) => translations.get(line)?.origin || line;
+
+function vectorIds(line) {
+  let ids = lineVectors.get(line.runs);
+  if (!ids) {
+    const unique = new Set();
+    for (const run of line.runs)
+      for (const glyph of run.glyphs) if (glyph.vector) unique.add(glyph.vector);
+    ids = [...unique];
+    lineVectors.set(line.runs, ids);
+  }
+  return ids;
+}
 
 // Match only source intervals that can contribute either glyphs or boundary carets.
 function touching(ranges, start, end) {
@@ -58,59 +82,96 @@ function paragraphShape(request, paragraph, fonts) {
 }
 
 // Predict reusable rows without prescribing line breaks to either composer.
-function geometryCandidates(request, previous) {
+function geometryCandidates(request, sources) {
   const fonts = request.resources.map(({ id, digest, postscript }) => [id, digest, postscript]);
   const shapes = request.paragraphs.map((paragraph) => paragraphShape(request, paragraph, fonts));
   const matches = new Map(),
     candidates = [];
+  // A planned line already has an exact source interval and a physical fragment.
+  // Greedy composition still delegates both decisions to the native typesetter.
+  let placements;
+  if (request.mode === 'planned-lines-proof') {
+    placements = new Map();
+    let start = 0;
+    for (const placement of request.placements || []) {
+      placements.set(start, placement);
+      start = placement.end;
+    }
+  }
   for (const shape of shapes) {
-    const prior = shape && previous?.paragraphs.get(shape.key);
-    if (!prior) continue;
-    for (const [offset, entry] of prior) {
-      if (candidates.length === 4096) break;
-      const line = entry.line,
-        start = shape.start + offset,
-        end = start + line.end - line.start;
-      matches.set(start, entry);
-      candidates.push({
-        start,
-        end,
-        availableWidth: line.availableWidth,
-        originX: line.originX,
-        width: line.width,
-      });
+    if (!shape) continue;
+    for (const source of sources) {
+      const prior = source.paragraphs.get(shape.key);
+      if (!prior) continue;
+      for (const [offset, entry] of prior) {
+        if (candidates.length === 4096) break;
+        const line = entry.line;
+        const start = shape.start + offset;
+        const end = start + line.end - line.start;
+        if (matches.has(start)) continue;
+        if (placements) {
+          const target = placements.get(start);
+          if (
+            !target ||
+            target.end !== end ||
+            target.width !== line.availableWidth ||
+            target.left !== entry.left
+          )
+            continue;
+        }
+        matches.set(start, entry);
+        candidates.push({
+          start,
+          end,
+          availableWidth: line.availableWidth,
+          originX: line.originX,
+          width: line.width,
+        });
+      }
     }
   }
   return { shapes, matches, candidates };
 }
 
 function moveDetails(line, prior, from, to) {
-  const delta = to.start - from.start,
-    logical = to.logical - from.logical;
-  if (delta === 0 && logical === 0) return { ...line, runs: prior.runs, carets: prior.carets };
-  return {
+  const previous = translations.get(prior);
+  const origin = previous?.origin || prior;
+  // Always translate from the original arrays, even across many successive
+  // keystrokes. Offscreen lines consequently retain neither chains nor copies.
+  const delta = (previous?.delta || 0) + to.start - from.start;
+  const logical = (previous?.logical || 0) + to.logical - from.logical;
+  let runs, carets;
+  const moved = {
     ...line,
-    runs: prior.runs.map((run) => ({
-      ...run,
-      start: run.start + delta,
-      end: run.end + delta,
-      glyphs: run.glyphs.map((glyph) => ({
-        ...glyph,
-        index: glyph.index + delta,
-        end: glyph.end + delta,
-        sourceRanges: glyph.sourceRanges.map(([a, b]) => [a + logical, b + logical]),
-      })),
-    })),
-    carets: prior.carets.map((caret) => ({
-      ...caret,
-      index: caret.index + delta,
-      hitIndex: caret.hitIndex < 0 ? caret.hitIndex : caret.hitIndex + delta,
-      logicalCandidates: caret.logicalCandidates.map((n) => n + logical),
-    })),
+    get runs() {
+      if (delta === 0 && logical === 0) return origin.runs;
+      return (runs ??= origin.runs.map((run) => ({
+        ...run,
+        start: run.start + delta,
+        end: run.end + delta,
+        glyphs: run.glyphs.map((glyph) => ({
+          ...glyph,
+          index: glyph.index + delta,
+          end: glyph.end + delta,
+          sourceRanges: glyph.sourceRanges.map(([a, b]) => [a + logical, b + logical]),
+        })),
+      })));
+    },
+    get carets() {
+      if (delta === 0 && logical === 0) return origin.carets;
+      return (carets ??= origin.carets.map((caret) => ({
+        ...caret,
+        index: caret.index + delta,
+        hitIndex: caret.hitIndex < 0 ? caret.hitIndex : caret.hitIndex + delta,
+        logicalCandidates: caret.logicalCandidates.map((n) => n + logical),
+      })));
+    },
   };
+  translations.set(moved, { origin, delta, logical });
+  return moved;
 }
 
-function expandGeometry(result, request, shapes, matches, base) {
+function expandGeometry(result, request, shapes, matches) {
   if (
     result.sourceDigest !== request.sourceDigest ||
     !Array.isArray(result.layout?.lines) ||
@@ -144,20 +205,22 @@ function expandGeometry(result, request, shapes, matches, base) {
       line = moveDetails(header, old.line, old.row, row);
       reused = true;
       delete line.retainedGeometry;
-      if (line.runs !== old.line.runs)
-        geometryOrigins.set(line.runs, glyphGeometryIdentity(old.line.runs));
-      for (const run of line.runs)
-        for (const glyph of run.glyphs)
-          if (glyph.vector && !vectors.has(glyph.vector)) {
-            const vector = base.vectors.get(glyph.vector);
-            if (!vector) throw Error('Retained glyph outline missing.');
-            vectors.set(vector.id, vector);
-          }
+      for (const id of vectorIds(originalLineGeometry(line))) {
+        if (vectors.has(id)) continue;
+        const vector = old.vectors.get(id);
+        if (!vector) throw Error('Retained glyph outline missing.');
+        vectors.set(id, vector);
+      }
     }
     if (shape) {
       let lines = paragraphs.get(shape.key);
       if (!lines) paragraphs.set(shape.key, (lines = new Map()));
-      lines.set(header.start - shape.start, { row, line });
+      lines.set(header.start - shape.start, {
+        row,
+        line,
+        vectors,
+        left: request.placements?.[header.placementIndex]?.left,
+      });
     }
     return line;
   });
@@ -179,8 +242,13 @@ function expandGeometry(result, request, shapes, matches, base) {
  */
 export function createInteractiveTextPort(port) {
   if (!port) return port;
-  let previous;
+  let displayed, lastComposed;
   const registered = new WeakSet();
+  // Electron can carry a single verified string across the isolation boundary.
+  // Parse it here so thousands of glyph objects are built in their final realm.
+  const compose = port.composePacket
+    ? async (request) => JSON.parse(await port.composePacket(request)).result
+    : (request) => port.compose(request);
   async function send(request) {
     const resources = request.resources.map((resource) => {
       if (!registered.has(resource)) return resource;
@@ -189,14 +257,14 @@ export function createInteractiveTextPort(port) {
     });
     let result;
     try {
-      result = await port.compose({ ...request, resources });
+      result = await compose({ ...request, resources });
     } catch (error) {
       if (
         !resources.some((resource, i) => resource !== request.resources[i]) ||
         !/not registered|must be registered|font cache expired/i.test(error.message)
       )
         throw error;
-      result = await port.compose(request);
+      result = await compose(request);
     }
     for (const resource of request.resources) registered.add(resource);
     return result;
@@ -212,22 +280,33 @@ export function createInteractiveTextPort(port) {
         request.protocol < 2
       )
         return send(request);
-      const base = previous?.id === request.id && previous.mode === request.mode ? previous : null;
-      const { shapes, matches, candidates } = geometryCandidates(request, base);
+      const sources = [];
+      const planned = request.mode === 'planned-lines-proof';
+      for (const layout of [displayed, planned ? lastComposed : null]) {
+        if (layout?.id === request.id && layout.mode === request.mode && !sources.includes(layout))
+          sources.push(layout);
+      }
+      const { shapes, matches, candidates } = geometryCandidates(request, sources);
       const result = await send(
         candidates.length ? { ...request, retainedLines: candidates } : request,
       );
       let snapshot;
       try {
-        snapshot = expandGeometry(result, request, shapes, matches, base);
+        snapshot = expandGeometry(result, request, shapes, matches);
       } catch (error) {
         if (!candidates.length) throw error;
-        snapshot = expandGeometry(await send(request), request, shapes, null, null);
+        snapshot = expandGeometry(await send(request), request, shapes, null);
       }
       const { result: expanded, ...cache } = snapshot;
-      previous = (expanded.diagnostics || []).some((d) => d !== 'overset')
+      const layout = (expanded.diagnostics || []).some((d) => d !== 'overset')
         ? null
         : { id: request.id, mode: request.mode, ...cache };
+      lastComposed = layout;
+      displayed = layout;
+      if (layout)
+        rememberedLayouts.set(expanded, () => {
+          displayed = layout;
+        });
       return expanded;
     },
   };

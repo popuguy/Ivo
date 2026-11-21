@@ -57,6 +57,27 @@ test('native exclusions convert page, inset, scale and physical column origins e
   assert(nativeWrapColumns(doc, nativeFlowColumns(doc, flow)).every((c) => !c.obstacles.length));
 });
 
+test('consecutive source edits reuse wrap contours until artwork or frame geometry changes', () => {
+  const doc = createSceneDocument('Contour edits');
+  const page = doc.pages[0].id;
+  const frame = insertObject(doc, 'text', page, { x: 0, y: 0, w: 300, h: 200 });
+  const flow = startTextFlow(doc, frame.id);
+  const object = insertObject(doc, 'polygon', page, { x: 50, y: 60, w: 80, h: 40, stroke: 'none' });
+  setTextWrap(doc, [object.id], { mode: 'contour' });
+  const session = {};
+  const layout = (doc, owner) =>
+    nativeWrapColumns(doc, nativeFlowColumns(doc, doc.textFlows[0]), owner);
+  const original = layout(doc, session);
+  flow.html = '<p>Different text</p>';
+  assert.equal(layout(structuredClone(doc), session)[0].obstacles, original[0].obstacles);
+  object.x += 0.125;
+  const moved = layout(doc, session);
+  assert.notDeepEqual(moved[0].obstacles, original[0].obstacles);
+  assert.deepEqual(moved, layout(doc));
+  frame.ignoreTextWrap = true;
+  assert.deepEqual(layout(doc, session)[0].obstacles, []);
+});
+
 test('native wrapping source admission preserves unsupported source and exact geometry', () => {
   const source = {
       text: 'Plain text\u2029',

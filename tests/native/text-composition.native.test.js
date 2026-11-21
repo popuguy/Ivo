@@ -349,6 +349,18 @@ test(
     assert.equal((await service.compose(req)).layout.coveredLength, req.text.length);
     req.breaks = [6, req.text.length];
     await assert.rejects(service.compose(req), /grapheme boundary/);
+    for (const boundary of ['\n', '\u2028', '\u2029']) {
+      const multiline = await request('é' + boundary + 'xyz');
+      multiline.mode = 'measure-lines-proof';
+      multiline.candidates = [
+        { start: 2, end: 5 },
+        { start: 0, end: 2 },
+        { start: 0, end: 1 },
+      ];
+      assert.equal((await service.compose(multiline)).measurements.length, 3);
+      multiline.candidates.push({ start: 0, end: 3 });
+      await assert.rejects(service.compose(multiline), /crosses a forced break/);
+    }
     const fallback = await request('hello 😀');
     fallback.mode = 'measure-lines-proof';
     fallback.candidates = [{ start: 0, end: fallback.text.length }];

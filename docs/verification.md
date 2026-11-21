@@ -14,6 +14,10 @@ node tests/runtime/threaded-wrap/compare.mjs ../contour-study
 
 The full run uses nine different insertions, reports the first separately, then measures the median of the remaining eight. The Ivo endpoint requires all twelve frames to expose the same completed native composition. InDesign recomposes and reads the final frame. Physical typing and display latency use the separate release checks. One mask move is a geometry smoke test and an individual timing observation.
 
+The same fixture now exercises repeated insertion and removal of one character, seven consecutive new revisions while typing “weaving”, and Return. Each edit must preserve the source across the frames. Deleting the insertion must restore all twelve original frame endings. In three independent launches on the development Mac, the median warm passage took 65–66 ms. The preceding revision took 223 ms in a fresh run of the same harness. The corresponding medians for consecutive letters were 25–29 ms and 57 ms.
+
+Packaging runs nine passage edits on a fresh disposable vault. The release budgets for median and slowest settled layout are 95/160 ms for warm passages, 25/60 ms for a repeated character and 45/85 ms for consecutive revisions. A separate check types three unseen letters after pauses and measures changed glyph pixels outside the blinking caret. Its budgets are 80 ms median and 150 ms maximum. Set `IVO_WRAP_PIXELS=1` on the study command to record these pixel observations. The fixture keeps the source, frame assignments and individual timings in the report. The pixel check reads the editor's compositor surface. A macOS window capture and a physical keyboard-to-display measurement have different endpoints.
+
 Detached editing panels now follow their native document and active view. The native window suite covers switching between editing, reading, an empty tab and the graph, switching apps on macOS, and retargeting a palette across document windows. Find/Change bounds are exercised in wide and narrow viewports.
 
 ## Formatted text input and caret placement after a redraw — 20 November 2026

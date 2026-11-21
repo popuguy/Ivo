@@ -4469,7 +4469,12 @@ export function mountCanvasEditor(host, options) {
         .filter(Boolean),
     fragment: (id) => flowPlan.fragments.get(id),
     layoutKey: () => flowSignature + ':' + sceneRevision,
-    preview: (id) => world.querySelector(`[data-flow-frame="${CSS.escape(id)}"]`),
+    preview: (id) => {
+      const mounted = flowRenderCache.get(id)?.element;
+      return mounted && world.contains(mounted)
+        ? mounted
+        : world.querySelector(`[data-flow-frame="${CSS.escape(id)}"]`);
+    },
     onNativeCaret: (rect) => inputAnchor.update(rect, { measure: false }),
     activate: (id, event, destination) => {
       const native = activeText() && captureTextSelection(activeText());

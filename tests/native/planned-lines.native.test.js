@@ -440,7 +440,7 @@ test(
   'incremental editor output is identical to full Core Text across edits and shifted source ranges',
   mac,
   async (t) => {
-    const { createInteractiveTextPort } =
+    const { createInteractiveTextPort, restoreInteractiveLayout } =
       await import('../../src/rendering/text/retained-geometry.js');
     const service = await serviceFor(t),
       messages = [];
@@ -474,6 +474,9 @@ test(
         width: 300,
       }));
       if (options.left) Object.assign(req.placements.at(-1), { left: 2, width: 298 });
+      for (const [i, left] of (options.insets || []).entries()) {
+        Object.assign(req.placements[i], { left, width: 300 - left });
+      }
       if (options.style) req.runs[0].tracking = 10;
       if (options.protocol) {
         req.protocol = options.protocol;
@@ -489,14 +492,49 @@ test(
       }
       const actual = await port.compose(req);
       const expected = await service.compose(req);
-      assert.deepEqual(actual.layout, expected.layout);
+      if (options.readLater)
+        options.readLater.push(() => assert.deepEqual(actual.layout, expected.layout));
+      else assert.deepEqual(actual.layout, expected.layout);
       assert.deepEqual(actual.diagnostics, expected.diagnostics);
       assert.deepEqual(actual.vectors, expected.vectors);
       assert.ok(actual.token);
       return actual;
     }
+    const versionA = ['Æther', 'Baker', 'Contour edge', 'Right margin'];
+    const versionB = ['Turn', 'Œuvre', 'Contour edge', 'Right margin'];
+    const cached = await compare(versionA);
+    await compare(versionB, { insets: [0, 0, 12, 14] });
+    restoreInteractiveLayout(cached);
+    const mergedAt = messages.length;
+    await compare([versionA[0], ...versionB.slice(1)], { insets: [0, 0, 12, 0] });
+    assert.equal(
+      messages.length,
+      mergedAt + 1,
+      'Every retained outline belongs to its specific native result',
+    );
+    assert.equal(
+      messages[mergedAt].retainedLines.length,
+      4,
+      'Select matching text and physical fragments from both revisions',
+    );
     const paragraphs = ['Office filing', 'A second phrase', 'Shifted caret', 'A second phrase'];
-    await compare(paragraphs);
+    const original = await compare(paragraphs);
+    await compare(['Replacement A', 'Replacement B', 'Replacement C', 'Replacement D']);
+    restoreInteractiveLayout(original);
+    const restoredAt = messages.length;
+    await compare(['x' + paragraphs[0], ...paragraphs.slice(1)]);
+    assert.equal(
+      messages[restoredAt].retainedLines.length,
+      3,
+      'Undo restores the source for the next edit',
+    );
+    // The user can type several distinct characters before scrolling to a
+    // later page. Every past snapshot must still map the full source exactly.
+    const readLater = [];
+    for (const prefix of ['x', 'xy', 'xyz', 'xy', '']) {
+      await compare([prefix + paragraphs[0], ...paragraphs.slice(1)], { readLater });
+    }
+    for (const verify of readLater) verify();
     const start = messages.length;
     const shifted = await compare(['The first paragraph changed', ...paragraphs.slice(1)]);
     assert.ok(messages[start].retainedLines.some((line) => line.start > 0));

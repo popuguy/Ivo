@@ -331,6 +331,33 @@ test('native driver preserves authored source/objects, returns SVG and canonical
   await composeNativeTextFlows(doc, native);
   assert.equal(native.calls.length, 2, 'Text area width changes invalidate native lines');
 });
+test('an edit during native composition cannot cache old glyphs as the newer source', async () => {
+  const doc = fixture();
+  const native = port();
+  let started, release;
+  const pending = new Promise((resolve) => {
+    started = resolve;
+  });
+  const resume = new Promise((resolve) => {
+    release = resolve;
+  });
+  const options = {
+    compose: async (request) => {
+      started();
+      await resume;
+      return native.compose(request);
+    },
+  };
+  const original = composeNativeTextFlows(doc, options);
+  await pending;
+  doc.textFlows[0].html = 'Changed while reflow was pending';
+  release();
+  const before = await original;
+  const current = await composeNativeTextFlows(doc, options);
+  assert.notEqual(current.compositions[0].source.text, before.compositions[0].source.text);
+  assert.match(current.compositions[0].source.text, /Changed while reflow was pending/);
+});
+
 test('synchronous native source guard checks effective styles and exact faces without loading bytes', () => {
   const doc = fixture({ text: 'guard' }),
     savedFetch = globalThis.fetch;

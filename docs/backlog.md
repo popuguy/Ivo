@@ -2,7 +2,7 @@
 
 ## Remaining text work
 
-- **Long wrapped flows.** The six-page contour benchmark still diverges from InDesign at the sixth box. Compare the line fragments on page three and reduce the time from an upstream text edit to the last box updating. Keep the held-key visual feedback check as an independent measure.
+- **Long wrapped flows.** The six-page contour benchmark still diverges from InDesign at the sixth box. Compare the line fragments on page three. Keep measuring the first visible glyph after idle, distinct consecutive edits, and propagation through the final frame. Investigate delays between the completed layout and the first window frame showing it.
 
 - **Line breaks and spacing.** Refine paragraph break choices in narrow columns, especially emergency compression. Extend hyphenation beyond the seven offline dictionaries and test longer mixed-language prose.
 - **Page layout.** Add decimal/right-aligned tabs and leaders, wrapping to image outlines and top-margin-relative frame grids. Qualify grid with vertical Justify and more complex wrap contours. Check the last unaligned baseline near the bottom inset of a frame. Refine sloped contour intersections.

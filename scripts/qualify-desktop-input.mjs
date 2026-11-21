@@ -19,6 +19,20 @@ export async function qualifyDesktopInput() {
   const reports = process.env.IVO_LATENCY_REPORT_DIR;
   if (reports) await mkdir(reports, { recursive: true });
   const failed = [];
+  async function run(name, runner, env) {
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(electron, [runner], {
+        cwd: project,
+        env,
+        stdio: 'inherit',
+        timeout: 180_000,
+        killSignal: 'SIGKILL',
+      });
+      child.once('error', reject);
+      child.once('exit', (code, signal) => resolve(signal || code));
+    });
+    if (result !== 0) failed.push(`${name} (${result})`);
+  }
   for (const [composer, panel, scene = 'linked'] of scenarios) {
     const name = [composer, panel, ...(scene === 'linked' ? [] : [scene])].join('-');
     console.log(`Measuring input in ${name}`);
@@ -31,19 +45,16 @@ export async function qualifyDesktopInput() {
     };
     delete env.IVO_RESPONSIVENESS_REPORT;
     if (reports) env.IVO_RESPONSIVENESS_REPORT = path.resolve(reports, name + '.json');
-    const result = await new Promise((resolve, reject) => {
-      const child = spawn(electron, ['tests/runtime/responsiveness/runner.mjs'], {
-        cwd: project,
-        env,
-        stdio: 'inherit',
-        timeout: 180_000,
-        killSignal: 'SIGKILL',
-      });
-      child.once('error', reject);
-      child.once('exit', (code, signal) => resolve(signal || code));
-    });
-    if (result !== 0) failed.push(`${name} (${result})`);
+    await run(name, 'tests/runtime/responsiveness/runner.mjs', env);
   }
+  console.log('Measuring six-page threaded reflow');
+  await run('threaded-wrap', 'tests/runtime/threaded-wrap/runner.mjs', {
+    ...process.env,
+    IVO_WRAP_BUDGET: '1',
+    IVO_TEST_BACKGROUND: '1',
+    IVO_WRAP_STUDY_DIR: '',
+    IVO_WRAP_PIXELS: '1',
+  });
   if (failed.length) throw new Error('Input qualification failed for ' + failed.join(', '));
 }
 

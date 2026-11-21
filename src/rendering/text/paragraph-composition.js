@@ -174,7 +174,12 @@ function paragraphIdentity(request, paragraph) {
  */
 export function createParagraphComposer(measure) {
   const cache = new Map();
-  let bytes = 0;
+  // A contour layout may contain thousands of coordinates. Give each exact
+  // geometry a small identity shared by every paragraph's placement decisions.
+  const layouts = new Map();
+  let bytes = 0,
+    layoutBytes = 0,
+    nextLayout = 0;
   const trim = () => {
     while (cache.size > CACHE_ENTRIES || bytes > CACHE_BYTES) {
       const [oldest, value] = cache.entries().next().value;
@@ -182,6 +187,29 @@ export function createParagraphComposer(measure) {
       bytes -= value.bytes;
     }
   };
+  function identifyLayout(shape) {
+    const key = JSON.stringify(shape);
+    let id = layouts.get(key);
+    if (id !== undefined) {
+      layouts.delete(key);
+      layouts.set(key, id);
+      return id;
+    }
+    id = ++nextLayout;
+    const size = key.length * 2;
+    if (size > CACHE_BYTES / 8) return id;
+    layouts.set(key, id);
+    layoutBytes += size;
+    bytes += size;
+    while (layouts.size > 16 || layoutBytes > CACHE_BYTES / 8) {
+      const oldest = layouts.keys().next().value;
+      layouts.delete(oldest);
+      layoutBytes -= oldest.length * 2;
+      bytes -= oldest.length * 2;
+    }
+    trim();
+    return id;
+  }
   const rememberDecision = (entry, key, value) => {
     const retained = cache.get(entry.key) === entry,
       prior = entry.decisions.get(key),
@@ -473,10 +501,17 @@ export function createParagraphComposer(measure) {
         for (const paragraph of group.paragraphs) paragraph.entry = entry;
       }
       if (frameFlow) {
-        const result = await fitFrameParagraphs(paragraphs, columns, work, rememberDecision, mode, {
-          states: maxStates,
-          candidates: maxCandidates,
-        });
+        const result = await fitFrameParagraphs(
+          paragraphs,
+          columns,
+          work,
+          { identifyLayout, rememberDecision },
+          mode,
+          {
+            states: maxStates,
+            candidates: maxCandidates,
+          },
+        );
         return { ...result, work: { ...result.work, cacheEntries: cache.size, cacheBytes: bytes } };
       }
       const breaks = [];

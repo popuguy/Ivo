@@ -86,6 +86,9 @@ const metrics = (frame) => ({
 });
 /** Native browser column composition with derived fragments; canonical textFlow source is never split or rewritten. */
 export function layoutDocumentTextFlows(doc, { allowPages = true, objectWrap = true } = {}) {
+  // The native compositor may own every flow. A remaining frameOptions on
+  // those objects must not trigger a second projection of the entire scene.
+  if (!doc.textFlows?.length) return { fragments: new Map(), status: new Map(), changed: false };
   if (objectWrap && documentHasObjectWrap(doc)) {
     const wrapped = (doc.textFlows || []).filter(
       (flow) => !flow.composition && flowHasObjectWrap(doc, flow),

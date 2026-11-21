@@ -1,4 +1,4 @@
-import { glyphGeometryIdentity } from './retained-geometry.js';
+import { originalLineGeometry } from './retained-geometry.js';
 import { escapeHTML as esc } from '../../shared/html/sanitize.js';
 import { characterInkBox, characterDecorationY } from '../../domain/text/character-geometry.js';
 import { runExtent, runCaret } from '../../domain/text/run-geometry.js';
@@ -111,8 +111,8 @@ export function composedSVG(
       linkRegions = [];
     if (![line.baseline, line.ascent, line.descent].every(finite))
       throw Error('Invalid composed line geometry.');
-    const identity =
-      plain && line.runs.every((run) => run.textColor) && glyphGeometryIdentity(line.runs);
+    const inkRuns = originalLineGeometry(line).runs;
+    const identity = plain && inkRuns.every((run) => run.textColor) && inkRuns;
     const glyphScale = (line.wordSpacing?.glyphPercentage ?? 100) / 100;
     if (!Number.isFinite(glyphScale) || glyphScale < 0.5 || glyphScale > 2)
       throw Error('Invalid justified glyph scale.');

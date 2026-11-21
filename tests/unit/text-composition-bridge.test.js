@@ -215,7 +215,7 @@ test('character transport requires protocol4 and strict bounded scalar/feature v
   };
   assert.equal(validateCompositionRequest(planned), planned);
 });
-function fixture({ compose } = {}) {
+function fixture({ compose, composePacket } = {}) {
   let handler,
     closes = 0,
     starts = 0,
@@ -227,6 +227,12 @@ function fixture({ compose } = {}) {
         (async (request) => {
           calls.push(request);
           return { token };
+        }),
+      composePacket:
+        composePacket ||
+        (async (request) => {
+          calls.push(request);
+          return { token, packet: JSON.stringify({ id: 'text-1', ok: true, result: { token } }) };
         }),
       pdf: async (...args) => {
         calls.push(args);
@@ -260,7 +266,7 @@ test('text composition bridge scopes native PDF tokens to verified window/job an
   assert.deepEqual(f.stats().calls[1], [token, { invisible: true }]);
   f.switchOwner();
   await assert.rejects(f.call('pdf', token), /this window/);
-  await f.call('compose', request());
+  assert.equal(JSON.parse(await f.call('composePacket', request())).result.token, token);
   await f.call('pdf', token, { invisible: false });
   assert.equal(f.stats().starts, 1);
   f.bridge.close();
@@ -286,14 +292,16 @@ test('byte DTO validation rejects filesystem selectors, large data, nested objec
 });
 
 test('late composition result is rejected when its requesting owner changes', async () => {
-  let resolve;
-  const f = fixture({ compose: () => new Promise((done) => (resolve = done)) });
-  const result = f.call('compose', request());
-  await new Promise((done) => setImmediate(done));
-  f.switchOwner();
-  resolve({ token });
-  await assert.rejects(result, /window changed/);
-  f.bridge.close();
+  for (const action of ['compose', 'composePacket']) {
+    let resolve;
+    const f = fixture({ [action]: () => new Promise((done) => (resolve = done)) });
+    const result = f.call(action, request());
+    await new Promise((done) => setImmediate(done));
+    f.switchOwner();
+    resolve({ token, packet: '{"result":{}}' });
+    await assert.rejects(result, /window changed/);
+    f.bridge.close();
+  }
 });
 
 test('regular and PDF preloads expose only compose/PDF methods over fixed IPC channels', async () => {
@@ -312,15 +320,22 @@ test('regular and PDF preloads expose only compose/PDF methods over fixed IPC ch
         },
       },
     );
-    assert.deepEqual(Object.keys(globals.ivoTextComposition), ['compose', 'pdf']);
+    const editing = filename === 'preload.cjs';
+    assert.deepEqual(
+      Object.keys(globals.ivoTextComposition),
+      editing ? ['compose', 'composePacket', 'pdf'] : ['compose', 'pdf'],
+    );
     globals.ivoTextComposition.compose({ test: true });
     globals.ivoTextComposition.pdf(token, { invisible: true });
     assert.equal(calls[0][0], 'ivo:text-composition');
     assert.equal(calls[0][1], 'compose');
     assert.equal(calls[1][0], 'ivo:text-composition');
     assert.equal(calls[1][1], 'pdf');
-    if (filename === 'preload.cjs')
+    if (editing) {
       assert.equal(globals.ivoNative.textComposition, globals.ivoTextComposition);
+      globals.ivoTextComposition.composePacket({ test: true });
+      assert.deepEqual(calls[2], ['ivo:text-composition', 'composePacket', { test: true }]);
+    }
   }
 });
 

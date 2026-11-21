@@ -67,19 +67,28 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
         try {
           if (line.length > MAX_LINE)
             throw Error('Native composition response exceeded its bounds.');
-          const value = JSON.parse(line.toString('utf8')),
+          const packet = line.toString('utf8'),
+            value = JSON.parse(packet),
             job = pending.get(value.id);
           if (
             !job ||
             typeof value.ok !== 'boolean' ||
-            (value.ok && (!value.result || typeof value.result !== 'object')) ||
+            (value.ok &&
+              (!value.result ||
+                typeof value.result !== 'object' ||
+                (job.asPacket && Object.keys(value).length !== 3))) ||
             (!value.ok && typeof value.error !== 'string')
           )
             throw Error('Invalid native composition response.');
           clearTimeout(job.timer);
           pending.delete(value.id);
           queuedBytes -= job.bytes;
-          if (value.ok) job.resolve(value.result);
+          if (value.ok)
+            job.resolve({
+              result: value.result,
+              responseBytes: line.length,
+              packet: job.asPacket ? packet : undefined,
+            });
           else
             job.reject(
               failure(value.error.slice(0, 1000), /not registered|token expired/.test(value.error)),
@@ -109,7 +118,7 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
     });
     return current;
   }
-  function invoke(message) {
+  function invoke(message, asPacket = false) {
     let current;
     try {
       current = start();
@@ -126,7 +135,7 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
       const timer = setTimeout(() => {
         if (pending.has(id)) stop(failure('Native composition timed out.', true));
       }, timeout);
-      pending.set(id, { resolve, reject, timer, bytes: wire.length });
+      pending.set(id, { resolve, reject, timer, bytes: wire.length, asPacket });
       queuedBytes += wire.length;
       current.stdin.write(wire);
     });
@@ -207,19 +216,20 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
         sourceDigest: result.sourceDigest,
       }),
     );
-  async function composePrepared(request, retry = true, remember = true) {
+  async function composePrepared(request, { remember = true, asPacket = false } = {}) {
     let payload = JSON.stringify(wireRequest(request));
     if (Buffer.byteLength(payload) > MAX_INPUT)
       throw Error('Composition request exceeds its bounds.');
-    let result;
+    let response;
     try {
-      result = await invoke({ payload });
+      response = await invoke({ payload }, asPacket);
     } catch (error) {
-      if (!retry || !error.recoverable || closed) throw error;
+      if (!error.recoverable || closed) throw error;
       known.clear();
       payload = JSON.stringify(wireRequest(request, true));
-      result = await invoke({ payload });
+      response = await invoke({ payload }, asPacket);
     }
+    const { result, responseBytes } = response;
     if (
       ![1, 2, 3, 4, 5, 6].includes(request.protocol) ||
       result.protocol !== request.protocol ||
@@ -235,8 +245,8 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
       throw Error('Native composition result identity mismatch.');
     for (const resource of request.resources) known.add(resource.digest);
     if (result.token && remember) {
-      const cost =
-        Buffer.byteLength(JSON.stringify(request)) + Buffer.byteLength(JSON.stringify(result));
+      // The pipe already measured this result, including its envelope.
+      const cost = Buffer.byteLength(JSON.stringify(request)) + responseBytes;
       const previous = snapshots.get(result.token);
       if (previous) {
         snapshotBytes -= previous.cost;
@@ -258,11 +268,14 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
         snapshotBytes += cost;
       }
     }
-    return result;
+    return asPacket ? { token: result.token, packet: response.packet } : result;
   }
   return {
     compose(request) {
       return Promise.resolve().then(() => composePrepared(prepare(request)));
+    },
+    composePacket(request) {
+      return Promise.resolve().then(() => composePrepared(prepare(request), { asPacket: true }));
     },
     async pdf(token, { invisible = true } = {}) {
       if (
@@ -274,7 +287,7 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
       const remembered = snapshots.get(token);
       async function recover() {
         if (!remembered) throw Error('Composition snapshot expired. Compose the source again.');
-        const result = await composePrepared(remembered.request, true, false);
+        const result = await composePrepared(remembered.request, { remember: false });
         if (result.token !== token || fingerprint(result) !== remembered.fingerprint)
           throw Error(
             'Composition geometry changed after worker recovery. Compose the source again.',
@@ -284,11 +297,11 @@ export function createTextComposition(executable, { spawn = spawnProcess, timeou
       if (!child || remembered?.generation !== generation) await recover();
       let result;
       try {
-        result = await invoke({ action: 'pdf', token, invisible });
+        ({ result } = await invoke({ action: 'pdf', token, invisible }));
       } catch (error) {
         if (!error.recoverable || closed) throw error;
         await recover();
-        result = await invoke({ action: 'pdf', token, invisible });
+        ({ result } = await invoke({ action: 'pdf', token, invisible }));
       }
       if (
         result.token !== token ||

@@ -44,8 +44,13 @@ test('paragraph protocol results must match the requested version, including wor
   assert.equal((await service.compose(req)).protocol, 2);
   factory.workers[0].kill();
   assert.equal((await service.compose(req)).protocol, 2);
+  const { token: owned, packet } = await service.composePacket(req);
+  const geometry = await service.compose(req);
+  assert.equal(owned, geometry.token);
+  assert.deepEqual(JSON.parse(packet).result, geometry);
   downgrade = true;
   await assert.rejects(service.compose(req), /identity mismatch/);
+  await assert.rejects(service.composePacket(req), /identity mismatch/);
 });
 function workerFactory(handle) {
   const workers = [];
@@ -159,6 +164,24 @@ test('native response protocol errors reject pending operations and stop the wor
   const service = createTextComposition('/native/helper', factory);
   t.after(() => service.close());
   await assert.rejects(service.compose(request()), /Invalid native composition response/);
+  assert(factory.workers[0].killed);
+});
+
+test('serialized responses expose only the validated success envelope', async (t) => {
+  const factory = workerFactory((message, worker) => {
+    worker.reply({
+      id: message.id,
+      ok: true,
+      result: {
+        ...result(JSON.parse(message.payload)),
+        requestDigest: createHash('sha256').update(message.payload).digest('hex'),
+      },
+      extraDiagnostic: 'internal detail',
+    });
+  });
+  const service = createTextComposition('/native/helper', factory);
+  t.after(() => service.close());
+  await assert.rejects(service.composePacket(request()), /Invalid native composition response/);
   assert(factory.workers[0].killed);
 });
 

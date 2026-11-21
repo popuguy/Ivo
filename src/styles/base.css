@@ -3068,6 +3068,12 @@ dialog li {
 .native-flow-column {
   overflow: hidden;
 }
+/* Each column already has explicit dimensions. Distant columns can receive
+   new vector ink without forcing the browser to lay out their glyph trees.
+   Overhanging ink needs its own clip outside the column's border box. */
+.canvas-world .native-flow-column:not([data-bottom-overhang]) {
+  content-visibility: auto;
+}
 .canvas-text:has(> [data-bottom-overhang]),
 .native-flow-column[data-bottom-overhang],
 .native-flow-column[data-bottom-overhang] > .composed-text {

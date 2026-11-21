@@ -6,7 +6,7 @@ const assert = (ok, message) => {
 };
 const tick = () => new Promise((r) => requestAnimationFrame(r));
 window.study = async () => {
-  const { doc, assets, spec, trials } = await window.nativeEditorTest.load();
+  const { doc, assets, spec, trials, measurePixels } = await window.nativeEditorTest.load();
   const host = document.getElementById('host'),
     ids = doc.textFlows[0].frameIds;
   const urls = new Map();
@@ -185,6 +185,86 @@ window.study = async () => {
       JSON.stringify(reset.frames) === JSON.stringify(baseline.frames),
       'Unstable frame breaks after deleting insertion',
     );
+  }
+  report.characters = [];
+  async function restoreOriginal() {
+    await window.nativeEditorTest.key('Backspace');
+    const reset = frames(await ready((p) => p.text === original, 'remove typed text'));
+    assert(
+      reset.frames.every((s, j) => s === baseline.frames[j]),
+      'Keystroke changed frame breaks after restoration',
+    );
+  }
+  for (let i = 0; i < trials; i++) {
+    select(0);
+    await tick();
+    const start = performance.now();
+    await window.nativeEditorTest.key('x');
+    const completed = await ready((p) => p.text === 'x' + original, 'single keystroke');
+    const ms = performance.now() - start;
+    const after = frames(completed);
+    assert(!after.overset && after.frames.join('') === 'x' + canonical, 'Keystroke lost source');
+    report.characters.push({
+      ms,
+      changedFrames: after.frames.filter((s, j) => s !== baseline.frames[j]).length,
+    });
+    await restoreOriginal();
+  }
+  // Consecutive, previously unseen revisions expose costs that a repeated
+  // insert/delete pair can hide in an exact-result cache.
+  select(0);
+  let prefix = '';
+  report.typing = [];
+  for (const key of 'weaving') {
+    prefix += key;
+    const start = performance.now();
+    await window.nativeEditorTest.key(key);
+    const after = await ready((p) => p.text === prefix + original, 'type ' + key);
+    const ms = performance.now() - start;
+    const sample = frames(after);
+    assert(!sample.overset && sample.frames.join('') === prefix + canonical, 'Typing lost source');
+    report.typing.push({
+      key,
+      ms,
+      changedFrames: sample.frames.filter((s, j) => s !== baseline.frames[j]).length,
+    });
+  }
+  select(prefix.length);
+  await restoreOriginal();
+  select(0);
+  await tick();
+  const enterStart = performance.now();
+  await window.nativeEditorTest.key('Enter');
+  const entered = await ready((p) => p.text === '\u2029' + original, 'insert paragraph break');
+  const enterMs = performance.now() - enterStart;
+  const split = frames(entered);
+  assert(!split.overset && split.frames.join('') === '\u2029' + canonical, 'Return lost source');
+  report.paragraphBreak = {
+    ms: enterMs,
+    changedFrames: split.frames.filter((s, j) => s !== baseline.frames[j]).length,
+  };
+  await restoreOriginal();
+  if (measurePixels) {
+    report.idleInk = [];
+    for (const key of 'kqz') {
+      select(0);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      // A few glyphs to the right of the insertion change visibly. This
+      // region excludes both the old and new positions of the blinking caret.
+      const ink = host.querySelector('[data-line-start="0"] use[data-glyph-offset="4"]');
+      const { x, y, width, height } = ink.getBoundingClientRect();
+      const result = await window.nativeEditorTest.capture({
+        key,
+        region: { x, y, width: width + 20, height },
+      });
+      const sample = frames(await ready((p) => p.text === key + original, 'first ink after idle'));
+      assert(
+        !sample.overset && sample.frames.join('') === key + canonical,
+        'First key after idle lost source',
+      );
+      report.idleInk.push(result);
+      await restoreOriginal();
+    }
   }
   const mask = doc.blocks.find((b) => b.type === 'polygon'),
     initialX = mask.x;

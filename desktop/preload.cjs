@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 const textComposition = Object.freeze({
   compose: (request) => ipcRenderer.invoke('ivo:text-composition', 'compose', request),
+  composePacket: (request) => ipcRenderer.invoke('ivo:text-composition', 'composePacket', request),
   pdf: (token, options = {}) => ipcRenderer.invoke('ivo:text-composition', 'pdf', token, options),
 });
 contextBridge.exposeInMainWorld('ivoTextComposition', textComposition);

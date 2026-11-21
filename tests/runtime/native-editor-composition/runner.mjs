@@ -44,6 +44,10 @@ app
             nativeCalls++;
             return service.compose(request);
           },
+          composePacket(request) {
+            nativeCalls++;
+            return service.composePacket(request);
+          },
           pdf: service.pdf,
           close: service.close,
         }),
