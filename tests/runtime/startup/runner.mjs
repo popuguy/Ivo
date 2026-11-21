@@ -78,7 +78,11 @@ ipcMain.handle = (channel, callback) =>
     )
       writes++;
     if (channel === 'ivo:vaults' && args[0] === 'list' && holdManager) await managerGate;
-    if (channel === 'ivo:text-composition' && args[0] === 'compose' && holdNative) {
+    if (
+      channel === 'ivo:text-composition' &&
+      ['compose', 'composePacket'].includes(args[0]) &&
+      holdNative
+    ) {
       nativeStarted = true;
       await nativeGate;
     }
