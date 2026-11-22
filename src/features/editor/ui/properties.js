@@ -169,7 +169,7 @@ export function propertiesContent({
       section(
         'Table',
         '<button data-canvas-command="table-options">Table Options…</button>' +
-          (parentMode || item.parentId
+          (parentMode || item.parentId || item.extensions?.ivoAnchor
             ? ''
             : '<button data-canvas-command="continue-table">Continue on Next Page</button>'),
       ),

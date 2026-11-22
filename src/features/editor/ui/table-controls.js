@@ -1,5 +1,19 @@
+import { applyCellStyle, defineCellStyle } from '../../../domain/documents/table-cell-styles.js';
+import { escapeHTML } from '../../../shared/html/sanitize.js';
+import { measureInlineTableHeight } from '../../../rendering/table-thread-layout.js';
+import { insertAnchoredObject } from '../text/anchored-objects.js';
+import { textFlowForFrame } from '../../../domain/documents/text-flows.js';
 import { tableThreads } from '../../../domain/documents/table-threads.js';
 import { tableCellId } from '../text/table-proofing.js';
+import { cellTextMarkup } from '../../../rendering/table-cell-text.js';
+import { setCellRuns } from '../../../domain/documents/inline-tables.js';
+import {
+  readCellContent,
+  selectionOffsets,
+  restoreCellSelection,
+  insertCellClipboard,
+  readCellGrid,
+} from '../text/table-cell-input.js';
 import { rangeFromBookmark } from '../../../shared/dom/text-selection.js';
 import { columnPoints, resizeColumn } from '../../../domain/geometry/table-columns.js';
 import { LIMITS } from '../../../domain/documents/constants.js';
@@ -10,6 +24,7 @@ import {
   reshapeTable,
   validateTable,
   tableCellLimit,
+  tableCoverage,
 } from '../../../domain/documents/tables.js';
 import {
   continueTableOnNextPage,
@@ -24,9 +39,11 @@ const coordinate = (cell) => ({
   column: Number(cell.dataset.tableColumn),
 });
 const selectField = (name, label, choices, value) =>
-  `<label>${label}<select name="${name}">${choices.map(([key, title]) => `<option value="${key}" ${key === value ? 'selected' : ''}>${title}</option>`).join('')}</select></label>`;
+  `<label>${label}<select name="${name}">${choices.map(([key, title]) => `<option value="${escapeHTML(key)}" ${key === value ? 'selected' : ''}>${escapeHTML(title)}</option>`).join('')}</select></label>`;
 const operations = [
   ['format', 'Format table'],
+  ['apply-style', 'Apply cell style'],
+  ['define-style', 'Define cell style'],
   ['even-columns', 'Distribute columns evenly'],
   ['insert-row', 'Insert row below'],
   ['delete-row', 'Delete row'],
@@ -80,6 +97,8 @@ export function installTableControls({
     clearTimeout(timer);
     if (!current?.before) return;
     const { before, view, owner } = current;
+    if (current.block.extensions?.ivoAnchor)
+      current.block.h = measureInlineTableHeight(current.block);
     current.before = null;
     if (owner === doc())
       onCommit(before, { label: 'Edit table cell', viewBefore: view, viewAfter: captureView() });
@@ -91,7 +110,10 @@ export function installTableControls({
     const { input, cell, block, row, column, edited } = current;
     current = null;
     input.remove();
-    cell.textContent = block.table.cells[row][column].replace(/\r\n?/g, '\n');
+    cell.innerHTML = cellTextMarkup(
+      block.table.cells[row][column],
+      block.table.cellRuns?.[row + ',' + column],
+    );
     reflow(block, edited);
   }
   function cellsFor(id) {
@@ -117,15 +139,34 @@ export function installTableControls({
     );
     if (!cell) return false;
     select(cell.closest('[data-object]').dataset.object);
-    const input = document.createElement('textarea');
+    const input = document.createElement('div');
+    input.contentEditable = 'true';
+    input.setAttribute('role', 'textbox');
+    input.setAttribute('aria-multiline', 'true');
     input.dataset.tableEditor = '';
     input.setAttribute('aria-label', `Row ${row + 1}, column ${column + 1}`);
-    input.value = block.table.cells[row][column];
+    const initial = block.table.cells[row][column];
+    const cellStyle = block.table.cellStyles?.find(
+      (s) => s.id === block.table.appliedCellStyles?.[row + ',' + column],
+    );
+    if (cellStyle) {
+      input.style.padding = cellStyle.inset + 'px';
+      if (cellStyle.fill) input.style.backgroundColor = cellStyle.fill;
+    }
+    input.innerHTML = cellTextMarkup(
+      initial,
+      block.table.cellRuns?.[row + ',' + column],
+      undefined,
+      false,
+    );
     const total = block.table.cells.reduce(
       (n, values) => values.reduce((sum, t) => sum + t.length, n),
       0,
     );
-    input.maxLength = Math.min(tableCellLimit, 1000000 - total + input.value.length);
+    const otherRuns =
+      Object.values(block.table.cellRuns || {}).reduce((count, runs) => count + runs.length, 0) -
+      (block.table.cellRuns?.[row + ',' + column]?.length || 0);
+    const maxLength = Math.min(tableCellLimit, 1000000 - total + initial.length);
     last = { id: block.id, row, column };
     current = { owner, block, cell, input, row, column, before: null };
     cell.append(input);
@@ -135,19 +176,32 @@ export function installTableControls({
       input.addEventListener(name, (e) => e.stopPropagation());
     input.addEventListener('paste', (event) => {
       event.stopPropagation();
-      const text = event.clipboardData?.getData('text/plain');
-      if (
-        !text ||
-        (!text.includes('\t') && !/<table[\s>]/i.test(event.clipboardData.getData('text/html')))
-      )
-        return;
       event.preventDefault();
+      const text = event.clipboardData?.getData('text/plain') || '';
+      const html = event.clipboardData?.getData('text/html') || '';
+      if (!text && !html) return;
       if (!allowed() || owner !== doc() || !editable(owner, block)) return;
       try {
-        const next = putTableCells(block.table, row, column, readTableText(text));
+        if (!text.includes('\t') && !/<table[\s>]/i.test(html)) {
+          insertCellClipboard(input, html, text);
+          return;
+        }
+        const rich = readCellGrid(html);
+        const values = rich
+          ? rich.map((cells) => cells.map((cell) => cell.value))
+          : readTableText(text);
+        const next = putTableCells(block.table, row, column, values);
+        if (rich) {
+          rich.forEach((cells, r) =>
+            cells.forEach((cell, c) => setCellRuns(next, row + r, column + c, cell.runs)),
+          );
+          validateTable(next);
+        }
         finish();
         mutate(() => {
           block.table = next;
+          if (next.cellRuns) owner.canvasVersion = Math.max(owner.canvasVersion, 37);
+          if (block.extensions?.ivoAnchor) block.h = measureInlineTableHeight(block);
         }, 'Paste table cells');
         edit(
           cellsFor(id).find(
@@ -161,13 +215,29 @@ export function installTableControls({
     input.addEventListener('input', (event) => {
       event.stopPropagation();
       if (!current || current.input !== input || owner !== doc() || !editable(owner, block)) return;
-      if (block.table.cells[row][column] === input.value) return;
+      const { value, runs } = readCellContent(input);
+      const previous = block.table.cells[row][column],
+        previousRuns = block.table.cellRuns?.[row + ',' + column] || [];
+      if (value.length > maxLength || otherRuns + runs.length > 65536) {
+        const { start } = selectionOffsets(input);
+        input.innerHTML = cellTextMarkup(previous, previousRuns, undefined, false);
+        restoreCellSelection(
+          input,
+          Math.min(start, previous.length),
+          Math.min(start, previous.length),
+        );
+        notify?.('The cell exceeds the table text or formatting limit.');
+        return;
+      }
+      if (previous === value && JSON.stringify(previousRuns) === JSON.stringify(runs)) return;
       if (!current.before) {
         current.before = structuredClone(owner);
         current.view = captureView();
       }
       current.edited = true;
-      block.table.cells[row][column] = input.value;
+      block.table.cells[row][column] = value;
+      setCellRuns(block.table, row, column, runs);
+      if (runs.length) owner.canvasVersion = Math.max(owner.canvasVersion, 37);
       clearTimeout(timer);
       timer = setTimeout(flush, 350);
     });
@@ -177,6 +247,12 @@ export function installTableControls({
     input.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.isComposing) return;
+      const format = { b: 'bold', i: 'italic', u: 'underline' }[e.key.toLowerCase()];
+      if (format && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        document.execCommand(format);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && !e.altKey) {
         e.preventDefault();
         void run('find-change');
@@ -243,12 +319,12 @@ export function installTableControls({
     });
     return true;
   }
-  function open(name) {
+  function open(name, anchor) {
     if (!allowed()) return;
     finish();
     const owner = doc();
     if (name === 'insert-table') {
-      const context = insertionContext();
+      const context = insertionContext(anchor?.frame.pageId);
       form(
         'Insert Table',
         numberField('rows', 'Rows', 4, 1, 256) +
@@ -272,6 +348,13 @@ export function installTableControls({
             page = owner.pages.find((p) => p.id === context.pageId);
           if (!page || (context.parentId && (!parent || !available(owner, parent))))
             throw Error('Choose an editable page.');
+          const frame = anchor?.frame;
+          if (
+            frame &&
+            (!available(owner, frame) ||
+              (textFlowForFrame(owner, frame) || frame).html !== anchor.html)
+          )
+            throw Error('The text frame changed. Place the insertion point again.');
           const margin = parent ? 0 : Math.min(36, page.width / 8, page.height / 8);
           let block;
           mutate(() => {
@@ -286,6 +369,21 @@ export function installTableControls({
               ),
               table,
             });
+            if (frame) {
+              // The table starts at the width of the containing text column.
+              const options = frame.frameOptions || {};
+              const columns = options.columns || 1;
+              block.w = Math.max(
+                1,
+                (frame.w -
+                  (options.insetLeft || 0) -
+                  (options.insetRight || 0) -
+                  (columns - 1) * (options.gutter ?? 12)) /
+                  columns,
+              );
+              block.h = measureInlineTableHeight(block);
+              insertAnchoredObject(owner, frame, anchor.bookmark, block, 'above-line');
+            }
           }, 'Insert table');
           select(block.id);
         },
@@ -319,6 +417,26 @@ export function installTableControls({
     const menu = form(
       'Table Options',
       selectField('action', 'Operation', operations, 'format') +
+        selectField(
+          'cellStyle',
+          'Cell style',
+          [['', '[None]'], ...(t.cellStyles || []).map((s) => [s.id, s.name])],
+          t.appliedCellStyles?.[row + ',' + col],
+        ) +
+        '<label>Style name<input name="styleName" maxlength="80"></label>' +
+        '<label>Cell fill<input name="cellFill" placeholder="#RRGGBB" maxlength="7"></label>' +
+        '<label>Text color<input name="cellInk" placeholder="#RRGGBB" maxlength="7"></label>' +
+        numberField('cellInset', 'Cell style inset (pt)', t.inset, 0, 72, 'any') +
+        selectField(
+          'cellVertical',
+          'Cell style alignment',
+          [
+            ['top', 'Top'],
+            ['middle', 'Center'],
+            ['bottom', 'Bottom'],
+          ],
+          t.vertical,
+        ) +
         numberField('row', 'Row', row + 1, 1, t.cells.length) +
         numberField('column', 'Column', col + 1, 1, t.widths.length) +
         numberField('rows', 'Rows to merge', 1, 1, t.cells.length) +
@@ -384,19 +502,35 @@ export function installTableControls({
         const { widths, ...geometry } = resizeColumn({ ...frame, table: t }, c, requested);
         changed.widths = widths;
         const action = data.get('action');
+        if (action === 'apply-style' || action === 'define-style') {
+          let id = data.get('cellStyle');
+          const cover = tableCoverage(changed).get(r * changed.widths.length + c);
+          if (cover && (cover.row !== r || cover.column !== c))
+            throw Error('Choose the upper-left cell of the merged range.');
+          if (action === 'define-style')
+            id = defineCellStyle(changed, id, {
+              name: data.get('styleName').trim(),
+              inset: n('cellInset'),
+              vertical: data.get('cellVertical'),
+              ...(data.get('cellFill').trim() && { fill: data.get('cellFill').trim() }),
+              ...(data.get('cellInk').trim() && { ink: data.get('cellInk').trim() }),
+            });
+          applyCellStyle(changed, r, c, id);
+        }
         if (action === 'even-columns') changed.widths = changed.widths.map(() => 1);
-        changed =
-          action === 'format' || action === 'even-columns'
-            ? validateTable(changed)
-            : reshapeTable(changed, action, {
-                row: r,
-                column: c,
-                rows: n('rows'),
-                columns: n('columns'),
-              });
+        changed = ['format', 'even-columns', 'apply-style', 'define-style'].includes(action)
+          ? validateTable(changed)
+          : reshapeTable(changed, action, {
+              row: r,
+              column: c,
+              rows: n('rows'),
+              columns: n('columns'),
+            });
         mutate(() => {
           Object.assign(frame, geometry);
           block.table = changed;
+          if (block.extensions?.ivoAnchor) block.h = measureInlineTableHeight(block);
+          if (changed.cellStyles) owner.canvasVersion = Math.max(owner.canvasVersion, 37);
           if (changed.rowOptions) owner.canvasVersion = Math.max(owner.canvasVersion, 31);
         }, 'Edit table');
         last = {
@@ -422,7 +556,28 @@ export function installTableControls({
       }
     });
     const op = menu.querySelector('[name=action]');
+    const styleSelect = menu.querySelector('[name=cellStyle]');
+    function loadStyle() {
+      const chosen = t.cellStyles?.find((s) => s.id === styleSelect.value);
+      const values = {
+        styleName: chosen?.name || '',
+        cellFill: chosen?.fill || '',
+        cellInk: chosen?.ink || '',
+        cellInset: chosen?.inset ?? t.inset,
+        cellVertical: chosen?.vertical || t.vertical,
+      };
+      for (const [field, value] of Object.entries(values))
+        menu.querySelector('[name=' + field + ']').value = value;
+    }
+    styleSelect.addEventListener('change', loadStyle);
+    loadStyle();
     function showMergeFields() {
+      styleSelect.parentElement.hidden = !['apply-style', 'define-style'].includes(op.value);
+      styleSelect.options[0].textContent =
+        op.value === 'define-style' ? 'New cell style' : '[None]';
+      for (const field of ['styleName', 'cellFill', 'cellInk', 'cellInset', 'cellVertical'])
+        menu.querySelector('[name=' + field + ']').parentElement.hidden =
+          op.value !== 'define-style';
       for (const field of ['rows', 'columns'])
         menu.querySelector('[name=' + field + ']').parentElement.hidden = op.value !== 'merge';
     }
@@ -436,21 +591,27 @@ export function installTableControls({
     flush,
     mark: dividers.mark,
     startDivider: dividers.start,
+    format(name) {
+      if (!current || !['bold', 'italic', 'underline', 'strikethrough'].includes(name))
+        return false;
+      if (allowed() && editable(current.owner, current.block)) document.execCommand(name);
+      return true;
+    },
     get editingCell() {
       return !!current;
     },
     proofingContext() {
       if (!current) return {};
       const { block, row, column, input } = current;
-      const start = input.selectionStart,
-        end = input.selectionEnd;
+      const { start, end } = selectionOffsets(input);
       return {
         id: tableCellId(block.id, row, column),
         cell: true,
         html: block.table.cells[row][column],
         searchStart: start,
         searchEnd: end,
-        text: input.value
+        text: block.table.cells[row][column]
+          .replace(/\r\n?/g, '\n')
           .slice(start, end)
           .replaceAll('^', '^^')
           .replaceAll('\n', '^p')
@@ -482,8 +643,8 @@ export function installTableControls({
       const found = review;
       review = null;
       if (!focus || !found?.target.isConnected || !edit(found.target)) return false;
-      if (current.input.value === found.value.replace(/\r\n?/g, '\n'))
-        current.input.setSelectionRange(found.match.searchStart, found.match.searchEnd);
+      if (readCellContent(current.input).value === found.value.replace(/\r\n?/g, '\n'))
+        restoreCellSelection(current.input, found.match.searchStart, found.match.searchEnd);
       return true;
     },
     remember(cell) {

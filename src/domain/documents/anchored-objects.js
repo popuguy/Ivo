@@ -33,7 +33,7 @@ function checkBinding(doc, block, owner, position) {
     owner.contents ||
     owner.index ||
     !['inline', 'above-line'].includes(position) ||
-    (block.type === 'table' && position !== 'above-line')
+    (block.type === 'table' && (position !== 'above-line' || !block.table || block.tableNext))
   )
     throw Error('Choose a top-level graphic or table and an authored text insertion point.');
   const descendants = new Set([block.id]);

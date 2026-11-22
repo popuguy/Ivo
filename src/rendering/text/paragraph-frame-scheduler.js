@@ -122,7 +122,8 @@ export async function fitFrameParagraphs(
         hyphenation: paragraph.hyphenation,
         priorHyphens,
         retainOversetPrefix:
-          (paragraph.hasNoBreak ||
+          (paragraph.tableBreaks ||
+            paragraph.hasNoBreak ||
             paragraph.automatic?.length ||
             hasAuthoredBreakCharacters(paragraph.text)) &&
           onlyFrame === undefined,

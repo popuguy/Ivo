@@ -56,7 +56,12 @@ function opportunities(text, base, ranges, scan) {
 }
 
 /** Admission limits apply to the entire flow, including cached paragraphs. */
-export function validateParagraphSource(text, noBreakRanges = [], hyphenationPoints = []) {
+export function validateParagraphSource(
+  text,
+  noBreakRanges = [],
+  hyphenationPoints = [],
+  tableOffsets = [],
+) {
   if (typeof text !== 'string' || !text.length || text.length > MAX_SOURCE)
     throw new UnsupportedComposition('paragraph composition beyond its bounded source budget');
   if (
@@ -86,7 +91,17 @@ export function validateParagraphSource(text, noBreakRanges = [], hyphenationPoi
     )
   )
     throw Error('Invalid automatic hyphenation boundary.');
-  let nextHyphen = 0;
+  if (
+    !Array.isArray(tableOffsets) ||
+    tableOffsets.length > MAX_POINTS ||
+    tableOffsets.some(
+      (at, i) =>
+        !Number.isInteger(at) || at <= (tableOffsets[i - 1] ?? -1) || text[at] !== '\uFFFC',
+    )
+  )
+    throw Error('Invalid inline table offsets.');
+  let nextHyphen = 0,
+    nextTable = 0;
   const paragraphs = [],
     scan = { index: 0 };
   let start = 0,
@@ -95,6 +110,20 @@ export function validateParagraphSource(text, noBreakRanges = [], hyphenationPoi
   for (const match of text.matchAll(/[^\u2029]*\u2029|[^\u2029]+$/g)) {
     const content = match[0],
       points = opportunities(content, start, noBreakRanges, scan);
+    // A table is one source character in its paragraph, even though it owns a visual line.
+    const tableBreaks = [],
+      firstTable = nextTable;
+    while (tableOffsets[nextTable] < start + content.length) {
+      const at = tableOffsets[nextTable++] - start;
+      if (at > 0) tableBreaks.push(at);
+      if (at + 1 < content.length && !/[\u2029\u2028\r\n]/.test(content[at + 1]))
+        tableBreaks.push(at + 1);
+    }
+    for (const index of new Set(tableBreaks)) {
+      const existing = points.find((point) => point.index === index);
+      if (existing) existing.mandatory = true;
+      else points.push({ index, mandatory: true });
+    }
     const automatic = [];
     while (hyphenationPoints[nextHyphen] < start + content.length) {
       const index = hyphenationPoints[nextHyphen++] - start;
@@ -102,7 +131,7 @@ export function validateParagraphSource(text, noBreakRanges = [], hyphenationPoi
       // Moderate preference for a whole-word ending at comparable line fullness.
       points.push({ index, penalty: 4, automatic: true });
     }
-    if (automatic.length) points.sort((a, b) => a.index - b.index);
+    if (automatic.length || tableBreaks.length) points.sort((a, b) => a.index - b.index);
     pointCount += points.length - 1;
     if (pointCount > MAX_POINTS)
       throw new UnsupportedComposition('paragraph composition beyond its bounded source budget');
@@ -120,6 +149,7 @@ export function validateParagraphSource(text, noBreakRanges = [], hyphenationPoi
       text: content,
       opportunities: points,
       ...(automatic.length ? { automatic } : {}),
+      ...(nextTable !== firstTable ? { tableBreaks } : {}),
     });
     start += content.length;
   }
@@ -155,6 +185,7 @@ function paragraphIdentity(request, paragraph, contourWidthLimit) {
     allowFallback: request.allowFallback,
     text: paragraph.text,
     ...(paragraph.automatic ? { automatic: paragraph.automatic } : {}),
+    ...(paragraph.tableBreaks ? { tableBreaks: paragraph.tableBreaks } : {}),
     ...(paragraph.hasNoBreak ? { breaks: paragraph.opportunities.map((p) => p.index) } : {}),
     ...(paragraph.tabStops ? { tabStops: paragraph.tabStops } : {}),
     ...(paragraph.wordSpacing ? { wordSpacing: paragraph.wordSpacing } : {}),
@@ -266,6 +297,7 @@ export function createParagraphComposer(measure) {
               'paragraphHyphenation',
               'baselineAlignment',
               'noBreakRanges',
+              'tableOffsets',
               'limits',
             ].includes(key),
         )
@@ -277,6 +309,7 @@ export function createParagraphComposer(measure) {
         paragraphHyphenation,
         baselineAlignment,
         noBreakRanges = [],
+        tableOffsets = [],
         limits = {},
       } = options;
       if (!['paragraph', 'single-line'].includes(mode)) throw Error('Invalid native fitting mode.');
@@ -324,6 +357,7 @@ export function createParagraphComposer(measure) {
           request.text,
           noBreakRanges,
           request.hyphenationPoints,
+          tableOffsets,
         ),
         keeps = normalizeParagraphKeeps(paragraphKeeps, paragraphs.length),
         missing = new Map(),

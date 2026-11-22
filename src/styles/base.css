@@ -4012,7 +4012,7 @@ dialog .prompt-instructions {
   white-space: pre-wrap;
   text-align: start;
 }
-.page-table textarea {
+.page-table [data-table-editor] {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -4020,6 +4020,9 @@ dialog .prompt-instructions {
   box-sizing: border-box;
   margin: 0;
   resize: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding: var(--cell-inset);
   border: 0;
   outline: 1px solid var(--blue, #385ad1);

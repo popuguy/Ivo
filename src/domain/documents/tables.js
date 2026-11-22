@@ -1,3 +1,6 @@
+import { validateTableCellStyles, applyCellStyle } from './table-cell-styles.js';
+import { setCellRuns, validateCellRuns } from './inline-tables.js';
+
 /** Table coordinates are zero-based. Covered cells are empty; the upper-left cell owns a merge. */
 const maxRows = 256,
   maxColumns = 64;
@@ -110,7 +113,10 @@ export function validateTable(value) {
     }
   }
   tableCoverage(value);
+  const cellRuns = validateCellRuns(value.cellRuns, cells);
   return {
+    ...(cellRuns && { cellRuns }),
+    ...validateTableCellStyles(value),
     ...(Object.keys(rowOptions).length && { rowOptions }),
     cells: cells.map((row) => [...row]),
     widths: [...widths],
@@ -131,15 +137,24 @@ export function reshapeTable(source, action, { row, column, rows = 1, columns = 
     if (!bounded(rows, 1, nr - row) || !bounded(columns, 1, nc - column) || rows * columns < 2)
       throw Error('Choose two or more cells inside the table.');
     const covered = tableCoverage(t),
-      text = [];
+      runs = [];
+    let text = '';
     for (let r = row; r < row + rows; r++)
       for (let c = column; c < column + columns; c++) {
         if (covered.has(r * nc + c))
           throw Error('Split existing merged cells before merging this range.');
-        if (t.cells[r][c]) text.push(t.cells[r][c]);
+        if (t.cells[r][c]) {
+          if (text) text += '\n';
+          for (const run of t.cellRuns?.[r + ',' + c] || [])
+            runs.push({ ...run, start: run.start + text.length, end: run.end + text.length });
+          text += t.cells[r][c];
+        }
+        setCellRuns(t, r, c);
+        if (r !== row || c !== column) applyCellStyle(t, r, c);
         t.cells[r][c] = '';
       }
-    t.cells[row][column] = text.join('\n');
+    t.cells[row][column] = text;
+    setCellRuns(t, row, column, runs);
     t.merges.push({ row, column, rows, columns });
   } else if (action === 'split') {
     const merge = tableCoverage(t).get(row * nc + column);
@@ -193,16 +208,38 @@ export function reshapeTable(source, action, { row, column, rows = 1, columns = 
       if (positions.at(-1) - positions[0] + 1 !== positions.length)
         throw Error('Split the merged cell before moving this row or column.');
       const newMerge = { ...m, [axis]: positions[0], [count]: positions.length };
-      moved.push({ m: newMerge, text: t.cells[m.row][m.column] });
+      moved.push({
+        m: newMerge,
+        text: t.cells[m.row][m.column],
+        runs: t.cellRuns?.[m.row + ',' + m.column],
+        cellStyle: t.appliedCellStyles?.[m.row + ',' + m.column],
+      });
+      setCellRuns(t, m.row, m.column);
       t.cells[m.row][m.column] = '';
+    }
+    const originalStyles = t.appliedCellStyles;
+    delete t.appliedCellStyles;
+    for (const [key, id] of Object.entries(originalStyles || {})) {
+      const [r, c] = key.split(',').map(Number),
+        position = indices.indexOf(horiz ? c : r);
+      if (position >= 0) applyCellStyle(t, horiz ? r : position, horiz ? position : c, id);
+    }
+    const styles = t.cellRuns;
+    delete t.cellRuns;
+    for (const [key, runs] of Object.entries(styles || {})) {
+      const [r, c] = key.split(',').map(Number);
+      const position = indices.indexOf(horiz ? c : r);
+      if (position >= 0) setCellRuns(t, horiz ? r : position, horiz ? position : c, runs);
     }
     if (horiz) {
       t.cells = t.cells.map((r) => indices.map((j) => (j === null ? '' : r[j])));
       t.widths = indices.map((j) => t.widths[j ?? i]);
     } else t.cells = indices.map((j) => (j === null ? Array(nc).fill('') : t.cells[j]));
     t.merges = [];
-    for (const { m, text } of moved) {
+    for (const { m, text, runs, cellStyle } of moved) {
       t.cells[m.row][m.column] = text;
+      setCellRuns(t, m.row, m.column, runs);
+      applyCellStyle(t, m.row, m.column, cellStyle);
       if (m.rows * m.columns > 1) t.merges.push(m);
     }
   }

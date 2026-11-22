@@ -1,5 +1,6 @@
 import { readDelimitedRows } from '../text/merge-records.js';
 import { createTable, tableCoverage, validateTable } from './tables.js';
+import { setCellRuns } from './inline-tables.js';
 
 export function readTableText(text, delimiter = '\t') {
   if (text.length > 1200000) throw Error('The pasted table is too large.');
@@ -33,6 +34,11 @@ export function putTableCells(source, row, column, values) {
     Math.max(width, source.widths.length),
   );
   Object.assign(next, {
+    ...(source.cellStyles && { cellStyles: structuredClone(source.cellStyles) }),
+    ...(source.appliedCellStyles && {
+      appliedCellStyles: structuredClone(source.appliedCellStyles),
+    }),
+    ...(source.cellRuns && { cellRuns: structuredClone(source.cellRuns) }),
     ...(source.rowOptions && { rowOptions: structuredClone(source.rowOptions) }),
     headerRows: source.headerRows,
     footerRows: source.footerRows,
@@ -52,6 +58,7 @@ export function putTableCells(source, row, column, values) {
       if (merge && (merge.row !== y || merge.column !== x))
         throw Error('Split the merged cells before pasting across them.');
       next.cells[y][x] = value;
+      setCellRuns(next, y, x);
     }
   return validateTable(next);
 }

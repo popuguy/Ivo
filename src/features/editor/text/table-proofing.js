@@ -1,4 +1,5 @@
 import { tableCoverage, tableCellLimit, validateTable } from '../../../domain/documents/tables.js';
+import { replaceCellRanges, setCellRuns } from '../../../domain/documents/inline-tables.js';
 
 export function tableCellId(frame, row, column) {
   return frame + ':' + row + ':' + column;
@@ -45,20 +46,32 @@ export function changeCell(owner, edits) {
   const value = result.join('');
   if (value.length > tableCellLimit)
     throw Error('The replacement exceeds the table cell text limit.');
-  return { cell: owner.cell, value, count };
+  return {
+    cell: owner.cell,
+    value,
+    count,
+    edits: edits.filter((edit) => edit.text !== edit.replacement),
+  };
 }
 
 // Validate every affected table before applying a mixed prose/table Change All.
 export function planTableCorrections(doc, changes) {
   const tables = new Map();
-  for (const { frameId, cell, value } of changes) {
+  for (const { frameId, cell, value, edits } of changes) {
     if (!cell) continue;
     if (!tables.has(frameId)) {
       const block = doc.blocks.find((b) => b.id === frameId);
       if (!block?.table) throw Error('The table has changed. Run the search again.');
       tables.set(frameId, structuredClone(block.table));
     }
-    tables.get(frameId).cells[cell.row][cell.column] = value;
+    const table = tables.get(frameId);
+    setCellRuns(
+      table,
+      cell.row,
+      cell.column,
+      replaceCellRanges(table.cellRuns?.[cell.row + ',' + cell.column], edits || []),
+    );
+    table.cells[cell.row][cell.column] = value;
   }
   for (const table of tables.values()) validateTable(table);
   return tables;

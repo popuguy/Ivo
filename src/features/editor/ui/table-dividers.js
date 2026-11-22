@@ -1,3 +1,4 @@
+import { measureInlineTableHeight } from '../../../rendering/table-thread-layout.js';
 import {
   columnPoints,
   resizeColumn,
@@ -98,6 +99,7 @@ export function installTableDividers({
       mutate(() => {
         Object.assign(block, rect);
         table.widths = widths;
+        if (block.extensions?.ivoAnchor) block.h = measureInlineTableHeight(block);
       }, 'Resize table columns');
     }
     cancel = () => end(false);

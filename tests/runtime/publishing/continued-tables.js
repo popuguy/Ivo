@@ -56,7 +56,7 @@ export async function verifyContinuedTables(host, assert) {
     editor.restoreView({ activePage: block.pageId, selection: [block.id], tool: 'select' });
   const text = () => host.querySelector('[data-table-editor]');
   const setText = (s) => {
-    text().value = s;
+    text().textContent = s;
     text().dispatchEvent(new Event('input', { bubbles: true }));
   };
   editor = mount();
@@ -121,7 +121,8 @@ export async function verifyContinuedTables(host, assert) {
     );
     search.querySelector('[data-find-action="done"]').click();
     assert(
-      text()?.value === 'D5' && text().closest('[data-object]').dataset.object === doc.blocks[2].id,
+      text()?.textContent === 'D5' &&
+        text().closest('[data-object]').dataset.object === doc.blocks[2].id,
       'Find returned to the wrong table frame',
     );
     text().dispatchEvent(
@@ -141,13 +142,14 @@ export async function verifyContinuedTables(host, assert) {
       new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }),
     );
     assert(
-      text()?.value === 'R4' && text().closest('[data-object]').dataset.object === doc.blocks[1].id,
+      text()?.textContent === 'R4' &&
+        text().closest('[data-object]').dataset.object === doc.blocks[1].id,
       'Tab did not cross the page break into the next body row',
     );
     text().dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }),
     );
-    assert(text()?.value === 'D3', 'Shift-Tab stopped in a repeated footer or heading');
+    assert(text()?.textContent === 'D3', 'Shift-Tab stopped in a repeated footer or heading');
     text().dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
     );
@@ -166,7 +168,7 @@ export async function verifyContinuedTables(host, assert) {
     repeated.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     assert(!text(), 'Cannot edit a generated header occurrence');
     cell(6, 1).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    assert(text()?.value === 'D6', 'Continuation did not open its own source row');
+    assert(text()?.textContent === 'D6', 'Continuation did not open its own source row');
     setText('Cut\nFold\nPress\nStitch');
     text().dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),

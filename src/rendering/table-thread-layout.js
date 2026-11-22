@@ -16,16 +16,44 @@ export async function prepareTableFonts(doc) {
   await Promise.all([...styles].map((style) => document.fonts.load(style)));
 }
 
-// Measure at document scale, outside the editor camera. Use the same column widths,
-// borders and type as the printed table; a textarea used for editing never contributes.
-export function layoutTableThreads(doc, cache) {
-  const result = new Map();
-  if (!doc.blocks.some((b) => b.tableNext)) return result;
+function measuringFrame() {
   const host = document.createElement('div');
   host.className = 'table-frame';
   host.setAttribute('aria-hidden', 'true');
   host.style.cssText =
     'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;contain:layout style';
+  return host;
+}
+
+function setFrameMetrics(host, frame) {
+  host.style.width = tableInnerWidth(frame) + 'px';
+  host.style.fontFamily = fontFamilyFor(frame.textStyle) || 'serif';
+  host.style.fontSize = frame.fontSize + 'px';
+}
+
+export function measureInlineTableHeight(frame) {
+  const host = measuringFrame();
+  try {
+    setFrameMetrics(host, frame);
+    host.innerHTML = tableMarkup(frame.table, { layout: true });
+    const grid = host.firstElementChild;
+    grid.style.height = 'auto';
+    document.body.append(host);
+    return Math.max(
+      1,
+      grid.getBoundingClientRect().height + 2 * (frame.frameOptions?.strokeWidth || 0),
+    );
+  } finally {
+    host.remove();
+  }
+}
+
+// Measure at document scale, outside the editor camera. Use the same column widths,
+// borders and type as the printed table; a textarea used for editing never contributes.
+export function layoutTableThreads(doc, cache) {
+  const result = new Map();
+  if (!doc.blocks.some((b) => b.tableNext)) return result;
+  const host = measuringFrame();
 
   try {
     for (const frames of new Set(tableThreads(doc.blocks).values())) {
@@ -54,9 +82,7 @@ export function layoutTableThreads(doc, cache) {
         const stroke = frame.frameOptions?.strokeWidth || 0;
         const key = JSON.stringify([frame.w, frame.fontSize, frame.textStyle, stroke]);
         if (metrics.has(key)) return metrics.get(key);
-        host.style.width = tableInnerWidth(frame) + 'px';
-        host.style.fontFamily = fontFamilyFor(frame.textStyle) || 'serif';
-        host.style.fontSize = frame.fontSize + 'px';
+        setFrameMetrics(host, frame);
         const heights = Array.from(grid.rows, (r) => r.getBoundingClientRect().height);
         const border = grid.getBoundingClientRect().height - heights.reduce((sum, h) => sum + h, 0);
         const m = { heights, border: border + 2 * stroke };

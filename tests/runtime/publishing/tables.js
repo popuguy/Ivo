@@ -1,3 +1,4 @@
+import { verifyInlineTables } from './inline-tables.js';
 import { columnPoints } from '../../../src/domain/geometry/table-columns.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
@@ -38,7 +39,7 @@ export async function verifyTables(host, assert) {
   const input = () => host.querySelector('[data-table-editor]');
   const type = (s) => {
     assert(input(), 'Missing in-place cell editor');
-    input().value = s;
+    input().textContent = s;
     input().dispatchEvent(new Event('input', { bubbles: true }));
   };
   const tab = () =>
@@ -192,7 +193,7 @@ export async function verifyTables(host, assert) {
     prose.html = '<p><em>' + sample + '</em></p>';
     editor.restoreView({ activePage: page, selection: [tableId], tool: 'select' });
     edit(0, 1);
-    input().select();
+    window.getSelection().selectAllChildren(input());
     input().dispatchEvent(
       new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true, cancelable: true }),
     );
@@ -208,7 +209,7 @@ export async function verifyTables(host, assert) {
     );
     action('done');
     assert(
-      input()?.value.substring(input().selectionStart, input().selectionEnd) === sample,
+      window.getSelection().toString() === sample,
       'Returning from the search lost the selected cell range',
     );
     await editor.command('find-change');
@@ -245,4 +246,5 @@ export async function verifyTables(host, assert) {
   } finally {
     editor.destroy();
   }
+  await verifyInlineTables(host, assert);
 }

@@ -1,5 +1,6 @@
 import { tableCoverage } from '../domain/documents/tables.js';
 import { escapeHTML } from '../shared/html/sanitize.js';
+import { cellTextMarkup } from './table-cell-text.js';
 
 export function tableMarkup(table, { layout = false, escape = escapeHTML, part } = {}) {
   const { cells, widths, headerRows, footerRows } = table,
@@ -10,6 +11,7 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML, part }
       widths.map((w) => '<col style="width:' + (100 * w) / total + '%">').join('') +
       '</colgroup>'
     : '';
+  const styles = new Map(table.cellStyles?.map((s) => [s.id, s]));
   const firstBodyRepeated = part && part.first > headerRows;
   function group(tag, first, last) {
     if (first >= last) return '';
@@ -18,8 +20,20 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML, part }
       const rendered = cells[r].map((text, c) => {
         const m = covering.get(r * widths.length + c);
         if (m && (m.row !== r || m.column !== c)) return '';
+        const cellStyle = styles.get(table.appliedCellStyles?.[r + ',' + c]);
+        const css =
+          cellStyle &&
+          [
+            cellStyle.fill && 'background-color:' + cellStyle.fill,
+            cellStyle.ink && 'color:' + cellStyle.ink,
+            'padding:' + cellStyle.inset + (layout ? 'px' : 'pt'),
+            'vertical-align:' + cellStyle.vertical,
+          ]
+            .filter(Boolean)
+            .join(';');
         const cell = tag === 'thead' ? 'th' : 'td',
           attributes = [
+            ...(css ? ['style="' + escape(css) + '"'] : []),
             ...(part &&
             ((tag === 'thead' && firstBodyRepeated) ||
               (tag === 'tfoot' && part.last < cells.length - footerRows))
@@ -35,7 +49,7 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML, part }
           cell +
           (attributes.length ? ' ' + attributes.join(' ') : '') +
           '>' +
-          escape(text).replace(/\r\n?|\n/g, '<br/>') +
+          cellTextMarkup(text, table.cellRuns?.[r + ',' + c], escape) +
           '</' +
           cell +
           '>'
