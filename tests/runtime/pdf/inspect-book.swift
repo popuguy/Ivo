@@ -9,8 +9,15 @@ func children(_ parent: PDFOutline) -> [[String: Any]] {
     return ["title": item.label ?? "", "page": pdf.index(for: page), "children": children(item)]
   }
 }
+func headingPoints(_ parent: PDFOutline) -> [[Any]] {
+  (0..<parent.numberOfChildren).flatMap { i -> [[Any]] in
+    guard let item = parent.child(at: i), let dest = item.destination, let page = dest.page else { return [] }
+    return [[item.label ?? "", Double(page.bounds(for: .mediaBox).height - dest.point.y)]] + headingPoints(item)
+  }
+}
 let data = try JSONSerialization.data(withJSONObject: [
   "bookmarks": children(root),
+  "headingPoints": headingPoints(root),
   "pageLinks": (0..<pdf.pageCount).flatMap { source -> [[Int]] in
     (pdf.page(at: source)?.annotations ?? []).compactMap { annotation -> [Int]? in
       let destination = annotation.destination ?? (annotation.action as? PDFActionGoTo)?.destination

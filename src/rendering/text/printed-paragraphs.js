@@ -1,41 +1,6 @@
 import { paragraphDestinations } from '../../domain/documents/paragraph-destinations.js';
 import { textIndexMap } from '../../shared/dom/text-selection.js';
-import { collectPrintedEntries } from './publication-headings.js';
-
-function flowTargetRect(frame, fragment, at) {
-  if (fragment.native) {
-    const column = fragment.columns.find((c) => c.start <= at && at < c.end);
-    const span = column?.native.spans.find(
-      (s) => s.kind === 'text' && s.logicalStart <= at && at < s.logicalEnd,
-    );
-    if (!span) return null;
-    const glyph = span.start + at - span.logicalStart;
-    const line = column.native.lines.find((l) => l.start <= glyph && glyph < l.end);
-    if (!line) return null;
-    const row = frame.querySelector(
-      '[data-flow-column="' + CSS.escape(column.id) + '"] [data-line-start="' + line.start + '"]',
-    );
-    const ink = row?.querySelector('[data-glyph-offset="' + (glyph - line.start) + '"]') || row;
-    return ink?.getBoundingClientRect();
-  }
-  for (const marker of frame.querySelectorAll('[data-flow-text]')) {
-    const offset = at - Number(marker.dataset.flowText);
-    if (offset < 0 || offset >= marker.textContent.length) continue;
-    const walker = document.createTreeWalker(marker, NodeFilter.SHOW_TEXT);
-    let start = 0,
-      leaf;
-    while ((leaf = walker.nextNode())) {
-      if (offset < start + leaf.length) {
-        const range = document.createRange();
-        range.setStart(leaf, offset - start);
-        range.setEnd(leaf, offset - start + 1);
-        return range.getBoundingClientRect();
-      }
-      start += leaf.length;
-    }
-  }
-  return null;
-}
+import { collectPrintedEntries, flowTargetRect } from './publication-headings.js';
 
 export function printedParagraphs(doc, layout, pages) {
   const entries = paragraphDestinations(doc);

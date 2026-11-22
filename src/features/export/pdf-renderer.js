@@ -1,3 +1,9 @@
+import { otherEndnoteMarker } from '../../domain/documents/endnotes.js';
+import {
+  applyPDFReadingOrder,
+  composedParagraphRoles,
+  describeComposedFrame,
+} from './pdf-paragraphs.js';
 import { printedParagraphs } from '../../rendering/text/printed-paragraphs.js';
 import { paragraphDestination } from '../../domain/documents/paragraph-destinations.js';
 import {
@@ -57,6 +63,7 @@ export async function renderPDFSnapshot(snapshot) {
       section.append(layout);
       root.append(section);
       const renderDoc = paintPublicationPage(layout, doc, page, { source, flow, documents });
+      applyPDFReadingOrder(layout, renderDoc);
       pages.push({
         documentId: doc.id,
         documentTitle: doc.title,
@@ -90,6 +97,29 @@ export async function renderPDFSnapshot(snapshot) {
       }),
     ),
   );
+  const endnoteTargets = new Map();
+  for (const [pageIndex, page] of pages.entries()) {
+    if (!page.doc.textFlows?.some((f) => f.endnotes)) continue;
+    const bounds = page.section.getBoundingClientRect();
+    for (const marker of page.section.querySelectorAll('a[data-endnote]')) {
+      const first = marker.getBoundingClientRect(),
+        frame = marker.closest('.canvas-text')?.getBoundingClientRect();
+      if (
+        !first.width ||
+        !first.height ||
+        (frame && (first.bottom <= frame.top || first.top >= frame.bottom)) ||
+        first.bottom <= bounds.top ||
+        first.top >= bounds.bottom
+      )
+        continue;
+      const key = page.documentId + '/' + marker.dataset.endnote;
+      if (!endnoteTargets.has(key))
+        endnoteTargets.set(key, {
+          pageIndex,
+          top: Math.max(0, Math.min(1, (first.top - bounds.top) / bounds.height)) * page.height,
+        });
+    }
+  }
   const paragraphTargets = new Map();
   for (const doc of documents) {
     const chapter = pages.filter((page) => page.documentId === doc.id);
@@ -97,7 +127,10 @@ export async function renderPDFSnapshot(snapshot) {
     paragraphTargets.set(doc.id, printedParagraphs(doc, flowPlans.get(doc.id), chapter));
     for (const page of chapter) page.headings = headings.get(page.pageId);
   }
-  const links = [],
+  const paragraphs = [],
+    paragraphRoles = new WeakMap(),
+    markerPrefix = crypto.randomUUID(),
+    links = [],
     composedText = new Map();
   const pageTargets = new Map(pages.map((p, i) => [p.documentId + '/' + p.pageId, i]));
   for (const [pageIndex, page] of pages.entries()) {
@@ -145,6 +178,31 @@ export async function renderPDFSnapshot(snapshot) {
           clips,
         });
         composedText.set(composition.token, layer);
+        // A partially masked paragraph cannot represent a complete accessible text range.
+        const box = svg.getBoundingClientRect();
+        if (
+          !svg.closest('[aria-hidden="true"]') &&
+          !clips.length &&
+          box.top >= pageRect.top - 0.1 &&
+          box.left >= pageRect.left - 0.1 &&
+          box.bottom <= pageRect.bottom + 0.1 &&
+          box.right <= pageRect.right + 0.1
+        ) {
+          let roles = paragraphRoles.get(composition);
+          if (!roles) {
+            const flow = page.doc.textFlows.find((f) => f.frameIds.includes(frame.frameId));
+            roles = composedParagraphRoles(
+              composition.source,
+              page.doc.publication,
+              flow?.style?.paragraphStyle,
+            );
+            paragraphRoles.set(composition, roles);
+          }
+          const marker = 'ivo-' + markerPrefix + '-' + paragraphs.length;
+          const entry = describeComposedFrame(svg, composition, frame, roles, marker);
+          if (entry)
+            paragraphs.push({ ...entry, sourcePageIndex, destinationPageIndex: pageIndex });
+        }
       }
     }
     for (const table of page.section.querySelectorAll('.table-frame')) {
@@ -160,7 +218,12 @@ export async function renderPDFSnapshot(snapshot) {
     for (const anchor of page.section.querySelectorAll('a')) {
       const targetId = anchor.dataset.docId;
       let target;
-      if (anchor.dataset.xrefParagraph) {
+      if (anchor.dataset.endnote) {
+        target = endnoteTargets.get(
+          page.documentId + '/' + otherEndnoteMarker(anchor.dataset.endnote),
+        );
+        if (!target) warnings.add('Unprinted endnote destination: ' + anchor.textContent.trim());
+      } else if (anchor.dataset.xrefParagraph) {
         const id = targetId || page.documentId,
           chapter = documents.find((d) => d.id === id);
         const dest = paragraphDestination(
@@ -192,6 +255,10 @@ export async function renderPDFSnapshot(snapshot) {
         target = { url: anchor.href };
       else if (anchor.classList.contains('unresolved'))
         warnings.add(`Unresolved document link: ${anchor.textContent.trim()}`);
+      const marker = 'link-' + markerPrefix + '-' + links.length;
+      const label = anchor.textContent.trim() || target?.url || 'Page link';
+      const firstRect = links.length;
+      const seenRects = new Set();
       if (target)
         for (const clientRect of anchor.getClientRects()) {
           let visible = intersectPDFRect(rect(clientRect), {
@@ -227,10 +294,23 @@ export async function renderPDFSnapshot(snapshot) {
             );
             continue;
           }
-          links.push({ pageIndex, rect: visible, target });
+          const key = [visible.x, visible.y, visible.w, visible.h].join(',');
+          if (!seenRects.has(key)) {
+            seenRects.add(key);
+            links.push({
+              pageIndex,
+              rect: visible,
+              target,
+              marker,
+              label,
+              paragraph: anchor.dataset.pdfParagraph,
+            });
+          }
         }
       // Chromium must not retain local file/ivo destinations or invisible native annotations.
-      anchor.removeAttribute('href');
+      if (links.length > firstRect) {
+        anchor.setAttribute('href', 'https://ivo-pdf.invalid/annotation/' + marker);
+      } else anchor.removeAttribute('href');
       anchor.removeAttribute('target');
     }
   }
@@ -240,6 +320,7 @@ export async function renderPDFSnapshot(snapshot) {
     createdAt: snapshot.createdAt,
     pages: pages.map(({ section, doc, ...page }) => page),
     links,
+    paragraphs,
     composedText: [...composedText.values()],
     warnings: [...warnings],
   };

@@ -34,10 +34,46 @@ function headingStarts(root, settings, defaultStyle) {
   return result;
 }
 
+export function flowTargetRect(frame, fragment, at) {
+  if (fragment.native) {
+    const column = fragment.columns.find((c) => c.start <= at && at < c.end);
+    const span = column?.native.spans.find(
+      (s) => s.kind === 'text' && s.logicalStart <= at && at < s.logicalEnd,
+    );
+    if (!span) return null;
+    const glyph = span.start + at - span.logicalStart;
+    const line = column.native.lines.find((l) => l.start <= glyph && glyph < l.end);
+    if (!line) return null;
+    const row = frame.querySelector(
+      '[data-flow-column="' + CSS.escape(column.id) + '"] [data-line-start="' + line.start + '"]',
+    );
+    const ink = row?.querySelector('[data-glyph-offset="' + (glyph - line.start) + '"]') || row;
+    return ink?.getBoundingClientRect();
+  }
+  for (const marker of frame.querySelectorAll('[data-flow-text]')) {
+    const offset = at - Number(marker.dataset.flowText);
+    if (offset < 0 || offset >= marker.textContent.length) continue;
+    const walker = document.createTreeWalker(marker, NodeFilter.SHOW_TEXT);
+    let start = 0,
+      leaf;
+    while ((leaf = walker.nextNode())) {
+      if (offset < start + leaf.length) {
+        const range = document.createRange();
+        range.setStart(leaf, offset - start);
+        range.setEnd(leaf, offset - start + 1);
+        return range.getBoundingClientRect();
+      }
+      start += leaf.length;
+    }
+  }
+  return null;
+}
+
 /** Find the printed page containing a heading's first character. A subsequent
  * copy of the same paragraph in a continuation cannot create another bookmark. */
 export function collectPageHeadings(doc, flow, pages, settings = doc.publication) {
   return collectPrintedEntries(doc, flow, pages, {
+    flowTargetRect,
     matches: (root, style) => headingStarts(root, settings, style),
     mayMatch: (html) => Object.keys(settings?.headings || {}).length || /<h[1-6]\b/i.test(html),
   });
@@ -113,7 +149,7 @@ export function collectPrintedEntries(
             glyph.bottom > Math.max(frame.top, sheet.top) &&
             glyph.top < Math.min(frame.bottom, sheet.bottom)
           )
-            add(block.id, h, h.marker && glyph);
+            add(block.id, h, glyph);
         }
       continue;
     }

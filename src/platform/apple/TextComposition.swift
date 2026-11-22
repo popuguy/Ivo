@@ -2586,6 +2586,7 @@ public final class TextCompositionEngine {
       context.textMatrix = .identity
       context.setTextDrawingMode(invisible ? .invisible : .fill)
       for line in snapshot.lines where line.page == page {
+        if invisible { CGPDFContextBeginTag(context, .span, [:] as CFDictionary) }
         context.saveGState()
         context.translateBy(x: margin + line.originX, y: box.height - margin - line.baseline)
         context.scaleBy(x: line.scaleX, y: 1)
@@ -2599,6 +2600,7 @@ public final class TextCompositionEngine {
           }
         }
         context.restoreGState()
+        if invisible { CGPDFContextEndTag(context) }
         if !invisible {
           for leader in line.leaders {
             context.saveGState()

@@ -97,7 +97,7 @@ export async function resolveCompositionPDFLayers(manifest, readPDF) {
     }
     let layer = layerByToken.get(row.token);
     if (!layer) {
-      layer = { bytes, placements: [] };
+      layer = { token: row.token, bytes, placements: [] };
       layers.push(layer);
       layerByToken.set(row.token, layer);
     }

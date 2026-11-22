@@ -1,3 +1,6 @@
+import { verifyTaggedBook } from './tagged-book.mjs';
+import { verifyEndnotePDF } from './endnotes.mjs';
+import { verifyPrintedStyleRules } from './paragraph-style-rules.mjs';
 import { publicationPages } from '../../../src/rendering/publication-pages.js';
 import { indexHTML } from '../../../src/features/editor/ui/subject-index.js';
 import { contentsSettings } from '../../../src/domain/documents/contents-settings.js';
@@ -86,6 +89,7 @@ app
       },
     });
     await mkdir(output, { recursive: true });
+    await verifyEndnotePDF({ root, output, renderPDF });
     const a = createSceneDocument('PDF typography'),
       b = createSceneDocument('Linked reference');
     Object.assign(addPage(a, a.pages[0].id), { width: 800.25, height: 500, name: 'Landscape' });
@@ -185,7 +189,7 @@ app
       project: root,
       onRendered: async (window, _manifest) => {
         layout = await window.webContents.executeJavaScript(
-          `(()=>{const page=document.querySelector('.pdf-page'),text=page.querySelector('.canvas-text'),range=document.createRange();range.setStart(text.firstChild.firstChild,0);range.setEnd(text.firstChild.firstChild,5);const r=range.getBoundingClientRect(),p=page.getBoundingClientRect();return {textX:(r.left-p.left)*.75,textY:(r.top-p.top)*.75,font:getComputedStyle(text).fontFamily,links:document.querySelectorAll('a[href]').length,controls:document.querySelectorAll('button,input').length}})()`,
+          `(()=>{const page=document.querySelector('.pdf-page'),text=page.querySelector('.canvas-text'),range=document.createRange();range.setStart(text.firstChild.firstChild,0);range.setEnd(text.firstChild.firstChild,5);const r=range.getBoundingClientRect(),p=page.getBoundingClientRect();return {textX:(r.left-p.left)*.75,textY:(r.top-p.top)*.75,font:getComputedStyle(text).fontFamily,links:[...document.querySelectorAll('a[href]')].filter(a=>!a.getAttribute('href').startsWith('https://ivo-pdf.invalid/annotation/')).length,controls:document.querySelectorAll('button,input').length}})()`,
         );
         assert.equal(layout.links, 0);
         assert.equal(layout.controls, 0);
@@ -262,6 +266,12 @@ app
     });
     const targetFlow = startTextFlow(front, nativeTarget.id, { automaticPages: false });
     enableNativeComposition(front, targetFlow, 'single-line');
+    front.publication = {
+      version: 1,
+      order: [targetFlow.id, referenceFrame.id],
+      excluded: [],
+      chapters: [],
+    };
     insertObject(owner, 'text', {
       pageId: owner.pages[1].id,
       x: 42,
@@ -366,6 +376,20 @@ app
       bookFile,
     ]);
     const outline = JSON.parse(inspected.stdout);
+    await verifyTaggedBook(bookPDF.bytes);
+    const followed = await promisify(execFile)('xcrun', [
+      'swift',
+      '-module-cache-path',
+      path.join(profile, 'swift-cache'),
+      path.join(root, 'tests/runtime/pdf/follow-book-links.swift'),
+      bookFile,
+    ]);
+    assert(JSON.parse(followed.stdout).some(([from, to]) => from === 2 && to === 0));
+    for (const title of ['Sources', 'Image credits', 'Woven surfaces'])
+      assert(
+        outline.headingPoints.some(([label, top]) => label === title && top > 0),
+        'Bookmark should land at the first printed line of ' + title,
+      );
     for (const page of [1, 2]) {
       assert.match(outline.text[page], /Weave sample/);
       assert.match(outline.text[page], /Sample register/);
@@ -721,6 +745,7 @@ print(pdf.page(at: 0)!.string ?? "")
       'typesetting',
       'Generated caption ink entered selectable PDF text',
     );
+    await verifyPrintedStyleRules({ root, profile, renderPDF });
     const portableType = await verifyPortableTypeSpecimens({
       root,
       profile,

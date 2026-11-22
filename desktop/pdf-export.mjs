@@ -1,7 +1,8 @@
+import { preparePDFStructure } from './pdf-structure.mjs';
 import { addPDFBookmarks } from './pdf-bookmarks.mjs';
 import { CURRENT_ARCHIVE_VERSION } from '../src/domain/documents/capabilities.js';
 import { BrowserWindow, ipcMain, net } from 'electron';
-import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
+import { PDFDocument, PDFHexString, PDFName, PDFString } from 'pdf-lib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateImport } from '../src/domain/documents/schema.js';
@@ -29,6 +30,7 @@ export async function finalizePDF(bytes, manifest, { composedLayers = [] } = {})
     pages = pdf.getPages();
   if (pages.length !== manifest.pages.length)
     throw new Error('PDF pagination did not match the document.');
+  const structure = preparePDFStructure(pdf, manifest);
   for (const [index, page] of pages.entries()) {
     const expected = manifest.pages[index],
       { width, height } = page.getSize();
@@ -52,6 +54,8 @@ export async function finalizePDF(bytes, manifest, { composedLayers = [] } = {})
       Rect: [r.x, box.height - r.y - r.h, r.x + r.w, box.height - r.y],
       Border: [0, 0, 0],
       F: 4,
+      P: page.ref,
+      ...(link.label && { Contents: PDFHexString.fromText(link.label) }),
     };
     if (link.target.url) {
       if (!/^https?:\/\//.test(link.target.url)) continue;
@@ -65,16 +69,20 @@ export async function finalizePDF(bytes, manifest, { composedLayers = [] } = {})
         : 0;
       annotation.Dest = [target.ref, 'XYZ', 0, height - top, null];
     }
-    page.node.addAnnot(pdf.context.register(pdf.context.obj(annotation)));
+    const obj = pdf.context.obj(annotation);
+    const ref = pdf.context.register(obj);
+    page.node.addAnnot(ref);
+    structure?.link(page, obj, ref, link);
   }
   if (composedLayers.length) {
-    const composed = await embedComposedTextLayers(pdf, composedLayers);
+    const composed = await embedComposedTextLayers(pdf, composedLayers, structure);
     manifest.nativeTextEncoding = composed.textEncoding;
     if (composed.textEncoding.some((encoding) => !encoding.supported))
       manifest.warnings.push(
         'Some native text retains its original PDF encoding. Copying or searching ligatures may differ between PDF readers.',
       );
   }
+  structure?.finish();
   addPDFBookmarks(pdf, manifest.pages);
   pdf.setTitle(manifest.title);
   pdf.setCreator('Ivo');

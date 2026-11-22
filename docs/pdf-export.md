@@ -22,7 +22,7 @@ Native CUA in a separate Ivo PDF Test app/profile/atlas checked File hotkey, Sav
 
 - PDF-within-PDF composition is canceled. New PDF placement and the embedded viewer are removed; old records show recoverable original-file attachments. Export rejects those legacy objects clearly. See [compatibility cleanup](link-previews.md).
 - External images must first be stored in the atlas. Export does not silently fetch remote content. Original source resolution is used; the PDF engine may re-encode image bytes.
-- Source page/region targets and richer PDF navigation depend on the linked-page target model. Current portable destinations are documents' first included pages.
+- Document, page and marked-paragraph links resolve across included chapters. Paragraph links and heading bookmarks preserve the reader’s zoom and target the first printed line when it can be measured.
 - Link rectangles intersecting a polygon boundary need more precise polygon/quad annotation support if retaining those partial links becomes necessary.
 - Tagged PDF generation is experimental and does not establish PDF/UA or accessibility conformance. Spot colors, CMYK/ICC, bleed, crop marks, PDF/X and prepress are not implemented.
 - Export is capped at256 pages. Large media/page stress, crash recovery and independent viewers need broader testing.
@@ -34,3 +34,12 @@ The route and its boundaries follow the version-pinned [Electron print API](http
 ## Flowing notes
 
 Continuous text flows are composed before page rendering inside the isolated export snapshot. Derived rich fragments, including numbered-list/paragraph context, use the editor typography. Automatic pages added for export never change the atlas. A manual text flow with overset text produces a warning; the canonical source remains in its editable document. The fixture exports24 rich paragraphs across12 exact360×300pt pages. Independent extraction matches canonical text after NFKC/whitespace normalization (CMU fl ligature), with each paragraph present once, and every page was rendered for visual review. See text-flow.md for current Document text editor/inline and composition limits.
+
+
+## Reading a fixed-layout book
+
+The exported PDF keeps each frame's vector artwork and its searchable native text. The Mac compositor marks each drawn line. During export Ivo associates those marks in the embedded PDF form with a paragraph or heading in the final book. Wrapped paragraphs carry their real printed text. Character searches, selection and links use the same placements. A link has a readable annotation label and a two-way association between the clickable rectangle and its place in the reading order. Distinct rectangles can belong to one link.
+
+Within a page, an explicit publication order changes the logical order of objects while their stacking and masks retain the painted order. The structure checks read the saved file, including the parent tree for each link and the marked text inside the embedded forms. In an independent Mac PDF reader, the test follows internal annotations at their printed coordinates across chapters. A separate InDesign export confirms equivalent cross-page navigation. The structure follows the marked-content, form and annotation conventions in the [PDF specification](https://opensource.adobe.com/dc-acrobat-sdk-docs/standards/pdfstandards/pdf/PDF32000_2008.pdf).
+
+Native paragraph roles currently cover fully placed, unmasked frames. A continued paragraph can have a separate semantic fragment in each printed column. List hierarchy in native frames, reading order across independent pages, partially clipped text and hands-on screen-reader review need more work. PDF/UA certification is outside these checks.

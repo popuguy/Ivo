@@ -14,7 +14,7 @@ export function addPDFBookmarks(pdf, manifest) {
     const children = [],
       stack = [];
     for (const heading of page.headings || []) {
-      const node = { title: heading.title, index, children: [] };
+      const node = { title: heading.title, index, topFraction: heading.topFraction, children: [] };
       while (stack.length && stack.at(-1).level >= heading.level) stack.pop();
       (stack.at(-1)?.node.children || children).push(node);
       stack.push({ level: heading.level, node });
@@ -37,7 +37,15 @@ export function addPDFBookmarks(pdf, manifest) {
       const node = ctx.obj({
         Title: PDFHexString.fromText(entry.title),
         Parent: parentRef,
-        Dest: [pages[entry.index].ref, 'Fit'],
+        Dest: Number.isFinite(entry.topFraction)
+          ? [
+              pages[entry.index].ref,
+              'XYZ',
+              null,
+              pages[entry.index].getHeight() * (1 - entry.topFraction),
+              null,
+            ]
+          : [pages[entry.index].ref, 'Fit'],
       });
       if (i) node.set(PDFName.of('Prev'), refs[i - 1]);
       if (i + 1 < refs.length) node.set(PDFName.of('Next'), refs[i + 1]);

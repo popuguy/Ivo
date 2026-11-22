@@ -72,7 +72,7 @@ function placement(value, destinationCount) {
  * All data is validated before target resources/content are added. The caller
  * owns this disposable PDFDocument and saves it only after successful completion.
  */
-export async function embedComposedTextLayers(pdf, layers) {
+export async function embedComposedTextLayers(pdf, layers, structure) {
   if (!(pdf instanceof PDFDocument)) fail('destination must be a PDFDocument.');
   if (!Array.isArray(layers) || layers.length > MAX_LAYERS) fail('too many text layers.');
   const destinationPages = pdf.getPages();
@@ -116,11 +116,11 @@ export async function embedComposedTextLayers(pdf, layers) {
       )
         fail('source must have an unrotated zero-origin frame box.');
     }
-    prepared.push({ source, pages, placements, encoding });
+    prepared.push({ source, pages, placements, encoding, token: layer.token });
   }
   let drawnPlacements = 0,
     emptyPlacements = 0;
-  for (const { pages, placements } of prepared) {
+  for (const { pages, placements, token } of prepared) {
     const embedded = new Map();
     for (const value of placements) {
       const source = pages[value.sourcePageIndex];
@@ -129,7 +129,8 @@ export async function embedComposedTextLayers(pdf, layers) {
         emptyPlacements++;
         continue;
       }
-      if (!embedded.has(value.sourcePageIndex)) {
+      const tagged = structure?.frame(token, value);
+      if (tagged || !embedded.has(value.sourcePageIndex)) {
         const { width, height } = source.getSize();
         const [page] = await pdf.embedPages(
           [source],
@@ -137,6 +138,10 @@ export async function embedComposedTextLayers(pdf, layers) {
           [[1, 0, 0, 1, 0, 0]],
         );
         embedded.set(value.sourcePageIndex, page);
+        if (tagged) {
+          await page.embed();
+          structure.attachFrame(tagged, source, page.ref);
+        }
       }
       const destination = destinationPages[value.destinationPageIndex],
         operators = [pushGraphicsState()];
