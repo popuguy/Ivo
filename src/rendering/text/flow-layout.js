@@ -1,3 +1,6 @@
+import { containsFootnote, documentFootnoteOptions } from '../../domain/documents/footnotes.js';
+import { fitFootnotes, footnoteReferences } from './footnote-layout.js';
+import { fontFamilyFor } from '../../domain/text/typography.js';
 import {
   annotatedSource,
   lift,
@@ -27,16 +30,23 @@ export function prepareTextFlowFonts() {
     ].map((font) => document.fonts.load(font)),
   ).then(() => document.fonts.ready));
 }
-function splitColumns(probe, width, total, start) {
+function splitColumns(probe, width, total, start, availableFrames) {
   const base = probe.getBoundingClientRect(),
     visualWidth = base.width,
     cuts = new Map([[0, { node: probe, offset: 0, index: start }]]);
   let last = 0,
     verticalOverset = false;
   const column = (rect) => Math.max(0, Math.floor((rect.left - base.left + 0.01) / visualWidth));
+  // A table occupies one source character. An undersized group must hand that same
+  // marker to the next physical frame, without painting its rows beyond the frame.
+  const blockedTable = Array.from(probe.querySelectorAll('[data-ivo-anchor]')).find(
+    (slot) => slot.style.display === 'block' && parseFloat(slot.style.height) > base.height + 0.01,
+  );
   const range = document.createRange();
   const leaves = [];
-  for (const element of probe.querySelectorAll('[data-flow-text],br')) {
+  for (const element of probe.querySelectorAll('[data-flow-text],br,[data-ivo-anchor]')) {
+    const slot = element.closest('[data-ivo-anchor]');
+    if (slot && slot !== element) continue;
     if (!element.hasAttribute('data-flow-text')) leaves.push(element);
     else {
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
@@ -45,9 +55,19 @@ function splitColumns(probe, width, total, start) {
     }
   }
   for (const node of leaves) {
+    if (
+      blockedTable &&
+      (blockedTable.contains(node) ||
+        blockedTable.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
+    )
+      break;
     range.selectNodeContents(node);
     if (node.nodeType !== Node.TEXT_NODE) range.selectNode(node);
-    const rects = [...range.getClientRects()].filter((r) => r.height > 0);
+    // Invisible replacement glyph ink can project above a correctly placed block.
+    // Measure its actual box for line/column ownership.
+    const rects = [
+      ...(node.dataset?.ivoAnchor ? node.getClientRects() : range.getClientRects()),
+    ].filter((r) => r.height > 0);
     if (rects.some((r) => r.bottom > base.bottom + 0.75 || r.top < base.top - 0.75))
       verticalOverset = true;
     const columns = [...new Set(rects.map(column))].sort((a, b) => a - b);
@@ -75,10 +95,19 @@ function splitColumns(probe, width, total, start) {
       cuts.set(col, point);
     }
   }
-  const end = { node: probe, offset: probe.childNodes.length, index: total };
+  const end = blockedTable
+    ? lift(blockedTable, 0)
+    : { node: probe, offset: probe.childNodes.length, index: total };
+  if (blockedTable) {
+    end.index = globalIndex(end, total);
+    // All equally sized frames after the last fitting text are empty. Count one
+    // more column for the unplaced remainder, suppressing automatic identical pages.
+    for (let i = last + 1; i <= availableFrames; i++) cuts.set(i, end);
+    last = Math.max(last, availableFrames);
+  }
   cuts.set(last + 1, end);
   for (let i = last; i >= 0; i--) if (!cuts.has(i)) cuts.set(i, cuts.get(i + 1));
-  return { cuts, count: last + 1, end, verticalOverset };
+  return { cuts, count: last + 1, end, verticalOverset, blocked: !!blockedTable };
 }
 const metrics = (frame) => ({
   w: frame.w / (frame.textScale?.x || 1),
@@ -87,7 +116,7 @@ const metrics = (frame) => ({
 /** Native browser column composition with derived fragments; canonical textFlow source is never split or rewritten. */
 export function layoutDocumentTextFlows(
   doc,
-  { allowPages = true, objectWrap = true, imageContours } = {},
+  { allowPages = true, objectWrap = true, imageContours, projected = false } = {},
 ) {
   // The native compositor may own every flow. A remaining frameOptions on
   // those objects must not trigger a second projection of the entire scene.
@@ -123,7 +152,11 @@ export function layoutDocumentTextFlows(
     doc.blocks = projection.blocks;
     return result;
   }
-  if (doc.blocks.some((b) => b.textFlowId && b.frameOptions))
+  if (
+    !projected &&
+    (doc.blocks.some((b) => b.textFlowId && b.frameOptions) ||
+      doc.textFlows.some((flow) => containsFootnote(flow.html)))
+  )
     return layoutFrameColumns(doc, { allowPages });
   const fragments = new Map(),
     status = new Map();
@@ -187,13 +220,14 @@ export function layoutDocumentTextFlows(
           probe.style.height = Math.max(1, size.h - firstLine.baselineShift) + 'px';
         }
       }
-      const columns = splitColumns(probe, size.w, source.total, start);
+      const columns = splitColumns(probe, size.w, source.total, start, group);
       overset ||= columns.verticalOverset;
       if (
         index + group === textFlow.frameIds.length &&
         textFlow.automaticPages &&
         allowPages &&
-        !columns.verticalOverset
+        !columns.verticalOverset &&
+        !columns.blocked
       )
         while (group < columns.count) {
           if (!appendTextFlowPage(doc, textFlow)) {
@@ -203,7 +237,11 @@ export function layoutDocumentTextFlows(
           group++;
           changed = true;
         }
-      if (index + group === textFlow.frameIds.length && !columns.verticalOverset)
+      if (
+        index + group === textFlow.frameIds.length &&
+        !columns.verticalOverset &&
+        !columns.blocked
+      )
         additionalFrames = Math.max(0, columns.count - group);
       const count = Math.min(group, columns.count);
       for (let i = 0; i < count; i++) {
@@ -318,7 +356,48 @@ function layoutFrameColumns(doc, { allowPages }) {
     }
     // Real frame geometry already determined which flows intersect artwork.
     // Synthetic column slots only divide the remaining, unobstructed source.
-    const result = layoutDocumentTextFlows(projection, { allowPages: false, objectWrap: false });
+    const inner = { allowPages: false, objectWrap: false, projected: true };
+    const result = layoutDocumentTextFlows(projection, inner);
+    for (const flow of projection.textFlows) {
+      const notes = footnoteReferences(flow.html);
+      if (!notes.length) continue;
+      const physical = doc.textFlows.find((f) => f.id === flow.id).frameIds;
+      const columns = physical.flatMap((id) => slots.get(id));
+      const byId = new Map(projection.blocks.map((block) => [block.id, block]));
+      const fitter = fitFootnotes(
+        columns,
+        notes,
+        fontFamilyFor(effectiveTextStyle(doc, flow.style).textStyle),
+        documentFootnoteOptions(doc),
+      );
+      let step = fitter.next();
+      let fitted = result;
+      while (!step.done) {
+        if (step.value !== columns) {
+          for (const col of step.value) {
+            const block = byId.get(col.id);
+            block.h = col.height * (block.textScale?.y || 1);
+          }
+          fitted = layoutDocumentTextFlows({ ...projection, textFlows: [flow] }, inner);
+        }
+        step = fitter.next({ ranges: fitted.fragments });
+      }
+      const adjusted = new Map(step.value.columns.map((col) => [col.id, col]));
+      for (const id of physical) {
+        slots.set(
+          id,
+          slots.get(id).map((col) => adjusted.get(col.id)),
+        );
+        for (const col of slots.get(id)) result.fragments.set(col.id, fitted.fragments.get(col.id));
+      }
+      const status = { ...fitted.status.get(flow.id) };
+      if (step.value.footnotesOverset) {
+        status.overset = true;
+        if (step.value.columns.at(-1).footnoteHTML)
+          status.additionalFrames = Math.max(1, status.additionalFrames);
+      }
+      result.status.set(flow.id, status);
+    }
     let added = false;
     for (const flow of doc.textFlows || []) {
       const extra = result.status.get(flow.id)?.additionalFrames || 0;
@@ -348,7 +427,7 @@ function layoutFrameColumns(doc, { allowPages }) {
             height: composition?.height || slot.height,
           };
         });
-        if (parts.some((p) => p.end > p.start)) used = index + 1;
+        if (parts.some((p) => p.end > p.start || p.footnoteHTML)) used = index + 1;
         fragments.set(id, {
           start: parts[0].start,
           end: parts.at(-1).end,
@@ -356,7 +435,7 @@ function layoutFrameColumns(doc, { allowPages }) {
           html: parts
             .map(
               (p) =>
-                `<div class="flow-column" data-flow-column="${p.id}" style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;overflow:hidden">${p.html}</div>`,
+                `<div class="flow-column" data-flow-column="${p.id}" style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;overflow:hidden">${p.html}</div>${p.footnoteHTML || ''}`,
             )
             .join(''),
         });

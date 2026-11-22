@@ -1,3 +1,5 @@
+import { anchoredPublicationMarkup, replacePublicationMarker } from './epub-anchors.js';
+import { footnoteText } from '../../domain/documents/footnotes.js';
 import { otherEndnoteMarker, endnoteFields } from '../../domain/documents/endnotes.js';
 import { paintConditionalText } from '../../rendering/text/paragraph-style-rules.js';
 import {
@@ -57,7 +59,11 @@ export function readingOrder(doc, { editingOrder = false } = {}) {
         a.position.y - b.position.y ||
         a.position.x - b.position.x,
     );
+  const byId = new Map(doc.blocks.map((b) => [b.id, b]));
   const entries = order.flatMap(({ item }) => {
+    for (let ancestor = item; ancestor; ancestor = byId.get(ancestor.parentId)) {
+      if (ancestor.extensions?.ivoAnchor) return [];
+    }
     if (item.type === 'table') {
       const chain = tables.get(item.id);
       if (
@@ -132,7 +138,7 @@ function selectedChapters(documents, id, linked, useBook) {
   return chapters;
 }
 
-function chapterText({ id, item, html, style }, doc, documents, paths, headings, anchors) {
+function chapterText({ id, item, html, style }, doc, documents, paths, headings, anchors, artwork) {
   const root = document.createElement(item.type === 'quote' ? 'blockquote' : 'div');
   root.innerHTML = readableHTML(html, documents, doc.id);
   paintConditionalText(root, doc, style);
@@ -152,6 +158,16 @@ function chapterText({ id, item, html, style }, doc, documents, paths, headings,
       p.replaceWith(heading);
     }
   }
+  const footnotes = [...root.querySelectorAll('span[data-footnote]')].map((marker, i) => ({
+    marker,
+    key: 'footnote-' + id + '-' + (i + 1),
+    number: marker.textContent,
+    text: footnoteText(marker.dataset.footnote),
+  }));
+  const placed = Array.from(root.querySelectorAll('[data-ivo-anchor]'), (marker) => [
+    marker,
+    artwork.get(marker.dataset.ivoAnchor),
+  ]);
   const endnoteStarts = new Map();
   for (const node of root.querySelectorAll('*')) {
     const marker = node.dataset.endnote,
@@ -227,6 +243,30 @@ function chapterText({ id, item, html, style }, doc, documents, paths, headings,
     if (destId) node.id = destId;
     if (!css.length) node.removeAttribute('style');
   }
+  for (const { marker, key, number, text } of footnotes) {
+    const cite = document.createElement('a'),
+      note = document.createElement('aside'),
+      back = document.createElement('a');
+    cite.id = key + '-ref';
+    cite.setAttribute('href', '#' + key);
+    cite.setAttribute('role', 'doc-noteref');
+    cite.setAttributeNS('http://www.idpf.org/2007/ops', 'epub:type', 'noteref');
+    cite.textContent = String(number);
+    marker.replaceWith(cite);
+    note.id = key;
+    note.setAttribute('role', 'doc-footnote');
+    note.setAttributeNS('http://www.idpf.org/2007/ops', 'epub:type', 'footnote');
+    back.setAttribute('href', '#' + cite.id);
+    back.setAttribute('role', 'doc-backlink');
+    back.textContent = String(number);
+    note.append(back);
+    for (const [index, line] of text.split('\n').entries()) {
+      if (index) note.append(document.createElement('br'));
+      note.append(index ? line : ' ' + line);
+    }
+    root.append(note);
+  }
+  for (const [marker, markup] of placed) replacePublicationMarker(marker, markup);
   if (endnoteStarts.size) {
     let note;
     for (const row of [...root.childNodes]) {
@@ -329,18 +369,23 @@ export async function exportReflowableBook(
     const path = paths.get(doc.id),
       headings = [],
       body = ['<h1>' + xml(doc.title) + '</h1>'];
+    async function packageImage(item) {
+      const image = await epubImage(doc, item, getSource),
+        key = 'image-' + ++mediaCount,
+        file = key + '.png';
+      mediaBytes += image.byteLength;
+      if (mediaBytes > 100 * 1024 * 1024)
+        throw Error('Image data exceeds 100 MB. Export fewer linked documents.');
+      files['EPUB/' + file] = [image, { level: 0 }];
+      manifest.push('<item id="' + key + '" href="' + file + '" media-type="image/png"/>');
+      return file;
+    }
+    const artwork = await anchoredPublicationMarkup(doc, packageImage, xml);
     for (const entry of entries) {
       const { item } = entry;
       if (item.type === 'image') {
         if (!item.src) continue;
-        const image = await epubImage(doc, item, getSource),
-          key = 'image-' + ++mediaCount,
-          file = key + '.png';
-        mediaBytes += image.byteLength;
-        if (mediaBytes > 100 * 1024 * 1024)
-          throw Error('Image data exceeds 100 MB. Export fewer linked documents.');
-        files['EPUB/' + file] = [image, { level: 0 }];
-        manifest.push('<item id="' + key + '" href="' + file + '" media-type="image/png"/>');
+        const file = await packageImage(item);
         body.push(
           '<figure><img src="' +
             file +
@@ -352,14 +397,22 @@ export async function exportReflowableBook(
         );
       } else if (item.type === 'table') body.push(tableMarkup(item.table, { escape: xml }));
       else if (item.type === 'rule') body.push('<hr/>');
-      else body.push(chapterText(entry, doc, documents, paths, headings, anchors));
+      else body.push(chapterText(entry, doc, documents, paths, headings, anchors, artwork));
     }
     add(
       'EPUB/' + path,
       xhtml(doc.title, entries.find((e) => e.html)?.style.language || lang, body.join('\n')),
     );
     manifest.push(
-      '<item id="ch' + i + '" href="' + path + '" media-type="application/xhtml+xml"/>',
+      '<item id="ch' +
+        i +
+        '" href="' +
+        path +
+        '" media-type="application/xhtml+xml"' +
+        ([...artwork.values()].some((value) => value.startsWith('<svg'))
+          ? ' properties="svg"'
+          : '') +
+        '/>',
     );
     spine.push('<itemref idref="ch' + i + '"/>');
     const sub = headingNavigation(headings, path);

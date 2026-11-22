@@ -181,7 +181,8 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
 }
 export function continueTableOnNextPage(doc, id) {
   const frames = tableThreads(doc.blocks).get(id);
-  if (!frames || frames.some((f) => f.parentId || f.extensions?.ivoAnchor)) throw Error('Choose a free-standing table on a document page.');
+  if (!frames || frames.some((f) => f.parentId || f.extensions?.ivoAnchor))
+    throw Error('Choose a free-standing table on a document page.');
   const tail = frames.at(-1),
     index = doc.pages.findIndex((p) => p.id === tail.pageId);
   if (

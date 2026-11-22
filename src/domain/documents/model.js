@@ -1,8 +1,7 @@
+import { uid } from '../identity.js';
+export { uid };
 import { createTable, validateTable } from './tables.js';
 import { BLOCK_TYPES } from './constants.js';
-export function uid(prefix = '') {
-  return `${prefix}${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`}`;
-}
 
 export function createDocument(title = 'Untitled', template = 'blank') {
   const now = new Date().toISOString();

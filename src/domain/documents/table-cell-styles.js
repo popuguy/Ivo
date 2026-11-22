@@ -1,4 +1,4 @@
-import { uid } from './model.js';
+import { uid } from '../identity.js';
 
 const color = /^#[a-f0-9]{6}$/i;
 const idPattern = /^cell-style-[a-zA-Z0-9_-]{1,96}$/;

@@ -1,3 +1,4 @@
+import { footnoteCommands } from '../src/domain/documents/footnotes.js';
 import { endnoteCommands } from '../src/domain/documents/endnotes.js';
 import { CASE_COMMANDS } from '../src/domain/text/change-case.js';
 import { LIST_COMMANDS } from '../src/domain/text/list-numbering.js';
@@ -580,13 +581,14 @@ else {
           items = [
             { label: 'Insert Document Link…', click: () => send('link') },
             { label: 'Insert Table…', click: () => send('insert-table') },
+            { label: 'Anchored Object…', click: () => send('anchored-object') },
             ...(context.table === true
               ? [{ label: 'Table Options…', click: () => send('table-options') }]
               : []),
             { label: 'Insert Page Link…', click: () => send('page-link') },
             { label: 'New Cross-Reference…', click: () => send('new-cross-reference') },
             ...(context.textEditing
-              ? Object.entries(endnoteCommands).map(([id, label]) => ({
+              ? Object.entries({ ...footnoteCommands, ...endnoteCommands }).map(([id, label]) => ({
                   label,
                   click: () => send(id),
                 }))
@@ -1354,11 +1356,15 @@ function applyHistory(record) {
     ['load-text-styles', canvas.canvasEditing],
     ['page-link', canvas.canvasEditing],
     ['new-cross-reference', canvas.canvasEditing],
-    ...Object.keys(endnoteCommands).map((id) => [id, canvas.canvasEditing]),
+    ...Object.keys({ ...footnoteCommands, ...endnoteCommands }).map((id) => [
+      id,
+      canvas.canvasEditing,
+    ]),
     ['mark-paragraph-destination', canvas.canvasEditing],
     ['define-cross-reference-formats', canvas.canvasEditing],
     ['update-cross-references', canvas.canvasEditing],
     ['insert-table', canvas.canvasEditing],
+    ['anchored-object', canvas.canvasEditing],
     ['generate-index', canvas.canvasEditing],
     ['update-index', canvas.canvasEditing],
     ['table-of-contents', canvas.canvasEditing],
@@ -1581,6 +1587,12 @@ function installMenu() {
         label: 'Object',
         submenu: [
           {
+            id: 'anchored-object',
+            label: 'Anchored Object…',
+            enabled: false,
+            click: () => sendCommand('anchored-object'),
+          },
+          {
             label: 'Arrange',
             submenu: Object.entries(ARRANGE_COMMANDS).map(([name, value]) => ({
               id: name,
@@ -1636,7 +1648,7 @@ function installMenu() {
       {
         label: 'Type',
         submenu: [
-          ...Object.entries(endnoteCommands).map(([id, label]) => ({
+          ...Object.entries({ ...footnoteCommands, ...endnoteCommands }).map(([id, label]) => ({
             id,
             label,
             enabled: false,

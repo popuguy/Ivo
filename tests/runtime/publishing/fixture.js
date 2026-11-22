@@ -1,3 +1,6 @@
+import { verifyReviewProof } from './review-proof.js';
+import { verifyAnchoredArtwork } from './anchored-artwork.js';
+import { verifyFootnotes } from './footnotes.js';
 import { verifyRunningFields } from './running-fields.js';
 import { verifyParagraphStyleRules } from './paragraph-style-rules.js';
 import { verifyEndnotes } from './endnotes.js';
@@ -52,6 +55,9 @@ try {
   });
   frame.html = `<p data-ivo-pstyle="${body.id}">Precision in proportion.</p><p>Text, geometry and materials work together.</p>`;
   const host = document.querySelector('#host');
+  await verifyAnchoredArtwork(host, assert);
+  await verifyReviewProof(assert);
+  await verifyFootnotes(host, assert);
   await verifyParagraphStyleRules(host, assert);
   await verifyTables(host, assert);
   await verifyContinuedTables(host, assert);
@@ -386,6 +392,7 @@ try {
         ok: true,
         paragraphStyleRules: true,
         endnotes: true,
+        footnotes: true,
         eightHandles: true,
         independentFramePorts: true,
         openType: true,

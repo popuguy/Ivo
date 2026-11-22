@@ -1,3 +1,5 @@
+import { documentFootnoteOptions } from '../../domain/documents/footnotes.js';
+import { fitFootnotes, footnoteReferences } from './footnote-layout.js';
 import { readyImageWrapResources, imageWrapResources } from './image-contours.js';
 import { baselineGridSettings, gridInsideFrame } from '../../domain/text/baseline-grid.js';
 import { hasBaselineGrid } from '../../domain/documents/capabilities.js';
@@ -13,7 +15,7 @@ import {
   nativeCharacterFeatureAdmission,
 } from '../../domain/text/native-character-style.js';
 import { inspectFont } from '../../domain/text/fonts.js';
-import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
+import { TEXT_DEFAULTS, fontFamilyFor } from '../../domain/text/typography.js';
 import { effectiveTextStyle } from '../../domain/documents/publishing.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
 import { escapeHTML } from '../../shared/html/sanitize.js';
@@ -411,6 +413,7 @@ async function decideParagraph(
   noBreakRanges,
   paragraphHyphenation,
   baselineAlignment,
+  tableOffsets,
 ) {
   let composer = paragraphSessions.get(compose);
   if (!composer) {
@@ -426,6 +429,7 @@ async function decideParagraph(
     noBreakRanges,
     paragraphHyphenation,
     baselineAlignment,
+    tableOffsets,
   });
 }
 
@@ -581,7 +585,7 @@ function fragmentsFor(source, result, columns, flow, fragments, prefix) {
           native: { lines, spans: source.spans, text: source.text },
         };
       });
-    if (parts.some((p) => p.native.lines.length)) used = frameIndex + 1;
+    if (parts.some((p) => p.native.lines.length || p.footnoteHTML)) used = frameIndex + 1;
     fragments.set(id, {
       native: true,
       start: parts[0].start,
@@ -590,7 +594,7 @@ function fragmentsFor(source, result, columns, flow, fragments, prefix) {
       html: parts
         .map(
           (p) =>
-            `<div class="flow-column native-flow-column" data-flow-column="${escapeHTML(p.id)}"${p.bottomOverhang > 0 ? ' data-bottom-overhang' : ''} style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;--ink-bottom:${p.bottomOverhang}px">${p.html}</div>`,
+            `<div class="flow-column native-flow-column" data-flow-column="${escapeHTML(p.id)}"${p.bottomOverhang > 0 ? ' data-bottom-overhang' : ''} style="position:absolute;left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px;--ink-bottom:${p.bottomOverhang}px">${p.html}</div>${p.footnoteHTML || ''}`,
         )
         .join(''),
     });
@@ -608,6 +612,7 @@ function semanticKey(doc, allowPages) {
     doc.publishing?.paragraphStyles,
     doc.publishing?.characterStyles,
     doc.hyphenationExceptions,
+    doc.extensions?.ivoFootnotes,
     hasBaselineGrid(doc)
       ? [doc.publishing?.baselineGrid, doc.blocks.map((b) => [b.id, b.parentId, b.y, b.rotation])]
       : null,
@@ -621,10 +626,18 @@ const assetSignature = (assets) =>
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 const layoutProperties = ({ locked: _locked, ...properties }) => properties;
 
+const inlineTableOffsets = (source) =>
+  source.runs.filter((run) => run.objectType === 'table').map((run) => run.start);
+
 function selectParagraphPlan(required, source, usesJustification) {
   if (!required && !usesJustification && !hasAuthoredBreakCharacters(source.text)) return false;
   try {
-    validateParagraphSource(source.text, source.noBreakRanges, source.hyphenationPoints);
+    validateParagraphSource(
+      source.text,
+      source.noBreakRanges,
+      source.hyphenationPoints,
+      inlineTableOffsets(source),
+    );
     return true;
   } catch (error) {
     // Keep the existing native single-line route when an incidental pasted
@@ -690,6 +703,7 @@ function projectNativeFlow(
     wrapped = columns.some((column) => column.obstacles?.length),
     required =
       flow.composition?.composer === 'paragraph' ||
+      source.runs.some((run) => run.objectType === 'table') ||
       useGrid ||
       columns.some((column) => column.verticalAlign === 'justify') ||
       wrapped ||
@@ -783,6 +797,7 @@ export async function composeNativeTextFlows(
           { ...doc.publishing, layers: doc.publishing?.layers?.map(layoutProperties) },
           doc.textWrapPreferences,
           doc.hyphenationExceptions,
+          doc.extensions?.ivoFootnotes,
           doc.textFlows.map(({ html: _text, ...settings }) => settings),
         ])
       : null;
@@ -887,6 +902,11 @@ export async function composeNativeTextFlows(
             textColor,
             ...(language && language !== 'en-US' ? { language } : {}),
             ...nativeCharacterStyle(character),
+            ...(character.objectId && {
+              objectWidth: character.objectWidth,
+              objectHeight: character.objectHeight,
+              aboveLine: character.aboveLine,
+            }),
           }),
         ),
         paragraphs: source.paragraphs.map(({ start, end, ...metadata }) => ({
@@ -902,21 +922,26 @@ export async function composeNativeTextFlows(
         allowFallback: false,
         includeVectors: true,
       },
-      decision = planned
-        ? await decideParagraph(
-            { ...request, frames: transportFrames(initial) },
-            initial,
+      notes = footnoteReferences(flow.html);
+    const decide = (slots) =>
+      planned
+        ? decideParagraph(
+            { ...request, frames: transportFrames(slots) },
+            slots,
             compose,
             flow.composition.composer,
             flowKeeps(source),
             source.noBreakRanges,
             source.paragraphs.map(({ hyphenLimit, hyphenZone }) => ({ hyphenLimit, hyphenZone })),
             source.paragraphs.map((p) => p.baselineAlignment || 'none'),
+            inlineTableOffsets(source),
           )
         : null;
     let result,
+      decision,
+      footnotesOverset = false,
       columns = initial;
-    for (let attempt = 0; attempt <= 128; attempt++) {
+    const proof = async (columns, decision) => {
       const input = {
         ...request,
         frames: transportFrames(columns),
@@ -936,9 +961,46 @@ export async function composeNativeTextFlows(
             ? { breaks: decision.breaks }
             : {}),
       };
-      result = await composeRequest(compose, input, decision?.wordSpacingPlan);
+      const result = await composeRequest(compose, input, decision?.wordSpacingPlan);
       validateResult(result, input);
-      if (result.layout.coveredLength === source.text.length || !allowPages || !flow.automaticPages)
+      return result;
+    };
+    for (let attempt = 0; attempt <= 128; attempt++) {
+      if (notes.length) {
+        const fitter = fitFootnotes(
+          columns,
+          notes,
+          fontFamilyFor(effectiveTextStyle(doc, flow.style).textStyle),
+          documentFootnoteOptions(doc),
+        );
+        let step = fitter.next();
+        while (!step.done) {
+          const slots = step.value;
+          decision = await decide(slots);
+          result = await proof(slots, decision);
+          const ranges = new Map();
+          for (const line of result.layout.lines) {
+            const range = ranges.get(line.frame) || { start: line.start };
+            range.end = line.end;
+            ranges.set(line.frame, range);
+          }
+          for (const range of ranges.values()) {
+            range.start = nativeSourceBoundary(source, range.start);
+            range.end = nativeSourceBoundary(source, range.end);
+          }
+          step = fitter.next({ ranges });
+        }
+        columns = step.value.columns;
+        footnotesOverset = step.value.footnotesOverset;
+      } else {
+        if (attempt === 0) decision = await decide(columns);
+        result = await proof(columns, decision);
+      }
+      if (
+        (result.layout.coveredLength === source.text.length && !footnotesOverset) ||
+        !allowPages ||
+        !flow.automaticPages
+      )
         break;
       if (
         decision?.oversetStart !== undefined &&
@@ -956,7 +1018,8 @@ export async function composeNativeTextFlows(
       // A frame that cannot place even one source line cannot be repaired by cloning itself.
       if (!(
         decision?.placements.some((line) => line.frame >= columns.length) ||
-        result.layout.lines.some((line) => line.frame === columns.at(-1).id)
+        result.layout.lines.some((line) => line.frame === columns.at(-1).id) ||
+        columns.at(-1).footnoteHTML
       ))
         break;
       if (!appendTextFlowPage(projection, flow)) break;
@@ -972,7 +1035,7 @@ export async function composeNativeTextFlows(
     // Outline IDs already include immutable face/size/transform identity.
     const prefix = 'ivo-' + (await sha(new TextEncoder().encode(flow.id))).slice(0, 24),
       used = fragmentsFor(source, result, columns, flow, fragments, prefix),
-      overset = result.layout.coveredLength < source.text.length;
+      overset = footnotesOverset || result.layout.coveredLength < source.text.length;
     if (allowPages && trimTextFlowPages(projection, flow, Math.max(1, used))) {
       changed = true;
       for (const id of [...fragments.keys()])

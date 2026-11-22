@@ -1,3 +1,4 @@
+import { INLINE_CLIPBOARD_TYPE } from '../../../src/domain/documents/inline-clipboard.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { startTextFlow, threadFrame } from '../../../src/domain/documents/text-flows.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
@@ -224,6 +225,95 @@ try {
   );
   await editor.command('tool-select');
   editor.destroy();
+  doc = createSceneDocument('Inline clipboard');
+  history = createDocumentHistory();
+  const frame = insertObject(doc, 'text', doc.pages[0].id, {
+    html: '<p>Blue twill.</p><p>Ivory facing.</p>',
+  });
+  startTextFlow(doc, frame.id, { automaticPages: false });
+  const shape = insertObject(doc, 'polygon', doc.pages[0].id, { w: 20, h: 14 });
+  editor = mount({ selection: [frame.id] });
+  await editor.command('document-text');
+  const editing = host.querySelector('.canvas-flow-input');
+  editing.focus();
+  window.getSelection().collapse(editing.querySelector('p').firstChild, 5);
+  const art = new DataTransfer();
+  art.setData(OBJECT_CLIPBOARD_TYPE, JSON.stringify(copyObjectSelection(doc, [shape.id])));
+  const dispatch = (type, data) =>
+    editing.dispatchEvent(
+      new ClipboardEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: data,
+      }),
+    );
+  dispatch('paste', art);
+  await editor.flush();
+  const marker = editing.querySelector('[data-ivo-anchor]');
+  assert(
+    marker && doc.blocks.length === 3,
+    'Pasting a page object into text failed: ' + notifications.at(-1),
+  );
+  const markerRange = document.createRange();
+  markerRange.selectNodeContents(marker.firstChild);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(markerRange);
+  const rangeData = new DataTransfer();
+  dispatch('copy', rangeData);
+  assert(
+    rangeData.getData(INLINE_CLIPBOARD_TYPE),
+    'Copying the exact marker lost its asset archive',
+  );
+  window.getSelection().collapseToEnd();
+  // Place the copy at a second insertion point, outside the original marker.
+  window.getSelection().selectAllChildren(editing);
+  window.getSelection().collapseToEnd();
+  dispatch('paste', rangeData);
+  await editor.flush();
+  const ids = [...editing.querySelectorAll('[data-ivo-anchor]')].map(
+    (node) => node.dataset.ivoAnchor,
+  );
+  assert(
+    ids.length === 2 && ids[0] !== ids[1] && doc.blocks.length === 4,
+    'Range paste lost or aliased the graphic: ' + notifications.at(-1),
+  );
+  await editor.command('undo');
+  assert(
+    doc.blocks.length === 3 && !doc.textFlows[0].html.includes(ids[1]),
+    'Inline paste left artwork behind after undo',
+  );
+  await editor.command('redo');
+  assert(
+    doc.blocks.length === 4 && doc.textFlows[0].html.includes(ids[1]),
+    'Redo did not restore inline art',
+  );
+  await editor.command('document-text');
+  const fullInput = host.querySelector('.canvas-flow-input');
+  fullInput.focus();
+  window.getSelection().selectAllChildren(fullInput);
+  const allData = new DataTransfer();
+  fullInput.dispatchEvent(
+    new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: allData }),
+  );
+  const originalHTML = doc.textFlows[0].html;
+  window.getSelection().collapseToEnd();
+  fullInput.dispatchEvent(
+    new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: allData }),
+  );
+  await editor.flush();
+  assert(
+    doc.blocks.length === 6 &&
+      fullInput.querySelectorAll('[data-ivo-anchor]').length === 4 &&
+      (doc.textFlows[0].html.match(/Blue/g) || []).length === 2 &&
+      (doc.textFlows[0].html.match(/Ivory/g) || []).length === 2,
+    'Multiline paste lost text, art or paragraphs: ' + notifications.at(-1),
+  );
+  await editor.command('undo');
+  assert(
+    doc.textFlows[0].html === originalHTML && doc.blocks.length === 4,
+    'Multiline paste did not undo exactly',
+  );
+  editor.destroy();
   // Failed resource persistence must not leave half-pasted objects or undo entries.
   doc = createSceneDocument('Failed paste');
   history = createDocumentHistory();
@@ -340,6 +430,7 @@ try {
       JSON.stringify({
         ok: true,
         nativeObjectCopyPaste: true,
+        inlineGraphicCopyPaste: true,
         independentFlow: true,
         cutUndoRedo: true,
         textCopyPreserved: true,

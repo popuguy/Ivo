@@ -1,3 +1,4 @@
+import { footnoteText } from '../../domain/documents/footnotes.js';
 import { validEndnoteMarker } from '../../domain/documents/endnotes.js';
 import {
   validParagraphId,
@@ -95,6 +96,20 @@ export function cleanHTML(value) {
       node.childNodes.forEach((c) => frag.append(clean(c)));
       return frag;
     }
+    if (
+      node.tagName === 'SPAN' &&
+      /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(node.dataset.ivoAnchor || '')
+    ) {
+      const text = node.textContent,
+        offset = text.indexOf('\uFFFC');
+      if (offset < 0) return document.createTextNode(text);
+      const fragment = document.createDocumentFragment();
+      const marker = document.createElement('span');
+      marker.dataset.ivoAnchor = node.dataset.ivoAnchor;
+      marker.textContent = '\uFFFC';
+      fragment.append(text.slice(0, offset), marker, text.slice(offset + 1));
+      return fragment;
+    }
     const authored = {};
     for (const attribute of node.attributes) {
       if (!attribute.name.startsWith('data-ivo-')) continue;
@@ -116,6 +131,12 @@ export function cleanHTML(value) {
     }
     const attributes = { ...native, ...authored };
     const out = document.createElement(node.tagName.toLowerCase());
+    if (
+      node.tagName === 'SPAN' &&
+      node.hasAttribute('data-footnote') &&
+      footnoteText(node.dataset.footnote) !== null
+    )
+      out.dataset.footnote = node.dataset.footnote;
     if (/^(P|H[234])$/.test(node.tagName) && validParagraphId(node.dataset.paragraphDestination))
       out.dataset.paragraphDestination = node.dataset.paragraphDestination;
     const counter = node.tagName === 'OL' ? 'start' : node.tagName === 'LI' ? 'value' : null;

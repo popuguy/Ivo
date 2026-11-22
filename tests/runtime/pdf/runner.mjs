@@ -1,3 +1,6 @@
+import { verifyInlineTablePDF } from './inline-tables.mjs';
+import { verifyAnchoredPDF } from './anchored-artwork.mjs';
+import { verifyFootnotePDF } from './footnotes.mjs';
 import { taggedWords, verifyTaggedBook } from './tagged-book.mjs';
 import { verifyEndnotePDF } from './endnotes.mjs';
 import { verifyPrintedStyleRules } from './paragraph-style-rules.mjs';
@@ -89,6 +92,9 @@ app
       },
     });
     await mkdir(output, { recursive: true });
+    await verifyInlineTablePDF({ root, output, renderPDF });
+    await verifyAnchoredPDF({ root, output, renderPDF });
+    await verifyFootnotePDF({ root, output, renderPDF });
     await verifyEndnotePDF({ root, output, renderPDF });
     const a = createSceneDocument('PDF typography'),
       b = createSceneDocument('Linked reference');
@@ -1434,6 +1440,7 @@ print(String(data: summaryData, encoding: .utf8)!)
           signedWrapPDFs,
           browserJumpInspection,
           ...characterPDFInspection,
+          footnotesInBrowserAndNativePDF: true,
           ...paragraphKeepPDFInspection,
           ...wordSpacingPDFInspection,
           warnings: manifest.warnings,

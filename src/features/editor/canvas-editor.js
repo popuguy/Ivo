@@ -1,3 +1,14 @@
+import { anchoredObjectIds } from '../../domain/documents/anchored-objects.js';
+import { placeAnchoredArtwork } from '../../rendering/anchored-artwork.js';
+import { anchoredObjectDialog } from './ui/anchored-object-dialog.js';
+import { containsFootnote, footnoteCommands } from '../../domain/documents/footnotes.js';
+import {
+  changeFootnote,
+  editFootnoteText,
+  editFootnoteOptions,
+  footnoteAt,
+  normalizeFootnoteNumbers,
+} from './text/footnotes.js';
 import {
   containsEndnoteField,
   endnoteCommands,
@@ -45,6 +56,11 @@ import { createFindChangePanel } from './ui/find-change-panel.js';
 import { planTableCorrections } from './text/table-proofing.js';
 import { findTextSources, findSelection } from './text/find-change.js';
 import { textClipboardHTML } from './text/clipboard.js';
+import {
+  INLINE_CLIPBOARD_TYPE,
+  copyInlineSelection,
+  prepareInlinePaste,
+} from '../../domain/documents/inline-clipboard.js';
 import { ensureTextWrapFlows } from '../../domain/documents/text-wrap.js';
 import { reflectTextWrapControls } from './ui/text-wrap-properties.js';
 import { statusBarMarkup } from './ui/status-bar.js';
@@ -853,6 +869,7 @@ export function mountCanvasEditor(host, options) {
       renderDoc = { ...doc(), blocks: [...inherited, ...doc().blocks] };
     const inheritedIds = new Set(inherited.map((b) => b.id));
     return orderedPageObjects(renderDoc, p.id)
+      .filter((item) => !item.extensions?.ivoAnchor)
       .map((item) =>
         inheritedIds.has(item.id)
           ? `<div class="canvas-parent-art" aria-hidden="true">${sceneObjectHTML(item, { document: renderDoc, source, textHTML: (item) => cleanHTML(item.html) })}</div>`
@@ -928,6 +945,7 @@ export function mountCanvasEditor(host, options) {
     tables?.mark(state.selection.length === 1 ? object() : null);
     paintBaselineGrid();
     applySceneTypography(world, renderingDocument());
+    placeAnchoredArtwork(world, doc(), { source, flow: flowPlan, editing: options.editing });
     if (doc().textFlows?.length) {
       flowPreviewDirty = true;
       refreshFlowPreview();
@@ -977,7 +995,22 @@ export function mountCanvasEditor(host, options) {
       selectionRect = null;
       selectionMembers = [];
       if (items.length && options.editing) {
-        const rect = selectionBounds(doc(), state.selection);
+        let rect = selectionBounds(doc(), state.selection);
+        if (items.length === 1 && item?.extensions?.ivoAnchor) {
+          const element = world.querySelector(
+            '[data-anchored-artwork][data-object="' + CSS.escape(item.id) + '"]',
+          );
+          const page =
+            element &&
+            positions().find((p) => p.id === element.closest('[data-page]')?.dataset.page);
+          if (page)
+            rect = {
+              x: page.x + parseFloat(element.style.left),
+              y: page.y + parseFloat(element.style.top),
+              w: item.w,
+              h: item.h,
+            };
+        }
         const frame = document.createElement('div');
         selectionFrame = frame;
         selectionRect = rect;
@@ -1444,6 +1477,7 @@ export function mountCanvasEditor(host, options) {
       flowRenderCache.set(item.id, { sourceHTML, html, element, part });
     }
     applySceneTypography(world, renderingDocument());
+    placeAnchoredArtwork(world, doc(), { source, flow: flowPlan, editing: options.editing });
     selectionDirty = true;
     requestFrame();
   }
@@ -1693,9 +1727,10 @@ export function mountCanvasEditor(host, options) {
   }
   function writeText(item, html, element) {
     const textFlow = (element && sourceTextFlow(element)) || textFlowForFrame(doc(), item);
-    const canonical = element?.classList.contains('canvas-flow-input')
-      ? flowInputHTML(element)
-      : cleanHTML(html);
+    const canonical = normalizeFootnoteNumbers(
+      element?.classList.contains('canvas-flow-input') ? flowInputHTML(element) : cleanHTML(html),
+      doc().extensions?.ivoFootnotes?.startAt,
+    );
     if (textFlow?.composition) {
       validateNativeFlowSource(
         doc(),
@@ -1727,8 +1762,23 @@ export function mountCanvasEditor(host, options) {
         if (afterCites?.has(id) && afterCites.get(id) !== label)
           throw Error('Endnote reference numbers are automatic. Type beside the number.');
     }
+    if (previous?.includes('data-ivo-anchor')) {
+      const retained = new Set(anchoredObjectIds(canonical));
+      for (const id of anchoredObjectIds(previous)) if (!retained.has(id)) removeObject(doc(), id);
+    }
     if (textFlow) textFlow.html = canonical;
     else if (item) item.html = canonical;
+    if (containsFootnote(canonical)) {
+      doc().canvasVersion = Math.max(35, doc().canvasVersion);
+      if (containsFootnote(previous) && element) {
+        let label = doc().extensions?.ivoFootnotes?.startAt || 1;
+        for (const node of element.querySelectorAll('span[data-footnote]')) {
+          if (node.textContent && node.textContent !== String(label))
+            node.textContent = String(label);
+          if (node.textContent) label++;
+        }
+      }
+    }
     if (beforeCites?.size && afterCites.size < beforeCites.size) {
       const removed = new Set([...beforeCites.keys()].filter((id) => !afterCites.has(id)));
       updateEndnotes(doc(), findFragment, removed);
@@ -1804,6 +1854,13 @@ export function mountCanvasEditor(host, options) {
       view = textViewBefore || captureView();
     try {
       writeText(item, element.innerHTML, element);
+      if (!textFlow && !item.textFlowId && !composing && containsFootnote(item.html)) {
+        const view = captureView();
+        startTextFlow(doc(), item.id, { automaticPages: false });
+        finishText({ synchronized: true });
+        restoreView(view);
+        return true;
+      }
       if (!composing) applyNamedTextStyles(element, doc());
       if (textFlow && !composing) {
         const typingFlow =
@@ -3064,9 +3121,94 @@ export function mountCanvasEditor(host, options) {
       ? rangeFromBookmark(element, savedTextSelection.bookmark)
       : null;
   }
+  function footnoteAction(name, frame, bookmark, row, size) {
+    if (editor.querySelector('.footnote-editor')) return;
+    const existing =
+      name === 'insert-footnote'
+        ? null
+        : footnoteAt(doc(), frame, bookmark, Number(row?.dataset.footnoteNumber));
+    if (!existing && name !== 'insert-footnote')
+      throw Error('Place the insertion point beside the footnote number.');
+    if (!frame || (!existing && !bookmark))
+      throw Error('Place the insertion point in a text frame.');
+    const expectedDocument = doc().id;
+    const source = () => (textFlowForFrame(doc(), frame) || frame).html;
+    const original = source();
+    const commit = (text) => {
+      if (
+        doc().id !== expectedDocument ||
+        source() !== original ||
+        sceneObject(doc(), frame.id) !== frame
+      )
+        throw Error('The text changed. Reopen the footnote at its current position.');
+      mutate(
+        () => changeFootnote(doc(), frame, { bookmark, number: existing?.number, text, size }),
+        footnoteCommands[name],
+      );
+    };
+    if (name === 'delete-footnote') {
+      commit(null);
+      return;
+    }
+    const target = row || host.querySelector('[data-object="' + CSS.escape(frame.id) + '"]');
+    editFootnoteText(
+      editor,
+      target?.getBoundingClientRect(),
+      existing?.text || '',
+      commit,
+      options.onNotify,
+    );
+  }
   async function command(name, { anchor } = {}) {
     if (!ownsInput() || busy || dialogOpen() || composing) return;
+    if (tables?.format(name)) return;
     if (name !== 'find-change' && name !== 'check-spelling') tables?.finish();
+    if (name === 'anchored-object') {
+      if (!options.editing || options.parentMode || !canWrite()) return;
+      try {
+        preserveRange();
+        finishText();
+        anchoredObjectDialog(
+          publishingControls.openForm,
+          doc(),
+          object(),
+          captureView().textSelection,
+          object(),
+          mutate,
+        );
+      } catch (error) {
+        options.onNotify?.(error.message);
+      }
+      return;
+    }
+    if (name === 'footnote-options') {
+      if (options.editing && !options.parentMode && canWrite())
+        editFootnoteOptions(
+          editor,
+          doc(),
+          (apply) => mutate(apply, footnoteCommands[name]),
+          options.onNotify,
+        );
+      return;
+    }
+    if (Object.hasOwn(footnoteCommands, name)) {
+      if (!options.editing || options.parentMode || !canWrite()) return;
+      try {
+        preserveRange();
+        finishText();
+        const frame = object();
+        footnoteAction(
+          name,
+          frame,
+          captureView().textSelection,
+          null,
+          frame && readSelectedTextStyle()?.values.fontSize,
+        );
+      } catch (e) {
+        options.onNotify?.(e.message);
+      }
+      return;
+    }
     if (Object.hasOwn(endnoteCommands, name)) {
       if (!options.editing || options.parentMode || !canWrite()) return;
       try {
@@ -3103,7 +3245,16 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     if (['insert-table', 'table-options', 'continue-table'].includes(name)) {
-      tables.open(name);
+      let insertion;
+      if (name === 'insert-table' && activeTextId) {
+        preserveRange();
+        finishText();
+        const frame = object(),
+          bookmark = captureView().textSelection;
+        if (frame && bookmark)
+          insertion = { frame, bookmark, html: (textFlowForFrame(doc(), frame) || frame).html };
+      }
+      tables.open(name, insertion);
       return;
     }
     if (
@@ -3692,6 +3843,98 @@ export function mountCanvasEditor(host, options) {
       }, action);
     }
   }
+  async function ensureClipboardAssets(archive, planned) {
+    const existing = options.assets?.() || options.fonts?.() || [];
+    const resources = new Map(existing.map((asset) => [asset.id, asset]));
+    for (const asset of archive.assets) {
+      const prior = resources.get(asset.id);
+      if (prior && (prior.data !== asset.data || prior.mimeType !== asset.mimeType))
+        throw Error('A clipboard resource conflicts with a resource already in this vault.');
+      resources.set(asset.id, asset);
+    }
+    if (planned)
+      validateImport({
+        schemaVersion: CURRENT_ARCHIVE_VERSION,
+        documents: [planned],
+        assets: [...resources.values()],
+      });
+    for (const asset of archive.assets)
+      if (!existing.some((a) => a.id === asset.id)) await onAsset(asset);
+    return [...resources.values()];
+  }
+
+  function pasteInlineObjects(archive, fromRange) {
+    const element = activeText(),
+      frameId = activeTextId;
+    const bookmark = currentTextSelection();
+    if (!element || !bookmark || composing) return;
+    const before = documentContent(doc());
+    pendingCount++;
+    pendingFiles = pendingFiles
+      .then(async () => {
+        const planned = structuredClone(doc());
+        const html = prepareInlinePaste(planned, archive, frameId, fromRange);
+        const assets = await ensureClipboardAssets(archive);
+        const current = currentTextSelection();
+        if (
+          !alive ||
+          !ownsInput() ||
+          busy ||
+          composing ||
+          activeText() !== element ||
+          document.activeElement !== element ||
+          documentContent(doc()) !== before ||
+          current?.anchor.index !== bookmark.anchor.index ||
+          current?.focus.index !== bookmark.focus.index
+        )
+          throw Error(
+            'The insertion point changed before the objects could be pasted. Paste again.',
+          );
+        const rollback = structuredClone(doc()),
+          view = captureView();
+        beginTextInput('insertFromPaste');
+        try {
+          Object.assign(doc(), planned);
+          // Suppress the browser's separate input transaction. This paste owns
+          // the new scene objects and the text change as one undoable operation.
+          applyingText = true;
+          try {
+            const fragment = document.createElement('div');
+            fragment.innerHTML = html;
+            const inserted = applyDocumentInput(
+              element,
+              'insertInlineFragment',
+              fragment,
+              pendingMarks,
+            );
+            if (!inserted && !document.execCommand('insertHTML', false, html))
+              throw Error('The clipboard could not be inserted.');
+          } finally {
+            applyingText = false;
+          }
+          if (!syncText(element)) return;
+          const source = sourceTextFlow(element) || sceneObject(doc(), frameId);
+          const inserted = new Set(anchoredObjectIds(source.html));
+          if (anchoredObjectIds(html).some((id) => !inserted.has(id)))
+            throw Error('The pasted object marker was lost.');
+          validateImport({ schemaVersion: CURRENT_ARCHIVE_VERSION, documents: [doc()], assets });
+          finishText({ synchronized: true });
+          publishingControls.prepareLegacyFonts();
+        } catch (error) {
+          textBefore = textViewBefore = null;
+          inputType = '';
+          restoreGestureDocument(rollback);
+          flowSignature = '';
+          restoreView(view);
+          throw error;
+        }
+      })
+      .catch((error) => {
+        options.onNotify?.(error.message);
+      })
+      .finally(() => pendingCount--);
+    return pendingFiles;
+  }
   function pasteObjects(value) {
     if (!options.editing || !ownsInput() || busy || composing) return Promise.resolve(false);
     endTextEditing();
@@ -3705,25 +3948,9 @@ export function mountCanvasEditor(host, options) {
           throw new Error('The document changed before the objects could be pasted. Paste again.');
         const archive = readObjectClipboard(value),
           planned = structuredClone(doc()),
-          roots = pasteObjectSelection(planned, archive, context),
-          existing = options.assets?.() || options.fonts?.() || [],
-          resources = new Map(existing.map((asset) => [asset.id, asset]));
+          roots = pasteObjectSelection(planned, archive, context);
         ensureTextWrapFlows(planned);
-        for (const asset of archive.assets) {
-          const prior = resources.get(asset.id);
-          if (prior && (prior.data !== asset.data || prior.mimeType !== asset.mimeType))
-            throw new Error(
-              'A clipboard resource conflicts with a resource already in this vault.',
-            );
-          resources.set(asset.id, asset);
-        }
-        validateImport({
-          schemaVersion: CURRENT_ARCHIVE_VERSION,
-          documents: [planned],
-          assets: [...resources.values()],
-        });
-        for (const asset of archive.assets)
-          if (!existing.some((a) => a.id === asset.id)) await onAsset(asset);
+        await ensureClipboardAssets(archive, planned);
         if (!alive || !ownsInput() || busy || documentContent(doc()) !== before)
           throw new Error('The document changed before the objects could be pasted. Paste again.');
         mutate(() => {
@@ -3869,13 +4096,13 @@ export function mountCanvasEditor(host, options) {
     contextMenu = document.createElement('div');
     contextMenu.className = 'canvas-context-menu';
     contextMenu.setAttribute('role', 'menu');
-    contextMenu.innerHTML = `${Object.entries(endnoteCommands)
+    contextMenu.innerHTML = `${Object.entries({ ...footnoteCommands, ...endnoteCommands })
       .map(
         ([cmd, label]) => `<button role="menuitem" data-canvas-command="${cmd}">${label}</button>`,
       )
       .join(
         '',
-      )}<button role="menuitem" data-canvas-command="insert-table">Insert table…</button>${table ? '<button role="menuitem" data-canvas-command="table-options">Table options…</button>' : ''}<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button><button role="menuitem" data-canvas-command="new-cross-reference">New Cross-Reference…</button>${
+      )}<button role="menuitem" data-canvas-command="anchored-object">Anchored Object…</button><button role="menuitem" data-canvas-command="insert-table">Insert table…</button>${table ? '<button role="menuitem" data-canvas-command="table-options">Table options…</button>' : ''}<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button><button role="menuitem" data-canvas-command="new-cross-reference">New Cross-Reference…</button>${
       context.textEditing
         ? Object.entries({
             ...INSERT_CHARACTERS,
@@ -4388,6 +4615,32 @@ export function mountCanvasEditor(host, options) {
     const target = event.target instanceof Element ? event.target : document.activeElement;
     if (!ownsInput() || busy || dialogOpen() || target?.closest('input,textarea,select')) return;
     const objectData = event.clipboardData?.getData(OBJECT_CLIPBOARD_TYPE);
+    const inlineData = event.clipboardData?.getData(INLINE_CLIPBOARD_TYPE);
+    if (
+      (inlineData || objectData) &&
+      activeTextId &&
+      options.editing &&
+      activeText()?.contains(target)
+    ) {
+      try {
+        const archive = readObjectClipboard(inlineData || objectData);
+        const roots = archive.documents[0].blocks.filter(
+          (b) => !b.parentId && !b.extensions?.ivoAnchor,
+        );
+        if (
+          inlineData ||
+          (roots.length === 1 && ['polygon', 'image', 'table'].includes(roots[0].type))
+        ) {
+          event.preventDefault();
+          void pasteInlineObjects(archive, !!inlineData);
+          return;
+        }
+      } catch (error) {
+        event.preventDefault();
+        options.onNotify?.(error.message);
+        return;
+      }
+    }
     if (objectData && !activeTextId && options.editing) {
       event.preventDefault();
       void pasteObjects(objectData);
@@ -4432,7 +4685,7 @@ export function mountCanvasEditor(host, options) {
         selection = window.getSelection();
       if (
         !ownsInput() ||
-        !sourceTextFlow(element) ||
+        !element ||
         !selection.rangeCount ||
         selection.isCollapsed ||
         !element.contains(selection.anchorNode) ||
@@ -4440,10 +4693,46 @@ export function mountCanvasEditor(host, options) {
       )
         return;
       const range = selection.getRangeAt(0),
-        copy = document.createElement('div');
-      copy.append(range.cloneContents());
+        copied = range.cloneRange();
+      // A range starting inside the one-character marker otherwise clones
+      // just its text node and loses the object's identity.
+      for (const side of ['start', 'end']) {
+        const node = copied[side + 'Container'];
+        const marker = node.parentElement?.closest('[data-ivo-anchor]');
+        if (
+          marker &&
+          node.nodeType === Node.TEXT_NODE &&
+          copied[side + 'Offset'] === (side === 'start' ? 0 : node.length)
+        ) {
+          if (side === 'start') copied.setStartBefore(marker);
+          else copied.setEndAfter(marker);
+        }
+      }
+      const copy = document.createElement('div');
+      copy.append(copied.cloneContents());
+      if (!sourceTextFlow(element) && !copy.querySelector('[data-ivo-anchor]')) return;
       const html = flowInputHTML(copy),
         plain = document.createElement('div');
+      if (html.includes('data-ivo-anchor')) {
+        try {
+          const payload = copyInlineSelection(
+            doc(),
+            sceneObject(doc(), activeTextId),
+            html,
+            options.assets?.() || options.fonts?.() || [],
+          );
+          if (payload) {
+            const value = JSON.stringify(payload);
+            if (value.length > MAX_OBJECT_CLIPBOARD)
+              throw Error('The selected objects are too large for the clipboard.');
+            event.clipboardData.setData(INLINE_CLIPBOARD_TYPE, value);
+          }
+        } catch (error) {
+          event.preventDefault();
+          options.onNotify?.(error.message);
+          return;
+        }
+      }
       plain.innerHTML = html
         .replace(/<br\s*\/?\s*>/gi, '\n')
         .replace(/<\/(p|div|li|h[2-4]|blockquote)>/gi, '\n');
@@ -4452,10 +4741,10 @@ export function mountCanvasEditor(host, options) {
       event.clipboardData.setData('text/plain', plain.textContent.replace(/\n$/, ''));
       if (type === 'cut' && options.editing) {
         beginTextInput('deleteByCut');
-        range.deleteContents();
-        range.collapse(true);
+        copied.deleteContents();
+        copied.collapse(true);
         selection.removeAllRanges();
-        selection.addRange(range);
+        selection.addRange(copied);
         syncText(element);
         finishText();
       }
@@ -4471,7 +4760,27 @@ export function mountCanvasEditor(host, options) {
   listen(viewport, 'lostpointercapture', (event) => {
     if (gesture?.pointerId === event.pointerId) finishGesture();
   });
+  listen(
+    viewport,
+    'pointerdown',
+    (event) => {
+      if (options.editing && event.target.closest('[data-footnote-number]'))
+        event.stopImmediatePropagation();
+    },
+    { capture: true },
+  );
   listen(viewport, 'dblclick', (event) => {
+    const row = event.target.closest('[data-footnote-number]');
+    if (row && options.editing && !options.parentMode && canWrite()) {
+      try {
+        finishText();
+        const frame = sceneObject(doc(), row.closest('[data-object]').dataset.object);
+        footnoteAction('edit-footnote', frame, null, row);
+      } catch (e) {
+        options.onNotify?.(e.message);
+      }
+      return;
+    }
     if (!options.editing) return;
     if (
       ['text', 'direct', 'select'].includes(state.tool) &&
@@ -5055,7 +5364,10 @@ export function mountCanvasEditor(host, options) {
     revealFrame: fit,
     revealCell: revealBounds,
     reflow: (head, edited) => {
-      if (edited || pendingTableFonts) refreshTableFrames(head);
+      if (edited && head?.extensions?.ivoAnchor) {
+        updateFlowPlan();
+        paint();
+      } else if (edited || pendingTableFonts) refreshTableFrames(head);
     },
     doc,
     world,
