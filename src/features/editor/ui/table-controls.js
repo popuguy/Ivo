@@ -1,3 +1,5 @@
+import { tableCellId } from '../text/table-proofing.js';
+import { rangeFromBookmark } from '../../../shared/dom/text-selection.js';
 import { columnPoints, resizeColumn } from '../../../domain/geometry/table-columns.js';
 import { LIMITS } from '../../../domain/documents/constants.js';
 import { installTableDividers } from './table-dividers.js';
@@ -51,6 +53,7 @@ export function installTableControls({
   const dividers = installTableDividers({ world, doc, selected, available, mutate, allowed });
   let current = null,
     last = null,
+    review = null,
     timer = null;
   function flush() {
     clearTimeout(timer);
@@ -67,7 +70,7 @@ export function installTableControls({
     const { input, cell, block, row, column } = current;
     current = null;
     input.remove();
-    cell.textContent = block.table.cells[row][column];
+    cell.textContent = block.table.cells[row][column].replace(/\r\n?/g, '\n');
   }
   function cellsFor(id) {
     return [
@@ -149,6 +152,11 @@ export function installTableControls({
     input.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.isComposing) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && !e.altKey) {
+        e.preventDefault();
+        void run('find-change');
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         finish();
@@ -357,6 +365,52 @@ export function installTableControls({
     flush,
     mark: dividers.mark,
     startDivider: dividers.start,
+    proofingContext() {
+      if (!current) return {};
+      const { block, row, column, input } = current;
+      const start = input.selectionStart,
+        end = input.selectionEnd;
+      return {
+        id: tableCellId(block.id, row, column),
+        cell: true,
+        html: block.table.cells[row][column],
+        searchStart: start,
+        searchEnd: end,
+        text: input.value
+          .slice(start, end)
+          .replaceAll('^', '^^')
+          .replaceAll('\n', '^p')
+          .replaceAll('\t', '^t'),
+      };
+    },
+    showMatch(owner, match) {
+      const id = owner.frames[0].id;
+      select(id);
+      const target = cellsFor(id).find((cell) => {
+        const { row, column } = coordinate(cell);
+        return row === owner.cell.row && column === owner.cell.column;
+      });
+      if (!target) return;
+      const point = (index) => ({ path: [], offset: 0, index, kind: 'text', affinity: 'forward' });
+      const range = rangeFromBookmark(target, {
+        anchor: point(match.searchStart),
+        focus: point(match.searchEnd),
+      });
+      review = { target, match, value: owner.value };
+      if (range && globalThis.Highlight)
+        CSS.highlights?.set('ivo-find-match', new Highlight(range));
+      return range?.getBoundingClientRect().width
+        ? range.getBoundingClientRect()
+        : target.getBoundingClientRect();
+    },
+    finishReview(focus) {
+      const found = review;
+      review = null;
+      if (!focus || !found?.target.isConnected || !edit(found.target)) return false;
+      if (current.input.value === found.value.replace(/\r\n?/g, '\n'))
+        current.input.setSelectionRange(found.match.searchStart, found.match.searchEnd);
+      return true;
+    },
     remember(cell) {
       last = { id: cell.closest('[data-object]').dataset.object, ...coordinate(cell) };
     },

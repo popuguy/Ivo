@@ -26,6 +26,7 @@ import { patchComposedFrame } from './text/composed-frame.js';
 import { ARRANGE_COMMANDS } from '../../domain/documents/arrange.js';
 import { createSpellingPanel } from './ui/spelling-panel.js';
 import { createFindChangePanel } from './ui/find-change-panel.js';
+import { planTableCorrections } from './text/table-proofing.js';
 import { findTextSources, findSelection } from './text/find-change.js';
 import { textClipboardHTML } from './text/clipboard.js';
 import { ensureTextWrapFlows } from '../../domain/documents/text-wrap.js';
@@ -337,12 +338,24 @@ export function mountCanvasEditor(host, options) {
     if (flow?.composition && nativePlanKey !== compositionLayoutKey(doc())) return null;
     return flowPlan.fragments.get(id);
   }
+  function revealBounds(bounds) {
+    if (!bounds) return;
+    const visible = viewport.getBoundingClientRect();
+    const dx =
+      Math.max(0, visible.left + 12 - bounds.left) ||
+      Math.min(0, visible.right - 12 - bounds.right);
+    const dy =
+      Math.max(0, visible.top + 12 - bounds.top) ||
+      Math.min(0, visible.bottom - 12 - bounds.bottom);
+    if (dx || dy) cameraTo({ ...state.camera, x: state.camera.x + dx, y: state.camera.y + dy });
+  }
   const editorialContext = {
     host: editor,
     allowed: () =>
       ownsInput() && canWrite() && options.editing && !busy && !composing && !dialogOpen(),
     context() {
       const item = object();
+      if (item?.type === 'table') return tables.proofingContext();
       if (!item || !['text', 'quote'].includes(item.type)) return {};
       const flow = textFlowForFrame(doc(), item);
       const bookmark = captureView().textSelection;
@@ -354,6 +367,9 @@ export function mountCanvasEditor(host, options) {
     sources: () =>
       findTextSources(doc(), findFragment, (flow) => flowPlan.status.get(flow.id)?.overset),
     reveal(owner, match) {
+      CSS.highlights?.delete('ivo-find-match');
+      tables.finishReview(false);
+      if (owner.cell) return revealBounds(tables.showMatch(owner, match));
       const frame =
         owner.frames.find((item) => {
           const part = flowPlan.fragments.get(item.id);
@@ -374,16 +390,7 @@ export function mountCanvasEditor(host, options) {
         const domRange = rangeFromBookmark(element, range);
         if (domRange) {
           if (globalThis.Highlight) CSS.highlights?.set(key, new Highlight(domRange));
-          const bounds = domRange.getBoundingClientRect(),
-            visible = viewport.getBoundingClientRect();
-          const dx =
-            Math.max(0, visible.left + 12 - bounds.left) ||
-            Math.min(0, visible.right - 12 - bounds.right);
-          const dy =
-            Math.max(0, visible.top + 12 - bounds.top) ||
-            Math.min(0, visible.bottom - 12 - bounds.bottom);
-          if (dx || dy)
-            cameraTo({ ...state.camera, x: state.camera.x + dx, y: state.camera.y + dy });
+          revealBounds(domRange.getBoundingClientRect());
         }
       }
       rememberTextSelection();
@@ -391,11 +398,15 @@ export function mountCanvasEditor(host, options) {
     change(changes, label) {
       CSS.highlights?.delete('ivo-find-match');
       mutate(() => {
-        for (const { frameId, html } of changes) writeText(sceneObject(doc(), frameId), html);
+        const editedTables = planTableCorrections(doc(), changes);
+        for (const [id, table] of editedTables) sceneObject(doc(), id).table = table;
+        for (const { frameId, cell, html } of changes)
+          if (!cell) writeText(sceneObject(doc(), frameId), html);
       }, label);
     },
     finished(focus) {
       CSS.highlights?.delete('ivo-find-match');
+      if (tables.finishReview(focus)) return;
       if (focus) (activeText() || viewport).focus({ preventScroll: true });
     },
   };
@@ -2975,7 +2986,7 @@ export function mountCanvasEditor(host, options) {
   }
   async function command(name, { anchor } = {}) {
     if (!ownsInput() || busy || dialogOpen() || composing) return;
-    tables?.finish();
+    if (name !== 'find-change' && name !== 'check-spelling') tables?.finish();
     if (name === 'insert-table' || name === 'table-options') {
       tables.open(name);
       return;

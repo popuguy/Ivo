@@ -1,4 +1,9 @@
-import { findTextMatches, applyTextChanges, plannedReplacement } from '../text/find-change.js';
+import {
+  editorialContent,
+  findTextMatches,
+  applyTextChanges,
+  plannedReplacement,
+} from '../text/find-change.js';
 
 import { findFormats, namedFormats } from '../text/find-format.js';
 import { installFindQueries } from './find-queries.js';
@@ -118,7 +123,7 @@ export function createFindChangePanel({
   function currentOwners() {
     const scope = field('scope').value;
     const owners = sources().filter((item) => scope === 'document' || item.id === origin.id);
-    if (scope === 'selection' && owners[0]?.html !== origin.html)
+    if (scope === 'selection' && editorialContent(owners[0]) !== origin.html)
       throw new Error('The selected text changed. Reopen Find/Change to search a new selection.');
     return owners;
   }
@@ -129,13 +134,13 @@ export function createFindChangePanel({
       doc?.publishing?.paragraphStyles,
       doc?.publishing?.characterStyles,
       owners.map(({ defaults }) => [
-        defaults.bold,
-        defaults.italic,
-        defaults.underline,
-        defaults.strikethrough,
-        defaults.noBreak,
-        defaults.characterStyle,
-        defaults.paragraphStyle,
+        defaults?.bold,
+        defaults?.italic,
+        defaults?.underline,
+        defaults?.strikethrough,
+        defaults?.noBreak,
+        defaults?.characterStyle,
+        defaults?.paragraphStyle,
       ]),
     ]);
   }
@@ -146,7 +151,7 @@ export function createFindChangePanel({
         const p = previous[i];
         return (
           o.id === p.id &&
-          o.html === p.html &&
+          editorialContent(o) === editorialContent(p) &&
           o.doc === p.doc &&
           o.frames.length === p.frames.length &&
           o.frames.every((f, j) => f.id === p.frames[j].id) &&
@@ -268,13 +273,13 @@ export function createFindChangePanel({
       .map((owner) => ({
         frameId: owner.frames[0].id,
         ...applyTextChanges(owner, byOwner.get(owner.id), changeFormat),
-        before: owner.html,
+        before: editorialContent(owner),
       }))
-      .filter((item) => item.html !== item.before);
+      .filter((item) => editorialContent(item) !== item.before);
     if (changes.length) {
       change(changes, action === 'all' ? 'Change All' : 'Change');
       if (byOwner.has(origin.id))
-        origin.html = sources().find((owner) => owner.id === origin.id)?.html;
+        origin.html = editorialContent(sources().find((owner) => owner.id === origin.id));
     }
     if (hit && action !== 'all')
       cursor = {
@@ -349,6 +354,7 @@ export function createFindChangePanel({
       <div class="find-actions"><button type="submit" data-find-action="next">Find Next</button><button type="button" data-find-action="change">Change</button><button type="button" data-find-action="change-find">Change/Find</button><button type="button" data-find-action="all">Change All</button></div>
       <footer><output aria-live="polite"></output><button type="button" data-find-action="done">Done</button></footer>`;
     host.append(panel);
+    if (origin.cell) field('scope').options[1].text = 'Current cell';
     field('scope').options[1].disabled = !origin.id;
     field('scope').options[2].disabled = !origin.id || !(origin.searchEnd > origin.searchStart);
     const doc = sources()[0]?.doc;

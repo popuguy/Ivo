@@ -1,4 +1,4 @@
-import { applyTextChanges, proofingWords } from '../text/find-change.js';
+import { editorialContent, applyTextChanges, proofingWords } from '../text/find-change.js';
 
 const yieldFrame = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -38,7 +38,8 @@ export function createSpellingPanel(
         const old = snapshot[i];
         return (
           owner.id === old.id &&
-          owner.html === old.html &&
+          owner.doc === old.doc &&
+          editorialContent(owner) === editorialContent(old) &&
           owner.frames.map((f) => f.id).join('|') === old.frames.map((f) => f.id).join('|') &&
           JSON.stringify(owner.regions) === JSON.stringify(old.regions)
         );
@@ -98,7 +99,7 @@ export function createSpellingPanel(
         await yieldFrame();
         if (generation !== token) return;
       }
-      await yieldFrame();
+      if (i % 32 === 31) await yieldFrame();
       if (generation !== token) return;
     }
     if (!allowed()) return close();

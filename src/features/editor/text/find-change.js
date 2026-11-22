@@ -11,6 +11,10 @@ import {
   rangeFromBookmark,
 } from '../../../shared/dom/text-selection.js';
 
+import { tableProofingSources, indexCell, changeCell } from './table-proofing.js';
+
+export const editorialContent = (owner) => owner?.value ?? owner?.html;
+
 const words = new Intl.Segmenter(undefined, { granularity: 'word' });
 const characters = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
@@ -20,6 +24,8 @@ export function findTextSources(doc, fragmentFor, overset = () => false) {
     blocks = new Map(doc.blocks.map((item) => [item.id, item])),
     result = [];
   for (const item of doc.blocks) {
+    if (item.type === 'table' && objectAvailable(doc, item))
+      result.push(...tableProofingSources(doc, item));
     if (!['text', 'quote'].includes(item.type)) continue;
     const flow = textFlowForFrame(doc, item),
       id = flow?.id || item.id;
@@ -129,14 +135,15 @@ function contained(ranges, start, end) {
 }
 
 function prepared(owner, filter) {
+  if (owner.cell) return { owner, index: indexCell(owner.value) };
   const index = sourceIndex(owner.html);
   return { owner, index, formatted: filter && formattedRegions(index, owner, filter) };
 }
 
 function matchRange(prep, selection, from, to) {
   const { index, owner, formatted } = prep;
-  const start = index.offsets[from],
-    end = index.offsets[to];
+  const start = index.offsets?.[from] ?? from,
+    end = index.offsets?.[to] ?? to;
   if (selection && (from < selection.searchStart || to > selection.searchEnd)) return null;
   if (!contained(owner.regions, start, end) || !contained(formatted, start, end)) return null;
   // An insertion exactly on a protected frame boundary has ambiguous ownership.
@@ -188,14 +195,17 @@ function formatOnly(prep, selection) {
 
 export function findTextMatches(
   sources,
-  { needle, caseSensitive, wholeWord, mode, findFormat },
+  { needle, caseSensitive, wholeWord, mode, findFormat, changeFormat },
   selection,
   signal,
 ) {
   const filter = formatAttributes(findFormat, sources[0]?.doc);
   if (!needle && !filter) return [];
   const preparedSources = sources
-    .filter((owner) => !selection || selection.id === owner.id)
+    .filter(
+      (owner) =>
+        (!selection || selection.id === owner.id) && !(owner.cell && (filter || changeFormat)),
+    )
     .map((owner) => prepared(owner, filter));
   if (!needle) return preparedSources.flatMap((prep) => formatOnly(prep, selection));
   if (mode === 'grep') {
@@ -269,6 +279,7 @@ export function changeTextMatches(html, matches, replacement, changeFormat, owne
 }
 
 export function applyTextChanges(owner, edits, changeFormat) {
+  if (owner.cell) return changeCell(owner, edits);
   const initial = sourceIndex(owner.html);
   const { root, segments } = initial;
   const attributes = formatAttributes(changeFormat, owner.doc);

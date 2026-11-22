@@ -1,6 +1,6 @@
 import { columnPoints } from '../../../src/domain/geometry/table-columns.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
-import { createSceneDocument } from '../../../src/domain/documents/scene.js';
+import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
 import { createDocumentHistory } from '../../../src/domain/history/document-history.js';
@@ -183,6 +183,53 @@ export async function verifyTables(host, assert) {
         cell(1, 0).colSpan === 2 &&
         cell(0, 1).textContent === 'Шерсть',
       'Round trip lost table content or layout',
+    );
+    // Search and correct the same phrase across a table and ordinary text.
+    const tableId = doc.blocks.find((b) => b.type === 'table').id;
+    const currentTable = () => doc.blocks.find((b) => b.id === tableId);
+    const prose = insertObject(doc, 'text', page);
+    const sample = 'Шерсть';
+    prose.html = '<p><em>' + sample + '</em></p>';
+    editor.restoreView({ activePage: page, selection: [tableId], tool: 'select' });
+    edit(0, 1);
+    input().select();
+    input().dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true, cancelable: true }),
+    );
+    const search = host.querySelector('.canvas-find-change');
+    assert(search?.elements.needle.value === sample, 'Find from selected cell lost its text');
+    const action = (name) => search.querySelector('[data-find-action="' + name + '"]').click();
+    search.elements.scope.value = 'selection';
+    search.elements.scope.dispatchEvent(new Event('change', { bubbles: true }));
+    action('next');
+    assert(
+      search.querySelector('output').textContent === '1 of 1',
+      'Selection search escaped the cell',
+    );
+    action('done');
+    assert(
+      input()?.value.substring(input().selectionStart, input().selectionEnd) === sample,
+      'Returning from the search lost the selected cell range',
+    );
+    await editor.command('find-change');
+    const panel = host.querySelector('.canvas-find-change');
+    panel.elements.scope.value = 'document';
+    panel.elements.needle.value = sample;
+    panel.elements.replacement.value = '<wool>&';
+    panel.elements.needle.dispatchEvent(new Event('input', { bubbles: true }));
+    panel.querySelector('[data-find-action="all"]').click();
+    assert(
+      panel.querySelector('output').textContent === '2 replacements made.' &&
+        currentTable().table.cells[0][1] === '<wool>&' &&
+        doc.blocks.find((b) => b.id === prose.id).html.includes('<em>&lt;wool&gt;&amp;</em>'),
+      'One document-wide correction failed to preserve plain cells and italic body text',
+    );
+    panel.querySelector('[data-find-action="done"]').click();
+    await editor.command('undo');
+    assert(
+      currentTable().table.cells[0][1] === sample &&
+        doc.blocks.find((b) => b.id === prose.id).html.includes(sample),
+      'One undo did not restore both sources',
     );
     const target = doc.blocks.find((b) => b.type === 'table');
     target.locked = true;
