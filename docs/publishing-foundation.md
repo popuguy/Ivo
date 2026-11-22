@@ -74,7 +74,6 @@ These are requested work, not declarations of working buttons. No interface cont
 
 Primary reference contracts: [Adobe panels](https://helpx.adobe.com/indesign/desktop/get-started/settings-and-preferences/customize-panels.html), [parent pages](https://helpx.adobe.com/indesign/desktop/create-and-organize-pages/create-and-manage-parent-pages/about-parent-pages.html), [layers](https://helpx.adobe.com/indesign/desktop/create-and-organize-pages/manage-layers/about-layers.html), [OpenType OS/2 metadata](https://learn.microsoft.com/en-us/typography/opentype/spec/os2). Runtime comparisons and extracted artifacts remain private.
 
-
 ## Editing generated text on parent pages
 
 In the parent editor a running page number, section marker, last-page number or document name occupies one editing position. Arrow keys cross its full displayed name. Backspace, Delete and replacing a partial selection remove the whole field. Find/Change and spelling skip its internal label. Choosing a field while typing inserts it at the current selection. Selecting a frame as an object still appends a field. Previously saved names split across inline formatting use the same boundaries.

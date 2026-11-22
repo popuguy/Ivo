@@ -35,7 +35,6 @@ The route and its boundaries follow the version-pinned [Electron print API](http
 
 Continuous text flows are composed before page rendering inside the isolated export snapshot. Derived rich fragments, including numbered-list/paragraph context, use the editor typography. Automatic pages added for export never change the atlas. A manual text flow with overset text produces a warning; the canonical source remains in its editable document. The fixture exports24 rich paragraphs across12 exact360×300pt pages. Independent extraction matches canonical text after NFKC/whitespace normalization (CMU fl ligature), with each paragraph present once, and every page was rendered for visual review. See text-flow.md for current Document text editor/inline and composition limits.
 
-
 ## Reading a fixed-layout book
 
 The exported PDF keeps each frame's vector artwork and its searchable native text. The Mac compositor marks each drawn line. During export Ivo associates those marks in the embedded PDF form with a paragraph or heading in the final book. Wrapped paragraphs carry their real printed text. Character searches, selection and links use the same placements. A link has a readable annotation label and a two-way association between the clickable rectangle and its place in the reading order. Distinct rectangles can belong to one link.
