@@ -5,7 +5,6 @@ export { decodeFindField } from './find-characters.js';
 import { formattedRegions, formatRanges, formatAttributes } from './find-format.js';
 import { objectAvailable, effectiveTextStyle } from '../../../domain/documents/publishing.js';
 import { frameTextSettings, textFlowForFrame } from '../../../domain/documents/text-flows.js';
-import { blankParagraphBreak } from '../../../rendering/text/insertion.js';
 import {
   textIndexMap,
   textParagraphRanges,
@@ -100,7 +99,7 @@ function indexedSource(root) {
   const paragraphs = textParagraphRanges(root, map).map((range) => {
     const block = blocks.get(range.contentStart) || root;
     const start = range.contentStart;
-    const end = range.contentEnd - Number(!!blankParagraphBreak(block));
+    const end = range.contentEnd;
     if (text.length) text.push('\r');
     for (let index = start; index <= end; index++) offsets.push(index);
     text.push(logical.slice(start, end));

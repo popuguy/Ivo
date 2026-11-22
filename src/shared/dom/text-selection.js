@@ -264,7 +264,9 @@ export function textParagraphRanges(element, map = textPositions(element)) {
     if (range.end > range.start) result.push(range);
     start = range.end;
   }
-  const authored = result.length ? result : [{ start: 0, end, contentStart: 0, contentEnd: end }],
+  const authored = result.length
+      ? result
+      : [{ start: 0, end, contentStart: 0, contentEnd: blankParagraphBreak(element) ? 0 : end }],
     separators = map.segments.flatMap((part) =>
       [...part.node.data.matchAll(/\u2029/g)].map((match) => part.start + match.index),
     );

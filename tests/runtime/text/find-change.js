@@ -50,6 +50,17 @@ function verifyParagraphSearch() {
     root.children.length === 1 && root.textContent === 'red linenblue silktabs\there ^p',
     'Change All joins consecutive empty paragraphs in the original match set',
   );
+  const styledBlank = '<p>A</p><p><em></em><br></p><p>B</p>';
+  const blankMarks = findTextMatches([{ id: 'empty', html: styledBlank }], { needle: '^p' });
+  root.innerHTML = changeTextMatches(styledBlank, blankMarks, ' ');
+  assert(
+    blankMarks.length === 2 && root.textContent === 'A  B',
+    'a styled blank paragraph retains both editable paragraph marks',
+  );
+  assert(
+    !findTextMatches([{ id: 'placeholder', html: '<br>' }], { needle: '^n' }).length,
+    'a bare editing placeholder is not a soft return',
+  );
   const many = Array.from({ length: 500 }, (_, i) => '<p>line ' + i + '</p>').join('');
   const marks = findTextMatches([{ id: 'many', html: many }], { needle: '^p' });
   root.innerHTML = changeTextMatches(many, marks, ' ');
