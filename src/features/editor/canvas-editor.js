@@ -1,3 +1,17 @@
+import {
+  containsEndnoteField,
+  endnoteCommands,
+  endnoteFields,
+  otherEndnoteMarker,
+} from '../../domain/documents/endnotes.js';
+import {
+  insertEndnote,
+  deleteEndnote,
+  updateEndnotes,
+  reconcileEndnoteStructure,
+  endnoteLocation,
+  endnoteAt,
+} from './text/endnotes.js';
 import { printedParagraphs } from '../../rendering/text/printed-paragraphs.js';
 import { placedParagraphs, referencePlacements } from './ui/paragraph-destinations.js';
 import { crossReferenceResolver } from '../../domain/documents/cross-references.js';
@@ -704,6 +718,7 @@ export function mountCanvasEditor(host, options) {
     const lockOnly = lockButton && before.publishing;
     try {
       callback();
+      reconcileEndnoteStructure(before, doc(), findFragment);
       // Publishing adoption assigns real layer IDs. Give that first edit the normal rebuild.
       if (lockOnly) updateLock(lockButton, viewBefore);
       else {
@@ -1696,8 +1711,33 @@ export function mountCanvasEditor(host, options) {
       validateLegacyTextSettings(canonical, textFlow?.style || item);
     if (element?.classList.contains('canvas-flow-input') && !textFlow?.composition)
       delete element.dataset.projectedStart;
+    const previous = textFlow?.html ?? item?.html;
+    const hasFields = doc().canvasVersion >= 34 && containsEndnoteField(previous);
+    const beforeCites = hasFields ? endnoteFields(previous, 'cite') : null;
+    const afterCites = beforeCites?.size ? endnoteFields(canonical, 'cite') : null;
+    if (hasFields) {
+      const bodyBefore = endnoteFields(previous, 'body'),
+        bodyAfter = endnoteFields(canonical, 'body');
+      for (const [id, label] of bodyBefore)
+        if (bodyAfter.get(id) !== label)
+          throw Error(
+            'Use Delete Endnote to remove a numbered endnote. Edit its text after the number.',
+          );
+      for (const [id, label] of beforeCites)
+        if (afterCites?.has(id) && afterCites.get(id) !== label)
+          throw Error('Endnote reference numbers are automatic. Type beside the number.');
+    }
     if (textFlow) textFlow.html = canonical;
     else if (item) item.html = canonical;
+    if (beforeCites?.size && afterCites.size < beforeCites.size) {
+      const removed = new Set([...beforeCites.keys()].filter((id) => !afterCites.has(id)));
+      updateEndnotes(doc(), findFragment, removed);
+      const labels = endnoteFields(textFlow?.html ?? item?.html, 'cite');
+      for (const a of element?.querySelectorAll('a[data-endnote^="cite-"]') || []) {
+        const label = labels.get(a.dataset.endnote.slice(5));
+        if (label && label !== a.textContent) a.textContent = label;
+      }
+    }
     if (
       hasNativeTextSettings(doc()) ||
       (doc().canvasVersion < 32 &&
@@ -2486,6 +2526,7 @@ export function mountCanvasEditor(host, options) {
           state.inside = null;
         }
         try {
+          reconcileEndnoteStructure(old.before, doc(), findFragment);
           const adopted = ensureTextWrapFlows(doc());
           validateNativeSources();
           if (transferred || adopted.length) paint();
@@ -3026,6 +3067,41 @@ export function mountCanvasEditor(host, options) {
   async function command(name, { anchor } = {}) {
     if (!ownsInput() || busy || dialogOpen() || composing) return;
     if (name !== 'find-change' && name !== 'check-spelling') tables?.finish();
+    if (Object.hasOwn(endnoteCommands, name)) {
+      if (!options.editing || options.parentMode || !canWrite()) return;
+      try {
+        preserveRange();
+        finishText();
+        const frame = object(),
+          bookmark = captureView().textSelection;
+        let location;
+        if (name === 'go-to-endnote') {
+          const current = endnoteAt(doc(), frame, bookmark, findFragment);
+          if (!current)
+            throw Error('Place the insertion point at an endnote reference or in its text.');
+          location = endnoteLocation(
+            doc(),
+            current.id,
+            current.role === 'body' ? 'cite' : 'body',
+            findFragment,
+          );
+        } else {
+          let id;
+          const size = frame && readSelectedTextStyle()?.values.fontSize;
+          mutate(() => {
+            if (name === 'insert-endnote')
+              id = insertEndnote(doc(), frame, bookmark, size, findFragment);
+            else if (name === 'delete-endnote') deleteEndnote(doc(), frame, bookmark, findFragment);
+            else updateEndnotes(doc(), findFragment);
+          }, endnoteCommands[name]);
+          if (id) location = endnoteLocation(doc(), id, 'body', findFragment);
+        }
+        if (location) editorialContext.reveal(location, location);
+      } catch (error) {
+        options.onNotify?.(error.message);
+      }
+      return;
+    }
     if (['insert-table', 'table-options', 'continue-table'].includes(name)) {
       tables.open(name);
       return;
@@ -3793,7 +3869,13 @@ export function mountCanvasEditor(host, options) {
     contextMenu = document.createElement('div');
     contextMenu.className = 'canvas-context-menu';
     contextMenu.setAttribute('role', 'menu');
-    contextMenu.innerHTML = `<button role="menuitem" data-canvas-command="insert-table">Insert table…</button>${table ? '<button role="menuitem" data-canvas-command="table-options">Table options…</button>' : ''}<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button><button role="menuitem" data-canvas-command="new-cross-reference">New Cross-Reference…</button>${
+    contextMenu.innerHTML = `${Object.entries(endnoteCommands)
+      .map(
+        ([cmd, label]) => `<button role="menuitem" data-canvas-command="${cmd}">${label}</button>`,
+      )
+      .join(
+        '',
+      )}<button role="menuitem" data-canvas-command="insert-table">Insert table…</button>${table ? '<button role="menuitem" data-canvas-command="table-options">Table options…</button>' : ''}<button role="menuitem" data-canvas-command="link">Insert document link…</button><button role="menuitem" data-canvas-command="page-link">Insert page link…</button><button role="menuitem" data-canvas-command="new-cross-reference">New Cross-Reference…</button>${
       context.textEditing
         ? Object.entries({
             ...INSERT_CHARACTERS,
@@ -3870,6 +3952,23 @@ export function mountCanvasEditor(host, options) {
     }
     const p = event.target.closest('[data-select-page]');
     const anchor = event.target.closest('a');
+    if (anchor?.dataset.endnote && (!options.editing || event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      const pair = otherEndnoteMarker(anchor.dataset.endnote);
+      const dest =
+        pair && world.querySelector('.canvas-page a[data-endnote="' + CSS.escape(pair) + '"]');
+      if (!dest) {
+        options.onNotify?.('The other end of this endnote is outside the visible pages.');
+        return;
+      }
+      endTextEditing();
+      state.activePage = dest.closest('.canvas-page').dataset.page;
+      setSelectionState(null);
+      renderPanel();
+      fit();
+      revealBounds(dest.getBoundingClientRect());
+      return;
+    }
     const pageLink =
       anchor?.getAttribute('href')?.startsWith('#page=') ||
       (anchor?.dataset.pageId && anchor.dataset.docId === doc().id)

@@ -1,3 +1,4 @@
+import { validEndnoteMarker } from '../../domain/documents/endnotes.js';
 import {
   validParagraphId,
   validParagraphKey,
@@ -86,7 +87,8 @@ export function cleanHTML(value) {
     if (
       !TAGS.has(node.tagName) ||
       (node.tagName === 'SPAN' &&
-        (node.hasAttribute('data-ivo-decoration-run') ||
+        (node.hasAttribute('data-ivo-rule-run') ||
+          node.hasAttribute('data-ivo-decoration-run') ||
           node.hasAttribute('data-ivo-clipboard-whitespace')))
     ) {
       const frag = document.createDocumentFragment();
@@ -156,6 +158,7 @@ export function cleanHTML(value) {
         out.href = '#doc=' + encodeURIComponent(target);
       } else if (/^#page=[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(node.getAttribute('href') || '')) {
         out.setAttribute('href', node.getAttribute('href'));
+        if (validEndnoteMarker(node.dataset.endnote)) out.dataset.endnote = node.dataset.endnote;
       } else if (href) {
         out.href = href;
         out.target = '_blank';

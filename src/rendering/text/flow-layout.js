@@ -129,7 +129,7 @@ export function layoutDocumentTextFlows(
     status = new Map();
   let changed = false;
   for (const textFlow of doc.textFlows || []) {
-    const source = annotatedSource(textFlow.html);
+    const source = annotatedSource(textFlow.html, doc, textFlow.style);
     let remaining = source.html,
       start = 0,
       index = 0,

@@ -1,3 +1,4 @@
+import { ruleSections, installStyleRules } from './paragraph-style-rules.js';
 import { markParagraphDialog } from './paragraph-destinations.js';
 import { referenceFormatDialog } from './reference-format-dialog.js';
 import {
@@ -401,7 +402,7 @@ export function installPublishingControls(
       ? [...keepFields, ['noBreak', 'No Break', [false, true]]]
       : [];
     const nativeParagraphOptions = kind === 'paragraph' && nativeTextFlow();
-    let readStyleTabs;
+    let readStyleTabs, readRules;
     const nextStyleField =
       kind === 'paragraph'
         ? `<label>Next Style<select name="nextStyle"><option value="">[Same Style]</option>${definitions
@@ -428,7 +429,7 @@ export function installPublishingControls(
         )
         .join(
           '',
-        )}</select></label>${nextStyleField}<label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}${nativeParagraphOptions ? hyphenationStyleFields(attributes) + styleTabFields : ''}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
+        )}</select></label>${nextStyleField}${kind === 'paragraph' ? ruleSections : ''}<label>Point size<input type="number" min="1" max="2000" step="any" name="fontSize" value="${attributes.fontSize || ''}" placeholder="Inherited"></label><label>Leading (0 = Auto)<input type="number" min="0" max="4000" step="any" name="leading" value="${attributes.leading ?? ''}" placeholder="Inherited"></label>${keepControls}${nativeParagraphOptions ? hyphenationStyleFields(attributes) + styleTabFields : ''}<label>Tracking<input type="number" min="-1000" max="10000" step="any" name="tracking" value="${attributes.tracking ?? ''}" placeholder="Inherited"></label>${
         nativeParagraphOptions
           ? `<label>Justification<select name="wordSpacingMode" data-style-word-spacing-mode>${[
               ['inherit', 'Inherited'],
@@ -481,12 +482,14 @@ export function installPublishingControls(
               name: data.get('name'),
               basedOn: data.get('basedOn') || null,
               nextStyle: data.get('nextStyle') || null,
+              ...readRules(),
               attributes: next,
             }),
           edit ? 'Edit text style' : 'New text style',
         );
       },
     );
+    readRules = installStyleRules(dialog, existing, doc());
     if (nativeParagraphOptions)
       readStyleTabs = installStyleTabs(
         dialog,

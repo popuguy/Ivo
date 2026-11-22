@@ -162,7 +162,10 @@ export function applyTextDecorations(root, doc) {
       changed = true;
     }
     applyCharacterScale(wrapper, horizontalScale, verticalScale);
-    wrapper.toggleAttribute('data-ivo-scale-hyphen', scaled && planner.visibleHyphen(plan));
+    wrapper.toggleAttribute(
+      'data-ivo-scale-hyphen',
+      Boolean(scaled && planner.visibleHyphen(plan)),
+    );
     if (wrapper.style.textDecorationLine !== line) {
       wrapper.style.textDecorationLine = line;
       changed = true;

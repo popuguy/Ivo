@@ -679,7 +679,7 @@ function projectNativeFlow(
   const source = compositionSource(root, {
     id: flow.id,
     doc,
-    settings,
+    settings: { ...settings, textOverrides: flow.style.textOverrides },
     fontFor: fonts.fontFor,
     authoredHTML: flow.html,
   });

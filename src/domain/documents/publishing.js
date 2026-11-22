@@ -1,3 +1,4 @@
+import { validatedStyleRules } from '../text/paragraph-style-rules.js';
 import { pageFieldValues, resolveRunningText } from './running-text.js';
 import { HYPHENATION_DEFAULTS } from '../text/hyphenation.js';
 import { uid } from './model.js';
@@ -140,7 +141,15 @@ export function effectiveTextStyle(doc, settings) {
 export function saveTextStyle(
   doc,
   kind,
-  { id = uid('style-'), name, basedOn = null, nextStyle = null, attributes = {} },
+  {
+    id = uid('style-'),
+    name,
+    basedOn = null,
+    nextStyle = null,
+    attributes = {},
+    nestedStyles,
+    grepStyles,
+  },
 ) {
   const fields = { ...CHARACTER_FIELDS, ...(kind === 'paragraph' ? PARAGRAPH_FIELDS : {}) },
     clean = {};
@@ -166,6 +175,11 @@ export function saveTextStyle(
         .slice(0, 120) || 'New style',
     basedOn,
     ...(nextStyle && nextStyle !== id ? { nextStyle } : {}),
+    ...validatedStyleRules(
+      { nestedStyles, grepStyles },
+      kind,
+      new Set(p?.characterStyles?.map((s) => s.id)),
+    ),
     attributes: clean,
   };
   const definitions = (p?.[key] || []).filter((s) => s.id !== id);

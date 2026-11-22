@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 33,
+  "documents": [
+    {
+      "id": "frozen-33",
+      "title": "Marked paragraph",
+      "kicker": "",
+      "subtitle": "",
+      "tags": [],
+      "aliases": [],
+      "blocks": [
+        {
+          "id": "text",
+          "type": "text",
+          "x": 48,
+          "y": 48,
+          "w": 180,
+          "h": 100,
+          "html": "<p data-paragraph-destination=\"par-weave\">Fabric preparation</p>",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "cmu-serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "pageId": "p"
+        }
+      ],
+      "createdAt": "2026-11-21T00:00:00.000Z",
+      "updatedAt": "2026-11-21T00:00:00.000Z",
+      "layout": {
+        "columns": 12,
+        "rows": 38
+      },
+      "version": 1,
+      "template": "blank",
+      "canvasVersion": 32,
+      "pages": [
+        {
+          "id": "p",
+          "name": "Page 1",
+          "width": 612,
+          "height": 792
+        }
+      ]
+    }
+  ],
+  "assets": []
+}

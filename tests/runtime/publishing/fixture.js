@@ -1,4 +1,6 @@
 import { verifyRunningFields } from './running-fields.js';
+import { verifyParagraphStyleRules } from './paragraph-style-rules.js';
+import { verifyEndnotes } from './endnotes.js';
 import { verifyCrossReferences } from './cross-references.js';
 import { verifyBookEntries } from './book-entries.js';
 import { verifyContinuedTables } from './continued-tables.js';
@@ -50,12 +52,14 @@ try {
   });
   frame.html = `<p data-ivo-pstyle="${body.id}">Precision in proportion.</p><p>Text, geometry and materials work together.</p>`;
   const host = document.querySelector('#host');
+  await verifyParagraphStyleRules(host, assert);
   await verifyTables(host, assert);
   await verifyContinuedTables(host, assert);
   await verifyContents(host, assert);
   await verifyBookEntries(host, assert);
   await verifyCrossReferences(host, assert);
   await verifySubjectIndex(host, assert);
+  await verifyEndnotes(host, assert);
   await verifyTextControls(host);
   await verifyNestedLayers(host, assert);
   const mount = () =>
@@ -380,6 +384,8 @@ try {
     'IVO_PUBLISHING_RESULT:' +
       JSON.stringify({
         ok: true,
+        paragraphStyleRules: true,
+        endnotes: true,
         eightHandles: true,
         independentFramePorts: true,
         openType: true,

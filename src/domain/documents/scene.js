@@ -1,3 +1,4 @@
+import { unlinkEndnoteFields } from './endnotes.js';
 import { retainTableThreads, tableThreads } from './table-threads.js';
 import { supportedCanvas } from './capabilities.js';
 import { ensureTextWrapFlows } from './text-wrap.js';
@@ -304,6 +305,7 @@ export function duplicateObjects(document, selection, { offset = { x: 16, y: 16 
   const ids = new Map(copies.map((item) => [item.id, uid('object-')]));
   for (const copy of copies) {
     copy.id = ids.get(copy.id);
+    if (copy.html) copy.html = unlinkEndnoteFields(copy.html);
     if (ids.has(copy.parentId)) copy.parentId = ids.get(copy.parentId);
     if (copy.points) copy.points = copy.points.map((point) => ({ ...point, id: uid('vertex-') }));
   }

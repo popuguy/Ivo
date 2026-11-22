@@ -1,10 +1,11 @@
+import { hasEndnotes } from './endnotes.js';
 import { extendedPageSection } from './page-sections.js';
 import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 33;
-export const CURRENT_CANVAS_VERSION = 32;
+export const CURRENT_ARCHIVE_VERSION = 35;
+export const CURRENT_CANVAS_VERSION = 34;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -392,7 +393,14 @@ export function hasBookDestinations(doc) {
     doc.publishing?.parents?.some((parent) => parent.blocks?.some(link))
   );
 }
+export const hasStyleRules = (doc) =>
+  doc.canvasVersion === 33 ||
+  doc.publishing?.paragraphStyles?.some(
+    (s) => s?.nestedStyles !== undefined || s?.grepStyles !== undefined,
+  );
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasEndnotes)) return 35;
+  if (documents.some(hasStyleRules)) return 34;
   if (documents.some(hasReferenceFormats)) return 33;
   if (documents.some(hasThreadedTables)) return 32;
   if (documents.some(hasCrossReferences)) return 31;
@@ -436,6 +444,14 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasEndnotes(document)) {
+    document.canvasVersion = 34;
+    return document;
+  }
+  if (hasStyleRules(document)) {
+    document.canvasVersion = 33;
+    return document;
+  }
   if (hasReferenceFormats(document)) {
     document.canvasVersion = 32;
     return document;

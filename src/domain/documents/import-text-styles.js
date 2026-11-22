@@ -9,7 +9,10 @@ export function importTextStyles(target, source, selection, conflicts = 'existin
     throw Error('Choose a different source document and a conflict policy.');
   const selected = new Set(selection),
     seen = new Set(),
-    result = {};
+    result = {},
+    ruleDependencies = new Set(),
+    importedRules = [];
+  let characterMapping;
   let changed = false;
   for (const kind of ['paragraph', 'character']) {
     const family = kind + 'Styles',
@@ -19,7 +22,10 @@ export function importTextStyles(target, source, selection, conflicts = 'existin
       names = new Set(local.map((s) => s.name)),
       mapped = new Map(),
       incoming = [],
-      pending = styles.filter((s) => selected.has(s.id));
+      pending = styles.filter(
+        (s) => selected.has(s.id) || (kind === 'character' && ruleDependencies.has(s.id)),
+      );
+    if (kind === 'character') characterMapping = mapped;
     for (const style of pending) {
       seen.add(style.id);
       if (mapped.has(style.id)) continue;
@@ -62,12 +68,25 @@ export function importTextStyles(target, source, selection, conflicts = 'existin
       };
       if (style.nextStyle && mapped.get(style.nextStyle) !== id)
         next.nextStyle = mapped.get(style.nextStyle);
+      for (const key of ['nestedStyles', 'grepStyles'])
+        if (style[key] !== undefined) {
+          next[key] = structuredClone(style[key]);
+          for (const rule of next[key])
+            if (rule.style) {
+              ruleDependencies.add(rule.style);
+              importedRules.push(rule);
+            }
+        }
       definitions.set(id, next);
     }
     if (definitions.size > 256) throw Error('A document supports up to 256 styles of each kind.');
     result[family] = [...definitions.values()];
     for (const style of result[family]) resolvedTextStyle({ publishing: result }, kind, style.id);
     if (incoming.length) changed = true;
+  }
+  for (const rule of importedRules) {
+    if (!characterMapping.has(rule.style)) throw Error('Missing character style dependency.');
+    rule.style = characterMapping.get(rule.style);
   }
   if (!selected.size || [...selected].some((id) => !seen.has(id)))
     throw Error('Choose available styles to import.');

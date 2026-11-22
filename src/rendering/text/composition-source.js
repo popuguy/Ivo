@@ -1,3 +1,5 @@
+import { validEndnoteMarker } from '../../domain/documents/endnotes.js';
+import { conditionalTextRuns } from './paragraph-style-rules.js';
 import { validParagraphKey } from '../../domain/documents/paragraph-destinations.js';
 import {
   exceptionLanguage,
@@ -126,13 +128,14 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
     base = { ...TEXT_DEFAULTS, ...settings },
     leafBlocks = new Set(),
     paragraphEnds = new Set();
+  delete base.textOverrides;
   const styleAt = (node) => {
     if (node === root) return base;
     if (!styles.has(node)) styles.set(node, nodeTextStyle(node, styleAt(node.parentElement), doc));
     return styles.get(node);
   };
-  const add = (kind, start, end, text, node, priority = 1) => {
-    const style = styleAt(node);
+  const add = (kind, start, end, text, node, priority = 1, automatic) => {
+    const style = automatic ? { ...styleAt(node), ...automatic } : styleAt(node);
     if (!/^(?:en|es|it|el|ru|tr|cs|hu|fr|de)(?:-[a-z0-9]{1,8})*$/i.test(style.language))
       throw new UnsupportedComposition('language');
     for (const [key, value] of Object.entries(style))
@@ -174,6 +177,9 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
           : pageId
             ? {
                 pageId,
+                ...(validEndnoteMarker(anchor.dataset.endnote) && {
+                  endnote: anchor.dataset.endnote,
+                }),
                 ...(validParagraphKey(anchor.dataset.xrefParagraph) && {
                   paragraphKey: anchor.dataset.xrefParagraph,
                 }),
@@ -286,7 +292,31 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
     finish(points.at(-1));
   }
   implicit(root);
-  for (const part of map.segments)
+  const ruleRuns = conditionalTextRuns(root, doc, settings);
+  for (const part of map.segments) {
+    const ranges = !suppressed.has(part.node) && ruleRuns?.get(part.node);
+    if (ranges?.length) {
+      let cursor = 0;
+      const addSlice = (end, attributes) => {
+        if (end > cursor)
+          add(
+            'text',
+            part.start + cursor,
+            part.start + end,
+            part.node.data.slice(cursor, end),
+            part.node.parentElement,
+            1,
+            attributes,
+          );
+        cursor = end;
+      };
+      for (const range of ranges) {
+        addSlice(range.start);
+        addSlice(range.end, range.attributes);
+      }
+      addSlice(part.node.length);
+      continue;
+    }
     add(
       suppressed.has(part.node) ? 'whitespace' : 'text',
       part.start,
@@ -294,6 +324,7 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
       suppressed.has(part.node) ? '' : part.node.data,
       part.node.parentElement,
     );
+  }
   if (!paragraphEnds.size) add('paragraph', logicalLength, logicalLength, '\u2029', root, 2);
   tokens.sort((a, b) => a.logicalStart - b.logicalStart || a.priority - b.priority);
   let logical = 0,

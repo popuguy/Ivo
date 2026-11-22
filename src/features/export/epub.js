@@ -1,3 +1,5 @@
+import { otherEndnoteMarker, endnoteFields } from '../../domain/documents/endnotes.js';
+import { paintConditionalText } from '../../rendering/text/paragraph-style-rules.js';
 import {
   paragraphDestinations,
   paragraphDestination,
@@ -133,6 +135,7 @@ function selectedChapters(documents, id, linked, useBook) {
 function chapterText({ id, item, html, style }, doc, documents, paths, headings, anchors) {
   const root = document.createElement(item.type === 'quote' ? 'blockquote' : 'div');
   root.innerHTML = readableHTML(html, documents, doc.id);
+  paintConditionalText(root, doc, style);
   applyNamedTextStyles(root, doc);
   if (style.language) root.lang = style.language;
   if (style.direction === 'rtl') root.dir = 'rtl';
@@ -149,7 +152,11 @@ function chapterText({ id, item, html, style }, doc, documents, paths, headings,
       p.replaceWith(heading);
     }
   }
+  const endnoteStarts = new Map();
   for (const node of root.querySelectorAll('*')) {
+    const marker = node.dataset.endnote,
+      pair = otherEndnoteMarker(marker);
+    const endnote = pair && anchors.get(doc.id)?.has(pair);
     if (node.tagName === 'A') {
       const href = node.getAttribute('href') || '';
       const key = node.dataset.xrefParagraph;
@@ -161,15 +168,17 @@ function chapterText({ id, item, html, style }, doc, documents, paths, headings,
           anchors.get(docId),
           key,
         );
-      const dest = key
-        ? paragraph
-          ? paths.get(docId) + '#' + paragraph
-          : null
-        : node.dataset.docId
-          ? paths.get(node.dataset.docId)
-          : /^https?:\/\//i.test(href)
-            ? href
-            : null;
+      const dest = endnote
+        ? '#' + pair
+        : key
+          ? paragraph
+            ? paths.get(docId) + '#' + paragraph
+            : null
+          : node.dataset.docId
+            ? paths.get(node.dataset.docId)
+            : /^https?:\/\//i.test(href)
+              ? href
+              : null;
       if (!dest) {
         node.replaceWith(...node.childNodes);
         continue;
@@ -200,8 +209,37 @@ function chapterText({ id, item, html, style }, doc, documents, paths, headings,
     for (const attribute of [...node.attributes])
       if (!['href', 'style', 'lang', 'dir', 'start', 'value'].includes(attribute.name))
         node.removeAttribute(attribute.name);
+    if (endnote) {
+      const citation = marker.startsWith('cite-');
+      if (citation) node.id = marker;
+      else {
+        let row = node;
+        while (row.parentElement && row.parentElement !== root) row = row.parentElement;
+        endnoteStarts.set(row, marker);
+      }
+      node.setAttribute('role', citation ? 'doc-noteref' : 'doc-backlink');
+      node.setAttributeNS(
+        'http://www.idpf.org/2007/ops',
+        'epub:type',
+        citation ? 'noteref' : 'backlink',
+      );
+    }
     if (destId) node.id = destId;
     if (!css.length) node.removeAttribute('style');
+  }
+  if (endnoteStarts.size) {
+    let note;
+    for (const row of [...root.childNodes]) {
+      const id = endnoteStarts.get(row);
+      if (id) {
+        note = document.createElement('aside');
+        note.id = id;
+        note.setAttribute('role', 'doc-endnote');
+        note.setAttributeNS('http://www.idpf.org/2007/ops', 'epub:type', 'endnote');
+        row.before(note);
+      }
+      note?.append(row);
+    }
   }
   for (const heading of root.querySelectorAll('h2,h3,h4,h5,h6')) {
     if (!heading.textContent.trim()) continue;
@@ -257,6 +295,11 @@ export async function exportReflowableBook(
       for (const entry of paragraphDestinations(doc).values())
         if (entry?.title && included.has(entry.source))
           ids.set(entry.key, 'paragraph-' + (ids.size + 1));
+      for (const entry of entries) {
+        for (const role of ['cite', 'body'])
+          for (const id of endnoteFields(entry.html, role).keys())
+            ids.set(role + '-' + id, role + '-' + id);
+      }
       return [doc.id, ids];
     }),
   );
@@ -272,7 +315,7 @@ export async function exportReflowableBook(
   );
   add(
     'EPUB/book.css',
-    'body{line-height:1.4;margin:5%}figure{margin:1em 0}img{max-width:100%;height:auto}figcaption{font-size:.85em}p{orphans:2;widows:2}',
+    'body{line-height:1.4;margin:5%}figure{margin:1em 0}img{max-width:100%;height:auto}figcaption{font-size:.85em}p{orphans:2;widows:2}a[role=doc-noteref]{font-size:.583em;vertical-align:super}',
   );
   const manifest = [
       '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',

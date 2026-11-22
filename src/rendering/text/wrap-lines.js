@@ -14,7 +14,7 @@ let context;
 /** Browser shaping stays authoritative for existing-layout flows. The probe is
  * disposable, unscaled, never focused and never copied back into authored HTML. */
 export function createWrapLineMeasurer(doc, flow) {
-  const source = annotatedSource(flow.html),
+  const source = annotatedSource(flow.html, doc, flow.style),
     root = document.createElement('div');
   root.className = 'rich-text canvas-text canvas-flow-input flow-fragment flow-layout-probe';
   root.dataset.flowRoot = 'true';

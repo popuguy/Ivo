@@ -1,3 +1,4 @@
+import { unlinkEndnoteFields } from '../../../domain/documents/endnotes.js';
 import { uid } from '../../../domain/documents/model.js';
 import { cleanHTML, escapeHTML } from '../../../shared/html/sanitize.js';
 
@@ -7,7 +8,7 @@ export function textClipboardHTML(data, currentSource = () => '') {
   const source =
     data?.getData('text/html') ||
     escapeHTML(data?.getData('text/plain') || '').replace(/\r\n?|\n/g, '<br>');
-  let html = cleanHTML(source);
+  let html = unlinkEndnoteFields(cleanHTML(source));
   if (html.includes('data-paragraph-destination')) {
     const markers = [
       ...currentSource().matchAll(/\sdata-paragraph-destination="(par-[\w-]+)"/g),

@@ -1,3 +1,4 @@
+import { endnoteCommands } from '../src/domain/documents/endnotes.js';
 import { CASE_COMMANDS } from '../src/domain/text/change-case.js';
 import { LIST_COMMANDS } from '../src/domain/text/list-numbering.js';
 import { ARRANGE_COMMANDS } from '../src/domain/documents/arrange.js';
@@ -584,6 +585,12 @@ else {
               : []),
             { label: 'Insert Page Link…', click: () => send('page-link') },
             { label: 'New Cross-Reference…', click: () => send('new-cross-reference') },
+            ...(context.textEditing
+              ? Object.entries(endnoteCommands).map(([id, label]) => ({
+                  label,
+                  click: () => send(id),
+                }))
+              : []),
             { type: 'separator' },
           ];
         if (context.textEditing)
@@ -1347,6 +1354,7 @@ function applyHistory(record) {
     ['load-text-styles', canvas.canvasEditing],
     ['page-link', canvas.canvasEditing],
     ['new-cross-reference', canvas.canvasEditing],
+    ...Object.keys(endnoteCommands).map((id) => [id, canvas.canvasEditing]),
     ['mark-paragraph-destination', canvas.canvasEditing],
     ['define-cross-reference-formats', canvas.canvasEditing],
     ['update-cross-references', canvas.canvasEditing],
@@ -1628,6 +1636,13 @@ function installMenu() {
       {
         label: 'Type',
         submenu: [
+          ...Object.entries(endnoteCommands).map(([id, label]) => ({
+            id,
+            label,
+            enabled: false,
+            click: () => sendCommand(id),
+          })),
+          { type: 'separator' },
           ...NATIVE_TEXT_COMMANDS.filter(
             (name) =>
               !Object.hasOwn(INSERT_CHARACTERS, name) &&

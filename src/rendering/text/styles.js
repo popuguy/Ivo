@@ -1,3 +1,5 @@
+import { paintConditionalText } from './paragraph-style-rules.js';
+import { captureTextSelection, restoreTextSelection } from '../../shared/dom/text-selection.js';
 import { paintListNumbers } from '../../shared/dom/list-numbering.js';
 import { applyTextDecorations } from './decorations.js';
 import { resolvedTextStyle } from '../../domain/documents/publishing.js';
@@ -10,6 +12,7 @@ import {
 import { applyTextAttributes } from '../../shared/dom/text-attributes.js';
 import { nodeTextStyle } from './selection-style.js';
 import { applyTextWhitespace } from './whitespace.js';
+const paintedRuleRoots = new WeakSet();
 const owned = new WeakMap(),
   featuresOwned = new WeakSet();
 const features = Object.entries(OPENTYPE_FEATURES);
@@ -17,6 +20,31 @@ const featureSelector = features.map(([, tag]) => '[data-ivo-' + tag + ']').join
 
 /** Resolve style references into disposable CSS only. Definitions/overrides remain the source. */
 export function applyNamedTextStyles(root, doc) {
+  if (
+    !root.hasAttribute('data-flow-root') &&
+    !root.hasAttribute('data-flow-frame') &&
+    (root.dataset.sceneText || root.dataset.textFlow)
+  ) {
+    const hadRules = paintedRuleRoots.has(root),
+      hasRules = doc?.publishing?.paragraphStyles.some(
+        (s) => s.nestedStyles?.length || s.grepStyles?.length,
+      );
+    if (hadRules || hasRules) {
+      const flow = doc.textFlows?.find((f) => f.id === root.dataset.textFlow);
+      if (!flow?.composition) {
+        const bookmark = captureTextSelection(root);
+        if (hadRules)
+          for (const span of root.querySelectorAll('[data-ivo-rule-run]'))
+            span.replaceWith(...span.childNodes);
+        if (hasRules) {
+          const settings = flow?.style || doc.blocks?.find((b) => b.id === root.dataset.sceneText);
+          paintConditionalText(root, doc, settings);
+          paintedRuleRoots.add(root);
+        } else paintedRuleRoots.delete(root);
+        if (bookmark) restoreTextSelection(root, bookmark);
+      }
+    }
+  }
   paintListNumbers(root);
   for (const node of root.querySelectorAll('[data-ivo-pstyle],[data-ivo-cstyle]')) {
     const p = node.getAttribute('data-ivo-pstyle'),

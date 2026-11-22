@@ -1,3 +1,5 @@
+import { validatedStyleRules } from '../text/paragraph-style-rules.js';
+import { validEndnoteMarker, hasEndnotes, validateEndnotePairs } from './endnotes.js';
 import { validParagraphId, validParagraphKey } from './paragraph-destinations.js';
 import { validateReferenceFormats } from './reference-formats.js';
 import { validCrossReferenceFormat } from './cross-references.js';
@@ -41,6 +43,7 @@ import {
   hasIndexReferences,
   hasBookDestinations,
   hasCrossReferences,
+  hasStyleRules,
   hasReferenceFormats,
   hasThreadedTables,
   CURRENT_ARCHIVE_VERSION,
@@ -205,6 +208,14 @@ function checkHtml(html, label, assetIds) {
     fail(`${label} contains an event handler`);
   if (/\s+srcset\s*=/i.test(html)) fail(`${label} contains an unsupported srcset`);
   for (const tag of html.matchAll(/<[^>]*>/g)) {
+    const endnote = attribute(tag[0], 'data-endnote');
+    if (
+      endnote !== null &&
+      (!validEndnoteMarker(endnote) ||
+        !/^<a\b/i.test(tag[0]) ||
+        !/^#page=[\w-]+$/.test(attribute(tag[0], 'href') || ''))
+    )
+      fail(`${label} has an invalid endnote marker`);
     const marker = attribute(tag[0], 'data-paragraph-destination');
     if (marker !== null && (!validParagraphId(marker) || !/^<(p|h[234])\b/i.test(tag[0])))
       fail(`${label} has an invalid paragraph destination`);
@@ -783,6 +794,9 @@ function validateArchive(payload, parentTemplate) {
       const layerIds = new Set(layers.map((l) => l.id));
       if (blocks.some((b) => b.layerId && !layerIds.has(b.layerId)))
         fail(`${label} refers to an unknown layer`);
+      const characterIds = new Set(
+        Array.isArray(p.characterStyles) ? p.characterStyles.map((s) => s?.id) : [],
+      );
       const styleList = (kind) => {
         const values = p[kind];
         if (!Array.isArray(values) || values.length > 256)
@@ -805,6 +819,11 @@ function validateArchive(payload, parentTemplate) {
           return {
             id: id(value.id, label),
             name: string(value.name, label, 120),
+            ...validatedStyleRules(
+              value,
+              kind === 'paragraphStyles' ? 'paragraph' : 'character',
+              characterIds,
+            ),
             ...(value.nextStyle !== undefined
               ? { nextStyle: string(value.nextStyle, label, 120) }
               : {}),
@@ -1053,9 +1072,15 @@ function validateArchive(payload, parentTemplate) {
           generatedOwners.add(value.pageId);
           return { pageId: value.pageId, frameId: value.frameId };
         });
+        if (
+          textFlow.endnotes !== undefined &&
+          (textFlow.endnotes !== true || textFlow.index || textFlow.contents)
+        )
+          fail('Invalid endnotes flow.');
         if (textFlow.index !== undefined && textFlow.contents !== undefined)
           fail('A generated text flow must have a single source.');
         return {
+          ...(textFlow.endnotes && { endnotes: true }),
           ...(textFlow.index !== undefined ? { index: indexSettings(textFlow.index) } : {}),
           id: textFlowId,
           html,
@@ -1162,6 +1187,16 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 32) || payload.schemaVersion < 33)
     )
       fail('Named formats and paragraph destinations require archive 33 and canvas 32.');
+    if (hasEndnotes(doc) && (!supportedCanvas(doc.canvasVersion, 34) || payload.schemaVersion < 35))
+      fail('Endnotes require archive 35 and canvas 34.');
+    if (normalized.textFlows?.filter((f) => f.endnotes).length > 1)
+      fail('Only one endnote flow is supported per document.');
+    if (
+      hasStyleRules(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 33) || payload.schemaVersion < 34)
+    )
+      fail('Nested and GREP styles require archive 34 and canvas 33.');
+    if (hasEndnotes(doc)) validateEndnotePairs(normalized);
     if (doc.referenceFormats !== undefined)
       normalized.referenceFormats = validateReferenceFormats(doc.referenceFormats);
     if (doc.publication !== undefined)

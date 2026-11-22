@@ -1,11 +1,13 @@
+import { paintConditionalText } from './paragraph-style-rules.js';
 import { listMarkers } from '../../shared/dom/list-numbering.js';
 import { cleanHTML } from '../../shared/html/sanitize.js';
 import { textIndexMap, textIndexAt } from '../../shared/dom/text-selection.js';
 
 export const blockTags = new Set(['P', 'DIV', 'LI', 'OL', 'UL', 'H2', 'H3', 'H4', 'BLOCKQUOTE']);
-export function annotatedSource(html) {
+export function annotatedSource(html, doc, settings) {
   const root = document.createElement('div');
   root.innerHTML = cleanHTML(html);
+  paintConditionalText(root, doc, settings);
   const map = textIndexMap(root),
     origins = new Map(),
     markers = listMarkers(root);

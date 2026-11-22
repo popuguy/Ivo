@@ -1,3 +1,4 @@
+import { unlinkEndnoteFields } from './endnotes.js';
 import { hasListNumbering, markTypographyVersion } from './capabilities.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 import { uid, createBlock } from './model.js';
@@ -184,6 +185,8 @@ export function duplicateTextFlows(document, ids) {
       automaticPages: false,
       autoPages: [],
     };
+    delete copy.endnotes;
+    copy.html = unlinkEndnoteFields(copy.html);
     for (const id of frameIds) document.blocks.find((b) => b.id === id).textFlowId = copy.id;
     additions.push(copy);
   }

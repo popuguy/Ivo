@@ -1,43 +1,7 @@
-import {
-  TEXT_DEFAULTS,
-  CHARACTER_FIELDS,
-  PARAGRAPH_FIELDS,
-  validTextAttribute,
-} from '../../domain/text/typography.js';
-import { resolvedTextStyle } from '../../domain/documents/publishing.js';
-
-const fieldForAttribute = new Map(
-  Object.entries({ ...CHARACTER_FIELDS, ...PARAGRAPH_FIELDS }).map(([key, attr]) => [
-    'data-ivo-' + attr,
-    key,
-  ]),
-);
-/** Resolve source-owned attributes, never generated CSS, along one ancestry path. */
-export function nodeTextStyle(node, inherited, doc) {
-  const result = { ...inherited };
-  if (['B', 'STRONG'].includes(node.tagName)) result.bold = true;
-  if (['I', 'EM'].includes(node.tagName)) result.italic = true;
-  if (node.tagName === 'U') result.underline = true;
-  if (node.tagName === 'S') result.strikethrough = true;
-  Object.assign(
-    result,
-    resolvedTextStyle(doc, 'paragraph', node.getAttribute('data-ivo-pstyle')),
-    resolvedTextStyle(doc, 'character', node.getAttribute('data-ivo-cstyle')),
-  );
-  for (const attribute of node.attributes) {
-    const key = fieldForAttribute.get(attribute.name);
-    if (!key) continue;
-    const value = validTextAttribute(attribute.name.slice(9), attribute.value);
-    if (value === null) continue;
-    result[key] =
-      typeof TEXT_DEFAULTS[key] === 'boolean'
-        ? value === 'true'
-        : typeof TEXT_DEFAULTS[key] === 'number'
-          ? Number(value)
-          : value;
-  }
-  return result;
-}
+import { TEXT_DEFAULTS } from '../../domain/text/typography.js';
+import { nodeTextStyle } from './node-text-style.js';
+import { conditionalTextRuns } from './paragraph-style-rules.js';
+export { nodeTextStyle };
 
 export function textStyleReader(root, doc, defaults) {
   const base = { ...TEXT_DEFAULTS, ...defaults },
@@ -55,12 +19,32 @@ export function textStyleReader(root, doc, defaults) {
 /** Uniform and mixed formatting for a frame, range or insertion point. Source is never changed. */
 export function summarizeTextStyle(root, doc, defaults, { range = null, pending = {} } = {}) {
   const samples = [],
-    at = textStyleReader(root, doc, defaults);
+    at = textStyleReader(root, doc, defaults),
+    rules = conditionalTextRuns(root, doc, defaults);
+  const sampleRange = (node, start, end) => {
+    const base = at(node),
+      ranges = rules?.get(node);
+    if (!ranges) {
+      samples.push(base);
+      return;
+    }
+    let cursor = start;
+    for (const run of ranges) {
+      if (run.end <= start) continue;
+      if (run.start >= end) break;
+      if (run.start > cursor) samples.push(base);
+      samples.push({ ...base, ...run.attributes });
+      cursor = run.end;
+    }
+    if (cursor < end) samples.push(base);
+  };
   if (range?.collapsed) {
     let node = range.startContainer;
     if (node.nodeType === Node.ELEMENT_NODE && node.childNodes.length)
       node = node.childNodes[range.startOffset] || node.childNodes[range.startOffset - 1] || node;
-    samples.push({ ...at(node), ...pending });
+    const index = range.startContainer === node ? Math.max(0, range.startOffset - 1) : 0;
+    const automatic = rules?.get(node)?.find((r) => r.start <= index && r.end > index)?.attributes;
+    samples.push({ ...at(node), ...automatic, ...pending });
   } else {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
     let node;
@@ -72,6 +56,8 @@ export function summarizeTextStyle(root, doc, defaults, { range = null, pending 
         !node.textContent &&
         !node.querySelector('p,div,li,h2,h3,h4,blockquote');
       if (!text && !blank) continue;
+      let start = 0,
+        end = node.length;
       if (range) {
         if (!range.intersectsNode(node)) continue;
         const part = document.createRange();
@@ -81,8 +67,12 @@ export function summarizeTextStyle(root, doc, defaults, { range = null, pending 
         if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0)
           part.setEnd(range.endContainer, range.endOffset);
         if (text && part.collapsed) continue;
+        if (text) {
+          start = part.startOffset;
+          end = part.endOffset;
+        }
       }
-      samples.push(at(node));
+      sampleRange(node, start, end);
     }
   }
   if (!samples.length) samples.push(at(root));

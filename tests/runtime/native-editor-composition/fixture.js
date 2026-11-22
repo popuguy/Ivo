@@ -1,3 +1,4 @@
+import { verifyConditionalStyleTyping } from './conditional-styles.js';
 import { verifyStructuredLists } from './structured-lists.js';
 import { verifyNativeFindChange } from './find-change.js';
 import { verifyMixedScriptNavigation } from './mixed-script-navigation.js';
@@ -642,6 +643,7 @@ try {
       load: window.nativeEditorTest.load,
     });
     await verifyStructuredLists(host, window.nativeEditorTest, native.compose);
+    await verifyConditionalStyleTyping(host, native.compose, window.nativeEditorTest.insert);
     nativeBaselineGrid = await verifyBaselineGrid({ host, compose: native.compose });
     nativeCharacterEditing = await verifyNativeCharacterEditing({
       host,

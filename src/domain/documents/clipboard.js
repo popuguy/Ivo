@@ -1,3 +1,4 @@
+import { unlinkEndnoteFields } from './endnotes.js';
 import { retainTableThreads } from './table-threads.js';
 import { ID_PATTERN } from './constants.js';
 import { referencedFormatIds, mergeReferenceFormats } from './reference-formats.js';
@@ -14,6 +15,24 @@ import { referencedFonts, legacyFontFamilies } from '../text/font-references.js'
 import { ensureTextWrapFlows } from './text-wrap.js';
 
 export const OBJECT_CLIPBOARD_TYPE = 'application/x-ivo-objects+json';
+// Validation canonicalizes object key order, but callers can also paste an in-memory
+// selection. Rule order matters; JSON object key order never identifies a style.
+function sameDefinition(a, b) {
+  if (a === b) return true;
+  if (
+    !a ||
+    !b ||
+    typeof a !== 'object' ||
+    typeof b !== 'object' ||
+    Array.isArray(a) !== Array.isArray(b)
+  )
+    return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((k) => Object.hasOwn(b, k) && sameDefinition(a[k], b[k]))
+  );
+}
 export const MAX_OBJECT_CLIPBOARD = 160 * 1024 * 1024;
 
 /** A self-contained selection, not a reference to a live editor or source vault. */
@@ -27,6 +46,10 @@ export function copyObjectSelection(doc, selection, assets = []) {
   // Keep document links pointing to their original document when identities are remapped on paste.
   fragment.id = uid('clipboard-');
   delete fragment.publication;
+  for (const item of [...fragment.blocks, ...(fragment.textFlows || [])]) {
+    if (item.html) item.html = unlinkEndnoteFields(item.html);
+    delete item.endnotes;
+  }
   fragment.blocks = fragment.blocks.filter((b) => included.has(b.id));
   retainTableThreads(doc.blocks, new Map(fragment.blocks.map((b) => [b.id, b])), { copy: true });
   for (const root of roots) {
@@ -76,6 +99,8 @@ export function copyObjectSelection(doc, selection, assets = []) {
         const definition = styles.find((style) => style.id === id);
         if (definition?.basedOn) used[kind].add(definition.basedOn);
         if (definition?.nextStyle) used[kind].add(definition.nextStyle);
+        for (const rule of [...(definition?.nestedStyles || []), ...(definition?.grepStyles || [])])
+          if (rule.style) used.character.add(rule.style);
       }
       fragment.publishing[kind + 'Styles'] = styles.filter((style) => used[kind].has(style.id));
     }
@@ -183,6 +208,10 @@ export function pasteObjectSelection(
     if (
       fromBasic &&
       toBasic &&
+      !fromBasic.nestedStyles &&
+      !fromBasic.grepStyles &&
+      !toBasic.nestedStyles &&
+      !toBasic.grepStyles &&
       !fromBasic.basedOn &&
       !toBasic.basedOn &&
       !fromBasic.nextStyle &&
@@ -194,18 +223,25 @@ export function pasteObjectSelection(
       )
     )
       remap.set(fromBasic.id, toBasic.id);
-    for (const kind of ['paragraph', 'character']) {
+    for (const kind of ['character', 'paragraph']) {
       const key = kind + 'Styles';
       for (const [index, style] of incoming.publishing[key].entries()) {
         const original = archive.documents[0].publishing[key][index],
           existing = publishing[key].find((s) => s.id === original.id);
-        if (existing && JSON.stringify(existing) === JSON.stringify(original))
+        const rules = [...(style.nestedStyles || []), ...(style.grepStyles || [])];
+        if (
+          existing &&
+          rules.every((rule) => !rule.style || remap.has(rule.style)) &&
+          sameDefinition(existing, original)
+        )
           remap.set(style.id, existing.id);
       }
       const additions = incoming.publishing[key].filter((s) => !remap.has(s.id));
       for (const style of additions) {
         if (remap.has(style.basedOn)) style.basedOn = remap.get(style.basedOn);
         if (remap.has(style.nextStyle)) style.nextStyle = remap.get(style.nextStyle);
+        for (const rule of [...(style.nestedStyles || []), ...(style.grepStyles || [])])
+          if (remap.has(rule.style)) rule.style = remap.get(rule.style);
       }
       publishing[key].push(...additions);
     }

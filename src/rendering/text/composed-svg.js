@@ -1,3 +1,4 @@
+import { validEndnoteMarker } from '../../domain/documents/endnotes.js';
 import { validParagraphKey } from '../../domain/documents/paragraph-destinations.js';
 import { originalLineGeometry } from './retained-geometry.js';
 import { escapeHTML as esc } from '../../shared/html/sanitize.js';
@@ -53,7 +54,14 @@ function linkAttributes(link) {
     const destination = page ? ' data-page-id="' + esc(page) + '"' : '';
     return `data-doc-id="${esc(link.documentId)}"${destination}${paragraph} href="#doc=${esc(link.documentId)}"`;
   }
-  if (page) return 'href="#page=' + esc(page) + '"' + paragraph;
+  if (page)
+    return (
+      'href="#page=' +
+      esc(page) +
+      '"' +
+      paragraph +
+      (validEndnoteMarker(link.endnote) ? ' data-endnote="' + esc(link.endnote) + '"' : '')
+    );
   return /^https?:\/\//.test(link.url || '') ? `href="${esc(link.url)}"` : '';
 }
 
