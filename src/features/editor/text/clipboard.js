@@ -1,4 +1,5 @@
 import { unlinkEndnoteFields } from '../../../domain/documents/endnotes.js';
+import { rewriteAnchorMarkers } from '../../../domain/documents/anchor-ownership.js';
 import { uid } from '../../../domain/documents/model.js';
 import { cleanHTML, escapeHTML } from '../../../shared/html/sanitize.js';
 
@@ -8,7 +9,9 @@ export function textClipboardHTML(data, currentSource = () => '') {
   const source =
     data?.getData('text/html') ||
     escapeHTML(data?.getData('text/plain') || '').replace(/\r\n?|\n/g, '<br>');
-  let html = unlinkEndnoteFields(cleanHTML(source));
+  // Graphics require a paired object archive. Ordinary external HTML can
+  // contain text copied from Ivo without any of the actual graphics.
+  let html = rewriteAnchorMarkers(unlinkEndnoteFields(cleanHTML(source)), () => null);
   if (html.includes('data-paragraph-destination')) {
     const markers = [
       ...currentSource().matchAll(/\sdata-paragraph-destination="(par-[\w-]+)"/g),

@@ -1,5 +1,7 @@
 import { validatedStyleRules } from '../text/paragraph-style-rules.js';
 import { validEndnoteMarker, hasEndnotes, validateEndnotePairs } from './endnotes.js';
+import { validateFootnoteHTML, validateFootnoteOptions } from './footnotes.js';
+import { validateAnchoredObjects, hasAnchoredObjects } from './anchored-objects.js';
 import { validParagraphId, validParagraphKey } from './paragraph-destinations.js';
 import { validateReferenceFormats } from './reference-formats.js';
 import { validCrossReferenceFormat } from './cross-references.js';
@@ -17,6 +19,7 @@ import { BLOCK_TYPES, ID_PATTERN, LIMITS } from './constants.js';
 import { attribute, decodeEntities } from '../text/html.js';
 import {
   archiveVersion,
+  structuredTextFormat,
   markTypographyVersion,
   hasPublishingFeatures,
   hasFrameComposition,
@@ -202,6 +205,7 @@ function checkUrl(value, label, { link = false } = {}) {
 }
 
 function checkHtml(html, label, assetIds) {
+  validateFootnoteHTML(html);
   if (/<\s*\/?\s*(?:script|iframe|object|embed|form|meta|link|style|svg|math)\b/i.test(html))
     fail(`${label} contains active HTML`);
   if (/\s+on[a-z]+\s*=/i.test(html) || /\s+srcdoc\s*=/i.test(html))
@@ -1189,6 +1193,13 @@ function validateArchive(payload, parentTemplate) {
       fail('Named formats and paragraph destinations require archive 33 and canvas 32.');
     if (hasEndnotes(doc) && (!supportedCanvas(doc.canvasVersion, 34) || payload.schemaVersion < 35))
       fail('Endnotes require archive 35 and canvas 34.');
+    const format = structuredTextFormat(doc);
+    if (
+      format &&
+      (!supportedCanvas(doc.canvasVersion, format.canvas) || payload.schemaVersion < format.archive)
+    )
+      fail(`${format.name} require archive ${format.archive} and canvas ${format.canvas}.`);
+    if (hasAnchoredObjects(doc)) validateAnchoredObjects(normalized);
     if (normalized.textFlows?.filter((f) => f.endnotes).length > 1)
       fail('Only one endnote flow is supported per document.');
     if (
@@ -1203,6 +1214,7 @@ function validateArchive(payload, parentTemplate) {
       normalized.publication = publicationSettings(doc.publication, doc.id);
     if (doc.extensions !== undefined)
       normalized.extensions = extensions(doc.extensions, `${label}.extensions`);
+    validateFootnoteOptions(normalized.extensions?.ivoFootnotes);
     if (normalized.extensions?.ivoTextWrapDefaults !== undefined) {
       try {
         normalized.extensions.ivoTextWrapDefaults = normalizeTextWrapDefaults(

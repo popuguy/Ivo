@@ -1,4 +1,5 @@
 import { unlinkEndnoteFields } from './endnotes.js';
+import { remapAnchorOwnership } from './anchor-ownership.js';
 import { hasListNumbering, markTypographyVersion } from './capabilities.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 import { uid, createBlock } from './model.js';
@@ -95,6 +96,10 @@ export function startTextFlow(
   frame.html = '';
   frame.textKind = 'area';
   frame.textFlowId = textFlow.id;
+  for (const block of document.blocks) {
+    const anchor = block.extensions?.ivoAnchor;
+    if (anchor?.ownerId === frame.id) anchor.ownerId = textFlow.id;
+  }
   (document.textFlows ||= []).push(textFlow);
   document.canvasVersion = Math.max(document.canvasVersion, 4);
   return textFlow;
@@ -186,7 +191,9 @@ export function duplicateTextFlows(document, ids) {
       autoPages: [],
     };
     delete copy.endnotes;
+    ids.set(textFlow.id, copy.id);
     copy.html = unlinkEndnoteFields(copy.html);
+    remapAnchorOwnership(copy, ids);
     for (const id of frameIds) document.blocks.find((b) => b.id === id).textFlowId = copy.id;
     additions.push(copy);
   }

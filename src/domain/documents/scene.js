@@ -1,4 +1,10 @@
 import { unlinkEndnoteFields } from './endnotes.js';
+import {
+  ownedSelection,
+  remapAnchorOwnership,
+  removeAnchorReferences,
+  retainAnchorsOnPageRemoval,
+} from './anchor-ownership.js';
 import { retainTableThreads, tableThreads } from './table-threads.js';
 import { supportedCanvas } from './capabilities.js';
 import { ensureTextWrapFlows } from './text-wrap.js';
@@ -175,7 +181,7 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
 }
 export function continueTableOnNextPage(doc, id) {
   const frames = tableThreads(doc.blocks).get(id);
-  if (!frames || frames.some((f) => f.parentId)) throw Error('Choose a table on a document page.');
+  if (!frames || frames.some((f) => f.parentId || f.extensions?.ivoAnchor)) throw Error('Choose a free-standing table on a document page.');
   const tail = frames.at(-1),
     index = doc.pages.findIndex((p) => p.id === tail.pageId);
   if (
@@ -269,7 +275,8 @@ export function moveVertex(document, id, vertexId, position) {
   });
 }
 export function removeObject(document, id) {
-  const ids = new Set([id, ...descendantsOf(document, id).map((item) => item.id)]);
+  const ids = ownedSelection(document, [id], { deleting: true });
+  removeAnchorReferences(document, ids);
   retainTableThreads(
     document.blocks,
     new Map(document.blocks.filter((item) => !ids.has(item.id)).map((b) => [b.id, b])),
@@ -290,11 +297,9 @@ export function duplicateObjects(document, selection, { offset = { x: 16, y: 16 
         }
         return true;
       });
-  const included = new Set(
-    roots.flatMap((item) => [
-      item.id,
-      ...descendantsOf(document, item.id).map((child) => child.id),
-    ]),
+  const included = ownedSelection(
+    document,
+    roots.map((item) => item.id),
   );
   if (document.blocks.length + included.size > 1000)
     throw new Error('A document can contain up to 1,000 objects.');
@@ -310,13 +315,16 @@ export function duplicateObjects(document, selection, { offset = { x: 16, y: 16 
     if (copy.points) copy.points = copy.points.map((point) => ({ ...point, id: uid('vertex-') }));
   }
   retainTableThreads(document.blocks, byOriginal, { copy: true });
-  const rootCopies = roots.map((item) => copies.find((copy) => copy.id === ids.get(item.id)));
+  document.blocks.push(...copies);
+  duplicateTextFlows(document, ids);
+  for (const copy of copies) remapAnchorOwnership(copy, ids);
+  const rootCopies = roots
+    .map((item) => byOriginal.get(item.id))
+    .filter((item) => !item.extensions?.ivoAnchor);
   for (const copy of rootCopies) {
     copy.x += offset.x;
     copy.y += offset.y;
   }
-  document.blocks.push(...copies);
-  duplicateTextFlows(document, ids);
   return rootCopies;
 }
 export function duplicateObject(document, id) {
@@ -331,14 +339,18 @@ export function removePage(document, id) {
   // section starts belong to the removed page, so numbering resumes from above.
   if (index === 0 && section && next && !next.section) next.section = section;
   document.pages = document.pages.filter((page) => page.id !== id);
-  const removed = document.blocks
-    .filter((object) => object.pageId === id)
-    .map((object) => object.id);
+  retainAnchorsOnPageRemoval(document, id);
+  const removed = ownedSelection(
+    document,
+    document.blocks.filter((object) => object.pageId === id).map((object) => object.id),
+    { deleting: true },
+  );
+  removeAnchorReferences(document, removed);
   retainTableThreads(
     document.blocks,
-    new Map(document.blocks.filter((b) => b.pageId !== id).map((b) => [b.id, b])),
+    new Map(document.blocks.filter((b) => !removed.has(b.id)).map((b) => [b.id, b])),
   );
-  document.blocks = document.blocks.filter((object) => object.pageId !== id);
+  document.blocks = document.blocks.filter((object) => !removed.has(object.id));
   removeTextFlowFrames(document, removed);
 }
 

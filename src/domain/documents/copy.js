@@ -1,4 +1,5 @@
 import { attribute } from '../text/html.js';
+import { remapAnchorOwnership } from './anchor-ownership.js';
 import { remapContentsStyles } from './contents-settings.js';
 import { uid } from './model.js';
 import { upgradeDocument } from './scene.js';
@@ -54,6 +55,7 @@ export function copyDocument(
     if (page.parentOverrides) page.parentOverrides = page.parentOverrides.map((id) => ids.get(id));
   }
   function remapRichText(holder) {
+    remapAnchorOwnership(holder, ids);
     remapContentsStyles(holder, ids);
     if (remapPageLinks && holder.html)
       holder.html = holder.html.replace(/<a\b[^>]+>/gi, (tag) => {

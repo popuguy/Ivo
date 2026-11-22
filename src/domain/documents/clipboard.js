@@ -1,4 +1,5 @@
 import { unlinkEndnoteFields } from './endnotes.js';
+import { detachAnchor, ownedSelection } from './anchor-ownership.js';
 import { retainTableThreads } from './table-threads.js';
 import { ID_PATTERN } from './constants.js';
 import { referencedFormatIds, mergeReferenceFormats } from './reference-formats.js';
@@ -6,7 +7,7 @@ import { remapContentsStyles } from './contents-settings.js';
 import { archiveVersion, markTypographyVersion } from './capabilities.js';
 import { uid } from './model.js';
 import { copyDocument } from './copy.js';
-import { descendantsOf, worldRect, pagePositions } from './scene.js';
+import { worldRect, pagePositions } from './scene.js';
 import { selectionRoots } from '../geometry/selection.js';
 import { basicParagraph, enablePublishing } from './publishing.js';
 import { validateImport } from './schema.js';
@@ -39,8 +40,9 @@ export const MAX_OBJECT_CLIPBOARD = 160 * 1024 * 1024;
 export function copyObjectSelection(doc, selection, assets = []) {
   const roots = selectionRoots(doc, selection);
   if (!roots.length) return null;
-  const included = new Set(
-    roots.flatMap((b) => [b.id, ...descendantsOf(doc, b.id).map((c) => c.id)]),
+  const included = ownedSelection(
+    doc,
+    roots.map((b) => b.id),
   );
   const fragment = structuredClone(doc);
   // Keep document links pointing to their original document when identities are remapped on paste.
@@ -51,6 +53,11 @@ export function copyObjectSelection(doc, selection, assets = []) {
     delete item.endnotes;
   }
   fragment.blocks = fragment.blocks.filter((b) => included.has(b.id));
+  const owners = new Set(fragment.blocks.map((b) => b.textFlowId || b.id));
+  for (const block of fragment.blocks) {
+    const anchor = block.extensions?.ivoAnchor;
+    if (anchor && !owners.has(anchor.ownerId)) detachAnchor(block);
+  }
   retainTableThreads(doc.blocks, new Map(fragment.blocks.map((b) => [b.id, b])), { copy: true });
   for (const root of roots) {
     const copy = fragment.blocks.find((b) => b.id === root.id);
@@ -265,7 +272,7 @@ export function pasteObjectSelection(
   const positions = pagePositions(incoming.pages),
     first = positions[0],
     parentRect = parent ? worldRect(next, parent) : { x: 0, y: 0 };
-  const roots = incoming.blocks.filter((b) => !b.parentId);
+  const roots = incoming.blocks.filter((b) => !b.parentId && !b.extensions?.ivoAnchor);
   for (const root of roots) {
     const page = positions.find((p) => p.id === root.pageId);
     root.x += offset.x - parentRect.x;

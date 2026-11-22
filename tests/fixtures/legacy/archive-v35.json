@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 35,
+  "documents": [
+    {
+      "id": "doc-dbb71dee-76bd-478f-a91a-d9e564a2ad8d",
+      "title": "Endnote edition",
+      "kicker": "",
+      "subtitle": "",
+      "tags": [],
+      "aliases": [],
+      "blocks": [
+        {
+          "id": "block-a6308caa-ab51-40a5-a85f-3cec02c284f7",
+          "type": "text",
+          "x": 48,
+          "y": 48,
+          "w": 180,
+          "h": 100,
+          "html": "<p>Sample <a href=\"#page=page-47cf31b8-a7d4-4482-b35d-eaad0e52b37f\" data-endnote=\"cite-en-weave\">1</a></p>",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "cmu-serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "pageId": "page-de131223-05ff-4a00-bb84-4d0431373b66"
+        },
+        {
+          "id": "block-9d7a4f02-6a6a-438f-b2b3-ac51de0b7fd1",
+          "type": "text",
+          "x": 48,
+          "y": 48,
+          "w": 180,
+          "h": 100,
+          "html": "",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "cmu-serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "pageId": "page-47cf31b8-a7d4-4482-b35d-eaad0e52b37f",
+          "textFlowId": "flow-15325a1a-61e4-4183-9727-7b2f95cf19f9"
+        }
+      ],
+      "createdAt": "2026-11-22T18:19:35.122Z",
+      "updatedAt": "2026-11-22T18:19:35.122Z",
+      "layout": {
+        "columns": 12,
+        "rows": 38
+      },
+      "version": 1,
+      "template": "blank",
+      "canvasVersion": 34,
+      "pages": [
+        {
+          "id": "page-de131223-05ff-4a00-bb84-4d0431373b66",
+          "name": "Page 1",
+          "width": 612,
+          "height": 792
+        },
+        {
+          "id": "page-47cf31b8-a7d4-4482-b35d-eaad0e52b37f",
+          "name": "Page 2",
+          "width": 612,
+          "height": 792
+        }
+      ],
+      "textFlows": [
+        {
+          "endnotes": true,
+          "id": "flow-15325a1a-61e4-4183-9727-7b2f95cf19f9",
+          "html": "<p><a href=\"#page=page-de131223-05ff-4a00-bb84-4d0431373b66\" data-endnote=\"body-en-weave\">1</a> Original weave record.</p>",
+          "frameIds": [
+            "block-9d7a4f02-6a6a-438f-b2b3-ac51de0b7fd1"
+          ],
+          "style": {
+            "textStyle": "cmu-serif",
+            "fontSize": 16,
+            "align": "left"
+          },
+          "automaticPages": true,
+          "deleteEmptyPages": true,
+          "autoPages": []
+        }
+      ]
+    }
+  ],
+  "assets": []
+}

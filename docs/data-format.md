@@ -184,3 +184,11 @@ Nested styles measure a delimiter count through or up to words, characters, lett
 ## Archive 35 and canvas 34
 
 Document endnotes use paired anchors in authored text. A source citation has `data-endnote="cite-en-…"` and the note's backlink has the matching `body-en-…` value. One ordinary threaded text flow is marked `endnotes: true`. Its paragraphs contain editable note text, including paragraph breaks and formatting. Both anchors carry a local page link and the displayed number. Reference and note identities survive renumbering, reopening and whole-document duplication. A copied text or object fragment retains an ordinary link to its original page. A document rejects duplicate, missing or misplaced markers. PDF and EPUB calculate their final destinations from their own layouts.
+
+## Archives 36–38 and canvases 35–37
+
+Archive 36 adds column footnotes. A numbered span carries a URL-encoded plain-text body in `data-footnote`. Its displayed label belongs to the numbering sequence in its flow. Optional `extensions.ivoFootnotes` stores document settings for splitting, numbering, the rule and spacing. Column positions, continuation segments and reserved space are layout results.
+
+Archive 37 adds anchored artwork. A span with `data-ivo-anchor` contains one object replacement character (U+FFFC). Its ID refers to a real scene block whose `extensions.ivoAnchor` names the owning flow or independent frame and an inline or above-line position. The owning source and block must agree. Masks retain their original children and immutable assets. Copying reassigns identities, and removing the last owning frame removes its dependent objects. A surviving linked frame retains its artwork when the original page is deleted.
+
+Archive 38 adds anchored tables and sparse per-cell text styling. A table in prose uses an above-line object marker. A cell keeps its text in one string. Optional `cellRuns` records ordered, non-overlapping UTF-16 ranges for bold, italic, underline, strikethrough, color and highlighting. Older documents continue to use their original format until they acquire a newer capability. A frozen archive 35 fixture exercises reopening an earlier numbered-endnote document.

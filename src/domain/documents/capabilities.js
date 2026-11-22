@@ -1,11 +1,25 @@
 import { hasEndnotes } from './endnotes.js';
+import { hasFootnotes } from './footnotes.js';
+import { hasAnchoredObjects } from './anchored-objects.js';
+import { hasInlineTables } from './inline-tables.js';
 import { extendedPageSection } from './page-sections.js';
 import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 35;
-export const CURRENT_CANVAS_VERSION = 34;
+export const CURRENT_ARCHIVE_VERSION = 38;
+export const CURRENT_CANVAS_VERSION = 37;
+
+// Highest requirement first. Keep a document's declared version after its
+// final marker is removed so editing and undo cannot downgrade the archive.
+const structuredTextFormats = [
+  { name: 'Inline tables and formatted cells', archive: 38, canvas: 37, used: hasInlineTables },
+  { name: 'Anchored objects', archive: 37, canvas: 36, used: hasAnchoredObjects },
+  { name: 'Footnotes', archive: 36, canvas: 35, used: hasFootnotes },
+];
+export function structuredTextFormat(doc) {
+  return structuredTextFormats.find((f) => doc.canvasVersion === f.canvas || f.used(doc));
+}
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -399,6 +413,11 @@ export const hasStyleRules = (doc) =>
     (s) => s?.nestedStyles !== undefined || s?.grepStyles !== undefined,
   );
 export function archiveVersion(documents, assets = []) {
+  const required = documents.reduce(
+    (version, doc) => Math.max(version, structuredTextFormat(doc)?.archive || 0),
+    0,
+  );
+  if (required) return required;
   if (documents.some(hasEndnotes)) return 35;
   if (documents.some(hasStyleRules)) return 34;
   if (documents.some(hasReferenceFormats)) return 33;
@@ -444,6 +463,11 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  const format = structuredTextFormat(document);
+  if (format) {
+    document.canvasVersion = format.canvas;
+    return document;
+  }
   if (hasEndnotes(document)) {
     document.canvasVersion = 34;
     return document;
