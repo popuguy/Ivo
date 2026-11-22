@@ -1,3 +1,5 @@
+import { printedParagraphs } from '../../rendering/text/printed-paragraphs.js';
+import { paragraphDestination } from '../../domain/documents/paragraph-destinations.js';
 import {
   composePublicationChapter,
   paintPublicationPage,
@@ -88,9 +90,11 @@ export async function renderPDFSnapshot(snapshot) {
       }),
     ),
   );
+  const paragraphTargets = new Map();
   for (const doc of documents) {
     const chapter = pages.filter((page) => page.documentId === doc.id);
     const headings = collectPageHeadings(doc, flowPlans.get(doc.id), chapter);
+    paragraphTargets.set(doc.id, printedParagraphs(doc, flowPlans.get(doc.id), chapter));
     for (const page of chapter) page.headings = headings.get(page.pageId);
   }
   const links = [],
@@ -144,7 +148,11 @@ export async function renderPDFSnapshot(snapshot) {
       }
     }
     for (const table of page.section.querySelectorAll('.table-frame')) {
-      if (table.scrollHeight > table.clientHeight + 1 || table.scrollWidth > table.clientWidth + 1)
+      if (
+        table.hasAttribute('data-table-overset') ||
+        table.scrollHeight > table.clientHeight + 1 ||
+        table.scrollWidth > table.clientWidth + 1
+      )
         warnings.add(
           `${page.doc.title}: table content extends outside its frame on page ${pageIndex + 1}.`,
         );
@@ -152,7 +160,24 @@ export async function renderPDFSnapshot(snapshot) {
     for (const anchor of page.section.querySelectorAll('a')) {
       const targetId = anchor.dataset.docId;
       let target;
-      if (targetId) {
+      if (anchor.dataset.xrefParagraph) {
+        const id = targetId || page.documentId,
+          chapter = documents.find((d) => d.id === id);
+        const dest = paragraphDestination(
+          chapter,
+          paragraphTargets.get(id),
+          anchor.dataset.xrefParagraph,
+        );
+        const index = pageTargets.get(id + '/' + dest?.pageId);
+        if (index !== undefined)
+          target = {
+            pageIndex: index,
+            ...(Number.isFinite(dest.topFraction) && {
+              top: dest.topFraction * pages[index].height,
+            }),
+          };
+        else warnings.add('Link to an unavailable paragraph: ' + anchor.textContent.trim());
+      } else if (targetId) {
         if (anchor.dataset.pageId && destinations.has(targetId)) {
           const index = pageTargets.get(targetId + '/' + anchor.dataset.pageId);
           if (index !== undefined) target = { pageIndex: index };

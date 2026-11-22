@@ -195,7 +195,7 @@ export function createParent(doc, pageId, name = 'Parent') {
     throw new Error('Parent creation exceeds the document object limit.');
   if ((doc.publishing?.parents.length || 0) >= 26)
     throw new Error('Use up to 26 parent definitions.');
-  if (originals.some((b) => b.textFlowId))
+  if (originals.some((b) => b.textFlowId || (b.type === 'table' && (b.tableNext || !b.table))))
     throw new Error('Use unthreaded frames on a parent page.');
   const publishing = enablePublishing(doc),
     ids = new Map();

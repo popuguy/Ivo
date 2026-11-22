@@ -3,8 +3,8 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 31;
-export const CURRENT_CANVAS_VERSION = 30;
+export const CURRENT_ARCHIVE_VERSION = 33;
+export const CURRENT_CANVAS_VERSION = 32;
 /** Canvas 3 used legacy linked frames and is converted to 4 before validation. */
 export function supportedCanvas(version, minimum = 1) {
   return (
@@ -354,6 +354,26 @@ export const hasContents = (doc) =>
   doc.canvasVersion === 27 ||
   (Array.isArray(doc.textFlows) &&
     doc.textFlows.some((flow) => flow?.contents !== undefined || flow?.index !== undefined));
+export const hasThreadedTables = (doc) =>
+  doc.canvasVersion === 31 ||
+  doc.publishing?.parents?.some((p) => p.blocks?.some((b) => b.table?.rowOptions)) ||
+  doc.blocks?.some(
+    (b) =>
+      b.type === 'table' &&
+      (b.tableNext !== undefined || !b.table || b.table.rowOptions !== undefined),
+  );
+export function hasReferenceFormats(doc) {
+  const custom = (holder) =>
+    /\sdata-(?:paragraph-destination|xref-paragraph)\s*=/i.test(holder?.html || '') ||
+    /<a\b[^>]*\sdata-xref-format\s*=\s*["']?xref-/i.test(holder?.html || '');
+  return (
+    doc.canvasVersion === 32 ||
+    doc.referenceFormats !== undefined ||
+    doc.blocks?.some(custom) ||
+    doc.textFlows?.some(custom) ||
+    doc.publishing?.parents?.some((p) => p.blocks?.some(custom))
+  );
+}
 export function hasCrossReferences(doc) {
   const contains = (holder) => /<a\b[^>]*\sdata-xref-format\s*=/i.test(holder?.html || '');
   return (
@@ -373,6 +393,8 @@ export function hasBookDestinations(doc) {
   );
 }
 export function archiveVersion(documents, assets = []) {
+  if (documents.some(hasReferenceFormats)) return 33;
+  if (documents.some(hasThreadedTables)) return 32;
   if (documents.some(hasCrossReferences)) return 31;
   if (documents.some(hasBookDestinations)) return 30;
   if (documents.some((doc) => hasTables(doc) || hasIndexReferences(doc))) return 29;
@@ -414,6 +436,14 @@ export function archiveVersion(documents, assets = []) {
 }
 
 export function markTypographyVersion(document) {
+  if (hasReferenceFormats(document)) {
+    document.canvasVersion = 32;
+    return document;
+  }
+  if (hasThreadedTables(document)) {
+    document.canvasVersion = 31;
+    return document;
+  }
   if (hasCrossReferences(document)) {
     document.canvasVersion = 30;
     return document;

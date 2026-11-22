@@ -178,7 +178,7 @@ The 15 November architecture pass reorganizes the shared engine and feature owne
 
 ## Remaining table and publishing work
 
-Page tables now support structural editing, column dragging and spreadsheet paste. The next table milestone is placing one table in a threaded text flow, keeping merged rows together where possible and repeating header and footer rows on continuation pages. Richer cell text, table and cell styles, and iPhone/iPad input checks remain outstanding. Subject indexes support See/See also and custom sorting. Persistent individual markers and book-wide regeneration remain outstanding. Preflight profiles can be exchanged as files. Print color and separation checks remain outstanding.
+Page tables now support structural editing, column dragging and spreadsheet paste. A table can now continue into frames on later pages. Headers and footers repeat, merged rows stay together, and a cell edit can move following rows to a new page. Next, support a table embedded between paragraphs in the same prose flow, rich text in cells, table and cell styles, and physical iPhone/iPad input. Subject indexes support See/See also and custom sorting. Persistent individual markers and book-wide regeneration remain outstanding. Preflight profiles can be exchanged as files. Print color and separation checks remain outstanding.
 
 ## Progress discipline
 

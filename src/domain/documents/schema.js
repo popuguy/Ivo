@@ -1,4 +1,7 @@
-import { crossReferenceFormats } from './cross-references.js';
+import { validParagraphId, validParagraphKey } from './paragraph-destinations.js';
+import { validateReferenceFormats } from './reference-formats.js';
+import { validCrossReferenceFormat } from './cross-references.js';
+import { tableThreads } from './table-threads.js';
 import { validateTable } from './tables.js';
 import { indexSettings } from './subject-index.js';
 import { contentsSettings } from './contents-settings.js';
@@ -38,6 +41,8 @@ import {
   hasIndexReferences,
   hasBookDestinations,
   hasCrossReferences,
+  hasReferenceFormats,
+  hasThreadedTables,
   CURRENT_ARCHIVE_VERSION,
   supportedCanvas,
 } from './capabilities.js';
@@ -200,6 +205,17 @@ function checkHtml(html, label, assetIds) {
     fail(`${label} contains an event handler`);
   if (/\s+srcset\s*=/i.test(html)) fail(`${label} contains an unsupported srcset`);
   for (const tag of html.matchAll(/<[^>]*>/g)) {
+    const marker = attribute(tag[0], 'data-paragraph-destination');
+    if (marker !== null && (!validParagraphId(marker) || !/^<(p|h[234])\b/i.test(tag[0])))
+      fail(`${label} has an invalid paragraph destination`);
+    const paragraphKey = attribute(tag[0], 'data-xref-paragraph');
+    if (
+      paragraphKey !== null &&
+      (!validParagraphKey(paragraphKey) ||
+        !/^<a\b/i.test(tag[0]) ||
+        !attribute(tag[0], 'data-xref-format'))
+    )
+      fail(`${label} has an invalid paragraph reference`);
     if (/^<a\b/i.test(tag[0]) && /\sdata-(?:xref-format|page-id)\s*=/i.test(tag[0])) {
       const format = attribute(tag[0], 'data-xref-format'),
         page = attribute(tag[0], 'data-page-id'),
@@ -212,7 +228,8 @@ function checkHtml(html, label, assetIds) {
         fail(`${label} has an invalid chapter page link`);
       if (
         format !== null &&
-        (!Object.hasOwn(crossReferenceFormats, format) ||
+        (!validCrossReferenceFormat(format) ||
+          (format === 'paragraph-text' && !paragraphKey) ||
           (page === null &&
             (destination || !href.startsWith('#page=') || !ID_PATTERN.test(href.slice(6)))))
       )
@@ -515,13 +532,20 @@ function validateArchive(payload, parentTemplate) {
         if (!paged || !supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29)
           fail('Tables require archive 29 and canvas 28.');
         if (html || block.textFlowId) fail('A table must have one cell source.');
-        normalized.table = validateTable(block.table);
-        totalHtml += normalized.table.cells.reduce(
-          (n, row) => row.reduce((v, cell) => v + cell.length, n),
-          0,
-        );
+        if (block.tableNext !== undefined) {
+          if (!ID_PATTERN.test(block.tableNext) || typeof block.tableNext !== 'string')
+            fail('Invalid table continuation ID.');
+          normalized.tableNext = block.tableNext;
+        }
+        if (block.table !== undefined) normalized.table = validateTable(block.table);
+        totalHtml +=
+          normalized.table?.cells.reduce(
+            (n, row) => row.reduce((v, cell) => v + cell.length, n),
+            0,
+          ) ?? 0;
         if (totalHtml > 20_000_000) fail('Total document text exceeds 20 million characters.');
-      } else if (block.table !== undefined) fail('Only table objects can own cells.');
+      } else if (block.table !== undefined || block.tableNext !== undefined)
+        fail('Only table objects can own cells or continuations.');
       if (['text', 'quote'].includes(block.type)) {
         typography(block, normalized, key);
         normalized.textKind = enumeration(
@@ -844,6 +868,8 @@ function validateArchive(payload, parentTemplate) {
           },
           true,
         ).documents[0];
+        if (parentDoc.blocks.some((b) => b.tableNext))
+          fail('Use unthreaded tables on a parent page.');
         const result = parentDoc.blocks.map((b) => {
           id(b.id, label);
           for (const v of b.points || []) id(v.id, label);
@@ -1119,12 +1145,25 @@ function validateArchive(payload, parentTemplate) {
       (!supportedCanvas(doc.canvasVersion, 30) || payload.schemaVersion < 31)
     )
       fail('Inline cross-references require archive 31 and canvas 30.');
+    if (
+      hasThreadedTables(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 31) || payload.schemaVersion < 32)
+    )
+      fail('Threaded tables require archive 32 and canvas 31.');
+    tableThreads(blocks);
     if (hasTables(doc) && (!supportedCanvas(doc.canvasVersion, 28) || payload.schemaVersion < 29))
       fail('Tables require archive 29 and canvas 28.');
     if (hasContents(doc) && (!supportedCanvas(doc.canvasVersion, 27) || payload.schemaVersion < 28))
       fail('Generated contents require archive 28 and canvas 27.');
     if (doc.hyphenationExceptions !== undefined)
       normalized.hyphenationExceptions = hyphenationExceptions(doc.hyphenationExceptions);
+    if (
+      hasReferenceFormats(doc) &&
+      (!supportedCanvas(doc.canvasVersion, 32) || payload.schemaVersion < 33)
+    )
+      fail('Named formats and paragraph destinations require archive 33 and canvas 32.');
+    if (doc.referenceFormats !== undefined)
+      normalized.referenceFormats = validateReferenceFormats(doc.referenceFormats);
     if (doc.publication !== undefined)
       normalized.publication = publicationSettings(doc.publication, doc.id);
     if (doc.extensions !== undefined)

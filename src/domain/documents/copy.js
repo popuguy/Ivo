@@ -57,7 +57,13 @@ export function copyDocument(
     remapContentsStyles(holder, ids);
     if (remapPageLinks && holder.html)
       holder.html = holder.html.replace(/<a\b[^>]+>/gi, (tag) => {
-        if (attribute(tag, 'data-doc-id') !== source.id) return tag;
+        const target = attribute(tag, 'data-doc-id');
+        if (!target || target === source.id)
+          tag = tag.replace(
+            /(\sdata-xref-paragraph\s*=\s*["'])([\w-]+)(\/)/i,
+            (all, start, id, end) => (ids.has(id) ? start + ids.get(id) + end : all),
+          );
+        if (target !== source.id) return tag;
         return tag.replace(/(\sdata-page-id\s*=\s*["'])([\w-]+)(["'])/i, (all, start, id, end) =>
           ids.has(id) ? start + ids.get(id) + end : all,
         );
@@ -110,6 +116,7 @@ export function copyDocument(
     if (block.parentOriginId) block.parentOriginId = ids.get(block.parentOriginId);
     remapRichText(block);
     if (block.pageId) block.pageId = ids.get(block.pageId);
+    if (block.tableNext) block.tableNext = ids.get(block.tableNext);
     if (block.textFlowId) block.textFlowId = ids.get(block.textFlowId);
     if (block.parentId) block.parentId = ids.get(block.parentId);
     for (const point of block.points || []) point.id = ids.get(point.id);

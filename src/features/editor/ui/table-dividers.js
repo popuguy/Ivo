@@ -1,6 +1,14 @@
 import { columnPoints, resizeColumn } from '../../../domain/geometry/table-columns.js';
 /** Measure the transformed inline axis so zoomed and rotated tables use the same drag. */
-export function installTableDividers({ world, doc, selected, available, mutate, allowed }) {
+export function installTableDividers({
+  world,
+  doc,
+  selected,
+  available,
+  tableFor,
+  mutate,
+  allowed,
+}) {
   let marked = null,
     cancel = null;
   function mark(block) {
@@ -34,7 +42,9 @@ export function installTableDividers({ world, doc, selected, available, mutate, 
       length = dx * dx + dy * dy;
     if (length < 1) return true;
     const i = Number(grip.dataset.tableDivider),
-      old = columnPoints(block)[i];
+      table = tableFor(block),
+      geometry = { ...block, table },
+      old = columnPoints(geometry)[i];
     const objectNode = frame.parentElement,
       cols = frame.querySelectorAll('col'),
       grips = frame.querySelectorAll('[data-table-divider]');
@@ -60,7 +70,7 @@ export function installTableDividers({ world, doc, selected, available, mutate, 
       if (e.pointerId !== event.pointerId) return;
       const movement =
         (((e.clientX - event.clientX) * dx + (e.clientY - event.clientY) * dy) / length) * block.w;
-      proposed = resizeColumn(block, i, old + movement, e.shiftKey);
+      proposed = resizeColumn(geometry, i, old + movement, e.shiftKey);
       preview(proposed);
     }
     function end(commit) {
@@ -70,19 +80,19 @@ export function installTableDividers({ world, doc, selected, available, mutate, 
       if (
         !commit ||
         !proposed ||
-        proposed.widths === block.table.widths ||
+        proposed.widths === table.widths ||
         doc() !== owner ||
         selected() !== block ||
         !allowed() ||
         !available(owner, block)
       ) {
-        preview({ w: block.w, x: block.x, y: block.y, widths: block.table.widths });
+        preview({ w: block.w, x: block.x, y: block.y, widths: table.widths });
         return;
       }
       const { widths, ...rect } = proposed;
       mutate(() => {
         Object.assign(block, rect);
-        block.table.widths = widths;
+        table.widths = widths;
       }, 'Resize table columns');
     }
     cancel = () => end(false);

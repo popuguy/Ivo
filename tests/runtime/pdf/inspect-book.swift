@@ -18,6 +18,13 @@ let data = try JSONSerialization.data(withJSONObject: [
       return [source, pdf.index(for: page)]
     }
   },
+  "linkPoints": (0..<pdf.pageCount).flatMap { source -> [[Double]] in
+    (pdf.page(at: source)?.annotations ?? []).compactMap { annotation -> [Double]? in
+      let destination = annotation.destination ?? (annotation.action as? PDFActionGoTo)?.destination
+      guard let dest = destination, let page = dest.page else { return nil }
+      return [Double(source), Double(pdf.index(for: page)), Double(page.bounds(for: .mediaBox).height - dest.point.y)]
+    }
+  },
   "text": (0..<pdf.pageCount).map { pdf.page(at: $0)?.string ?? "" },
   "labels": (0..<pdf.pageCount).map { pdf.page(at: $0)?.label ?? "" }
 ])

@@ -1,3 +1,4 @@
+import { tableThreads } from '../../../domain/documents/table-threads.js';
 import { tableCellId } from '../text/table-proofing.js';
 import { rangeFromBookmark } from '../../../shared/dom/text-selection.js';
 import { columnPoints, resizeColumn } from '../../../domain/geometry/table-columns.js';
@@ -10,7 +11,11 @@ import {
   validateTable,
   tableCellLimit,
 } from '../../../domain/documents/tables.js';
-import { insertObject, sceneObject } from '../../../domain/documents/scene.js';
+import {
+  continueTableOnNextPage,
+  insertObject,
+  sceneObject,
+} from '../../../domain/documents/scene.js';
 
 const numberField = (name, label, value, min, max, step = 1) =>
   `<label>${label}<input required type="number" name="${name}" value="${value}" min="${min}" max="${max}" step="${step}"></label>`;
@@ -44,13 +49,29 @@ export function installTableControls({
   available,
   mutate,
   insertionContext,
+  reflow,
+  parentMode,
+  revealFrame,
+  revealCell,
   form,
   notify,
   captureView,
   onCommit,
   run,
 }) {
-  const dividers = installTableDividers({ world, doc, selected, available, mutate, allowed });
+  const threadFor = (id) => tableThreads(doc().blocks).get(id) || [];
+  function editable(owner, frame) {
+    return owner === doc() && threadFor(frame.id).every((item) => available(owner, item));
+  }
+  const dividers = installTableDividers({
+    world,
+    doc,
+    selected,
+    available: editable,
+    tableFor: (frame) => threadFor(frame.id)[0]?.table,
+    mutate,
+    allowed,
+  });
   let current = null,
     last = null,
     review = null,
@@ -67,32 +88,35 @@ export function installTableControls({
     dividers.cancel();
     if (!current) return;
     flush();
-    const { input, cell, block, row, column } = current;
+    const { input, cell, block, row, column, edited } = current;
     current = null;
     input.remove();
     cell.textContent = block.table.cells[row][column].replace(/\r\n?/g, '\n');
+    reflow(block, edited);
   }
   function cellsFor(id) {
-    return [
+    return threadFor(id).flatMap((frame) => [
       ...world.querySelectorAll(
-        '[data-object="' + CSS.escape(id) + '"] > .table-frame [data-table-row]',
+        '[data-object="' +
+          CSS.escape(frame.id) +
+          '"] > .table-frame [data-table-row]:not([data-table-repeat])',
       ),
-    ];
+    ]);
   }
   function edit(target) {
-    if (!target || !allowed()) return false;
+    if (!target || target.hasAttribute('data-table-repeat') || !allowed()) return false;
     const id = target.closest('[data-object]')?.dataset.object,
       owner = doc(),
-      block = sceneObject(owner, id);
-    if (block?.type !== 'table' || !available(owner, block)) return false;
+      block = threadFor(id)[0];
+    if (block?.type !== 'table' || !editable(owner, block)) return false;
     const { row, column } = coordinate(target);
     if (current?.block === block && current.row === row && current.column === column) return true;
     finish();
-    select(id);
     const cell = cellsFor(id).find(
       (c) => Number(c.dataset.tableRow) === row && Number(c.dataset.tableColumn) === column,
     );
     if (!cell) return false;
+    select(cell.closest('[data-object]').dataset.object);
     const input = document.createElement('textarea');
     input.dataset.tableEditor = '';
     input.setAttribute('aria-label', `Row ${row + 1}, column ${column + 1}`);
@@ -102,10 +126,11 @@ export function installTableControls({
       0,
     );
     input.maxLength = Math.min(tableCellLimit, 1000000 - total + input.value.length);
-    last = { id, row, column };
+    last = { id: block.id, row, column };
     current = { owner, block, cell, input, row, column, before: null };
     cell.append(input);
     input.focus({ preventScroll: true });
+    revealCell(cell.getBoundingClientRect());
     for (const name of ['pointerdown', 'dblclick', 'copy', 'cut', 'beforeinput'])
       input.addEventListener(name, (e) => e.stopPropagation());
     input.addEventListener('paste', (event) => {
@@ -117,7 +142,7 @@ export function installTableControls({
       )
         return;
       event.preventDefault();
-      if (!allowed() || owner !== doc() || !available(owner, block)) return;
+      if (!allowed() || owner !== doc() || !editable(owner, block)) return;
       try {
         const next = putTableCells(block.table, row, column, readTableText(text));
         finish();
@@ -135,13 +160,13 @@ export function installTableControls({
     });
     input.addEventListener('input', (event) => {
       event.stopPropagation();
-      if (!current || current.input !== input || owner !== doc() || !available(owner, block))
-        return;
+      if (!current || current.input !== input || owner !== doc() || !editable(owner, block)) return;
       if (block.table.cells[row][column] === input.value) return;
       if (!current.before) {
         current.before = structuredClone(owner);
         current.view = captureView();
       }
+      current.edited = true;
       block.table.cells[row][column] = input.value;
       clearTimeout(timer);
       timer = setTimeout(flush, 350);
@@ -189,11 +214,20 @@ export function installTableControls({
       const cells = cellsFor(id),
         next = cells.indexOf(cell) + (e.shiftKey ? -1 : 1);
       if (next < 0) return;
+      const destination = cells[next] && coordinate(cells[next]);
       finish();
-      if (next < cells.length) {
-        edit(cells[next]);
+      if (destination) {
+        edit(
+          cellsFor(id).find(
+            (c) =>
+              Number(c.dataset.tableRow) === destination.row &&
+              Number(c.dataset.tableColumn) === destination.column,
+          ),
+        );
         return;
       }
+      if (row < block.table.cells.length - 1 || column + cell.colSpan < block.table.widths.length)
+        return;
       try {
         const appended = reshapeTable(block.table, 'insert-row', {
           row: block.table.cells.length - 1,
@@ -258,13 +292,29 @@ export function installTableControls({
       );
       return;
     }
-    const block = selected();
-    if (block?.type !== 'table' || !available(owner, block)) return;
+    const frame = selected();
+    const frames = frame && threadFor(frame.id);
+    const block = frames?.[0];
+    if (block?.type !== 'table' || !editable(owner, block)) return;
+    if (name === 'continue-table') {
+      if (parentMode || frames.some((f) => f.parentId)) return;
+      try {
+        let continuation;
+        mutate(() => {
+          continuation = continueTableOnNextPage(owner, frame.id);
+        }, 'Continue table on next page');
+        select(continuation.id);
+        revealFrame();
+      } catch (error) {
+        notify?.(error.message);
+      }
+      return;
+    }
     const t = block.table,
       prior = last?.id === block.id ? last : { row: 0, column: 0 };
     const col = Math.min(prior.column, t.widths.length - 1),
       row = Math.min(prior.row, t.cells.length - 1);
-    const points = columnPoints(block);
+    const points = columnPoints({ ...frame, table: t });
     const display = (n) => Number(n.toFixed(3)) || n;
     const menu = form(
       'Table Options',
@@ -278,9 +328,20 @@ export function installTableControls({
           'Column width (pt)',
           display(points[col]),
           Math.min(4, display(points[col])),
-          display(100000 - block.w + points[col]),
+          display(100000 - frame.w + points[col]),
           'any',
         ) +
+        numberField(
+          'minimumHeight',
+          'Minimum row height (pt)',
+          t.rowOptions?.[row]?.minimumHeight || 0,
+          0,
+          14400,
+          'any',
+        ) +
+        '<label><input type="checkbox" name="keepRow"' +
+        (t.rowOptions?.[row]?.keepWithNext ? ' checked' : '') +
+        '>Keep with next row</label>' +
         numberField('inset', 'Cell inset (pt)', t.inset, 0, 72, 'any') +
         numberField('stroke', 'Rule weight (pt)', t.stroke, 0, 12, 'any') +
         numberField('header', 'Header rows', t.headerRows, 0, t.cells.length - 1) +
@@ -298,10 +359,10 @@ export function installTableControls({
       (data) => {
         if (
           owner !== doc() ||
-          selected() !== block ||
+          selected() !== frame ||
           block.table !== t ||
           !allowed() ||
-          !available(owner, block)
+          !editable(owner, block)
         )
           throw Error('Choose the editable table again.');
         const n = (k) => Number(data.get(k)),
@@ -309,6 +370,10 @@ export function installTableControls({
           c = n('column') - 1;
         let changed = validateTable({
           ...block.table,
+          rowOptions: {
+            ...block.table.rowOptions,
+            [r]: { minimumHeight: n('minimumHeight'), keepWithNext: data.has('keepRow') },
+          },
           headerRows: n('header'),
           footerRows: n('footer'),
           inset: n('inset'),
@@ -316,7 +381,7 @@ export function installTableControls({
           vertical: data.get('vertical'),
         });
         const requested = n('width') === display(points[c]) ? points[c] : n('width');
-        const { widths, ...geometry } = resizeColumn(block, c, requested);
+        const { widths, ...geometry } = resizeColumn({ ...frame, table: t }, c, requested);
         changed.widths = widths;
         const action = data.get('action');
         if (action === 'even-columns') changed.widths = changed.widths.map(() => 1);
@@ -330,8 +395,9 @@ export function installTableControls({
                 columns: n('columns'),
               });
         mutate(() => {
-          Object.assign(block, geometry);
+          Object.assign(frame, geometry);
           block.table = changed;
+          if (changed.rowOptions) owner.canvasVersion = Math.max(owner.canvasVersion, 31);
         }, 'Edit table');
         last = {
           id: block.id,
@@ -340,6 +406,11 @@ export function installTableControls({
         };
       },
     );
+    menu.querySelector('[name=row]').addEventListener('input', (e) => {
+      const option = t.rowOptions?.[Number(e.target.value) - 1];
+      menu.querySelector('[name=minimumHeight]').value = option?.minimumHeight || 0;
+      menu.querySelector('[name=keepRow]').checked = !!option?.keepWithNext;
+    });
     const column = menu.querySelector('[name=column]'),
       width = menu.querySelector('[name=width]');
     column.addEventListener('input', () => {
@@ -347,7 +418,7 @@ export function installTableControls({
       if (value !== undefined) {
         width.value = display(value);
         width.min = Math.min(4, display(value));
-        width.max = display(100000 - block.w + value);
+        width.max = display(100000 - frame.w + value);
       }
     });
     const op = menu.querySelector('[name=action]');
@@ -365,6 +436,9 @@ export function installTableControls({
     flush,
     mark: dividers.mark,
     startDivider: dividers.start,
+    get editingCell() {
+      return !!current;
+    },
     proofingContext() {
       if (!current) return {};
       const { block, row, column, input } = current;
@@ -384,13 +458,14 @@ export function installTableControls({
       };
     },
     showMatch(owner, match) {
+      finish();
       const id = owner.frames[0].id;
-      select(id);
       const target = cellsFor(id).find((cell) => {
         const { row, column } = coordinate(cell);
         return row === owner.cell.row && column === owner.cell.column;
       });
       if (!target) return;
+      select(target.closest('[data-object]').dataset.object);
       const point = (index) => ({ path: [], offset: 0, index, kind: 'text', affinity: 'forward' });
       const range = rangeFromBookmark(target, {
         anchor: point(match.searchStart),
@@ -412,7 +487,10 @@ export function installTableControls({
       return true;
     },
     remember(cell) {
-      last = { id: cell.closest('[data-object]').dataset.object, ...coordinate(cell) };
+      last = {
+        id: threadFor(cell.closest('[data-object]').dataset.object)[0]?.id,
+        ...coordinate(cell),
+      };
     },
   };
 }

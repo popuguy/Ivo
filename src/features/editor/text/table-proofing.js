@@ -4,11 +4,12 @@ export function tableCellId(frame, row, column) {
   return frame + ':' + row + ':' + column;
 }
 
-export function* tableProofingSources(doc, block) {
+export function* tableProofingSources(doc, block, shown = null) {
   const table = block.table;
   const coverage = tableCoverage(table);
   const frames = [block];
   for (const [row, values] of table.cells.entries()) {
+    if (shown && !shown.has(row)) continue;
     for (const [column, value] of values.entries()) {
       const merge = coverage.get(row * table.widths.length + column);
       if (merge && (merge.row !== row || merge.column !== column)) continue;

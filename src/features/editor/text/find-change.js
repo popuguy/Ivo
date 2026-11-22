@@ -1,3 +1,4 @@
+import { tableThreads } from '../../../domain/documents/table-threads.js';
 import { runGrep, replacementParts } from './grep.js';
 import { decodeFindField } from './find-characters.js';
 export { decodeFindField } from './find-characters.js';
@@ -19,13 +20,29 @@ const words = new Intl.Segmenter(undefined, { granularity: 'word' });
 const characters = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
 /** A thread owns one source even when a hit crosses between two visible frames. */
-export function findTextSources(doc, fragmentFor, overset = () => false) {
+export function findTextSources(doc, fragmentFor, overset = () => false, tablePlan = new Map()) {
   const visited = new Set(),
     blocks = new Map(doc.blocks.map((item) => [item.id, item])),
     result = [];
+  const threads = doc.blocks.some((b) => b.tableNext) ? tableThreads(doc.blocks) : null;
   for (const item of doc.blocks) {
-    if (item.type === 'table' && objectAvailable(doc, item))
-      result.push(...tableProofingSources(doc, item));
+    if (item.type === 'table' && item.table) {
+      const frames = threads?.get(item.id) || [item];
+      if (frames.every((frame) => objectAvailable(doc, frame))) {
+        const shown = frames.length > 1 ? new Set() : null;
+        if (shown) {
+          for (const frame of frames) {
+            const part = tablePlan.get(frame.id);
+            if (!part || part.first === part.last) continue;
+            const end = item.table.cells.length - item.table.footerRows;
+            const startRow = part.first === item.table.headerRows ? 0 : part.first;
+            const endRow = part.last === end ? item.table.cells.length : part.last;
+            for (let row = startRow; row < endRow; row++) shown.add(row);
+          }
+        }
+        result.push(...tableProofingSources(doc, item, shown));
+      }
+    }
     if (!['text', 'quote'].includes(item.type)) continue;
     const flow = textFlowForFrame(doc, item),
       id = flow?.id || item.id;

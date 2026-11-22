@@ -1347,6 +1347,8 @@ function applyHistory(record) {
     ['load-text-styles', canvas.canvasEditing],
     ['page-link', canvas.canvasEditing],
     ['new-cross-reference', canvas.canvasEditing],
+    ['mark-paragraph-destination', canvas.canvasEditing],
+    ['define-cross-reference-formats', canvas.canvasEditing],
     ['update-cross-references', canvas.canvasEditing],
     ['insert-table', canvas.canvasEditing],
     ['generate-index', canvas.canvasEditing],
@@ -1596,6 +1598,18 @@ function installMenu() {
             label: 'New Cross-Reference…',
             enabled: false,
             click: () => sendCommand('new-cross-reference'),
+          },
+          {
+            id: 'mark-paragraph-destination',
+            label: 'Mark Paragraph Destination…',
+            enabled: false,
+            click: () => sendCommand('mark-paragraph-destination'),
+          },
+          {
+            id: 'define-cross-reference-formats',
+            label: 'Define Cross-Reference Formats…',
+            enabled: false,
+            click: () => sendCommand('define-cross-reference-formats'),
           },
           {
             id: 'update-cross-references',

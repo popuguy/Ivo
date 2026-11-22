@@ -1,3 +1,8 @@
+import {
+  paragraphDestinations,
+  paragraphDestination,
+} from '../../domain/documents/paragraph-destinations.js';
+import { tableThreads } from '../../domain/documents/table-threads.js';
 import { tableMarkup } from '../../rendering/table.js';
 import { publicationHeadingLevel } from '../../rendering/text/publication-headings.js';
 import { orderPublicationEntries } from '../../domain/documents/publication-order.js';
@@ -40,6 +45,7 @@ export function readingOrder(doc, { editingOrder = false } = {}) {
   const visible = doc.blocks.filter((item) => objectAvailable(doc, item, { editing: false }));
   const frames = new Set(visible.map((b) => b.id));
   const flows = new Map((doc.textFlows || []).map((f) => [f.id, f]));
+  const tables = tableThreads(doc.blocks);
   const pages = new Map(doc.pages.map((p, i) => [p.id, i]));
   const order = visible
     .map((item) => ({ item, position: worldRect(doc, item) }))
@@ -50,6 +56,18 @@ export function readingOrder(doc, { editingOrder = false } = {}) {
         a.position.x - b.position.x,
     );
   const entries = order.flatMap(({ item }) => {
+    if (item.type === 'table') {
+      const chain = tables.get(item.id);
+      if (
+        !editingOrder &&
+        !doc.publication?.excluded.includes(chain[0].id) &&
+        chain.some((b) => !frames.has(b.id))
+      )
+        throw Error(
+          'A table crosses visible and hidden frames. Make its visibility consistent before exporting.',
+        );
+      if (item !== chain[0]) return [];
+    }
     const flow = flows.get(item.textFlowId);
     if (
       !editingOrder &&
@@ -112,7 +130,7 @@ function selectedChapters(documents, id, linked, useBook) {
   return chapters;
 }
 
-function chapterText({ item, html, style }, doc, documents, paths, headings) {
+function chapterText({ id, item, html, style }, doc, documents, paths, headings, anchors) {
   const root = document.createElement(item.type === 'quote' ? 'blockquote' : 'div');
   root.innerHTML = readableHTML(html, documents, doc.id);
   applyNamedTextStyles(root, doc);
@@ -134,17 +152,31 @@ function chapterText({ item, html, style }, doc, documents, paths, headings) {
   for (const node of root.querySelectorAll('*')) {
     if (node.tagName === 'A') {
       const href = node.getAttribute('href') || '';
-      const dest = node.dataset.docId
-        ? paths.get(node.dataset.docId)
-        : /^https?:\/\//i.test(href)
-          ? href
-          : null;
+      const key = node.dataset.xrefParagraph;
+      const docId = node.dataset.docId || doc.id;
+      const paragraph =
+        key &&
+        paragraphDestination(
+          documents.find((d) => d.id === docId),
+          anchors.get(docId),
+          key,
+        );
+      const dest = key
+        ? paragraph
+          ? paths.get(docId) + '#' + paragraph
+          : null
+        : node.dataset.docId
+          ? paths.get(node.dataset.docId)
+          : /^https?:\/\//i.test(href)
+            ? href
+            : null;
       if (!dest) {
         node.replaceWith(...node.childNodes);
         continue;
       }
       node.setAttribute('href', dest);
     }
+    const destId = anchors.get(doc.id)?.get(id + '/' + node.dataset.paragraphDestination);
     const lang = node.getAttribute('data-ivo-lang');
     if (lang) node.lang = lang;
     // Flowable readers govern the font size, baseline and available line width.
@@ -168,11 +200,12 @@ function chapterText({ item, html, style }, doc, documents, paths, headings) {
     for (const attribute of [...node.attributes])
       if (!['href', 'style', 'lang', 'dir', 'start', 'value'].includes(attribute.name))
         node.removeAttribute(attribute.name);
+    if (destId) node.id = destId;
     if (!css.length) node.removeAttribute('style');
   }
   for (const heading of root.querySelectorAll('h2,h3,h4,h5,h6')) {
     if (!heading.textContent.trim()) continue;
-    heading.id = 'heading-' + (headings.length + 1);
+    heading.id ||= 'heading-' + (headings.length + 1);
     headings.push({
       id: heading.id,
       level: Number(heading.tagName[1]),
@@ -217,6 +250,16 @@ export async function exportReflowableBook(
 ) {
   const chapters = selectedChapters(documents, id, includeLinked, useBook);
   const paths = new Map(chapters.map(({ doc }, i) => [doc.id, 'chapter-' + (i + 1) + '.xhtml']));
+  const anchors = new Map(
+    chapters.map(({ doc, entries }) => {
+      const included = new Set(entries.map((e) => e.id));
+      const ids = new Map();
+      for (const entry of paragraphDestinations(doc).values())
+        if (entry?.title && included.has(entry.source))
+          ids.set(entry.key, 'paragraph-' + (ids.size + 1));
+      return [doc.id, ids];
+    }),
+  );
   const title = chapters.find(({ doc }) => doc.id === id).doc.title,
     lang = chapters[0].entries.find((e) => e.html)?.style.language || 'en';
   const files = { mimetype: [encoder.encode('application/epub+zip'), { level: 0 }] };
@@ -266,7 +309,7 @@ export async function exportReflowableBook(
         );
       } else if (item.type === 'table') body.push(tableMarkup(item.table, { escape: xml }));
       else if (item.type === 'rule') body.push('<hr/>');
-      else body.push(chapterText(entry, doc, documents, paths, headings));
+      else body.push(chapterText(entry, doc, documents, paths, headings, anchors));
     }
     add(
       'EPUB/' + path,

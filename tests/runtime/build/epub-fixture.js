@@ -3,7 +3,7 @@ export async function exportFixture() {
   const base = '/dist/src/';
   const [
     { exportReflowableBook },
-    { createSceneDocument, insertObject, addPage },
+    { createSceneDocument, insertObject, addPage, continueTableOnNextPage },
     { threadFrame },
   ] = await Promise.all([
     import(base + 'features/export/epub.js'),
@@ -29,6 +29,21 @@ export async function exportFixture() {
     html: '<p>secret-only [[Private material]]</p>',
   });
   insertObject(ref, 'text', ref.pages[0].id, { html: '<p>Back to [[Woven &amp; printed]].</p>' });
+  const target = insertObject(ref, 'text', ref.pages[0].id, {
+    html: '<h3 data-paragraph-destination="par-proof">Aftercare</h3>',
+  });
+  insertObject(doc, 'text', page, {
+    html:
+      '<p><a data-doc-id="' +
+      ref.id +
+      '" data-page-id="' +
+      ref.pages[0].id +
+      '" href="#doc=' +
+      ref.id +
+      '" data-xref-format="paragraph-text" data-xref-paragraph="' +
+      target.id +
+      '/par-proof">Aftercare</a></p>',
+  });
   const mask = insertObject(doc, 'polygon', page, {
     x: 0,
     y: 300,
@@ -53,7 +68,9 @@ export async function exportFixture() {
     alt: 'Orange triangular swatch',
     caption: 'First dye bath',
   });
-  const grid = insertObject(doc, 'table', next).table;
+  const gridFrame = insertObject(doc, 'table', page),
+    grid = gridFrame.table;
+  continueTableOnNextPage(doc, gridFrame.id);
   grid.headerRows = 1;
   grid.cells[0][0] = 'Fiber & finish';
   grid.cells[1][0] = '<twill>';
@@ -64,6 +81,16 @@ export async function exportFixture() {
     getSource: (v) => v,
   });
   if (initial !== JSON.stringify(doc)) throw Error('Export changed authored source');
+  const tail = doc.blocks.find((b) => b.id === gridFrame.tableNext);
+  tail.hidden = true;
+  let hiddenTableBlocked = false;
+  try {
+    await exportReflowableBook([doc, ref], doc.id, { getSource: (v) => v });
+  } catch (error) {
+    hiddenTableBlocked = error.message.includes('table crosses visible and hidden frames');
+  }
+  if (!hiddenTableBlocked) throw Error('Partially hidden table exported');
+  delete tail.hidden;
   q.hidden = true;
   let blocked = false;
   try {

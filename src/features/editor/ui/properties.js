@@ -166,7 +166,13 @@ export function propertiesContent({
   const sections = [
     transformProperties(item, state, movePage),
     item.type === 'table' &&
-      section('Table', '<button data-canvas-command="table-options">Table Options…</button>'),
+      section(
+        'Table',
+        '<button data-canvas-command="table-options">Table Options…</button>' +
+          (parentMode || item.parentId
+            ? ''
+            : '<button data-canvas-command="continue-table">Continue on Next Page</button>'),
+      ),
     isText && styleProperties(item, doc, state),
     appearanceProperties(item),
     isText &&

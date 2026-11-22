@@ -1,5 +1,6 @@
 import { verifyCrossReferences } from './cross-references.js';
 import { verifyBookEntries } from './book-entries.js';
+import { verifyContinuedTables } from './continued-tables.js';
 import { verifyTables } from './tables.js';
 import { verifySubjectIndex } from './subject-index.js';
 import { verifyContents } from './contents.js';
@@ -49,6 +50,7 @@ try {
   frame.html = `<p data-ivo-pstyle="${body.id}">Precision in proportion.</p><p>Text, geometry and materials work together.</p>`;
   const host = document.querySelector('#host');
   await verifyTables(host, assert);
+  await verifyContinuedTables(host, assert);
   await verifyContents(host, assert);
   await verifyBookEntries(host, assert);
   await verifyCrossReferences(host, assert);

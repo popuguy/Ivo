@@ -1,3 +1,4 @@
+import { textClipboardHTML } from '../../../src/features/editor/text/clipboard.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
 import {
   archiveVersion,
@@ -5,7 +6,7 @@ import {
 } from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
 import { inspectPublication } from '../../../src/domain/documents/preflight.js';
-import { startTextFlow } from '../../../src/domain/documents/text-flows.js';
+import { startTextFlow, threadFrame } from '../../../src/domain/documents/text-flows.js';
 import { mountCanvasEditor } from '../../../src/features/editor/canvas-editor.js';
 import { createDocumentHistory } from '../../../src/domain/history/document-history.js';
 import { planCrossReferenceUpdate } from '../../../src/features/editor/ui/update-cross-references.js';
@@ -125,11 +126,154 @@ export async function verifyCrossReferences(host, assert) {
       planned.changes[0].html.includes('<b>🧶</b> Yarn, ix'),
       'Style boundary split the new label',
     );
+    // Author a reusable definition, insert it across chapters, then change it in place.
+    await editor.command('define-cross-reference-formats');
+    const formatDialog = () => document.querySelector('dialog[open] form');
+    let form = formatDialog();
+    form.elements.name.value = 'Swatch sheet';
+    form.elements.definition.value = '<fileName/> · p. <pageNum/>';
+    form.requestSubmit();
+    await new Promise((r) => setTimeout(r, 0));
+    const spec = owner.referenceFormats?.[0];
+    assert(spec && owner.canvasVersion === 32, 'Definition failed to save');
+    const inserting = editor.command('new-cross-reference');
+    form = formatDialog();
+    form.elements.chapter.value = donor.id;
+    form.elements.chapter.dispatchEvent(new Event('change'));
+    form.elements.destination.value = target.id;
+    form.elements.format.value = spec.id;
+    form.elements.format.dispatchEvent(new Event('change'));
+    assert(form.elements.preview.value === 'Atelier · p. ix', 'Custom field preview differs');
+    form.requestSubmit();
+    await inserting;
+    assert(
+      read().querySelector('[data-xref-format="' + spec.id + '"]')?.textContent ===
+        'Atelier · p. ix',
+      'Insertion lost the registered format',
+    );
+    await editor.command('define-cross-reference-formats');
+    form = formatDialog();
+    assert(form.elements.remove.disabled, 'Could delete a format still in use');
+    form.elements.definition.value = 'Folio <pageNum/> in <fileName/>';
+    const changes = commits.length;
+    form.requestSubmit();
+    await new Promise((r) => setTimeout(r, 0));
+    assert(
+      commits.length === changes + 1 &&
+        read().textContent.includes('Folio ix in Atelier') &&
+        !issue().length,
+      'Editing the definition failed to update authored fields in one edit',
+    );
+    const proof = validateImport({
+      schemaVersion: archiveVersion(docs),
+      documents: docs,
+      assets: [],
+    }).documents[0];
+    assert(
+      proof.referenceFormats[0].id === spec.id && proof.textFlows[0].html === flow.html,
+      'Custom fields did not survive archive reopen',
+    );
+    const donorFirst = insertObject(donor, 'text', donor.pages[0].id, {
+      x: 12,
+      y: 12,
+      w: 250,
+      h: 30,
+      fontSize: 14,
+      html: '<p>First line</p><h3>Swatch A</h3>',
+    });
+    const donorLast = insertObject(donor, 'text', target.id, {
+      x: 12,
+      y: 12,
+      w: 250,
+      h: 150,
+      fontSize: 14,
+      html: '',
+    });
+    const donorFlow = threadFrame(donor, donorFirst.id, donorLast.id);
+    const proofHost = document.createElement('main');
+    document.body.append(proofHost);
+    const marking = mountCanvasEditor(proofHost, {
+      getDocument: () => donor,
+      documents: docs,
+      editing: true,
+      source: (s) => s,
+      sessionId: 'paragraph-donor',
+      onChange() {},
+      onCommit() {},
+    });
+    try {
+      marking.restoreView({
+        activePage: donorFirst.pageId,
+        selection: [donorFirst.id],
+        tool: 'select',
+      });
+      await marking.command('mark-paragraph-destination');
+      form = formatDialog();
+      form.elements.paragraph.value = '1';
+      form.requestSubmit();
+      assert(
+        donorFlow.html.includes('data-paragraph-destination'),
+        'Marking lost the canonical paragraph',
+      );
+    } finally {
+      marking.destroy();
+      proofHost.remove();
+    }
+    const clipboard = new DataTransfer();
+    clipboard.setData('text/html', donorFlow.html);
+    const pasted = textClipboardHTML(clipboard, () => donorFlow.html);
+    const donorMark = /data-paragraph-destination="([^"]+)"/.exec(donorFlow.html)[1];
+    assert(
+      !pasted.includes(donorMark) && pasted.includes('data-paragraph-destination='),
+      'Pasting a second copy made the original paragraph ambiguous',
+    );
+    const targeting = editor.command('new-cross-reference');
+    form = formatDialog();
+    form.elements.chapter.value = donor.id;
+    form.elements.chapter.dispatchEvent(new Event('change'));
+    form.elements.targetKind.value = 'paragraph';
+    form.elements.targetKind.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 120 && form.elements.destination.disabled; i++)
+      await new Promise((r) => setTimeout(r, 16));
+    assert(
+      form.elements.destination.value &&
+        form.elements.destination.selectedOptions[0].textContent.includes('Swatch A'),
+      'Unplaced target: ' + form.textContent,
+    );
+    form.elements.format.value = 'paragraph-text';
+    form.elements.format.dispatchEvent(new Event('change'));
+    assert(form.elements.preview.value === 'Swatch A', 'Wrong paragraph preview');
+    form.requestSubmit();
+    await targeting;
+    const anchor = () => read().querySelector('a[data-xref-paragraph]');
+    assert(
+      anchor()?.textContent === 'Swatch A' && anchor().dataset.pageId === target.id,
+      'Wrong selected paragraph page: ' + flow.html,
+    );
+    donorFirst.h = 200;
+    donorFlow.html = donorFlow.html.replace('Swatch A', 'Swatch B');
+    assert(
+      issue().some((i) => i.problem === 'Out-of-date cross-reference'),
+      'Renaming a paragraph failed Preflight',
+    );
+    await editor.command('update-cross-references');
+    assert(
+      anchor()?.textContent === 'Swatch B' && anchor().dataset.pageId === donor.pages[0].id,
+      'Update did not follow the paragraph across a frame and page: ' + flow.html,
+    );
+    donorFlow.html = donorFlow.html.replace(/ data-paragraph-destination="[^"]+"/, '');
+    await editor.command('update-cross-references');
+    assert(
+      anchor()?.textContent === 'Swatch B' &&
+        notices.at(-1).includes('1 unresolved') &&
+        issue().some((i) => i.problem === 'Unresolved paragraph cross-reference'),
+      'Lost last label or failed to diagnose removed paragraph',
+    );
     donor.pages.pop();
     await editor.command('update-cross-references');
     assert(
-      read().textContent === 'Read Atelier, ix today.' &&
-        notices.at(-1).includes('1 unresolved') &&
+      read().textContent.includes('Read Atelier, ix today.') &&
+        notices.at(-1).includes('3 unresolved') &&
         issue().some((i) => i.problem === 'Unresolved page link'),
       'Deleting the target lost the label or its diagnostic',
     );

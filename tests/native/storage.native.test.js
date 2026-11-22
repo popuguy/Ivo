@@ -10,7 +10,12 @@ import { setLibraryInfo, libraryInfo } from '../../src/domain/documents/library.
 import { startTextFlow, appendTextFlowPage } from '../../src/domain/documents/text-flows.js';
 import { markTypographyVersion } from '../../src/domain/documents/capabilities.js';
 import { crossReferenceResolver } from '../../src/domain/documents/cross-references.js';
-import { createSceneDocument, addPage, insertObject } from '../../src/domain/documents/scene.js';
+import {
+  createSceneDocument,
+  addPage,
+  insertObject,
+  continueTableOnNextPage,
+} from '../../src/domain/documents/scene.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -280,16 +285,23 @@ test(
     table.table.cells[0][0] = 'Fibre';
     table.table.cells[1][0] = 'Шёлк\n丝';
     table.table.merges.push({ row: 1, column: 0, rows: 1, columns: 2 });
+    table.table.rowOptions = { 1: { keepWithNext: true } };
+    const tableTail = continueTableOnNextPage(card, table.id);
     await libraryReopened.saveDocument(card);
     const phone = await openMobile(),
       onPhone = (await phone.loadDocuments()).find((d) => d.id === card.id);
     assert.deepEqual(onPhone.blocks[0].table, table.table);
+    assert.equal(onPhone.blocks[0].tableNext, tableTail.id);
+    assert.equal(onPhone.blocks[1].table, undefined);
     onPhone.blocks[0].table.cells[2][1] = 'Lino';
+    onPhone.blocks[0].table.rowOptions[2] = { minimumHeight: 22 };
     onPhone.version++;
     await phone.saveDocument(onPhone);
     const again = await openVault(folder),
       onMac = (await again.loadDocuments()).find((d) => d.id === card.id);
     assert.deepEqual(onMac.blocks[0].table, onPhone.blocks[0].table);
+    assert.equal(onMac.blocks[0].tableNext, onMac.blocks[1].id);
+    assert.equal(onMac.blocks[1].table, undefined);
     const references = createSceneDocument('References');
     const destination = onMac.pages[0].id;
     const field =

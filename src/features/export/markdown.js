@@ -70,6 +70,7 @@ export function exportMarkdown(doc, documents = []) {
   );
   const emittedTextFlows = new Set();
   for (const block of blocks) {
+    if (block.type === 'table' && !block.table) continue;
     const textFlow =
       block.textFlowId && doc.textFlows?.find((value) => value.id === block.textFlowId);
     if (textFlow && emittedTextFlows.has(textFlow.id)) continue;

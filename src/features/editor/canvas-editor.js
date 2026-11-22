@@ -1,3 +1,5 @@
+import { printedParagraphs } from '../../rendering/text/printed-paragraphs.js';
+import { placedParagraphs, referencePlacements } from './ui/paragraph-destinations.js';
 import { crossReferenceResolver } from '../../domain/documents/cross-references.js';
 import { planCrossReferenceUpdate } from './ui/update-cross-references.js';
 import { tableMarkup } from '../../rendering/table.js';
@@ -103,7 +105,12 @@ import {
   enableNativeComposition,
 } from '../../domain/documents/text-flows.js';
 import { layoutDocumentTextFlows, prepareTextFlowFonts } from '../../rendering/text/flow-layout.js';
-import { sceneObjectHTML, applySceneTypography } from '../../rendering/page-content.js';
+import { layoutTableThreads } from '../../rendering/table-thread-layout.js';
+import {
+  tableFrameHTML,
+  sceneObjectHTML,
+  applySceneTypography,
+} from '../../rendering/page-content.js';
 import {
   selectionRoots,
   selectionBounds,
@@ -228,6 +235,8 @@ export function mountCanvasEditor(host, options) {
   state.selection = state.selection || (state.selected ? [state.selected] : []);
   state.snap = snapEnabled;
   sessions.set(sessionId, state);
+  let tablePlan = new Map(),
+    tableLayoutCache = new WeakMap();
   let flowPlan = { fragments: new Map(), status: new Map() },
     flowSignature = '',
     pendingContours = null,
@@ -365,7 +374,12 @@ export function mountCanvasEditor(host, options) {
       return { id: flow?.id || item.id, html, ...findSelection(html, start, end) };
     },
     sources: () =>
-      findTextSources(doc(), findFragment, (flow) => flowPlan.status.get(flow.id)?.overset),
+      findTextSources(
+        doc(),
+        findFragment,
+        (flow) => flowPlan.status.get(flow.id)?.overset,
+        tablePlan,
+      ),
     reveal(owner, match) {
       CSS.highlights?.delete('ivo-find-match');
       tables.finishReview(false);
@@ -459,10 +473,33 @@ export function mountCanvasEditor(host, options) {
             });
           },
           documents: options.documents,
+          paragraphPlacements:
+            profile.checks.includes('links') &&
+            nativeReady &&
+            [...current.blocks, ...(current.textFlows || [])].some((b) =>
+              b.html?.includes('data-xref-paragraph'),
+            )
+              ? new Map([
+                  [
+                    current.id,
+                    printedParagraphs(
+                      current,
+                      flowPlan,
+                      [...world.querySelectorAll('.canvas-page[data-page]')].map((section) => ({
+                        pageId: section.dataset.page,
+                        section,
+                      })),
+                    ),
+                  ],
+                ])
+              : undefined,
           flowStatus: (flow) => (!flow.composition || nativeReady) && flowPlan.status.get(flow.id),
           frameOverflow: (item) => {
             const el = frames.get(item.id);
-            return el?.getClientRects().length ? textIsOverset(el) : null;
+            return (
+              el?.hasAttribute('data-table-overset') ||
+              (el?.getClientRects().length ? textIsOverset(el) : null)
+            );
           },
         },
       ];
@@ -787,7 +824,7 @@ export function mountCanvasEditor(host, options) {
     return sceneObjectHTML(item, {
       document: doc(),
       source,
-      flow: flowPlan,
+      flow: { ...flowPlan, tables: tablePlan },
       editing: options.editing,
       editableId: options.editing && state.tool === 'text' ? activeTextId : null,
       textHTML: (item) =>
@@ -866,6 +903,7 @@ export function mountCanvasEditor(host, options) {
     updateFlowPlan();
     setSelectionState(state.selection);
     selectionDirty = true;
+    tablePlan = layoutTableThreads(doc(), tableLayoutCache);
     world.innerHTML = positions()
       .map(
         (p) =>
@@ -1662,7 +1700,8 @@ export function mountCanvasEditor(host, options) {
     else if (item) item.html = canonical;
     if (
       hasNativeTextSettings(doc()) ||
-      (doc().canvasVersion < 30 && /<a\b[^>]*\s(?:data-xref-format|data-page-id)=/i.test(canonical))
+      (doc().canvasVersion < 32 &&
+        /\s(?:data-xref-format|data-page-id|data-paragraph-destination)=/i.test(canonical))
     )
       markTypographyVersion(doc());
   }
@@ -2987,7 +3026,7 @@ export function mountCanvasEditor(host, options) {
   async function command(name, { anchor } = {}) {
     if (!ownsInput() || busy || dialogOpen() || composing) return;
     if (name !== 'find-change' && name !== 'check-spelling') tables?.finish();
-    if (name === 'insert-table' || name === 'table-options') {
+    if (['insert-table', 'table-options', 'continue-table'].includes(name)) {
       tables.open(name);
       return;
     }
@@ -3425,7 +3464,15 @@ export function mountCanvasEditor(host, options) {
     if (name === 'update-cross-references') {
       if (!options.editing || !canWrite() || options.parentMode) return;
       finishText();
-      const result = planCrossReferenceUpdate(doc(), [...(options.documents || []), doc()]);
+      const owner = doc(),
+        documents = [...(options.documents || []).filter((d) => d.id !== owner.id), owner];
+      const snapshot = JSON.stringify(owner);
+      const placements = await referencePlacements(owner, documents, {
+        assets: options.assets?.() || [],
+        compose: options.textComposition?.compose,
+      });
+      if (!alive || !canWrite() || doc() !== owner || JSON.stringify(owner) !== snapshot) return;
+      const result = planCrossReferenceUpdate(owner, documents, undefined, placements);
       if (result.changes.length)
         mutate(() => {
           for (const { holder, html } of result.changes) holder.html = html;
@@ -3463,7 +3510,12 @@ export function mountCanvasEditor(host, options) {
       const target = pageLink ? chapter?.pages?.find((p) => p.id === destination.pageId) : chapter;
       if (!target || (object() && !objectAvailable(doc(), object()))) return;
       const label = reference
-        ? crossReferenceResolver([chapter])(chapter.id, target.id, destination.format)
+        ? crossReferenceResolver([chapter], doc())(
+            chapter.id,
+            target.id,
+            destination.format,
+            destination.paragraph,
+          )
         : pageLink
           ? target.name
           : target.title;
@@ -3476,7 +3528,10 @@ export function mountCanvasEditor(host, options) {
         anchor.setAttribute('href', '#doc=' + id);
         if (pageLink) anchor.dataset.pageId = target.id;
       }
-      if (reference) anchor.dataset.xrefFormat = destination.format;
+      if (reference) {
+        anchor.dataset.xrefFormat = destination.format;
+        if (destination.paragraph) anchor.dataset.xrefParagraph = destination.paragraph.key;
+      }
       if (element?.isConnected && activeTextId === element.dataset.sceneText && bookmark) {
         finishText();
         const before = structuredClone(doc()),
@@ -3506,7 +3561,14 @@ export function mountCanvasEditor(host, options) {
       const paragraph = '<p>' + anchor.outerHTML + '</p>';
       mutate(() => {
         if (reference || anchor.dataset.pageId)
-          doc().canvasVersion = Math.max(doc().canvasVersion, reference ? 30 : 29);
+          doc().canvasVersion = Math.max(
+            doc().canvasVersion,
+            reference
+              ? destination.paragraph || destination.format.startsWith('xref-')
+                ? 32
+                : 30
+              : 29,
+          );
         const existing = object();
         if (existing && !objectAvailable(doc(), existing))
           throw Error('Unlock the object to insert a link.');
@@ -4220,7 +4282,7 @@ export function mountCanvasEditor(host, options) {
     if (text && options.editing) {
       event.preventDefault();
       beginTextInput('insertFromPaste');
-      const html = textClipboardHTML(event.clipboardData);
+      const html = textClipboardHTML(event.clipboardData, () => textFlowForFrame(doc(), activeTextId)?.html || text.innerHTML);
       const fragment = document.createElement('div');
       fragment.innerHTML = html;
       // Native HTML insertion can turn untouched spaces beside the replacement
@@ -4743,6 +4805,17 @@ export function mountCanvasEditor(host, options) {
     allowed: () => ownsInput() && !busy && !composing,
   });
   const publishingControls = installPublishingControls(editor, {
+    placedParagraphs: (chapter) =>
+      placedParagraphs(chapter, {
+        documents: options.documents || [],
+        assets: options.assets?.() || [],
+        compose: options.textComposition?.compose,
+      }),
+    prepareReferencePlacements: (owner, documents) =>
+      referencePlacements(owner, documents, {
+        assets: options.assets?.() || [],
+        compose: options.textComposition?.compose,
+      }),
     nativeComposition: !!options.textComposition,
     readContents(settings, kind, valid) {
       if (!canWrite() || pendingContours || nativeSession.pending)
@@ -4835,7 +4908,27 @@ export function mountCanvasEditor(host, options) {
       (!!sourceTextFlow()?.composition || activeText()?.hasAttribute('data-flow-wrap')) && alive,
     isComposing: () => composing,
   });
+  let pendingTableFonts = false;
+  function refreshTableFrames(head) {
+    if (head && !head.tableNext && !pendingTableFonts) return;
+    if (pendingTableFonts) head = null;
+    pendingTableFonts = false;
+    tablePlan = layoutTableThreads(doc(), tableLayoutCache);
+    for (const [id, part] of tablePlan) {
+      if (head && part.head !== head) continue;
+      const objectNode = world.querySelector('[data-object="' + CSS.escape(id) + '"]');
+      if (objectNode)
+        objectNode.innerHTML = tableFrameHTML(sceneObject(doc(), id), part, options.editing);
+    }
+    tables.mark(object());
+  }
   tables = installTableControls({
+    parentMode: !!options.parentMode,
+    revealFrame: fit,
+    revealCell: revealBounds,
+    reflow: (head, edited) => {
+      if (edited || pendingTableFonts) refreshTableFrames(head);
+    },
     doc,
     world,
     selected: object,
@@ -5050,6 +5143,16 @@ export function mountCanvasEditor(host, options) {
   if (!sceneObject(doc(), state.inside)) state.inside = null;
   paint();
   if (documentContent(initialDocument) !== documentContent(doc())) onChange();
+  document.fonts?.addEventListener(
+    'loadingdone',
+    () => {
+      if (!tablePlan.size) return;
+      tableLayoutCache = new WeakMap();
+      pendingTableFonts = true;
+      if (!tables.editingCell) refreshTableFrames();
+    },
+    { signal: controller.signal },
+  );
   document.fonts?.ready.then(() => {
     if (alive) {
       selectionDirty = true;

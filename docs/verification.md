@@ -1,5 +1,13 @@
 # Verification
 
+## Continued tables and editorial search — 22 November 2026
+
+A disposable InDesign 22.0.0.104 document put ten body rows between a repeated header and footer. Each row had a 20 pt minimum height. In four successive 124 pt frames the body rows broke 4 / 4 / 2 / 0. At 104 pt they broke 3 / 3 / 3 / 1. At 84 pt each frame held two rows and two rows remained overset. Keeping the fourth body row with its successor at 124 pt changed the breaks to 3 / 4 / 3 / 0. The hidden Ivo Mac editor reproduces all four outcomes. Its regression also checks a vertical merge over three rows, keyboard movement in both directions across a page boundary, editing and undo on the second page, and reopening in reading view.
+
+Select a table and choose **Properties → Table → Continue on Next Page**. The cells remain editable in their displayed frames. A multiline cell change repaginates when the cell edit finishes. Table Options controls the minimum height and whether a row stays with the next one. A generated copy of a header or footer is read-only. Preflight reports rows that do not fit. A row too tall for the current frame waits for one large enough to contain it. Tables embedded inside running prose and rich text ranges inside cells remain outstanding.
+
+Apple PDFKit read the repeated headings and footers from both exported pages and found each of the four named fabric samples only on its assigned page. Reflowable EPUB contained a single semantic table. The packaged export rejected a table spanning visible and hidden frames. The Find/Change and spelling panels search editable cells as well as ordinary and threaded text. Change All can update a cell and formatted prose in one undoable edit. In continued tables search excludes covered cells, overset rows and repeated copies. A replacement preserves the original cell line endings outside the edited range. Ivo’s Swift iOS storage adapter reopened a table continued from a Mac vault, edited a row height and a cell, and returned both frames and the original multilingual cell text to the Mac.
+
 ## Book links and typing in continuation frames — 21 November 2026
 
 The publishing fixture creates a contents list and index across closed chapters. It follows page links, changes the destination numbering, updates inline references and exercises document history. PDFKit reads the exported cross-chapter destinations, including a link carried by native composed glyphs. The iOS Foundation vault adapter reopens a threaded reference saved on the Mac, renames its destination chapter, and returns both documents to the desktop vault. This checks storage compatibility. Physical iPhone and iPad editing remain separate checks.

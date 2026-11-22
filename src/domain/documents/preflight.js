@@ -1,3 +1,5 @@
+import { paragraphDestinations, paragraphDestination } from './paragraph-destinations.js';
+import { customFormatId } from './reference-formats.js';
 import { crossReferenceResolver } from './cross-references.js';
 import { preflightPresets } from './preflight-profiles.js';
 import { createDocumentResolver, textLinkTargets } from '../knowledge/index.js';
@@ -14,6 +16,7 @@ export function inspectPublication(
     frameOverflow,
     imageResolution,
     digital,
+    paragraphPlacements,
     profile = digital ? preflightPresets.digital : preflightPresets.basic,
   },
 ) {
@@ -22,7 +25,8 @@ export function inspectPublication(
   const blocks = new Map(doc.blocks.map((item) => [item.id, item]));
   const pages = new Map(doc.pages.map((page, i) => [page.id, page.name || 'Page ' + (i + 1)]));
   const resolver = checks.has('links') ? createDocumentResolver(documents || [doc]) : null;
-  const resolveField = resolver && crossReferenceResolver(documents || [doc]);
+  const resolveField = resolver && crossReferenceResolver(documents || [doc], doc);
+  const paragraphs = new Map(paragraphPlacements);
   const issues = [],
     keys = new Set();
   function report(group, problem, location, detail = '') {
@@ -87,12 +91,29 @@ export function inspectPublication(
       for (const [, attrs, contents] of source.html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
         const format = attribute(attrs, 'data-xref-format');
         if (!format) continue;
-        const label = resolveField(
-          attribute(attrs, 'data-doc-id') || doc.id,
-          attribute(attrs, 'data-page-id') || (attribute(attrs, 'href') || '').slice(6),
-          format,
-        );
-        if (label !== null && label !== decodeEntities(contents.replace(/<[^>]*>/g, '')))
+        if (customFormatId(format) && !doc.referenceFormats?.some((f) => f.id === format)) {
+          report('Links', 'Missing cross-reference format', location, format);
+          continue;
+        }
+        const id = attribute(attrs, 'data-doc-id') || doc.id;
+        const page = attribute(attrs, 'data-page-id') || (attribute(attrs, 'href') || '').slice(6);
+        const key = attribute(attrs, 'data-xref-paragraph');
+        if (key && !paragraphs.has(id)) {
+          const chapter = resolver.byId.get(id);
+          paragraphs.set(id, chapter ? paragraphDestinations(chapter) : new Map());
+        }
+        const paragraph =
+          key && paragraphDestination(resolver.byId.get(id), paragraphs.get(id), key);
+        if (key && (!paragraph?.title || (paragraphPlacements?.has(id) && !paragraph.pageId))) {
+          report('Links', 'Unresolved paragraph cross-reference', location, key);
+          continue;
+        }
+        const label = resolveField(id, paragraph?.pageId || page, format, paragraph);
+        if (
+          label !== null &&
+          ((paragraph?.pageId && paragraph.pageId !== page) ||
+            label !== decodeEntities(contents.replace(/<[^>]*>/g, '')))
+        )
           report('Links', 'Out-of-date cross-reference', location, label);
       }
     }

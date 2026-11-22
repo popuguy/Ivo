@@ -1,4 +1,9 @@
-import { crossReferenceFormats } from '../../../domain/documents/cross-references.js';
+import { markParagraphDialog } from './paragraph-destinations.js';
+import { referenceFormatDialog } from './reference-format-dialog.js';
+import {
+  crossReferenceResolver,
+  crossReferenceFormats,
+} from '../../../domain/documents/cross-references.js';
 import { generatedTextCommands } from './publication-commands.js';
 import { indexDialog, indexHTML } from './subject-index.js';
 import { contentsDialog, contentsHTML } from './table-of-contents.js';
@@ -98,6 +103,8 @@ export function installPublishingControls(
     prepareDocumentFonts,
     canPrepareFonts,
     nativeComposition,
+    placedParagraphs,
+    prepareReferencePlacements,
     documents,
     ensureFontVariant,
     fontSelection,
@@ -996,6 +1003,9 @@ export function installPublishingControls(
       const owner = doc(),
         others = documents().filter((d) => d.id !== owner.id && d.pages?.length);
       return new Promise((resolve) => {
+        let paragraphs = new Map(),
+          generation = 0,
+          measuredChapter = null;
         const dialog = form(
           reference ? 'New Cross-Reference' : 'Insert Page Link',
           (others.length
@@ -1005,30 +1015,103 @@ export function installPublishingControls(
                 .join('') +
               '</select></label>'
             : '') +
-            '<label>Page<select name="destination"></select></label>' +
+            (reference
+              ? '<label>Link to<select name="targetKind"><option value="page">Page</option><option value="paragraph">Paragraph</option></select></label>'
+              : '') +
+            '<label><span data-target-label>Page</span><select name="destination"></select></label>' +
             (reference
               ? '<label>Cross-Reference Format<select name="format">' +
-                Object.entries(crossReferenceFormats)
+                [
+                  ...Object.entries(crossReferenceFormats),
+                  ...(owner.referenceFormats || []).map((f) => [f.id, f.name]),
+                ]
                   .map(([key, name]) => '<option value="' + key + '">' + esc(name) + '</option>')
                   .join('') +
-                '</select></label>'
+                '</select></label><label>Preview<output name="preview"></output></label>'
               : ''),
-          (data) =>
+          (data) => {
+            const id = data.get('chapter') || owner.id;
+            const chapter = [owner, ...documents()].find((d) => d.id === id);
+            const key = data.get('targetKind') === 'paragraph' ? data.get('destination') : '';
+            const dest = key && paragraphs.get(key);
+            if (
+              data.get('targetKind') === 'paragraph' &&
+              (!dest?.pageId || !chapter || JSON.stringify(chapter) !== measuredChapter)
+            )
+              throw Error('Choose a current printed paragraph destination.');
+            if (reference && !fields.preview.value)
+              throw Error('Choose a format available for this destination.');
             resolve({
-              documentId: data.get('chapter') || owner.id,
-              pageId: data.get('destination'),
+              documentId: id,
+              pageId: dest?.pageId || data.get('destination'),
+              ...(key && { paragraph: dest }),
               ...(reference && { format: data.get('format') }),
-            }),
+            });
+          },
         );
         dialog.setAttribute('aria-label', reference ? 'New Cross-Reference' : 'Insert Page Link');
         const fields = dialog.querySelector('form').elements;
-        function showPages(chapter) {
-          const folios = pageFolios(chapter.pages);
-          fields.destination.replaceChildren(
-            ...chapter.pages.map((p, i) => new Option(folios[i] + ' · ' + p.name, p.id)),
-          );
-          if (chapter.id === owner.id) fields.destination.value = state.activePage;
+        function showPreview() {
+          if (!reference) return;
+          const id = fields.chapter?.value || owner.id;
+          const dest =
+            fields.targetKind.value === 'paragraph'
+              ? paragraphs.get(fields.destination.value)
+              : null;
+          fields.preview.value =
+            crossReferenceResolver([owner, ...others], owner)(
+              id,
+              dest?.pageId || fields.destination.value,
+              fields.format.value,
+              dest,
+            ) ?? '';
         }
+        async function showPages(chapter) {
+          const current = ++generation;
+          const kind = fields.targetKind?.value || 'page';
+          dialog.querySelector('[data-target-label]').textContent =
+            kind === 'paragraph' ? 'Paragraph' : 'Page';
+          const folios = pageFolios(chapter.pages);
+          fields.destination.disabled = false;
+          if (kind === 'paragraph') {
+            fields.destination.replaceChildren(new Option('Locating destinations…', ''));
+            fields.destination.disabled = true;
+            fields.preview.value = '';
+            const snapshot = JSON.stringify(chapter);
+            try {
+              const list = await placedParagraphs(chapter);
+              if (!dialog.open || generation !== current) return;
+              if (JSON.stringify(chapter) !== snapshot)
+                throw Error('The destination document changed. Select it again.');
+              measuredChapter = snapshot;
+              paragraphs = list;
+              const pages = new Map(chapter.pages.map((p, i) => [p.id, folios[i]]));
+              const printed = [...list.values()].filter((p) => p?.pageId && p.title);
+              fields.destination.replaceChildren(
+                ...(printed.length
+                  ? printed.map(
+                      (p) => new Option(pages.get(p.pageId) + ' · ' + p.title.slice(0, 160), p.key),
+                    )
+                  : [new Option('No marked paragraphs on these pages', '')]),
+              );
+              fields.destination.disabled = !printed.length;
+            } catch (e) {
+              if (current === generation)
+                dialog.querySelector('[role=alert]').textContent = e.message;
+            }
+          } else {
+            fields.destination.replaceChildren(
+              ...chapter.pages.map((p, i) => new Option(folios[i] + ' · ' + p.name, p.id)),
+            );
+            if (chapter.id === owner.id) fields.destination.value = state.activePage;
+          }
+          showPreview();
+        }
+        fields.targetKind?.addEventListener('change', () =>
+          showPages([owner, ...others].find((d) => d.id === (fields.chapter?.value || owner.id))),
+        );
+        fields.destination.addEventListener('change', showPreview);
+        fields.format?.addEventListener('change', showPreview);
         showPages(owner);
         if (fields.chapter)
           fields.chapter.onchange = () =>
@@ -1144,6 +1227,29 @@ export function installPublishingControls(
               ? 'Select the index you want to update.'
               : 'Select the table of contents you want to update.',
           );
+        return true;
+      }
+      if (name === 'mark-paragraph-destination' && !parentMode) {
+        const owner = doc(),
+          block = objects()[0];
+        try {
+          markParagraphDialog(form, owner, block, {
+            mutate,
+            valid: () => doc() === owner && objects()[0] === block && dialogAllowed(),
+          });
+        } catch (error) {
+          notify?.(error.message);
+        }
+        return true;
+      }
+      if (name === 'define-cross-reference-formats' && !parentMode) {
+        const owner = doc();
+        referenceFormatDialog(form, owner, state.activePage, {
+          documents,
+          mutate,
+          prepareReferencePlacements,
+          valid: () => doc() === owner && dialogAllowed(),
+        });
         return true;
       }
       if (name === 'section-options') {

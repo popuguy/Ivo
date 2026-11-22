@@ -54,11 +54,14 @@ async function verifyBook(window) {
       chapter.includes('<th scope="col">Fiber &amp; finish</th>') &&
       chapter.includes('<td colspan="2">&lt;twill&gt;</td>') &&
       chapter.includes('Orange triangular swatch') &&
-      chapter.includes('href="chapter-2.xhtml"'),
+      chapter.includes('href="chapter-2.xhtml"') &&
+      chapter.includes('href="chapter-2.xhtml#paragraph-1"') &&
+      strFromU8(files['EPUB/chapter-2.xhtml']).includes('<h3 id="paragraph-1">Aftercare</h3>'),
     'EPUB chapter semantics',
   );
   assert(
     (chapter.match(/Colour tests/g) || []).length === 1 &&
+      (chapter.match(/Fiber &amp; finish/g) || []).length === 1 &&
       !chapter.includes('secret-only') &&
       !files['EPUB/chapter-3.xhtml'],
     'EPUB flow ownership and hidden sources',

@@ -1,4 +1,6 @@
+import { retainTableThreads } from './table-threads.js';
 import { ID_PATTERN } from './constants.js';
+import { referencedFormatIds, mergeReferenceFormats } from './reference-formats.js';
 import { remapContentsStyles } from './contents-settings.js';
 import { archiveVersion, markTypographyVersion } from './capabilities.js';
 import { uid } from './model.js';
@@ -26,6 +28,7 @@ export function copyObjectSelection(doc, selection, assets = []) {
   fragment.id = uid('clipboard-');
   delete fragment.publication;
   fragment.blocks = fragment.blocks.filter((b) => included.has(b.id));
+  retainTableThreads(doc.blocks, new Map(fragment.blocks.map((b) => [b.id, b])), { copy: true });
   for (const root of roots) {
     const copy = fragment.blocks.find((b) => b.id === root.id);
     Object.assign(copy, worldRect(doc, root));
@@ -76,6 +79,11 @@ export function copyObjectSelection(doc, selection, assets = []) {
       }
       fragment.publishing[kind + 'Styles'] = styles.filter((style) => used[kind].has(style.id));
     }
+  }
+  if (fragment.referenceFormats) {
+    const used = referencedFormatIds(fragment);
+    fragment.referenceFormats = fragment.referenceFormats.filter((f) => used.has(f.id));
+    if (!fragment.referenceFormats.length) delete fragment.referenceFormats;
   }
   const required = referencedFonts(fragment),
     legacy = legacyFontFamilies(fragment);
@@ -217,6 +225,7 @@ export function pasteObjectSelection(
     if (publishing.paragraphStyles.length > 256 || publishing.characterStyles.length > 256)
       throw new Error('The pasted objects exceed the text style limit.');
   }
+  mergeReferenceFormats(next, incoming, () => uid('xref-'));
   const positions = pagePositions(incoming.pages),
     first = positions[0],
     parentRect = parent ? worldRect(next, parent) : { x: 0, y: 0 };

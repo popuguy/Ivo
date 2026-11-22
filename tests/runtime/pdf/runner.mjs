@@ -46,9 +46,11 @@ const renderPDF = (snapshot, options) =>
   });
 import {
   createSceneDocument,
+  continueTableOnNextPage,
   addPage,
   insertObject as insert,
 } from '../../../src/domain/documents/scene.js';
+import { createTable } from '../../../src/domain/documents/tables.js';
 import { createPDFSnapshot } from '../../../src/features/export/pdf-plan.js';
 
 const insertObject = (doc, type, options = {}) => {
@@ -242,13 +244,20 @@ app
     owner.blocks = owner.blocks.filter((b) => b.id !== footerFrame.id);
     for (const page of owner.pages) applyParent(owner, page.id, footerParent.id);
     markTypographyVersion(owner);
-    insertObject(front, 'text', {
+    const referenceFrame = insertObject(front, 'text', {
       x: 30,
       y: 30,
       w: 480,
       h: 180,
-      html: '<h2>Sources</h2><h3>Image credits</h3>',
+      html: '<h2 data-paragraph-destination="par-sources">Sources</h2><h3>Image credits</h3>',
     });
+    const nativeTarget = insertObject(front,'text',{x:42,y:170,w:285,h:100,fontSize:13,textStyle:'cmu-serif',html:'<p>Paragraph location proof</p><p data-paragraph-destination="par-native">Fibre index</p>'});
+    const targetFlow = startTextFlow(front,nativeTarget.id,{automaticPages:false}); enableNativeComposition(front,targetFlow,'single-line');
+    insertObject(owner,'text',{pageId:owner.pages[1].id,x:42,y:230,w:275,h:60,html:'<p><a data-doc-id="'+front.id+'" data-page-id="stale" href="#doc='+front.id+'" data-xref-format="paragraph-text" data-xref-paragraph="'+targetFlow.id+'/par-native">Fibre index</a></p>'});
+    markTypographyVersion(front);
+    owner.referenceFormats = [
+      { id: 'xref-proof', name: 'Proof', definition: '<paraText/> · <pageNum/>' },
+    ];
     const headingStyle = saveTextStyle(owner, 'paragraph', {
       name: 'Contents heading',
       attributes: { fontSize: 12, textStyle: 'cmu-serif' },
@@ -265,13 +274,15 @@ app
       html:
         '<p><a href="#page=' +
         owner.pages[1].id +
-        '">Opening</a> <a data-xref-format="folio" data-doc-id="' +
+        '">Opening</a> <a data-xref-format="xref-proof" data-xref-paragraph="' +
+        referenceFrame.id +
+        '/par-sources" data-doc-id="' +
         front.id +
         '" data-page-id="' +
-        front.pages[0].id +
+        'obsolete-page-cache' +
         '" href="#doc=' +
         front.id +
-        '">i</a></p><p data-ivo-pstyle="' +
+        '">Sources · i</a></p><p data-ivo-pstyle="' +
         headingStyle.id +
         '">Woven surfaces</p><p>' +
         'Overflow '.repeat(160) +
@@ -291,17 +302,31 @@ app
     threadFrame(owner, intro.id, continuation.id);
     enableNativeComposition(owner, indexedFlow, 'single-line');
     markTypographyVersion(owner);
-    const swatches = insertObject(owner, 'table', {
-      pageId: owner.pages[0].id,
+    const swatches = createTable(6, 2);
+    swatches.headerRows = swatches.footerRows = 1;
+    swatches.inset = 0;
+    swatches.stroke = 0.5;
+    const fabrics = [
+      'Weave sample',
+      'Linen twill',
+      'Silk crepe',
+      'Wool hopsack',
+      'Cotton voile',
+      'Sample register',
+    ];
+    fabrics.forEach((label, row) => {
+      swatches.cells[row][0] = label;
+    });
+    swatches.rowOptions = Object.fromEntries(fabrics.map((_, i) => [i, { minimumHeight: 20 }]));
+    const swatchFrame = insertObject(owner, 'table', {
       x: 40,
       y: 320,
       w: 270,
-      h: 108,
+      h: 84,
       fontSize: 10,
-    }).table;
-    swatches.headerRows = 1;
-    swatches.cells[0][0] = 'Weave sample';
-    swatches.cells[1][0] = 'Linen twill';
+      table: swatches,
+    });
+    continueTableOnNextPage(owner, swatchFrame.id);
     const book = createPDFSnapshot([owner, front], [asset], owner.id, { useBook: true });
     const bookPDF = await renderPDF(book, { project: root });
     assert.deepEqual(
@@ -318,11 +343,27 @@ app
       bookFile,
     ]);
     const outline = JSON.parse(inspected.stdout);
-    assert.match(outline.text[1], /Linen twill/);
+    for (const page of [1, 2]) {
+      assert.match(outline.text[page], /Weave sample/);
+      assert.match(outline.text[page], /Sample register/);
+      for (const label of fabrics.slice(1, -1)) {
+        assert.equal(
+          outline.text[page].includes(label),
+          page === (fabrics.indexOf(label) <= 2 ? 1 : 2),
+          'Printed row "' + label + '" on book page ' + page,
+        );
+      }
+    }
     assert(
       outline.pageLinks.some(([from, to]) => from === 1 && to === 0),
       'The composed inline reference lost its external page destination',
     );
+    assert.match(outline.text[1], /Sources\s*·\s*i/);
+    assert(
+      outline.linkPoints.some(([from, to, top]) => from === 1 && to === 0 && top > 20 && top < 120),
+      'PDFKit did not land at the referenced paragraph',
+    );
+    assert(outline.linkPoints.some(([from,to,top])=>from===2 && to===0 && top>172 && top<270),'PDFKit did not land on the native target line');
     assert.deepEqual(outline.labels, ['i', 'A–7', 'A–8']);
     assert(
       outline.pageLinks.some(([from, to]) => from === 1 && to === 2),

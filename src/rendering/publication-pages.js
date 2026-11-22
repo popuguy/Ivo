@@ -1,3 +1,4 @@
+import { layoutTableThreads, prepareTableFonts } from './table-thread-layout.js';
 import { orderedPageObjects, parentObjects } from '../domain/documents/publishing.js';
 import { pageFolios } from '../domain/documents/page-sections.js';
 import { readableHTML } from '../shared/html/sanitize.js';
@@ -23,6 +24,10 @@ export async function composePublicationChapter(doc, documents, assets, compose,
         preserveWikiText: true,
         trustedFlow: true,
       });
+  if (doc.blocks.some((b) => b.tableNext)) {
+    await prepareTableFonts(doc);
+    flow.tables = layoutTableThreads(doc);
+  }
   return { flow, native };
 }
 
