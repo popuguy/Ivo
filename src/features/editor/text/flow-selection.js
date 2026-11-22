@@ -891,8 +891,17 @@ export function installFlowSelection(
           const { line, stop } = match;
           let target = line,
             destination;
-          if (unit === 'line-boundary') destination = forward ? line.stops.at(-1) : line.stops[0];
-          else {
+          if (unit === 'line-boundary') {
+            destination = forward ? line.stops.at(-1) : line.stops[0];
+            if (forward && extend && destination.index === range.focus.index) {
+              // Extend to End again at an authored line end selects its break.
+              const { text, navigation } = navigationState();
+              const after = navigation.move(range.focus, { unit: 'grapheme' });
+              if (/[\r\n\u2028\u2029]/.test(text.slice(destination.index, after.index))) {
+                destination = after;
+              }
+            }
+          } else {
             const cs = columns({ measureBounds: unit === 'screen' }),
               step = forward ? 1 : -1;
             const index = measured.lines.indexOf(line);

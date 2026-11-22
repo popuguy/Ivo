@@ -61,6 +61,22 @@ function segments(text, granularity, locale) {
 function graphemeEdges(text, locale) {
   return [...segments(text, 'grapheme', locale).map((part) => part.index), text.length];
 }
+// Block envelopes belong to the source map. Only their contents contain insertion
+// points: one arrow crosses one paragraph break, even across separate frames.
+function authoredGraphemeEdges(edges, paragraphs) {
+  if (!paragraphs?.some((part) => part.contentStart !== undefined)) return edges;
+  const ranges = paragraphs
+    .map((part) => ({
+      start: part.contentStart ?? part.start,
+      end: part.contentEnd ?? part.end,
+    }))
+    .sort((a, b) => a.start - b.start);
+  let i = 0;
+  return edges.filter((edge) => {
+    while (i < ranges.length && ranges[i].end < edge) i++;
+    return i < ranges.length && edge >= ranges[i].start;
+  });
+}
 function direction(value) {
   if (!['forward', 'backward'].includes(value)) throw new TypeError('Unknown text direction.');
   return value;
@@ -111,10 +127,10 @@ export function moveTextPosition(
   let index;
   if (unit === 'flow') index = forward ? text.length : 0;
   else if (unit === 'grapheme') {
-    const edges = graphemeEdges(text, locale);
+    const edges = authoredGraphemeEdges(graphemeEdges(text, locale), paragraphs);
     index = forward
-      ? edges.find((edge) => edge > current.index)
-      : edges.findLast((edge) => edge < current.index);
+      ? (edges.find((edge) => edge > current.index) ?? edges.at(-1))
+      : (edges.findLast((edge) => edge < current.index) ?? edges[0]);
   } else if (unit === 'word' || unit === 'word-start') {
     const words = segments(text, 'word', locale).filter((part) => part.isWordLike);
     index = forward
@@ -224,7 +240,7 @@ function rangeSelection(part, fallback) {
  * or changed here. Visual bidi/line movement still requires composition geometry.
  */
 export function createTextNavigation(text, { locale, paragraphs } = {}) {
-  let graphemes, words, paragraphIndex;
+  let graphemes, caretEdges, words, paragraphIndex;
   const authoredParagraphs = paragraphs?.map((part) => ({ ...part }));
   function graphemeIndex() {
     if (!graphemes) {
@@ -290,7 +306,8 @@ export function createTextNavigation(text, { locale, paragraphs } = {}) {
       forward = way === 'forward';
     let index, values;
     if (unit === 'flow') index = forward ? text.length : 0;
-    else if (unit === 'grapheme') values = graphemeIndex();
+    else if (unit === 'grapheme')
+      values = caretEdges ??= authoredGraphemeEdges(graphemeIndex(), authoredParagraphs);
     else if (unit === 'word' || unit === 'word-start') {
       const data = wordIndex();
       values = forward && unit !== 'word-start' ? data.wordEnds : data.wordStarts;
@@ -306,6 +323,7 @@ export function createTextNavigation(text, { locale, paragraphs } = {}) {
       index = forward
         ? values[upperBound(values, current.index)]
         : values[lowerBound(values, current.index) - 1];
+    if (unit === 'grapheme' && index === undefined) index = forward ? values.at(-1) : values[0];
     return {
       index: index ?? (forward ? text.length : 0),
       affinity:

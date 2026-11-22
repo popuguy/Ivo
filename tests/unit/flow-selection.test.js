@@ -270,3 +270,31 @@ test('long-flow repeated navigation segments each requested granularity once, la
   assert.equal(nav.graphemeBoundaries[0], 0);
   assert.equal(nav.graphemeBoundaries.at(-1), text.length);
 });
+
+test('grapheme keys use editable paragraph content and cross each structural break once', () => {
+  const text = '\nA\u0301\n\n\n\nЯ\n';
+  const paragraphs = [
+    { start: 0, contentStart: 1, contentEnd: 3, end: 4 },
+    { start: 4, contentStart: 5, contentEnd: 5, end: 6 },
+    { start: 6, contentStart: 7, contentEnd: 8, end: 9 },
+  ];
+  const nav = createTextNavigation(text, { paragraphs });
+  for (const [start, direction, expected] of [
+    [1, 'backward', 1],
+    [1, 'forward', 3],
+    [3, 'forward', 5],
+    [5, 'forward', 7],
+    [7, 'forward', 8],
+    [8, 'forward', 8],
+    [7, 'backward', 5],
+    [5, 'backward', 3],
+    [3, 'backward', 1],
+  ]) {
+    const options = { unit: 'grapheme', direction };
+    assert.equal(nav.move(start, options).index, expected);
+    assert.deepEqual(
+      moveTextPosition(text, start, { ...options, paragraphs }),
+      nav.move(start, options),
+    );
+  }
+});

@@ -209,6 +209,16 @@ export function textIndexAt(map, node, offset) {
   return pointIndex(map, node, offset);
 }
 
+/** A direct BR holds an empty paragraph open. A saved empty inline formatting
+ * context can precede it after Enter. A wrapped BR is an authored soft return.
+ */
+export function blankParagraphBreak(block) {
+  const last = block.lastChild;
+  if (last?.nodeName !== 'BR') return null;
+  if (last === block.firstChild) return last;
+  return !block.textContent && block.querySelectorAll('br').length === 1 ? last : null;
+}
+
 /** Authored paragraphs include their structural marks; BR remains inside its paragraph. */
 export function logicalText(root) {
   const map = textIndexMap(root),
@@ -236,7 +246,7 @@ export function textParagraphRanges(element, map = textPositions(element)) {
         start: parent[at],
         end: parent[at + 1],
         contentStart: points[0],
-        contentEnd: points.at(-1),
+        contentEnd: blankParagraphBreak(node) ? points[0] : points.at(-1),
       });
   }
   ranges.sort((a, b) => a.start - b.start);

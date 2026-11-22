@@ -90,12 +90,4 @@ export function inheritEmptyParagraphTypography(root, range, pending = {}) {
   return changed;
 }
 
-/** A direct BR holds an empty paragraph open. A saved empty inline formatting
- * context can precede it after Enter. A wrapped BR is an authored soft return.
- */
-export function blankParagraphBreak(block) {
-  const last = block.lastChild;
-  if (last?.nodeName !== 'BR') return null;
-  if (last === block.firstChild) return last;
-  return !block.textContent && block.querySelectorAll('br').length === 1 ? last : null;
-}
+export { blankParagraphBreak } from '../../shared/dom/text-selection.js';

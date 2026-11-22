@@ -1,5 +1,6 @@
 import { verifyStructuredLists } from './structured-lists.js';
 import { verifyNativeFindChange } from './find-change.js';
+import { verifyMixedScriptNavigation } from './mixed-script-navigation.js';
 import { verifyThreadedDeletion } from '../flow-selection/threaded-deletion.js';
 import { createInteractiveTextPort } from '../../../src/rendering/text/retained-geometry.js';
 import { createSceneDocument, insertObject, addPage } from '../../../src/domain/documents/scene.js';
@@ -76,6 +77,7 @@ try {
     commits = 0,
     changes = 0,
     writable = true,
+    mixedScriptNavigation = {},
     paragraphEditing = {},
     unequalParagraphFlow = {},
     nativeWrappedFlow = {},
@@ -611,6 +613,11 @@ try {
     report({ phase: 'edit' });
   }
   if (phase === 'reopen') {
+    mixedScriptNavigation = await verifyMixedScriptNavigation(
+      host,
+      window.nativeEditorTest,
+      interactive,
+    );
     paragraphEditing = await verifyNativeParagraphEditing({
       host,
       compose: native.compose,
@@ -1191,6 +1198,7 @@ try {
       ...paragraphProjection,
       ...characterProjection,
       ...keepProjection,
+      ...mixedScriptNavigation,
       ...paragraphEditing,
       ...unequalParagraphFlow,
       ...nativeWrappedFlow,
