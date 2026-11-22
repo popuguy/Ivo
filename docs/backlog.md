@@ -6,7 +6,7 @@
 
 ## Remaining text work
 
-- **Long wrapped flows.** The six-page contour benchmark still diverges from InDesign at the sixth box. On page three Adobe’s Paragraph Composer skips a narrow row used by its Single-line Composer and Ivo. Investigate paragraph candidate selection across same-row fragments. Keep measuring the first visible glyph after idle, distinct consecutive edits, and propagation through the final frame. Investigate delays between the completed layout and the first window frame showing it.
+- **Long wrapped flows.** The six-page contour benchmark still diverges from InDesign at the sixth box. The 72 pt row on page three now correctly stays empty. The following row still takes two extra words in Ivo. Compare paragraph break choices across consecutive fragmented rows. Keep measuring the first visible glyph after idle, distinct consecutive edits, and propagation through the final frame. Investigate delays between the completed layout and the first window frame showing it.
 
 - **Line breaks and spacing.** Refine paragraph break choices in narrow columns, especially emergency compression. Test the eight offline dictionaries and document exceptions on longer mixed-language prose.
 - **Page layout.** Add right-indent tab characters and magnetic positioning of the Tabs panel. Qualify additional picture contours against InDesign, add editable wrap paths and refine automatically broken paragraphs around overlapping objects. Refine sloped contour intersections.

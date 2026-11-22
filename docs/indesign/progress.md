@@ -4,7 +4,7 @@ The [current development state](../development/STATE.md) records the latest engi
 
 ## Readiness for the desktop text review
 
-**21 November 2026 · about 55% ready (11/20).** This first baseline rates how far five desktop workflows have advanced toward a full Mac side-by-side review with InDesign. Separately, 50 of the 63 release capabilities have some implementation evidence. The desktop review excludes physical mobile input, cloud sync, the deferred language and math work, and the proposed Markdown note type.
+**21 November 2026 · about 55% ready (11/20).** This score rates how far five desktop workflows have advanced toward a full Mac side-by-side review with InDesign. Separately, 50 of the 63 release capabilities have some implementation evidence. The desktop review excludes physical mobile input, cloud sync, the deferred language and math work, and the proposed Markdown note type.
 
 Each workflow gets equal weight and has five possible scores. At **0**, a reviewer cannot start the task. At **1**, individual pieces work. At **2**, a common case works end to end, with an important part of the workflow still missing or divergent. At **3**, representative everyday and difficult cases have repeatable editor checks, with some reference checks outstanding. At **4**, the agreed desktop scenarios are implemented, compared with InDesign and ready for independent testing. Known differences are recorded and the reviewer can finish each scenario. Twenty points is the invitation to start the full review. The review itself can still uncover defects.
 
@@ -12,11 +12,15 @@ Each workflow gets equal weight and has five possible scores. At **0**, a review
 | ---------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Write and edit across pages        | 3/4   | On-page typing, selection across frames, undo and save/reopen have editor checks. A long threaded note and a dense magazine fixture exercise typing latency. Mixed-script caret movement and selection still need broader reference coverage. |
 | Format type and reuse styles       | 3/4   | Character formatting, OpenType alternates and sequences of paragraph styles are testable in the editor. Nested styles and styles applied by text patterns are still missing.                                                                  |
-| Fit paragraphs around artwork      | 2/4   | Ivo matched every line ending in 141 of 180 previously unseen column layouts. Overlapping wrap objects matched in 104 of 120 cases. The remaining differences can move words into another frame or onto another page.                         |
+| Fit paragraphs around artwork      | 2/4   | All line endings matched in 151/180 earlier columns and 135/160 fresh columns. One crowded row on page three now matches. The sixth frame still ends on different words in the six-page spread.                                               |
 | Edit structured and editorial text | 1/4   | A reviewer can edit page tables and search across frames. Tables flowing across pages, anchored illustrations, footnotes, endnotes and tracked changes still block complete editorial scenarios.                                              |
 | Publish and check a long document  | 2/4   | Contents, indexes and page references work across chapters. Tests read destinations from the exported PDF. Paragraph-level targets, custom cross-reference formats and tagged PDF still limit a complete publishing comparison.               |
 
 At each completed text milestone, record the prior and current total, the workflow affected, the test or comparison that supports a change, and the largest remaining obstacle. Keep the score steady when a fix strengthens an existing score without moving the workflow to the next level. [Release capability ledger](text-parity-programme.md#capability-acceptance-ledger) · [Column comparisons](../native-word-spacing.md) · [Frame comparisons](../frame-composition.md) · [Desktop verification](../verification.md)
+
+## Paragraph reflow and editorial search · 21 November
+
+Desktop review readiness held at **11/20 (55%)**. A single-line fit now weighs how far it must stretch or compress the line. Paragraph Composer charges progressively for compression beyond the preferred minimum. Both benefit from using the same defaults in the editor and PDF. In the earlier 180-column comparison, exact line-ending matches increased from 141 to 151. In 160 fresh layouts using English, Spanish and Italian, matches increased from 124 to 135. Ordinary default justification and explicitly entered defaults produced identical lines, glyphs and carets in the Mac editor. In the six-page contour fixture the crowded line on page three now stays empty, as in the reference. The two apps still end the sixth linked frame on different words. [Column results](../native-word-spacing.md#column-comparisons) · [Wrap results](../frame-composition.md#multiple-openings-on-one-line)
 
 ## Earlier release estimates
 

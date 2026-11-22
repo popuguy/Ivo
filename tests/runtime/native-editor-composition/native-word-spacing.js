@@ -5,7 +5,10 @@ import {
   startTextFlow,
   enableNativeComposition,
 } from '../../../src/domain/documents/text-flows.js';
-import { archiveVersion } from '../../../src/domain/documents/capabilities.js';
+import {
+  archiveVersion,
+  markTypographyVersion,
+} from '../../../src/domain/documents/capabilities.js';
 import { validateImport } from '../../../src/domain/documents/schema.js';
 import {
   createDocumentHistory,
@@ -100,6 +103,7 @@ export async function verifyNativeWordSpacing({
       }),
       flow = startTextFlow(doc, frame.id, { automaticPages: false });
     enableNativeComposition(doc, flow, composer);
+    markTypographyVersion(doc);
     doc = validateImport({ schemaVersion: archiveVersion([doc]), documents: [doc], assets: [] })
       .documents[0];
     frameId = frame.id;
@@ -512,6 +516,46 @@ export async function verifyNativeWordSpacing({
     );
   }
   try {
+    const copy = 'The quick brown fox pauses at the open gate. '.repeat(3).trim();
+    for (const mode of ['paragraph', 'single-line']) {
+      let expectedGeometry;
+      for (const wordSpace of ['', '80:100:133', '80:100:133|0:0:0|100:100:100']) {
+        ownFixture(
+          'Default justified column',
+          '<p data-ivo-align="justify"' +
+            (wordSpace ? ' data-ivo-wordspace="' + wordSpace + '"' : '') +
+            '>' +
+            copy +
+            '</p>',
+          mode,
+        );
+        const version = archiveVersion([doc]),
+          before = source();
+        mount();
+        await settle();
+        const view = verifyProtocol(6);
+        assert(
+          view.result.layout.lines.length > 1 && view.result.layout.lines[0].wordSpacing.justified,
+          'The editor did not fit ordinary justified text across lines.',
+        );
+        const compared = stable(
+          view.result.layout.lines.map((line) => ({
+            ...line,
+            frame: view.request.frames.findIndex((frame) => frame.id === line.frame),
+          })),
+        );
+        if (expectedGeometry === undefined) expectedGeometry = compared;
+        else
+          assert(
+            expectedGeometry === compared,
+            'Accepting identical justification changed line breaks, carets or ink.',
+          );
+        assert(
+          source() === before && !changes && !commits && archiveVersion([doc]) === version,
+          'Reading default justification changed the document.',
+        );
+      }
+    }
     ownFixture(
       'Native paragraph word spacing',
       '<p>  Selected words  </p><p data-ivo-pstyle="word-italic-style">Neighbor italic words.</p><p data-ivo-pstyle="word-other-style">Other styled paragraph.</p>',

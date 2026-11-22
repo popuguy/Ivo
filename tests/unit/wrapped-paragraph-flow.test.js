@@ -247,6 +247,40 @@ test('real source spaces survive left-to-right fragments sharing a physical base
   assert.deepEqual(input, before);
 });
 
+test('wrap openings count from the first placed word on each physical row', () => {
+  function compose(slots, words, mode, mixed) {
+    const input = measuredWords(words);
+    const obstacles = [];
+    let x = 0;
+    for (const width of slots.slice(0, -1)) {
+      x += width;
+      obstacles.push(rectangle(x, 0, x + 4, 70));
+      x += 4;
+    }
+    input.columns = [{ width: x + slots.at(-1), height: 140, obstacles }];
+    if (mixed)
+      for (const row of input.measurements) if (row.start < 2 && row.end >= 2) row.ascent += 2;
+    const result = chooseWrappedParagraphFlow({ ...input, mode });
+    assert.equal(result.status, 'fit');
+    return result.lines.filter((l) => l.baseline === result.lines[0].baseline).map((l) => l.left);
+  }
+  for (const mode of ['paragraph', 'single-line'])
+    for (const mixed of [false, true]) {
+      assert.deepEqual(
+        compose(Array(8).fill(12), Array(8).fill(10), mode, mixed),
+        [0, 16, 32, 48, 64],
+      );
+      // A long initial word may search past five unusable openings.
+      assert.deepEqual(compose([6, 6, 6, 6, 6, 14, 12, 12], [14, 10], mode, mixed), [50, 68]);
+      // Unused openings after a placed word still count.
+      assert.deepEqual(compose([12, 6, 6, 6, 6, 14], [10, 14], mode, mixed), [0]);
+      assert.deepEqual(
+        compose([6, 12, 12, 12, 12, 12, 12], Array(7).fill(10), mode, mixed),
+        [10, 26, 42, 58, 74],
+      );
+    }
+});
+
 test('mandatory hard/soft break opportunities end the row and skip its remaining gaps', () => {
   for (const mode of ['paragraph', 'single-line']) {
     const { input } = realSpaces();

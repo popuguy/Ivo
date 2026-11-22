@@ -3,8 +3,36 @@ import { wordSpacingSettings, wordSpacingValue } from './word-spacing.js';
 
 export function wordSpacingCostPolicy(settings) {
   return settings?.glyphDesired !== undefined
-    ? 'three-axis-width-demerits-v1'
+    ? 'three-axis-width-demerits-v2'
     : 'word-spacing-adjustment-cubic-v1';
+}
+
+// Choices are ordered longest first. If two breaks fit the minimum, a
+// justified single line takes the one closer to its preferred set width.
+// A ragged final line can finish the paragraph without any stretch.
+export function preferredSingleLine(choices, lineOf = (line) => line) {
+  const first = choices.find((choice) => lineOf(choice).wordSpacing.fitsMinimum);
+  if (!first) return choices[0];
+  const reference = lineOf(first);
+  let distance = reference.wordSpacing.singleLineAdjustment;
+  if (distance == null || distance === 0) return first;
+  let best = first;
+  for (const choice of choices) {
+    const line = lineOf(choice);
+    // A mixed-height wrap can return whole rows ending in different
+    // fragments. Compare distances only within the same piece of a row.
+    if (
+      line.start !== reference.start ||
+      line.left !== reference.left ||
+      line.width !== reference.width
+    )
+      continue;
+    if (line.wordSpacing.fitsMinimum && line.wordSpacing.singleLineAdjustment < distance) {
+      best = choice;
+      distance = line.wordSpacing.singleLineAdjustment;
+    }
+  }
+  return best;
 }
 const EPSILON = 0.0001,
   fields = ['minimumWidth', 'desiredWidth', 'maximumWidth', 'eligibleGaps', 'nominalSpaceWidth'],

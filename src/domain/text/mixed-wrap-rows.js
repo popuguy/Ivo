@@ -74,7 +74,11 @@ export function* fitMixedWrapRow(
           if (!(yield* checkpoint())) return [];
           if (choice.line.end > limit) continue;
           const following = child(node, choice);
-          retain(next, following, [following.end, following.after, following.hyphens].join('/'));
+          retain(
+            next,
+            following,
+            [following.end, following.after, following.rowRight, following.hyphens].join('/'),
+          );
         }
       }
       frontier = next;
@@ -97,7 +101,7 @@ export function* fitMixedWrapRow(
   return choices
     .sort((a, b) => {
       if (mode === 'single-line' && wordSpacing) {
-        const below = (n) => n.line.wordSpacing.percentage < wordSpacing.minimum;
+        const below = (n) => !n.line.wordSpacing.fitsMinimum;
         if (below(a) !== below(b)) return below(a) ? 1 : -1;
       }
       return b.end - a.end || a.cost - b.cost || a.cursor.baseline - b.cursor.baseline;

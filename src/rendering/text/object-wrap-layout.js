@@ -2,6 +2,7 @@ import {
   nextWrapRowTop,
   textWrapObstacles,
   textWrapBand,
+  MAX_WRAP_SEGMENTS_PER_LINE,
 } from '../../domain/geometry/text-wrap.js';
 import { appendTextFlowPage, trimTextFlowPages } from '../../domain/documents/text-flows.js';
 import { firstBaselineOffset } from '../../domain/text/frame-composition.js';
@@ -135,7 +136,9 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageConto
             rowBaseline = 0;
             const intervals =
               initial.direction === 'rtl' ? [...band.segments].reverse() : band.segments;
-            for (const interval of intervals) {
+            let limit = intervals.length;
+            for (let i = 0; i < limit; i++) {
+              const interval = intervals[i];
               if (interval.right - interval.left < 1 || next >= measured.total) continue;
               const line = measured.measure(next, interval.right - interval.left);
               if (line.empty) {
@@ -145,6 +148,7 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageConto
               // An unbreakable word wider than a side area must wait for a
               // usable region, without splitting it or hiding overflowing ink.
               if (!line.fits) continue;
+              if (!planned.length) limit = Math.min(limit, i + MAX_WRAP_SEGMENTS_PER_LINE);
               planned.push({ ...line, left: interval.left, width: interval.right - interval.left });
               rowBaseline = Math.max(rowBaseline, line.baseline);
               next = line.end;

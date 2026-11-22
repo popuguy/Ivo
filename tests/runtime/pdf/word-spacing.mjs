@@ -4,7 +4,10 @@ import { promisify } from 'node:util';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument } from 'pdf-lib';
-import { wordSpacingSettings } from '../../../src/domain/text/word-spacing.js';
+import {
+  DEFAULT_JUSTIFICATION,
+  wordSpacingSettings,
+} from '../../../src/domain/text/word-spacing.js';
 import { createSceneDocument, insertObject } from '../../../src/domain/documents/scene.js';
 import { enablePublishing } from '../../../src/domain/documents/publishing.js';
 import {
@@ -47,9 +50,18 @@ const near = (actual, expected, label, tolerance = 0.001) =>
       name: 'soft-return',
       width: 300,
       policy: '80:100:133',
+      layoutPolicy: DEFAULT_JUSTIFICATION,
       align: 'justify',
       text: '  Full alpha beta  <br>Final gamma delta  ',
       targets: ['Full', 'alpha', 'beta', 'Final', 'gamma', 'delta'],
+    },
+    {
+      name: 'default-column',
+      width: 130,
+      layoutPolicy: DEFAULT_JUSTIFICATION,
+      align: 'justify',
+      text: 'Narrow  columns  keep  every  word  visible  ',
+      targets: ['Narrow', 'columns', 'keep', 'every', 'word', 'visible'],
     },
     {
       name: 'condensed-final',
@@ -223,7 +235,8 @@ export async function verifyWordSpacingPDF({
     );
     const { request, result } = composition,
       lines = result.layout.lines,
-      active = Boolean(definition.policy),
+      effectivePolicy = definition.layoutPolicy ?? definition.policy,
+      active = Boolean(effectivePolicy),
       words = selectedWords(composition, frame, definition);
     await writeFile(
       path.join(output, 'native-word-spacing-' + definition.name + '-plan.json'),
@@ -239,14 +252,15 @@ export async function verifyWordSpacingPDF({
         2,
       ),
     );
-    assert.equal(request.protocol, definition.policy?.includes('|') ? 6 : active ? 5 : 4);
+    assert.equal(request.protocol, effectivePolicy?.includes('|') ? 6 : active ? 5 : 4);
     assert.equal(result.protocol, request.protocol);
     assert.equal(request.mode, 'planned-lines-proof');
     assert.equal(request.sourceHTML, sourceBefore);
     assert.equal(result.layout.coveredLength, request.text.length);
     assert.equal(result.sourceDigest, request.sourceDigest);
     assert.equal(request.placements.length, lines.length);
-    assert.equal(lines.length, definition.name === 'soft-return' ? 2 : 1);
+    if (definition.name === 'default-column') assert(lines.length > 1);
+    else assert.equal(lines.length, definition.name === 'soft-return' ? 2 : 1);
     assert.deepEqual(
       (await PDFDocument.load(pdf.bytes)).getPages().map((page) => page.getSize()),
       [{ width: 500, height: 350 }],
@@ -261,7 +275,7 @@ export async function verifyWordSpacingPDF({
         assert.equal(line.wordSpacing, undefined);
         continue;
       }
-      assert.deepEqual(request.paragraphs[0].wordSpacing, wordSpacingSettings(definition.policy));
+      assert.deepEqual(request.paragraphs[0].wordSpacing, wordSpacingSettings(effectivePolicy));
       assert.equal(line.wordSpacing.fallback, null);
       if (line.wordSpacing.justified) {
         near(line.visibleWidth, definition.width, 'Actual justified point width');

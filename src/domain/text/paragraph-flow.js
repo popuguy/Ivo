@@ -5,6 +5,7 @@ import { paragraphLayout } from './paragraph-layout.js';
 import {
   adjustWordSpacing,
   paragraphLineCost,
+  preferredSingleLine,
   normalizeWordSpacingPolicy,
   wordSpacingMeasurement,
   wordSpacingMinimumWidth,
@@ -344,10 +345,7 @@ export function* paragraphFlowSteps({
   let seed = initial;
   while (seed.end < end) {
     const fitting = yield* fitsAt(seed);
-    const line =
-      (mode === 'single-line' && wordSpacing
-        ? fitting.find((candidate) => candidate.wordSpacing.fitsMinimum)
-        : null) ?? fitting[0];
+    const line = mode === 'single-line' && wordSpacing ? preferredSingleLine(fitting) : fitting[0];
     if (budget) return failed(budget);
     if (!line) break;
     if (++states > maxStates) return failed('state-budget');

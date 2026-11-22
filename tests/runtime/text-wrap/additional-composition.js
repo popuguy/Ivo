@@ -34,6 +34,38 @@ function wordRect(root, word) {
 }
 
 export function verifyAdditionalComposition({ verifyCoverage, verifyInkOutside, paintFrame }) {
+  // Eight narrow openings, each wide enough for exactly one word.
+  const comb = createSceneDocument('Wrap openings'),
+    combFrame = insertObject(comb, 'text', comb.pages[0].id, {
+      x: 20,
+      y: 20,
+      w: 246,
+      h: 150,
+      fontSize: 12,
+      leading: 18,
+      html: '<p>MM MM MM MM MM MM MM MM</p>',
+    });
+  startTextFlow(comb, combFrame.id, { automaticPages: false });
+  for (let index = 0; index < 7; index++) {
+    const bar = insertObject(comb, 'polygon', combFrame.pageId, {
+      x: 42 + index * 32,
+      y: 20,
+      w: 10,
+      h: 120,
+      strokeWidth: 0,
+      stroke: 'none',
+    });
+    setTextWrap(comb, [bar.id], { mode: 'bounds' });
+  }
+  const combLayout = layoutDocumentTextFlows(comb, { allowPages: false }),
+    parts = combLayout.fragments.get(combFrame.id).columns;
+  verifyCoverage(comb, combLayout);
+  assert(
+    parts.filter((part) => part.top === parts[0].top).length === 5 &&
+      parts.filter((part) => part.top > parts[0].top).length === 3,
+    'Browser layout failed to resume its eight separate words on a second row: ' +
+      JSON.stringify(parts.map(({ left, top, start, end }) => ({ left, top, start, end }))),
+  );
   const narrow = createSceneDocument('Narrow wrap regions'),
     narrowFrame = insertObject(narrow, 'text', narrow.pages[0].id, {
       x: 40,

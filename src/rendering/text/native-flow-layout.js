@@ -21,8 +21,7 @@ import { documentHasObjectWrap } from './object-wrap-layout.js';
 import { nativeWrapColumns, validateNativeWrapping } from './native-wrap-columns.js';
 import { PARAGRAPH_LAYOUT_FIELDS, paragraphLineArea } from '../../domain/text/paragraph-layout.js';
 import {
-  DEFAULT_WORD_SPACING,
-  wordSpacingValue,
+  DEFAULT_JUSTIFICATION,
   wordSpacingSettings,
   wordSpacingSourceError,
 } from '../../domain/text/word-spacing.js';
@@ -622,8 +621,8 @@ const assetSignature = (assets) =>
 const same = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 const layoutProperties = ({ locked: _locked, ...properties }) => properties;
 
-function selectParagraphPlan(required, source) {
-  if (!required && !hasAuthoredBreakCharacters(source.text)) return false;
+function selectParagraphPlan(required, source, usesJustification) {
+  if (!required && !usesJustification && !hasAuthoredBreakCharacters(source.text)) return false;
   try {
     validateParagraphSource(source.text, source.noBreakRanges, source.hyphenationPoints);
     return true;
@@ -633,6 +632,34 @@ function selectParagraphPlan(required, source) {
     if (required || !(error instanceof UnsupportedComposition)) throw error;
     return false;
   }
+}
+
+// Preferences affect line choice even when the author has never opened the
+// Justification dialog. This policy belongs to the layout request only.
+function defaultJustification(source) {
+  const policies = new Map();
+  const wordOnly = DEFAULT_JUSTIFICATION.split('|')[0];
+  let firstRun = 0;
+  for (const paragraph of source.paragraphs) {
+    while (source.runs[firstRun]?.end <= paragraph.start) firstRun++;
+    if (!paragraph.wordSpacing && !paragraph.align?.startsWith('justify')) continue;
+    const content = source.text.slice(paragraph.start, paragraph.end);
+    const issue = wordSpacingSourceError(content);
+    let negativeTracking = false;
+    for (let i = firstRun; source.runs[i]?.start < paragraph.end; i++) {
+      if (source.runs[i].tracking < 0) {
+        negativeTracking = true;
+        break;
+      }
+    }
+    if (paragraph.wordSpacing && (issue || negativeTracking))
+      throw new UnsupportedComposition(issue || 'word spacing with negative tracking');
+    if (issue || negativeTracking || !paragraph.align?.startsWith('justify')) continue;
+    if (paragraph.wordSpacing && paragraph.wordSpacing !== wordOnly) continue;
+    // Hard spaces retain the independently qualified fixed/flexible gap policy.
+    policies.set(paragraph, /[\u00a0\u202f]/u.test(content) ? wordOnly : DEFAULT_JUSTIFICATION);
+  }
+  return policies;
 }
 
 function projectNativeFlow(
@@ -679,36 +706,18 @@ function projectNativeFlow(
     new Set(source.runs.map((run) => run.font)).size > 16
   )
     throw new UnsupportedComposition("text beyond this preview composer's source/font budget");
-  const planned = selectParagraphPlan(required, source);
+  const defaults = defaultJustification(source);
+  const planned = selectParagraphPlan(required, source, defaults.size > 0);
   normalizeParagraphKeeps(flowKeeps(source), source.paragraphs.length);
   if (source.runs.some((run) => !['metrics', 'none'].includes(run.kerning)))
     throw new UnsupportedComposition('optical kerning');
   for (const paragraph of source.paragraphs) {
-    const content = source.text.slice(paragraph.start, paragraph.end);
-    const specialJustification =
-      planned &&
-      !paragraph.wordSpacing &&
-      paragraph.align?.startsWith('justify') &&
-      /[\u00a0\u202f]/u.test(content) &&
-      !wordSpacingSourceError(content) &&
-      !source.runs.some(
-        (run) => run.start < paragraph.end && run.end > paragraph.start && run.tracking < 0,
+    if (planned && defaults.has(paragraph)) {
+      paragraph.wordSpacing = defaults.get(paragraph);
+      source.protocol = Math.max(
+        source.protocol,
+        paragraph.wordSpacing === DEFAULT_JUSTIFICATION ? 6 : 5,
       );
-    // A disposable projection gives default justified hard spaces the same
-    // spacing authority as an authored policy without adding a document mark.
-    if (specialJustification) {
-      paragraph.wordSpacing = wordSpacingValue(DEFAULT_WORD_SPACING);
-      source.protocol = Math.max(5, source.protocol);
-    }
-    if (wordSpacingSettings(paragraph.wordSpacing)) {
-      const issue = wordSpacingSourceError(source.text.slice(paragraph.start, paragraph.end));
-      if (issue) throw new UnsupportedComposition(issue);
-      if (
-        source.runs.some(
-          (run) => run.start < paragraph.end && run.end > paragraph.start && run.tracking < 0,
-        )
-      )
-        throw new UnsupportedComposition('word spacing with negative tracking');
     }
     const fits = (column) => {
       try {
@@ -720,7 +729,8 @@ function projectNativeFlow(
       }
     };
     if (planned) {
-      if (!columns.some(fits)) throw Error('Paragraph indents leave no valid frame width.');
+      if (!columns.some(fits))
+        throw Error('Paragraph indents leave no valid text width in any frame.');
     } else
       for (const column of columns) {
         paragraphLineArea(paragraph, column.width, true);

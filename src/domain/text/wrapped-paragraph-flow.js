@@ -6,10 +6,11 @@ import {
   wordSpacingMeasurement,
   wordSpacingMinimumWidth,
   paragraphLineCost,
+  preferredSingleLine,
   wordSpacingCostPolicy,
 } from './word-spacing-adjustment.js';
 import { lineHyphenation } from './line-hyphenation.js';
-import { nextWrapRowTop, textWrapBand } from '../geometry/text-wrap.js';
+import { MAX_WRAP_SEGMENTS_PER_LINE, nextWrapRowTop, textWrapBand } from '../geometry/text-wrap.js';
 import { TEXT_WRAP_MODES, TEXT_WRAP_SIDES } from '../documents/text-wrap.js';
 import { FIRST_BASELINES } from './frame-composition.js';
 import { paragraphLayout } from './paragraph-layout.js';
@@ -466,10 +467,17 @@ function* fitWrappedParagraph(
             after = null;
             continue;
           }
-          for (const segment of band.segments) {
+          const limitX = after === null ? undefined : state.rowRight;
+          for (let i = 0; i < band.segments.length; i++) {
+            const segment = band.segments[i];
             if (after !== null && segment.left < after - EPS) continue;
+            if (limitX !== undefined && segment.left >= limitX - EPS) break;
             const width = segment.right - segment.left;
             if (width < 1) continue;
+            const rowRight =
+              after === null && i + MAX_WRAP_SEGMENTS_PER_LINE < band.segments.length
+                ? band.segments[i + MAX_WRAP_SEGMENTS_PER_LINE - 1].right
+                : limitX;
             const available = [];
             for (const measured of edges.get(state.end)) {
               if (!(yield* checkpoint())) return [];
@@ -501,12 +509,13 @@ function* fitWrappedParagraph(
                 line,
                 rowTop,
                 after: segment.right,
+                rowRight,
                 mandatory: measured.mandatory,
                 clearance: baseline - naturalBaseline,
               });
             }
             if (available.length) {
-              if (segment !== band.segments.at(-1)) return available;
+              if (segment !== band.segments.at(-1) && segment.right !== rowRight) return available;
               return hyphens.candidates(
                 available,
                 after !== null ? state.beforeRow : state.hyphens,
@@ -540,6 +549,7 @@ function* fitWrappedParagraph(
         ),
         cursor: { frame: choice.line.frame, baseline: choice.line.baseline },
         after: choice.after,
+        rowRight: choice.rowRight,
         rowTop: choice.rowTop,
         mandatory: choice.mandatory,
         cost: state.cost + choice.line.cost,
@@ -590,9 +600,9 @@ function* fitWrappedParagraph(
   while (seed.end < end) {
     const fitting = yield* fitsAt(seed);
     const choice =
-      (mode === 'single-line' && wordSpacing
-        ? fitting.find((candidate) => candidate.line.wordSpacing.fitsMinimum)
-        : null) ?? fitting[0];
+      mode === 'single-line' && wordSpacing
+        ? preferredSingleLine(fitting, (candidate) => candidate.line)
+        : fitting[0];
     if (budget) return failed(budget);
     if (!choice) break;
     if (++states > maxStates) return failed('state-budget');
@@ -629,6 +639,8 @@ function* fitWrappedParagraph(
             next.cursor.baseline +
             ':' +
             next.after +
+            ':' +
+            (next.rowRight ?? '') +
             ':' +
             (next.after === null ? '' : next.rowTop) +
             ':' +

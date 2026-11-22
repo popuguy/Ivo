@@ -618,5 +618,38 @@ test('both single-line planners admit a longer row within its combined minimum e
   assert.ok(veryLoose.badness > mild.badness);
   assert.equal(adjustWordSpacing(measured(0, 2, 48, 2, 4), 100, 'justify', true, p).badness, null);
   const emergency = adjustWordSpacing(measured(0, 2, 110, 10, 6), 100, 'justify', false, p);
-  assert.ok(emergency && emergency.badness >= 100);
+  const atMinimum = (measurementWidth) =>
+    adjustWordSpacing(
+      measurementWidth,
+      measurementWidth.wordSpacing.minimumWidth,
+      'justify',
+      false,
+      p,
+    );
+  const candidate = measured(0, 2, 110, 10, 6);
+  const barelyTight = adjustWordSpacing(
+    candidate,
+    candidate.wordSpacing.minimumWidth - 0.001,
+    'justify',
+    false,
+    p,
+  );
+  assert.ok(barelyTight.badness > atMinimum(candidate).badness);
+  assert.ok(barelyTight.badness - atMinimum(candidate).badness < 0.1);
+  assert.ok(emergency.badness > barelyTight.badness);
+  const nearNatural = input(
+    3,
+    [
+      measured(0, 1, 99, 5, 25),
+      measured(0, 2, 105, 5, 25),
+      measured(1, 3, 65, 3, 14),
+      measured(2, 3, 22, 0, 5),
+    ],
+    { wordSpacing: p, mode: 'single-line', columns: [{ ...columns[0], obstacles: [] }] },
+  );
+  for (const choose of [chooseParagraphFlow, chooseWrappedParagraphFlow])
+    assert.deepEqual(
+      choose(nearNatural).lines.map((line) => line.end),
+      [1, 3],
+    );
 });

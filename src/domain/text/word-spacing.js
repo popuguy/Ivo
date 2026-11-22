@@ -4,6 +4,9 @@ export const JUSTIFICATION_GROUPS = Object.freeze([
   { label: 'Letter Spacing', prefix: 'letter', min: -100, max: 500, defaults: [0, 0, 0] },
   { label: 'Glyph Scaling', prefix: 'glyph', min: 50, max: 200, defaults: [100, 100, 100] },
 ]);
+export const DEFAULT_JUSTIFICATION = JUSTIFICATION_GROUPS.map(({ defaults }) =>
+  defaults.join(':'),
+).join('|');
 const fields = ['minimum', 'desired', 'maximum'];
 const numeric = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 

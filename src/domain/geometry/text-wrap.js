@@ -9,6 +9,9 @@ import {
 } from './wrap-contour.js';
 
 const EPS = 1e-7;
+// A line can begin at any opening. After the first word is placed, the
+// current opening and the next four are available on that baseline.
+export const MAX_WRAP_SEGMENTS_PER_LINE = 5;
 const area = (points) =>
   points.reduce((sum, a, index) => {
     const b = points[(index + 1) % points.length];
