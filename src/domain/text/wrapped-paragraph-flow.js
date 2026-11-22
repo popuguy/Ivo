@@ -41,7 +41,10 @@ function* prepareColumns(columns) {
       (column.minimumFirstBaseline !== undefined &&
         !finite(column.minimumFirstBaseline, 0, 14400)) ||
       (column.verticalAlign !== undefined &&
-        !['top', 'center', 'bottom'].includes(column.verticalAlign)) ||
+        !['top', 'center', 'bottom', 'justify'].includes(column.verticalAlign)) ||
+      (column.justifySpacing !== undefined &&
+        (!finite(column.justifySpacing?.line, 0, 14400) ||
+          !finite(column.justifySpacing?.paragraph, 0, 14400))) ||
       (column.obstacles !== undefined && !Array.isArray(column.obstacles))
     )
       throw Error('Invalid wrapped paragraph-flow column');
@@ -359,7 +362,9 @@ function* fitWrappedParagraph(
         const column = frames[frame],
           offset = firstBaseline(column, metrics),
           left = style.leftIndent + (state.end === start ? style.firstLineIndent : 0),
-          right = column.width - style.rightIndent;
+          right = column.width - style.rightIndent,
+          extraLeading = column.justifySpacing?.line ?? 0,
+          rowAdvance = metrics.advance + extraLeading;
         if (!(yield* checkpoint())) return [];
         if (right - left < 1 || minimumWidths.get(state.end) > right - left + EPS) continue;
         let firstInColumn = frame !== state.cursor.frame || state.cursor.baseline === null;
@@ -368,9 +373,13 @@ function* fitWrappedParagraph(
         if (firstInColumn) baseline = (column.alignmentOffset || 0) + offset;
         else if (!state.line)
           baseline =
-            state.cursor.baseline + metrics.advance + previousAfter + style.paragraphBefore;
+            state.cursor.baseline +
+            rowAdvance +
+            previousAfter +
+            style.paragraphBefore +
+            (column.justifySpacing?.paragraph ?? 0);
         else {
-          baseline = state.cursor.baseline + (state.mandatory ? metrics.advance : 0);
+          baseline = state.cursor.baseline + (state.mandatory ? rowAdvance : 0);
           after = state.mandatory ? null : state.after;
         }
         const naturalBaseline = baseline;
@@ -399,7 +408,7 @@ function* fitWrappedParagraph(
               bottom: Math.max(baseline + metrics.descent, baseline - metrics.ascent + EPS),
             };
             const lineBand = { top: rowTop, bottom: Math.max(baseline, rowTop + EPS) };
-            const aligned = column.verticalAlign === 'center' || column.verticalAlign === 'bottom';
+            const aligned = column.verticalAlign && column.verticalAlign !== 'top';
             const slices = {
               jumpBand: lineBand,
               shapeBand: lineBand,
@@ -548,16 +557,18 @@ function* fitWrappedParagraph(
           if (rowSkippedWidth > 0)
             skippedWidth += rowSkippedWidth + (after === null ? right - left : 0);
           if (sameRowOnly) return [];
-          if (metrics.advance === 0) {
+          if (rowAdvance === 0) {
             if (after !== null) {
               after = null;
               continue;
             }
             break;
           }
-          rowTop = baseline;
+          // Extra justification space is empty leading above the next line.
+          // Only its natural text band restricts a fragment's horizontal opening.
+          rowTop = baseline + extraLeading;
           firstInColumn = false;
-          baseline += metrics.advance;
+          baseline += rowAdvance;
           after = null;
         }
       }

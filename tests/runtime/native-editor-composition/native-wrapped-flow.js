@@ -854,6 +854,14 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
       frameOptions: { firstBaseline: 'fixed', minimumFirstBaseline: 12, verticalAlign: 'top' },
       html: '<p>cut<br>hem</p><p>sew<br>grading</p>',
     });
+    const justifyObstacle = insertObject(doc, 'polygon', doc.pages[0].id, {
+      x: 20,
+      y: 112,
+      w: 110,
+      h: 26,
+      strokeWidth: 0,
+    });
+    setTextWrap(doc, [justifyObstacle.id], { mode: 'bounds', side: 'both' });
     const justifyFlow = startTextFlow(doc, justifyFrame.id, { automaticPages: false });
     enableNativeComposition(doc, justifyFlow, 'single-line');
     history = createDocumentHistory();
@@ -882,6 +890,10 @@ export async function verifyNativeWrappedFlow({ host, compose, insert, drag, key
           result.layout.lines.every((l, i) => Math.abs(l.baseline - expected[i]) < 0.05),
         'Vertical Justify lost exact baselines or source: ' +
           JSON.stringify(result.layout.lines.map((l) => l.baseline)),
+      );
+      assert(
+        result.layout.lines.every((l, i) => Math.abs(l.originX - (i === 2 ? 110 : 0)) < 0.05),
+        'A vertically justified row ignored the object at its new baseline',
       );
     };
     checkJustified([12, 54.6667, 97.3333, 140]);

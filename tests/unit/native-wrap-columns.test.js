@@ -87,9 +87,15 @@ test('native wrapping source admission preserves unsupported source and exact ge
     columns = [{ width: 300, height: 200, verticalAlign: 'top', obstacles: [{ mode: 'bounds' }] }],
     before = structuredClone(source);
   validateNativeWrapping(source, columns);
+  assert.doesNotThrow(() =>
+    validateNativeWrapping(source, [{ ...columns[0], verticalAlign: 'justify' }]),
+  );
   assert.throws(
-    () => validateNativeWrapping(source, [{ ...columns[0], verticalAlign: 'justify' }]),
-    /vertical Justify in a column with wrapping objects/,
+    () =>
+      validateNativeWrapping(source, [
+        { ...columns[0], verticalAlign: 'justify', grid: { start: 0, increment: 12 } },
+      ]),
+    /baseline grids with vertical Justify/,
   );
   assert.doesNotThrow(() =>
     validateNativeWrapping(source, [

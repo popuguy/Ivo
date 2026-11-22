@@ -54,8 +54,14 @@ export function nativeWrapColumns(document, columns, session, imageContours) {
  * Inverse shapes still require the entire glyph band to fit inside the path. */
 export function validateNativeWrapping(source, columns) {
   if (!columns.some((column) => column.obstacles?.length)) return;
-  if (columns.some((column) => column.obstacles?.length && column.verticalAlign === 'justify'))
-    throw new UnsupportedComposition('vertical Justify in a column with wrapping objects');
+  if (
+    columns.some(
+      (column) => column.obstacles?.length && column.grid && column.verticalAlign === 'justify',
+    )
+  )
+    throw new UnsupportedComposition(
+      'baseline grids with vertical Justify in a column with wrapping objects',
+    );
   if (
     columns.some((column) => column.obstacles?.some((obstacle) => obstacle.invert)) &&
     source.runs.some((run) => (run.baselineShift ?? 0) !== 0 || (run.verticalScale ?? 100) !== 100)

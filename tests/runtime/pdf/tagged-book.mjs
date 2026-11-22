@@ -9,6 +9,32 @@ import {
   decodePDFRawStream,
 } from 'pdf-lib';
 
+function visitStructure(pdf, visit) {
+  const n = PDFName.of;
+  const root = pdf.catalog.lookup(n('StructTreeRoot'), PDFDict);
+  function walk(item, inheritedPage) {
+    if (item instanceof PDFArray) {
+      for (const kid of item.asArray()) walk(pdf.context.lookup(kid), inheritedPage);
+      return;
+    }
+    if (!(item instanceof PDFDict) || item.get(n('Type')) !== n('StructElem')) return;
+    const page = item.get(n('Pg')) || inheritedPage;
+    visit(item, page);
+    walk(item.lookup(n('K')), page);
+  }
+  walk(root.lookup(n('K')));
+}
+
+export async function taggedWords(bytes) {
+  const pdf = await PDFDocument.load(bytes);
+  const text = [];
+  visitStructure(pdf, (item) => {
+    const actual = item.lookup(PDFName.of('ActualText'))?.decodeText();
+    if (actual) text.push(actual);
+  });
+  return text.join(' ').trim().split(/\s+/u);
+}
+
 export async function verifyTaggedBook(bytes) {
   const pdf = await PDFDocument.load(bytes);
   const n = PDFName.of;
@@ -43,19 +69,10 @@ export async function verifyTaggedBook(bytes) {
   assert.equal(semantic.get('Woven surfaces'), '/H2');
   assert.equal(semantic.get('Fibre index'), '/P');
   assert(!semantic.has('Unprinted entry'), 'Overset heading leaked into the reading order');
-  const frontPage = pdf.getPage(0).ref;
   const order = [];
-  function walk(item, inheritedPage) {
-    if (item instanceof PDFArray) {
-      for (const kid of item.asArray()) walk(ctx.lookup(kid), inheritedPage);
-      return;
-    }
-    if (!(item instanceof PDFDict) || item.get(n('Type')) !== n('StructElem')) return;
-    const page = item.get(n('Pg')) || inheritedPage;
-    if (page === frontPage) order.push(String(item.get(n('S'))));
-    walk(item.lookup(n('K')), page);
-  }
-  walk(root.lookup(n('K')));
+  visitStructure(pdf, (item, page) => {
+    if (page === pdf.getPage(0).ref) order.push(String(item.get(n('S'))));
+  });
   assert(
     order.includes('/P') && order.includes('/H2') && order.indexOf('/P') < order.indexOf('/H2'),
     'The book did not honor the authored reading order on its first page',

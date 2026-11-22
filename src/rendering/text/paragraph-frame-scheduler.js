@@ -1,4 +1,4 @@
-import { alignWrappedColumns } from './vertical-wrap-alignment.js';
+import { alignWrappedColumns, verticalJustificationSpacing } from './vertical-wrap-alignment.js';
 import { retainedHyphenCount } from '../../domain/text/line-hyphenation.js';
 import { hasAuthoredBreakCharacters } from '../../domain/text/paragraph-breaks.js';
 import { paragraphFlowSteps } from '../../domain/text/paragraph-flow.js';
@@ -167,25 +167,33 @@ export async function fitFrameParagraphs(
         : undefined,
     });
   const initial = await schedule();
-  const scheduled = await alignWrappedColumns(columns, initial, async (offsets) => {
-    offsetKey = JSON.stringify(offsets);
-    fitSteps = createWrappedParagraphFitter();
-    for (const [index, offset] of offsets.entries()) columns[index].alignmentOffset = offset ?? 0;
-    try {
-      return await schedule();
-    } catch (error) {
-      // A lower starting position may strand a kept paragraph in the last column.
-      if (
-        error instanceof UnsupportedComposition &&
-        error.feature === 'paragraph keep scheduling beyond planned frame capacity'
-      )
-        return null;
-      throw error;
-    }
-  });
+  const paragraphStarts = new Set(paragraphs.map((p) => p.start));
+  const scheduled = await alignWrappedColumns(
+    columns,
+    initial,
+    paragraphStarts,
+    async (adjustments) => {
+      offsetKey = JSON.stringify(adjustments);
+      fitSteps = createWrappedParagraphFitter();
+      for (const [index, adjustment] of adjustments.entries()) {
+        columns[index].alignmentOffset = adjustment?.offset ?? 0;
+        columns[index].justifySpacing = adjustment?.spacing;
+      }
+      try {
+        return await schedule();
+      } catch (error) {
+        // A lower starting position may strand a kept paragraph in the last column.
+        if (
+          error instanceof UnsupportedComposition &&
+          error.feature === 'paragraph keep scheduling beyond planned frame capacity'
+        )
+          return null;
+        throw error;
+      }
+    },
+  );
   const lines = scheduled.lines;
   if (lines.length > MAX_LINES) failed('flow line budget');
-  const paragraphStarts = new Set(paragraphs.map((p) => p.start));
   const gridPolicies = new Map();
   if (actualColumns.some((column) => column.grid && column.verticalAlign !== 'top')) {
     let index = 0;
@@ -223,14 +231,16 @@ export async function fitFrameParagraphs(
         : shift;
     if (column.verticalAlign === 'justify' && own.length > 1) {
       const boundaries = own.slice(1).filter((line) => paragraphStarts.has(line.start)).length,
-        paragraphExtra = boundaries
-          ? Math.min(column.paragraphSpacingLimit, remaining / boundaries)
-          : 0,
-        lineExtra = (remaining - boundaries * paragraphExtra) / (own.length - 1);
+        extra = verticalJustificationSpacing(
+          remaining,
+          own.length - 1,
+          boundaries,
+          column.paragraphSpacingLimit,
+        );
       let shift = 0;
       for (let i = 1; i < own.length; i++) {
-        if (paragraphStarts.has(own[i].start)) shift += paragraphExtra;
-        shift += lineExtra;
+        if (paragraphStarts.has(own[i].start)) shift += extra.paragraph;
+        shift += extra.line;
         own[i].baseline = Math.min(column.height, own[i].baseline + shift);
       }
     } else if (offset) for (const line of own) line.baseline += offset;

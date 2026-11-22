@@ -1,4 +1,4 @@
-import { verifyTaggedBook } from './tagged-book.mjs';
+import { taggedWords, verifyTaggedBook } from './tagged-book.mjs';
 import { verifyEndnotePDF } from './endnotes.mjs';
 import { verifyPrintedStyleRules } from './paragraph-style-rules.mjs';
 import { publicationPages } from '../../../src/rendering/publication-pages.js';
@@ -1224,7 +1224,7 @@ print(String(data: summaryData, encoding: .utf8)!)
     // A single word wraps to the right of a left-hand object when centered;
     // at Bottom it returns left and its real descenders print below the frame.
     const alignedWrapPDFs = {};
-    for (const alignment of ['center', 'bottom', 'justify']) {
+    for (const alignment of ['center', 'bottom', 'justify', 'justify-wrap']) {
       const document = structuredClone(nativeWrapDocument);
       document.blocks = document.blocks.filter((b) => b.id !== clippedImage.id);
       const frame = document.blocks.find((b) => b.id === wrapFrame.id);
@@ -1237,7 +1237,7 @@ print(String(data: summaryData, encoding: .utf8)!)
         frameOptions: {
           firstBaseline: 'fixed',
           minimumFirstBaseline: 16,
-          verticalAlign: alignment,
+          verticalAlign: alignment === 'justify-wrap' ? 'justify' : alignment,
         },
       });
       const obstacle = document.blocks.find((b) => b.id === wrapObject.id);
@@ -1246,8 +1246,9 @@ print(String(data: summaryData, encoding: .utf8)!)
         mode: 'bounds',
         offsets: { top: 0, right: 0, bottom: 0, left: 0 },
       });
-      if (alignment === 'justify') {
-        setTextWrap(document, [obstacle.id], { mode: 'none' });
+      if (alignment === 'justify' || alignment === 'justify-wrap') {
+        if (alignment === 'justify') setTextWrap(document, [obstacle.id], { mode: 'none' });
+        else Object.assign(obstacle, { y: 125, w: 120, h: 40 });
         frame.frameOptions.paragraphSpacingLimit = 12;
         document.textFlows[0].html = '<p>cut<br>hem</p><p>sew<br>grading</p>';
         markTypographyVersion(document);
@@ -1256,6 +1257,9 @@ print(String(data: summaryData, encoding: .utf8)!)
         project: root,
       });
       assert.deepEqual(pdf.manifest.warnings, []);
+      if (alignment === 'justify-wrap') {
+        assert.deepEqual(await taggedWords(pdf.bytes), ['cut', 'hem', 'sew', 'grading']);
+      }
       const filename = path.join(output, 'native-wrap-' + alignment + '.pdf');
       await writeFile(filename, pdf.bytes);
       const inspected = await promisify(execFile)('xcrun', [

@@ -718,10 +718,7 @@ test('baseline grids combine with vertical alignment in clear frames and with wr
     assert.doesNotThrow(() => validateNativeFlowSource(doc, flow));
   }
   blocker(doc);
-  assert.throws(
-    () => validateNativeFlowSource(doc, flow),
-    /vertical Justify in a column with wrapping objects/,
-  );
+  assert.throws(() => validateNativeFlowSource(doc, flow), /baseline grids with vertical Justify/);
   frame.frameOptions.verticalAlign = 'top';
   assert.doesNotThrow(() => validateNativeFlowSource(doc, flow));
   frame.ignoreTextWrap = true;
