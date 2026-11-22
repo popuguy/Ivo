@@ -354,6 +354,7 @@ function* fitWrappedParagraph(
     },
     fragmentFits = function* (state, metrics, sameRowOnly = false, limit = end) {
       const stop = sameRowOnly ? state.cursor.frame + 1 : frames.length;
+      let skippedWidth = 0;
       for (let frame = state.cursor.frame; frame < stop; frame++) {
         const column = frames[frame],
           offset = firstBaseline(column, metrics),
@@ -472,6 +473,9 @@ function* fitWrappedParagraph(
             continue;
           }
           const limitX = after === null ? undefined : state.rowRight;
+          const scoreOpenings =
+            band.hasScannedContour && !rowProfiles && !wordSpacing && style.align === 'left';
+          let rowSkippedWidth = 0;
           for (let i = 0; i < band.segments.length; i++) {
             const segment = band.segments[i];
             if (after !== null && segment.left < after - EPS) continue;
@@ -517,6 +521,9 @@ function* fitWrappedParagraph(
                 ...(spacing ? { wordSpacing: spacing } : {}),
               };
               line.cost = paragraphLineCost(line, measured.end === end);
+              // The next word may bypass several openings. Leaving all their
+              // space empty must also count when comparing paragraph breaks.
+              line.cost += (skippedWidth + rowSkippedWidth) / Math.max(1, metrics.ascent);
               available.push({
                 line,
                 rowTop,
@@ -534,7 +541,12 @@ function* fitWrappedParagraph(
                 (choice) => choice.line,
               );
             }
+            if (scoreOpenings) rowSkippedWidth += width;
           }
+          // An entirely unused baseline also advances the reading position
+          // by a full column line. Fully obstructed bands had no opening to lose.
+          if (rowSkippedWidth > 0)
+            skippedWidth += rowSkippedWidth + (after === null ? right - left : 0);
           if (sameRowOnly) return [];
           if (metrics.advance === 0) {
             if (after !== null) {

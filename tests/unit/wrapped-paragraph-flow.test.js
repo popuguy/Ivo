@@ -473,6 +473,36 @@ test('an unrelated contour does not change qualified rectangle or Jump boundary 
   }
 });
 
+test('a paragraph uses available openings around a sloping contour before extending below it', () => {
+  const input = measuredWords([26, 32, 32, 24, 22, 6, 28, 10, 21]);
+  input.columns[0].obstacles = [
+    {
+      mode: 'contour',
+      side: 'both',
+      lineContour: true,
+      bounds: { left: 12, top: 13, right: 85, bottom: 62 },
+      polygons: [
+        [
+          { x: 12, y: 13 },
+          { x: 52, y: 13 },
+          { x: 85, y: 48 },
+          { x: 67, y: 62 },
+          { x: 29, y: 53 },
+        ],
+      ],
+    },
+  ];
+  const result = chooseWrappedParagraphFlow(input);
+  assert.equal(result.status, 'fit');
+  assert.equal(result.lines[0].end, 2);
+  assert.deepEqual(
+    [...new Set(result.lines.map((line) => line.baseline))],
+    [10, 24, 38, 52, 66, 80],
+  );
+  assert.equal(result.lines.at(-1).end, input.end);
+  assert.ok(result.lines.every((line) => line.naturalWidth <= line.width));
+});
+
 test('empty contour search handles zero and underflow leading without retrying one band forever', () => {
   for (const advance of [0, Number.MIN_VALUE]) {
     const input = measuredWords([5]);

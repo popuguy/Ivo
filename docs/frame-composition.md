@@ -51,3 +51,20 @@ At some whole-point openings, a word’s native advance exceeds the available wi
 The hidden desktop editor now checks the eleven internal frame boundaries against InDesign before editing and after each of nine different insertions. Exact matches increased from 55 of 110 to 81 of 110. Total boundary displacement decreased from 4,524 to 2,155 source positions. Across those layouts, 516 rows had the same text at the same baseline, up from 322. The original spread still matches through five entire frames, with all 3,465 positions accounted for. One of the nine insertions diverges throughout. Two additional held-out passages also diverged at all eleven interior boundaries in both versions. Their total displacement increased from 1,318 to 1,500 positions.
 
 The editor test also types, deletes, moves an image mask, and checks restoration in the twelve frames. Two fonts at a separate 13 pt setting agreed on whether 35 of 36 unfamiliar words and short phrases fit. Further work includes the tracking adjustment InDesign sometimes makes within a single word between two obstacles, combined wrap with vertical Justify, and line choices within a page.
+
+## Paragraph breaks around partly empty contour rows
+
+The left-aligned Paragraph Composer previously assigned a cost to partly filling an opening, yet a different word break could skip the entire opening for free. On some pages the cheaper choice left several usable baselines blank. Ivo now counts the width skipped before placing the next word. Skipping a complete open baseline also counts one column width. These distances are measured in units of the run’s ascent, independent of the authored leading. The rule applies to measured irregular contours with uniform line metrics and ordinary spacing. A fully blocked row has no available width to count. The search uses the same openings and native glyph measurements as the editor and PDF.
+
+The table compares Ivo before and after this correction with InDesign 22.0.0.104. Each insertion starts from the same six-page spread with 12 linked frames and 36 masked pictures. An exact frame break means the same source character ends the frame. Displacement sums the absolute differences at the eleven internal frame boundaries. A matching row contains the same text at the same baseline.
+
+| Independent layouts or editing cases                                   | Exact frame breaks |  Displacement | Matching rows |
+| ---------------------------------------------------------------------- | -----------------: | ------------: | ------------: |
+| Original spread and nine insertions                                    |     81 → 93 of 110 |   2,155 → 319 |     516 → 559 |
+| Two previously divergent passages used for diagnosis                   |        0 → 4 of 22 |   1,500 → 848 |        1 → 14 |
+| Six further passages used during development                           |      36 → 43 of 66 |   1,677 → 771 |     158 → 193 |
+| Eight passages held back for validation, including Spanish and Italian |      35 → 59 of 88 | 2,897 → 1,244 |     162 → 266 |
+
+Three of the eight validation passages matched at every frame break. Two previously close cases in that set went from nine to eight exact breaks. The hidden Mac editor reproduced the source of all twelve frames for every passage, selected and deleted each insertion, moved a mask, and restored the original text and geometry. Moving the mask by 18 pt matched eight of eleven InDesign frame breaks, up from five. The original typing and reflow latency checks also passed.
+
+Word fitting within the openings remains a separate difference. In a disposable 12 pt test with two obstacles, InDesign could reduce the spacing between letters to fit a single word into the middle opening. Changing the copy or the width of the opening farther to the right changed how much it would compress the same word. A fixed extra allowance for a word between two shapes produced substantially worse pagination on the original spread. The two diagnostic passages each still differ at nine of eleven boundaries. Native vertical Justify with overlapping wrap objects also remains open.
