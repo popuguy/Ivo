@@ -34,6 +34,7 @@ import {
   systemPreferences,
 } from 'electron';
 import path from 'node:path';
+import packageInfo from '../package.json' with { type: 'json' };
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   writeFile,
@@ -389,7 +390,7 @@ else {
                 directory: record.vault.directory,
                 manager: false,
               }
-            : { manager: true };
+            : { manager: true, version: packageInfo.version };
         if (action === 'list')
           return registry.list().map((entry) => ({ ...entry, open: vaultWindows.has(entry.id) }));
         if (action === 'manager') {
@@ -413,7 +414,9 @@ else {
         }
         if (action === 'open') {
           if (typeof value !== 'string') throw new Error('Choose a registered vault.');
-          return info(await openRegistered(value));
+          const target = await openRegistered(value);
+          if (!record.vault) await waitWindowReady(target);
+          return info(target);
         }
         if (action === 'show') {
           const entry = registry.entry(value || record.entry?.id);
@@ -482,7 +485,9 @@ else {
               (knownEntry && vaultWindows.get(knownEntry.id)?.vault) ||
               (await openVault(canonical)),
             entry = await registry.remember(vault.directory);
-          return { ...info(await openEntry(entry, vault)), canceled: false };
+          const target = await openEntry(entry, vault);
+          if (!record.vault) await waitWindowReady(target);
+          return { ...info(target), canceled: false };
         } finally {
           record.nativeDialogOpen = false;
           installMenu();
@@ -804,6 +809,7 @@ function notifyVaults() {
 }
 function showManager() {
   if (manager && !manager.window.isDestroyed()) {
+    if (manager.window.isMinimized()) manager.window.restore();
     showWindow(manager);
     return;
   }
@@ -836,16 +842,16 @@ function createWindow(
   } = {},
 ) {
   const window = new BrowserWindow({
-      width: entry ? 1440 : 900,
-      height: entry ? 960 : 600,
-      ...bounds,
+      ...(entry
+        ? { width: 1440, height: 960, minWidth: 600, minHeight: 450, ...bounds }
+        : { width: 800, height: 650, resizable: false, maximizable: false, fullscreenable: false }),
       show: false,
       paintWhenInitiallyHidden: true,
-      minWidth: entry ? 600 : 640,
-      minHeight: entry ? 450 : 450,
       title: entry ? entry.name + ' — Ivo' : 'Ivo vaults',
       backgroundColor: '#f5f5f6',
-      ...(entry ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } } : {}),
+      ...(entry || process.platform === 'darwin'
+        ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: entry ? 12 : 14, y: 12 } }
+        : {}),
       webPreferences: {
         preload: path.join(project, 'desktop/preload.cjs'),
         partition: 'persist:ivo-' + (entry?.id || 'vault-manager'),

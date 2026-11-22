@@ -5,3 +5,4 @@
 @import './pages-and-layers.css';
 @import './text-wrap.css';
 @import './find-change.css';
+@import '../features/workspace/vault-picker.css';

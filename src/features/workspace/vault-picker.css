@@ -1,0 +1,175 @@
+.vault-manager {
+  display: flex;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--interface-font);
+}
+.vault-manager > aside {
+  flex: 0 0 280px;
+  min-width: 0;
+  padding-top: 32px;
+  background: var(--shell);
+  border-right: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+.vault-list {
+  height: 100%;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  -webkit-app-region: no-drag;
+}
+.vault-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: start;
+  padding-right: 4px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+}
+.vault-list-row:hover,
+.vault-list-row:has([aria-expanded='true']) {
+  background: color-mix(in srgb, var(--ink) 6%, var(--shell));
+}
+.vault-manager button {
+  cursor: default;
+}
+.vault-manager button:focus-visible {
+  outline-offset: -2px;
+}
+.vault-list-open {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 0 8px 12px;
+  word-break: break-all;
+  line-height: 20px;
+}
+.vault-list-open:hover {
+  color: var(--ink);
+}
+.vault-list-open strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+}
+.vault-list-open span {
+  display: block;
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.vault-list-options {
+  width: 30px;
+  height: 30px;
+  margin-top: 8px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 5px;
+}
+.vault-list-options .reference-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.45;
+}
+.vault-list-options:hover .reference-icon,
+.vault-list-options[aria-expanded='true'] .reference-icon {
+  opacity: 0.9;
+}
+.vault-manager > section {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 36px 60px;
+  -webkit-app-region: drag;
+}
+.vault-manager header {
+  text-align: center;
+  margin: 0 0 32px;
+}
+.vault-manager header h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+.vault-manager header p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.vault-picker-actions {
+  position: relative;
+  width: 100%;
+  max-width: 448px;
+  -webkit-app-region: no-drag;
+}
+.vault-picker-card {
+  margin: 0;
+  padding: 0 20px;
+  background: var(--shell);
+  border-radius: 9px;
+}
+.vault-picker-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+}
+.vault-picker-action + .vault-picker-action {
+  border-top: 1px solid var(--line);
+}
+.vault-picker-action h2,
+.vault-picker-action label {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.vault-picker-action p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 17px;
+}
+.vault-picker-action button {
+  flex: 0 0 100px;
+  justify-content: center;
+  min-height: 30px;
+  border-radius: 6px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-size: 14px;
+}
+.vault-picker-action button:hover {
+  background: color-mix(in srgb, var(--ink) 4%, var(--paper));
+}
+.vault-picker-action button.vault-picker-primary {
+  background: var(--blue);
+  color: white;
+  box-shadow: none;
+}
+.vault-picker-action button.vault-picker-primary:hover {
+  background: color-mix(in srgb, var(--blue) 92%, black);
+}
+.vault-picker-action input {
+  width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+}
+.vault-picker-back {
+  margin-bottom: 8px;
+  padding: 2px 4px;
+  color: var(--muted);
+}

@@ -46,6 +46,13 @@ await b.saveImport({
 const registry = await openVaultRegistry(path.join(profile, 'vaults.json')),
   bEntry = await registry.remember(bPath);
 await registry.setOpen(bEntry.id, false);
+const collection = path.join(root, 'UnbrokenPathComponent'.repeat(5));
+for (let index = 1; index <= 10; index++) {
+  const folder = path.join(collection, 'Collection ' + index);
+  await fs.mkdir(folder, { recursive: true });
+  const entry = await registry.remember(folder);
+  await registry.setOpen(entry.id, false);
+}
 process.env.IVO_USER_DATA_DIR = profile;
 process.env.IVO_ATLAS_DIR = aPath;
 let pick = { canceled: true, filePaths: [] };
@@ -208,23 +215,120 @@ void (async () => {
       execute(manager, 'ivoNative.store.loadDocuments()'),
       /Invalid vault operation/,
     );
+    assert.deepEqual(manager.getSize(), [800, 650]);
+    assert.equal(manager.isResizable(), false);
+    if (process.platform === 'darwin') {
+      assert.equal(manager.isMaximizable(), false);
+      assert.equal(manager.isFullScreenable(), false);
+    }
+    assert.ok(wa.isResizable());
+    await execute(wa, 'ivoNative.vaults.manager()');
+    assert.equal(
+      windows().filter((window) => window.webContents.getURL().endsWith('#vault-manager')).length,
+      1,
+    );
+    const layout = await execute(
+      manager,
+      `(() => {
+      const list = document.querySelector('.vault-list'), sidebar = list.parentElement.getBoundingClientRect();
+      const options = [...list.querySelectorAll('.vault-list-options')];
+      const action = document.querySelector('[data-picker="create"]');
+      const withinSidebar = options.every(option => {
+        const bounds = option.getBoundingClientRect();
+        return bounds.left >= sidebar.left && bounds.right <= sidebar.right &&
+          option.previousElementSibling.getBoundingClientRect().right <= bounds.left;
+      });
+      list.scrollTop = list.scrollHeight;
+      const last = options.at(-1).getBoundingClientRect();
+      const reachable = document.elementFromPoint(last.x + last.width/2,last.y + last.height/2)?.closest('button') === options.at(-1);
+      list.scrollTop = 0;
+      const button = action.getBoundingClientRect();
+      return {rail:sidebar.width, withinSidebar, reachable, scrolls:list.scrollHeight>list.clientHeight,
+        overflow:list.scrollWidth-list.clientWidth, actionClickable:document.elementFromPoint(button.x+button.width/2,button.y+button.height/2) === action};
+    })()`,
+    );
+    assert.deepEqual(layout, {
+      rail: 280,
+      withinSidebar: true,
+      reachable: true,
+      scrolls: true,
+      overflow: 0,
+      actionClickable: true,
+    });
+    if (process.env.IVO_VAULT_PICKER_SCREENSHOT) {
+      await fs.writeFile(
+        process.env.IVO_VAULT_PICKER_SCREENSHOT,
+        (await manager.webContents.capturePage()).toPNG(),
+      );
+    }
+    // Cancel both folder dialogs and preserve the name when the user returns.
+    pick = { canceled: true, filePaths: [] };
+    await execute(manager, "document.querySelector('[data-picker=choose]').click()");
+    await wait(async () =>
+      execute(manager, "!document.querySelector('.vault-manager[aria-busy=true]')"),
+    );
+    await execute(manager, "document.querySelector('[data-picker=create]').click()");
+    await wait(async () => execute(manager, "!!document.getElementById('new-vault-name')"));
+    await execute(
+      manager,
+      `const input = document.getElementById('new-vault-name');
+      input.value = 'Studio'; input.dispatchEvent(new Event('input',{bubbles:true}));
+      input.form.requestSubmit();`,
+    );
+    await wait(async () =>
+      execute(
+        manager,
+        "document.getElementById('new-vault-name')?.value === 'Studio' && !document.querySelector('.vault-manager[aria-busy=true]')",
+      ),
+    );
+    await execute(manager, "document.querySelector('[data-picker=back]').click()");
+    await wait(async () => execute(manager, "!!document.querySelector('[data-picker=create]')"));
+    await execute(
+      manager,
+      `document.querySelector('[data-id="${bEntry.id}"] .vault-list-options').click()`,
+    );
+    assert.ok(
+      await execute(
+        manager,
+        "!!document.querySelector('[data-navigation-action=forget]:disabled')",
+      ),
+    );
+    await execute(
+      manager,
+      "document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))",
+    );
     created.close();
     await wait(() => created.isDestroyed());
     const createdId = (await execute(wa, 'ivoNative.vaults.list()')).find(
       (entry) => entry.name === 'Created vault',
     ).id;
+    const rowSelector = '[data-id="' + createdId + '"]';
+    await execute(
+      manager,
+      `document.querySelector('${rowSelector}').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}))`,
+    );
+    await wait(async () => execute(manager, "!!document.querySelector('[role=menu]')"));
+    await execute(
+      manager,
+      "document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))",
+    );
+    assert.equal(await execute(manager, "!!document.querySelector('[role=menu]')"), false);
+    await execute(manager, `document.querySelector('${rowSelector} .vault-list-options').click()`);
     await wait(async () =>
       execute(
         manager,
-        `!!document.querySelector('[data-vault-forget="${createdId}"]:not(:disabled)')`,
+        "!!document.querySelector('[data-navigation-action=forget]:not(:disabled)')",
       ),
     );
-    await execute(manager, `document.querySelector('[data-vault-forget="${createdId}"]').click()`);
+    await execute(manager, "document.querySelector('[data-navigation-action=forget]').click()");
     await wait(
       async () =>
         !(await execute(wa, 'ivoNative.vaults.list()')).some((entry) => entry.id === createdId),
     );
     assert.ok((await fs.stat(path.join(root, 'Created vault', 'atlas.json'))).isFile());
+    await execute(manager, `document.querySelector('[data-vault-open="${bEntry.id}"]').click()`);
+    await wait(() => manager.isDestroyed());
+    assert.ok(!reopened.isDestroyed());
     clearTimeout(timer);
     console.log(
       JSON.stringify(

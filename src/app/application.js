@@ -39,6 +39,7 @@ import {
   normalizeLibraryMeta,
   folderPaths,
 } from '../domain/documents/library.js';
+import { mountVaultPicker } from '../features/workspace/vault-picker.js';
 import { showNavigationMenu } from '../features/workspace/menu.js';
 import { startTextFlow } from '../domain/documents/text-flows.js';
 import {
@@ -73,7 +74,7 @@ import {
 } from '../domain/documents/copy.js';
 import { rememberDocument, readRecentDocuments } from '../domain/knowledge/navigation.js';
 import { createPDFSnapshot } from '../features/export/pdf-plan.js';
-import { icon, installReferenceCursors } from '../shared/ui/icons.js';
+import { installReferenceCursors } from '../shared/ui/icons.js';
 import { installTooltips } from '../shared/ui/tooltips.js';
 import { installTabBar } from '../features/workspace/tabs.js';
 import { installWorkspaceLayout } from '../features/workspace/layout.js';
@@ -1236,44 +1237,6 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     render();
     if (selectTitle) focusTitle();
     else focusBody();
-  }
-  async function renderVaultManager() {
-    const entries = await globalThis.ivoNative.vaults.list();
-    document.title = 'Ivo vaults';
-    root.classList.remove('workspace-mounted');
-    root.innerHTML = `<main class="vault-manager"><aside><h1>Vaults</h1><div class="vault-list">${entries.map((entry) => `<div class="vault-list-row"><button data-vault-open="${esc(entry.id)}"><strong>${esc(entry.name)}</strong><span>${esc(entry.parent)}</span>${entry.open ? '<small>Open</small>' : ''}</button><button class="icon-button" data-vault-forget="${esc(entry.id)}" ${entry.open ? 'disabled' : ''} aria-label="Remove ${esc(entry.name)} from list" title="Remove from list. Files stay in their folder.">${icon('close')}</button></div>`).join('') || '<p>No vaults added.</p>'}</div></aside><section><div><h2>Create new vault</h2><p>Create an Ivo vault in a folder you choose.</p>${button('vault-create', 'Create')}</div><div><h2>Open folder as vault</h2><p>Open an existing Ivo vault, or initialize an empty folder.</p>${button('vault-choose', 'Open')}</div></section></main>`;
-  }
-  async function vaultAction(name, id) {
-    const api = globalThis.ivoNative?.vaults;
-    if (!api) return;
-    if (name === 'open') {
-      await api.open(id);
-      return;
-    }
-    if (name === 'forget') {
-      await api.forget(id);
-      await renderVaultManager();
-      return;
-    }
-    if (name === 'vault-choose') {
-      const result = await api.choose();
-      if (!result.canceled) await renderVaultManager();
-      return;
-    }
-    if (name === 'vault-create') {
-      showDialog(
-        '<h2>Create vault</h2><label class="dialog-field">Vault name<input name="name" maxlength="80" autofocus autocomplete="off"></label><p class="dialog-note">Choose its location in the next window.</p><button type="submit" class="button-primary">Choose location…</button>',
-        async (data) => {
-          const name = data.get('name').trim();
-          if (!name) return;
-          const result = await api.create(name);
-          if (!result.canceled) {
-            dialog.close();
-            await renderVaultManager();
-          }
-        },
-      );
-    }
   }
   function showDialog(html, onSubmit, { prompt = false } = {}) {
     dialog.dataset.dialogKind = prompt ? 'prompt' : 'modal';
@@ -2508,21 +2471,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
       documentMenu(trashed.dataset.trashDocument, event);
       return;
     }
-    const vault = event.target.closest('[data-vault-open],[data-vault-forget]');
-    if (vault) {
-      event.preventDefault();
-      vaultAction(
-        vault.hasAttribute('data-vault-open') ? 'open' : 'forget',
-        vault.dataset.vaultOpen || vault.dataset.vaultForget,
-      ).catch((error) => toast(error.message));
-      return;
-    }
-    const vaultButton = event.target.closest('[data-action^="vault-"]');
-    if (vaultInfo.manager && vaultButton) {
-      event.preventDefault();
-      vaultAction(vaultButton.dataset.action).catch((error) => toast(error.message));
-      return;
-    }
+
     const spine = event.target.closest('[data-stack-tab]');
     if (spine) {
       event.preventDefault();
@@ -2929,9 +2878,6 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
     if (name.startsWith('fit-')) graphHandle?.fit();
   }
   globalThis.ivoNative?.onCommand?.(routeNativeCommand);
-  globalThis.ivoNative?.onVaultsChanged?.(() => {
-    if (vaultInfo.manager) renderVaultManager().catch((error) => toast(error.message));
-  });
 
   /** A native vault has one focused-window editor lease. Passive views never write stale source. */
   globalThis.ivoNative?.onPrepareWindowRelease?.(async () => {
@@ -3109,7 +3055,7 @@ export function startApplication({ root, dialog, workspaceFeatures = WORKSPACE_F
         vaultInfo = await globalThis.ivoNative.vaults.info();
         if (vaultInfo.manager) {
           view = 'empty';
-          await renderVaultManager();
+          await mountVaultPicker(root, vaultInfo.version, (error) => toast(error.message));
           await presentStartup(root);
           startupPresented = true;
           return;

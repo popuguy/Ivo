@@ -54,14 +54,17 @@ function enabledActions(items, result = new Set()) {
     }
   return result;
 }
-export async function showNavigationMenu(items, { x, y, anchor } = {}) {
+export async function showNavigationMenu(
+  items,
+  { x, y, anchor, native = true, label = 'Document options' } = {},
+) {
   const request = ++sequence;
   activeFallback?.();
   activeFallback = null;
   const normalized = normalizeItems(items),
     actions = enabledActions(normalized);
   if (!normalized.length || !actions.size) return null;
-  if (typeof globalThis.ivoNative?.showNavigationMenu === 'function') {
+  if (native && typeof globalThis.ivoNative?.showNavigationMenu === 'function') {
     try {
       const action = await globalThis.ivoNative.showNavigationMenu(normalized);
       return request === sequence && actions.has(action) ? action : null;
@@ -116,7 +119,7 @@ export async function showNavigationMenu(items, { x, y, anchor } = {}) {
       element.className = 'tab-context-menu navigation-context-menu';
       element.id = 'ivo-navigation-menu-' + request + '-' + depth;
       element.setAttribute('role', 'menu');
-      element.setAttribute('aria-label', parent?.textContent || 'Document options');
+      element.setAttribute('aria-label', parent?.textContent || label);
       Object.assign(element.style, {
         maxWidth: 'calc(100vw - 8px)',
         maxHeight: 'calc(100vh - 8px)',
