@@ -165,6 +165,7 @@ public final class TextCompositionEngine {
     let left: Double
     let width: Double
     let wordPercent, letterPercent, glyphPercent: Double?
+    let contourFit: Bool?
   }
   struct RetainedLine: Decodable {
     let start: Int
@@ -190,6 +191,7 @@ public final class TextCompositionEngine {
     let candidates: [Candidate]?
     let breaks: [Int]?
     let includeVectors: Bool?
+    let contourWidthLimit: Int?
     let paragraphs: [Paragraph]?
     let placements: [Placement]?
     let oversetStart: Int?
@@ -1231,6 +1233,50 @@ public final class TextCompositionEngine {
       return prefix[low]
     }
   }
+  // Reference frame composers resolve nominal font advances on a 2048-unit em.
+  // At a whole-point contour opening that can put a word just inside the edge.
+  // Keep shaped kerning, glyph outlines and authored tracking intact. Only use
+  // the compatible advances when the complete visible ink already fits.
+  func contourEdgeOffsets(
+    _ line: CTLine, width: Double, text: NSString, start: Int, end: Int, runs: [TextRun]
+  ) -> LetterOffsets? {
+    let edge = floor(width)
+    guard edge >= 1, width > edge + 1e-7, !runs.isEmpty,
+      width - edge <= Double(end - start) * (runs.map(\.size).max() ?? 0) / 2048,
+      runs.allSatisfy({ $0.tracking == 0 && ($0.horizontalScale ?? 100) == 100
+        && ($0.verticalScale ?? 100) == 100 && ($0.variations?.isEmpty ?? true) })
+    else { return nil }
+    var visibleEnd = end
+    while visibleEnd > start && text.character(at: visibleEnd - 1) == 32 { visibleEnd -= 1 }
+    var offsets = LetterOffsets()
+    var nextCluster = start
+    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+      guard !CTRunGetStatus(run).contains(.rightToLeft) else { return nil }
+      let count = CTRunGetGlyphCount(run)
+      let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+      let unit = CTFontGetSize(font) / 2048
+      var glyphs = [CGGlyph](repeating: 0, count: count)
+      var indices = [CFIndex](repeating: 0, count: count)
+      var nominal = [CGSize](repeating: .zero, count: count)
+      CTRunGetGlyphs(run, CFRange(), &glyphs)
+      CTRunGetStringIndices(run, CFRange(), &indices)
+      CTFontGetAdvancesForGlyphs(font, .horizontal, &glyphs, &nominal, count)
+      for i in 0..<count where indices[i] < visibleEnd {
+        let index = indices[i], advance = nominal[i].width
+        guard index == nextCluster && advance > 0 else { return nil }
+        nextCluster = NSMaxRange(text.rangeOfComposedCharacterSequence(at: index))
+        let correction = floor(advance / unit + 1e-7) * unit - advance
+        if correction < -1e-9 {
+          offsets.ends.append(nextCluster)
+          offsets.prefix.append(offsets.total + correction)
+        }
+      }
+    }
+    guard nextCluster == visibleEnd, width + offsets.total <= edge + 1e-7 else { return nil }
+    let ink = CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
+    guard !ink.isNull, ink.minX + offsets.total >= -1e-7, ink.maxX <= edge + 1e-7 else { return nil }
+    return offsets
+  }
   func letterOffsets(
     _ line: CTLine, shape: WordSpaceShape, text: NSString,
     generatedHyphen: Bool, percent: Double
@@ -1499,6 +1545,7 @@ public final class TextCompositionEngine {
     let width, ascent, descent, leading, advance, capHeight, xHeight: Double
     let inkAscent, inkDescent: Double?
     var wordSpacing: MeasuredWordSpace?
+    var contourFitWidth: Double?
   }
 
   func measureCandidates(_ request: Request, fonts: [String: CGFont]) throws -> [Measurement] {
@@ -1596,6 +1643,10 @@ public final class TextCompositionEngine {
         row.wordSpacing = wordSpaceCapacities(
           shape, line: line, naturalWidth: measuredWidth, policy: policy,
           letterBasis: policy.letterDesired == nil ? 0 : try letterOffsets(line, shape: shape, text: string, generatedHyphen: automaticEnds.contains(candidate.end), percent: 100).total)
+      } else if let limit = request.contourWidthLimit, floor(measuredWidth) <= Double(limit), hyphenWidths[candidate.end] == nil,
+        contourEdgeOffsets(line, width: measuredWidth, text: string, start: candidate.start,
+          end: end, runs: sourceRuns) != nil {
+        row.contourFitWidth = floor(measuredWidth)
       }
       rows[index] = row
     }
@@ -1811,6 +1862,15 @@ public final class TextCompositionEngine {
         let scaleX = (fitted?.glyph ?? 100) / 100
         var letters = LetterOffsets()
         let bodyArea = availableWidth / scaleX - (hyphen?.advance ?? 0)
+        if placement?.contourFit == true {
+          let runs = request.runs.filter { $0.start < end && $0.end > position }
+          guard paragraph?.wordSpacing == nil && alignment == "left" && hyphen == nil
+            && bodyArea == floor(visibleWidth) && visibleWidth > bodyArea,
+            let offsets = contourEdgeOffsets(line, width: visibleWidth, text: nativeString,
+              start: position, end: contentEnd, runs: runs)
+          else { throw fail("Invalid contour metric placement") }
+          letters = offsets
+        }
         var wordSpacingRow: SpacingGeometry?
         var collapsedShape: WordSpaceShape?
         var collapsedEdge: Double?

@@ -122,6 +122,29 @@ window.study = async () => {
     baseline.frames.length === 12 && baseline.frames.every(Boolean),
     'Empty baseline frame: ' + baseline.frames.map((s) => s.length),
   );
+  function compareReference(frameTexts, sample) {
+    const expected = spec.referenceReflow?.[sample];
+    if (!expected) return;
+    let end = 0,
+      exact = 0,
+      totalDrift = 0;
+    for (const [i, target] of expected.ends.entries()) {
+      end += frameTexts[i].length;
+      if (end === target) exact++;
+      totalDrift += Math.abs(end - target);
+    }
+    assert(
+      exact >= expected.minimumMatches && totalDrift <= expected.maximumTotalDrift,
+      'InDesign reflow comparison ' +
+        sample +
+        ': ' +
+        exact +
+        ' matching boundaries, ' +
+        totalDrift +
+        ' characters of total drift',
+    );
+  }
+  compareReference(baseline.frames, 0);
   assert(baseline.maxFragments >= 3, 'Concave masks did not split any row three ways');
   const report = {
     baseline: baseline.frames,
@@ -167,6 +190,7 @@ window.study = async () => {
       sample.frames.every((s, i) => s !== baseline.frames[i]),
       'Early edit did not change ink in every frame',
     );
+    compareReference(sample.frames, report.edits.length + 1);
     report.edits.push({
       ms,
       portMs: portMs - startPortMs,

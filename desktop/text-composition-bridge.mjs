@@ -24,6 +24,7 @@ const fields = {
     'breaks',
     'hyphenationPoints',
     'includeVectors',
+    'contourWidthLimit',
   ],
   span: ['kind', 'logicalStart', 'logicalEnd', 'start', 'end'],
   run: [
@@ -86,6 +87,7 @@ const fields = {
     'wordPercent',
     'letterPercent',
     'glyphPercent',
+    'contourFit',
   ],
   features: Object.values(OPENTYPE_FEATURES).filter((tag) => tag !== 'liga'),
 };
@@ -101,6 +103,15 @@ function record(value, allowed) {
 /** Match the native byte protocol. No URL, font path, output path, or arbitrary object ports. */
 export function validateCompositionRequest(request) {
   record(request, fields.request);
+  if (
+    request.contourWidthLimit !== undefined &&
+    (request.mode !== 'measure-lines-proof' ||
+      request.protocol < 3 ||
+      !Number.isInteger(request.contourWidthLimit) ||
+      request.contourWidthLimit < 1 ||
+      request.contourWidthLimit > 14400)
+  )
+    throw Error('Invalid contour measurement request.');
   if (
     ![1, 2, 3, 4, 5, 6, 7, 8].includes(request.protocol) ||
     (request.protocol === 1 && request.paragraphs !== undefined) ||
@@ -214,6 +225,12 @@ export function validateCompositionRequest(request) {
           )
             throw Error('Invalid justification placement.');
         }
+        if (
+          shape === 'placement' &&
+          row.contourFit !== undefined &&
+          (row.contourFit !== true || !Number.isInteger(row.width) || row.width < 1)
+        )
+          throw Error('Invalid contour edge placement.');
         if (shape === 'run') {
           if (
             Object.hasOwn(row, 'language') &&

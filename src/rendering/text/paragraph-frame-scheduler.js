@@ -238,12 +238,13 @@ export async function fitFrameParagraphs(
   return {
     ...(scheduled.oversetStart === undefined ? {} : { oversetStart: scheduled.oversetStart }),
     breaks: lines.map((line) => line.end),
-    placements: lines.map(({ end, frame, baseline, left, width, wordSpacing }) => ({
+    placements: lines.map(({ end, frame, baseline, left, width, wordSpacing, contourFit }) => ({
       end,
       frame,
       baseline,
       left,
       width,
+      ...(contourFit ? { contourFit } : {}),
       ...(wordSpacing?.glyphPercentage !== undefined
         ? {
             wordPercent: wordSpacing.percentage,

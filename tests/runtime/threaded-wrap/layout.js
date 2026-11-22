@@ -71,5 +71,59 @@ export function wrapSpec() {
     pages,
     paragraphs,
     edits,
+    // The first entry is the unedited layout. Each subsequent entry is the
+    // same artwork after one insertion; the end of the source is checked separately.
+    referenceReflow: [
+      {
+        ends: [339, 603, 863, 1173, 1479, 1738, 2057, 2385, 2670, 2927, 3267],
+        minimumMatches: 5,
+        maximumTotalDrift: 381,
+      },
+      {
+        ends: [391, 681, 992, 1305, 1613, 1924, 2255, 2545, 2856, 3126, 3404],
+        minimumMatches: 10,
+        maximumTotalDrift: 7,
+      },
+      {
+        ends: [354, 686, 997, 1310, 1618, 1929, 2260, 2550, 2861, 3131, 3409],
+        minimumMatches: 9,
+        maximumTotalDrift: 25,
+      },
+      {
+        ends: [348, 684, 995, 1308, 1616, 1927, 2258, 2548, 2859, 3129, 3407],
+        minimumMatches: 9,
+        maximumTotalDrift: 11,
+      },
+      {
+        ends: [344, 676, 987, 1300, 1608, 1919, 2250, 2540, 2851, 3121, 3399],
+        minimumMatches: 9,
+        maximumTotalDrift: 31,
+      },
+      {
+        ends: [378, 668, 979, 1292, 1600, 1911, 2242, 2532, 2843, 3113, 3391],
+        minimumMatches: 10,
+        maximumTotalDrift: 7,
+      },
+      {
+        ends: [369, 701, 1012, 1325, 1633, 1944, 2275, 2565, 2876, 3146, 3424],
+        minimumMatches: 0,
+        maximumTotalDrift: 1654,
+      },
+      {
+        ends: [383, 673, 984, 1297, 1605, 1916, 2247, 2537, 2848, 3118, 3396],
+        minimumMatches: 10,
+        maximumTotalDrift: 7,
+      },
+      {
+        ends: [391, 681, 992, 1305, 1613, 1924, 2255, 2545, 2856, 3126, 3404],
+        minimumMatches: 10,
+        maximumTotalDrift: 7,
+      },
+      {
+        ends: [354, 686, 997, 1310, 1618, 1929, 2260, 2550, 2861, 3131, 3409],
+        minimumMatches: 9,
+        maximumTotalDrift: 25,
+      },
+    ],
   };
 }

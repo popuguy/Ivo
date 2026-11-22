@@ -47,6 +47,58 @@ const portable = (req) => ({
 });
 
 test(
+  'contour-edge measurements retain glyph positions, insertion points and PDF outlines',
+  {
+    skip: process.platform !== 'darwin',
+  },
+  async (t) => {
+    const service = createTextComposition(await buildNativeText());
+    t.after(() => service.close());
+    const req = await request('before');
+    req.protocol = 4;
+    req.frames = [req.frames[0]];
+    req.paragraphs = [
+      {
+        start: 0,
+        end: 6,
+        align: 'left',
+        paragraphBefore: 0,
+        paragraphAfter: 0,
+        leftIndent: 0,
+        rightIndent: 0,
+        firstLineIndent: 0,
+      },
+    ];
+    const measurement = { ...req, mode: 'measure-lines-proof', candidates: [{ start: 0, end: 6 }] };
+    const ordinary = (await service.compose(measurement)).measurements[0];
+    assert(Math.abs(ordinary.width - 32.004) < 0.0001);
+    assert.equal(ordinary.contourFitWidth, undefined);
+    measurement.contourWidthLimit = 32;
+    assert.equal((await service.compose(measurement)).measurements[0].contourFitWidth, 32);
+    const tracked = { ...measurement, runs: [{ ...req.runs[0], tracking: 1 }] };
+    assert.equal((await service.compose(tracked)).measurements[0].contourFitWidth, undefined);
+    const placement = { end: 6, frame: 0, baseline: 14, left: 10, width: 32, contourFit: true };
+    const painted = await service.compose({
+      ...req,
+      mode: 'planned-lines-proof',
+      placements: [placement],
+    });
+    const line = painted.layout.lines[0];
+    assert(line.visibleWidth <= placement.width && line.visibleWidth >= 31.95);
+    assert(Math.abs(line.carets.at(-1).primary - (placement.left + line.visibleWidth)) < 1e-6);
+    const glyphs = line.runs.flatMap((run) => run.glyphs);
+    assert.equal(glyphs.length, 6);
+    for (let i = 1; i < glyphs.length; i++) {
+      const previous = glyphs[i - 1];
+      assert(Math.abs(glyphs[i].position[0] - previous.position[0] - previous.advance[0]) < 1e-6);
+    }
+    assert(painted.vectors.length > 0);
+    const pdf = await service.pdf(painted.token, { invisible: false });
+    assert.equal((await PDFDocument.load(Buffer.from(pdf.data, 'base64'))).getPageCount(), 1);
+  },
+);
+
+test(
   'literal tabs use half-inch stops with shared native caret and PDF geometry',
   { skip: process.platform !== 'darwin' },
   async (t) => {

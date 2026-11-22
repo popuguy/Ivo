@@ -194,16 +194,28 @@ export function textWrapObstacles(document, frame, { column, imageContours } = {
       pieces = polygon.length ? triangulate(polygon) : [];
     }
     const polygons = pieces.map((piece) => piece.map(toFrame));
+    const bounds = polygons.length
+      ? extent(polygons.flat())
+      : { left: 0, top: 0, right: 0, bottom: 0 };
+    // Triangulated pieces have disjoint interiors. A rectangular union retains
+    // its fractional edges, including a rectangle authored in Shape Wrap mode.
+    const lineContour =
+      options.mode === 'contour' &&
+      !options.invert &&
+      sx === 1 &&
+      sy === 1 &&
+      (bounds.right - bounds.left) * (bounds.bottom - bounds.top) -
+        polygons.reduce((sum, piece) => sum + Math.abs(area(piece)), 0) >
+        EPS;
     if (polygons.length || options.invert)
       result.push({
         id: object.id,
         mode: options.mode,
         side: options.side,
         invert: options.invert,
+        ...(lineContour ? { lineContour: true } : {}),
         polygons,
-        bounds: polygons.length
-          ? extent(polygons.flat())
-          : { left: 0, top: 0, right: 0, bottom: 0 },
+        bounds,
         offsets: { ...options.offsets },
         pageSide: textWrapPageSide(document, frame.pageId),
       });
@@ -225,6 +237,33 @@ function clipY(points, value, keepAbove) {
     }
   }
   return output;
+}
+
+// The frame composer measures irregular contours on one-point scan lines in
+// text-frame coordinates. On a straight edge the extrema lie at the first
+// and last scan line it crosses, regardless of the height of the band.
+function contourLineInterval(points, top, bottom) {
+  let left = Infinity,
+    right = -Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i],
+      b = points[(i + 1) % points.length],
+      first = Math.ceil(Math.max(top, Math.min(a.y, b.y)) - EPS),
+      last = Math.floor(Math.min(bottom, Math.max(a.y, b.y)) + EPS);
+    if (first > last) continue;
+    if (Math.abs(b.y - a.y) < EPS) {
+      left = Math.min(left, a.x, b.x);
+      right = Math.max(right, a.x, b.x);
+    } else {
+      const slope = (b.x - a.x) / (b.y - a.y),
+        x0 = a.x + (first - a.y) * slope,
+        x1 = a.x + (last - a.y) * slope;
+      left = Math.min(left, x0, x1);
+      right = Math.max(right, x0, x1);
+    }
+  }
+  if (right <= left) return [];
+  return [{ left: Math.floor(left + EPS), right: Math.floor(right + EPS) }];
 }
 function merge(intervals) {
   const output = [];
@@ -278,7 +317,7 @@ export function nextWrapRowTop(baseline, step, blockedThrough) {
 export function textWrapBand(
   obstacles,
   band,
-  { jumpBand, shapeBand, boundsBand, nextColumnBand } = {},
+  { jumpBand, shapeBand, boundsBand, nextColumnBand, scanContour = false } = {},
 ) {
   if (
     !['left', 'right', 'top', 'bottom'].every((key) => Number.isFinite(band[key])) ||
@@ -289,7 +328,8 @@ export function textWrapBand(
   let segments = [{ left: band.left, right: band.right }],
     nextColumn = false,
     jumpBottom = null;
-  let jumpThrough = null;
+  let jumpThrough = null,
+    hasScannedContour = false;
   const events = [],
     excluded = [];
   for (const obstacle of obstacles) {
@@ -309,6 +349,8 @@ export function textWrapBand(
               : band;
     const occupied = merge(
       polygons.flatMap((polygon) => {
+        if (scanContour && shapeBand && obstacle.lineContour)
+          return contourLineInterval(polygon, slice.top, slice.bottom);
         const clipped = clipY(clipY(polygon, slice.top, true), slice.bottom, false);
         if (!clipped.length || Math.abs(area(clipped)) <= EPS) return [];
         if (
@@ -330,6 +372,7 @@ export function textWrapBand(
       }),
     );
     const active = intersection(occupied, [{ left: band.left, right: band.right }]);
+    if (active.length && scanContour && obstacle.lineContour) hasScannedContour = true;
     if (['jump', 'next-column'].includes(obstacle.mode)) {
       if (!active.length) continue;
       segments = [];
@@ -391,6 +434,7 @@ export function textWrapBand(
   }
   return {
     segments: merge(subtract(merge(segments), merge(excluded))),
+    ...(hasScannedContour ? { hasScannedContour } : {}),
     nextColumn,
     ...(jumpBand && { jumpBottom, jumpThrough }),
     nextY: events.length ? Math.min(...events) : null,

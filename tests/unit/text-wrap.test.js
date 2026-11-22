@@ -90,6 +90,28 @@ const band = (top = 40, bottom = 50) => ({ left: 0, right: 300, top, bottom });
 const segments = (doc, frame, value = band()) =>
   availableWrapSegments(textWrapObstacles(doc, frame), value);
 
+test('paragraph rows follow measured sloped wrap edges while rectangular contours keep fractional positions', () => {
+  const baselines = [12, 27, 42, 57, 72, 87];
+  const edges = (points, dx, side) => {
+    const { doc, frame, object } = fixture(points);
+    Object.assign(object, { x: 42 + dx, y: 0.3, w: 79, h: 88 });
+    setTextWrap(doc, [object.id], { mode: 'contour', side });
+    const obstacles = textWrapObstacles(doc, frame);
+    return baselines.map((y) => {
+      const row = band(Math.max(0, y - 15), y);
+      const [gap] = textWrapBand(obstacles, row, { shapeBand: row, scanContour: true }).segments;
+      return side === 'right' ? gap.left : gap.right;
+    });
+  };
+  const rising = rectangle.map((p, i) => ({ ...p, x: i === 1 ? 58 / 79 : p.x }));
+  const falling = rectangle.map((p, i) => ({ ...p, x: i === 2 ? 58 / 79 : p.x }));
+  assert.deepEqual(edges(rising, 0, 'right'), [102, 106, 109, 113, 117, 120]);
+  assert.deepEqual(edges(falling, 0.55, 'right'), [121, 118, 115, 111, 108, 104]);
+  const mirrored = rising.map((p) => ({ x: 1 - p.x, y: p.y }));
+  assert.deepEqual(edges(mirrored, 37, 'left'), [97, 93, 90, 86, 82, 79]);
+  assert.deepEqual(edges(rectangle, 0.55, 'right'), Array(6).fill(121.55));
+});
+
 test('document wrap defaults apply to newly inserted objects and survive a vault round trip', () => {
   const { doc, frame, object } = fixture();
   const page = doc.pages[0].id;

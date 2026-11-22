@@ -136,7 +136,7 @@ function candidatesFor(points) {
   return candidates;
 }
 
-function paragraphIdentity(request, paragraph) {
+function paragraphIdentity(request, paragraph, contourWidthLimit) {
   const end = paragraph.start + paragraph.text.length,
     runs = request.runs
       .filter((run) => run.end > paragraph.start && run.start < end)
@@ -151,6 +151,7 @@ function paragraphIdentity(request, paragraph) {
   return JSON.stringify({
     protocol: request.protocol,
     frameMetrics: request.protocol >= 3,
+    ...(contourWidthLimit ? { contourWidthLimit } : {}),
     allowFallback: request.allowFallback,
     text: paragraph.text,
     ...(paragraph.automatic ? { automatic: paragraph.automatic } : {}),
@@ -294,7 +295,16 @@ export function createParagraphComposer(measure) {
       )
         throw Error('Invalid paragraph work limits.');
       const width = columns[0]?.width,
-        frameFlow = request.protocol >= 3;
+        frameFlow = request.protocol >= 3,
+        contourWidthLimit =
+          frameFlow && mode === 'paragraph'
+            ? Math.max(
+                0,
+                ...columns
+                  .filter((c) => c.obstacles?.some((o) => o.lineContour))
+                  .map((c) => Math.ceil(c.width)),
+              )
+            : 0;
       if (
         !Number.isFinite(width) ||
         columns.length > 128 ||
@@ -410,7 +420,7 @@ export function createParagraphComposer(measure) {
           paragraph.firstWidth = paragraphLineArea(paragraph.layout, width, true).width;
           paragraph.restWidth = paragraphLineArea(paragraph.layout, width).width;
         }
-        const key = paragraphIdentity(request, paragraph),
+        const key = paragraphIdentity(request, paragraph, contourWidthLimit),
           prior = cache.get(key);
         if (prior) {
           cache.delete(key);
@@ -450,6 +460,7 @@ export function createParagraphComposer(measure) {
             ...request,
             mode: 'measure-lines-proof',
             includeVectors: false,
+            ...(contourWidthLimit ? { contourWidthLimit } : {}),
             candidates,
           });
         if (
@@ -484,6 +495,12 @@ export function createParagraphComposer(measure) {
             }
           }
           const row = { ...candidate, width: measurement.width, ...metrics };
+          if (measurement.contourFitWidth !== undefined) {
+            const fitWidth = measurement.contourFitWidth;
+            if (fitWidth < 1 || fitWidth !== Math.floor(row.width) || fitWidth >= row.width)
+              throw Error('Native contour measurement has an invalid fit width.');
+            row.contourFitWidth = fitWidth;
+          }
           if (group.paragraphs[0].wordSpacing)
             row.wordSpacing = wordSpacingMeasurement(
               { ...row, wordSpacing: measurement.wordSpacing },

@@ -226,6 +226,9 @@ function* prepare(input, columnCache) {
         end: row.end,
         width: row.width,
         minimumWidth,
+        ...(!spacing && style.align === 'left' && row.contourFitWidth !== undefined
+          ? { contourFitWidth: row.contourFitWidth }
+          : {}),
         ...(spacing ? { wordSpacing: spacing } : {}),
         penalty: points[b].penalty,
         mandatory: points[b].mandatory,
@@ -399,6 +402,7 @@ function* fitWrappedParagraph(
             const slices = {
               jumpBand: lineBand,
               shapeBand: lineBand,
+              scanContour: mode === 'paragraph',
               boundsBand: lineBand,
               // A lowered first row cannot jump past a Next Column object.
               nextColumnBand: aligned ? { top: 0, bottom: baseline } : undefined,
@@ -481,7 +485,12 @@ function* fitWrappedParagraph(
             const available = [];
             for (const measured of edges.get(state.end)) {
               if (!(yield* checkpoint())) return [];
-              if (measured.end > limit || measured.minimumWidth > width + EPS) continue;
+              const fitsContourEdge =
+                band.hasScannedContour &&
+                band.segments.length > 1 &&
+                measured.contourFitWidth === width;
+              if (measured.end > limit || (measured.minimumWidth > width + EPS && !fitsContourEdge))
+                continue;
               const spacing = measured.wordSpacing
                 ? adjustWordSpacing(measured, width, style.align, measured.end === end, wordSpacing)
                 : null;
@@ -489,6 +498,9 @@ function* fitWrappedParagraph(
               const line = {
                 start: measured.start,
                 end: measured.end,
+                ...(fitsContourEdge && measured.minimumWidth > width + EPS
+                  ? { contourFit: true }
+                  : {}),
                 frame,
                 baseline: Math.min(baseline, column.height),
                 ...(column.obstacles?.length && column.verticalAlign === 'center'
