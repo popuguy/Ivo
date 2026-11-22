@@ -80,6 +80,19 @@ export async function verifyContinuedTables(host, assert) {
         'Incorrect end-of-thread overflow',
       );
     }
+    head.table.cells[5][1] = 'Cut\nFold\nPress\nStitch';
+    for (const [height, expected] of [
+      [124, '1,2,3,4|5,6|7,8,9,10|'],
+      [104, '1,2,3|4|5|6,7,8'],
+    ]) {
+      doc.blocks.forEach((b) => (b.h = height));
+      select(head);
+      assert(
+        shown() === expected,
+        'Multiline cell changed the wrong page boundary at ' + height + ': ' + shown(),
+      );
+    }
+    head.table.cells[5][1] = 'D5';
     for (const block of doc.blocks) {
       block.h = 124;
       block.frameOptions = { stroke: '#112233', strokeWidth: 10 };
