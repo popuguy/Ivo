@@ -106,3 +106,16 @@ test('column sizing uses points and keeps the rotated leading edge fixed', () =>
     [120, 200, 40],
   );
 });
+
+test('painted table edges leave the remaining points for the column dividers', () => {
+  const block = { w: 140, x: 0, y: 0, table: createTable(2, 2), frameOptions: { strokeWidth: 10 } };
+  assert.deepEqual(columnPoints(block), [60, 60]);
+  const change = resizeColumn(block, 0, 75);
+  assert.equal(change.w, 155);
+  assert.deepEqual(
+    columnPoints({ ...block, ...change, table: { widths: change.widths } }).map((n) =>
+      Number(n.toFixed(9)),
+    ),
+    [75, 60],
+  );
+});

@@ -1,4 +1,8 @@
-import { columnPoints, resizeColumn } from '../../../domain/geometry/table-columns.js';
+import {
+  columnPoints,
+  resizeColumn,
+  tableInnerWidth,
+} from '../../../domain/geometry/table-columns.js';
 /** Measure the transformed inline axis so zoomed and rotated tables use the same drag. */
 export function installTableDividers({
   world,
@@ -69,7 +73,8 @@ export function installTableDividers({
     function change(e) {
       if (e.pointerId !== event.pointerId) return;
       const movement =
-        (((e.clientX - event.clientX) * dx + (e.clientY - event.clientY) * dy) / length) * block.w;
+        (((e.clientX - event.clientX) * dx + (e.clientY - event.clientY) * dy) / length) *
+        tableInnerWidth(block);
       proposed = resizeColumn(geometry, i, old + movement, e.shiftKey);
       preview(proposed);
     }

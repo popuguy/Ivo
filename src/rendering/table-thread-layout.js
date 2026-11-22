@@ -1,3 +1,4 @@
+import { tableInnerWidth } from '../domain/geometry/table-columns.js';
 import { paginateTable, tableThreads } from '../domain/documents/table-threads.js';
 import { fontFamilyFor } from '../domain/text/typography.js';
 import { tableMarkup } from './table.js';
@@ -53,7 +54,7 @@ export function layoutTableThreads(doc, cache) {
         const stroke = frame.frameOptions?.strokeWidth || 0;
         const key = JSON.stringify([frame.w, frame.fontSize, frame.textStyle, stroke]);
         if (metrics.has(key)) return metrics.get(key);
-        host.style.width = Math.max(0, frame.w - 2 * stroke) + 'px';
+        host.style.width = tableInnerWidth(frame) + 'px';
         host.style.fontFamily = fontFamilyFor(frame.textStyle) || 'serif';
         host.style.fontSize = frame.fontSize + 'px';
         const heights = Array.from(grid.rows, (r) => r.getBoundingClientRect().height);
