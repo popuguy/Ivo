@@ -1,3 +1,4 @@
+import { verifyEditingBelowInlineTable } from './anchored-table.js';
 import { verifyCharacterScale } from './character-scale.js';
 import { verifyDocumentOperations, verifyListOperations } from './document-operations.js';
 import { verifyTypeShortcuts } from './type-shortcuts.js';
@@ -40,6 +41,7 @@ try {
     editor,
     commits = 0;
   const reopening = new URL(location.href).searchParams.get('phase') === 'reopen';
+  if (!reopening) await verifyEditingBelowInlineTable(host, window.textCoreTest);
   if (reopening) doc = validateImport(await window.textCoreTest.load()).documents[0];
   else {
     doc = createSceneDocument('Threaded selection', { width: 600, height: 420 });

@@ -100,6 +100,7 @@ app
           'Backspace',
           'Delete',
           'Enter',
+          'Escape',
         ].includes(key) ||
         !Array.isArray(modifiers)
       )

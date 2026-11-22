@@ -11,6 +11,7 @@ import {
 } from '../../domain/text/typography.js';
 import { applyTextAttributes } from '../../shared/dom/text-attributes.js';
 import { nodeTextStyle } from './selection-style.js';
+import { sizeAnchorSites } from './anchor-sites.js';
 import { applyTextWhitespace } from './whitespace.js';
 const paintedRuleRoots = new WeakSet();
 const owned = new WeakMap(),
@@ -45,6 +46,9 @@ export function applyNamedTextStyles(root, doc) {
       }
     }
   }
+  // The editable projection replaces the painted column while typing. Its object
+  // markers must reserve the same space as the column's markers.
+  if (root.matches('.canvas-flow-input[data-text-flow]')) sizeAnchorSites(root, doc);
   paintListNumbers(root);
   for (const node of root.querySelectorAll('[data-ivo-pstyle],[data-ivo-cstyle]')) {
     const p = node.getAttribute('data-ivo-pstyle'),

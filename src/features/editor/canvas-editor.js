@@ -4764,6 +4764,23 @@ export function mountCanvasEditor(host, options) {
     viewport,
     'pointerdown',
     (event) => {
+      const marker = event.target.closest('.canvas-flow-input [data-ivo-anchor]');
+      if (marker && state.tool === 'text' && !space && event.button === 0) {
+        // The editable placeholder lies over the painted table. Give the cell
+        // under the pointer the same editing gesture it receives outside prose.
+        const cell = document
+          .elementsFromPoint(event.clientX, event.clientY)
+          .find(
+            (node) =>
+              node.matches('[data-table-row][data-table-column]') &&
+              node.closest('[data-anchored-artwork]')?.dataset.object === marker.dataset.ivoAnchor,
+          );
+        if (tables.edit(cell)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+      }
       if (options.editing && event.target.closest('[data-footnote-number]'))
         event.stopImmediatePropagation();
     },
