@@ -1,3 +1,4 @@
+import { retainTableThreads, tableThreads } from './table-threads.js';
 import { supportedCanvas } from './capabilities.js';
 import { ensureTextWrapFlows } from './text-wrap.js';
 import { textWrapObjectPath } from '../geometry/wrap-contour.js';
@@ -171,6 +172,38 @@ export function insertObject(document, type, pageId, { parentId, ...overrides } 
   if (wrap && object.textWrap?.mode !== 'none') ensureTextWrapFlows(document);
   return object;
 }
+export function continueTableOnNextPage(doc, id) {
+  const frames = tableThreads(doc.blocks).get(id);
+  if (!frames || frames.some((f) => f.parentId)) throw Error('Choose a table on a document page.');
+  const tail = frames.at(-1),
+    index = doc.pages.findIndex((p) => p.id === tail.pageId);
+  if (
+    doc.blocks.length + (doc.publishing?.parents || []).reduce((n, p) => n + p.blocks.length, 0) >=
+      1000 ||
+    (index + 1 === doc.pages.length && doc.pages.length >= 128)
+  )
+    throw Error('The document has reached its page or object limit.');
+  const layer = doc.publishing?.layers.find((l) => l.id === tail.layerId);
+  if (doc.publishing && (!layer || !layer.visible || layer.locked))
+    throw Error('Choose an unlocked visible layer before continuing the table.');
+  const page = doc.pages[index + 1] || addPage(doc, tail.pageId);
+  const w = Math.min(tail.w, page.width),
+    h = Math.min(tail.h, page.height);
+  const next = insertObject(doc, 'table', page.id, {
+    x: Math.max(0, Math.min(tail.x, page.width - w)),
+    y: Math.max(0, Math.min(tail.y, page.height - h)),
+    w,
+    h,
+    rotation: tail.rotation,
+    fontSize: tail.fontSize,
+    textStyle: tail.textStyle,
+    layerId: tail.layerId,
+  });
+  delete next.table;
+  tail.tableNext = next.id;
+  doc.canvasVersion = Math.max(doc.canvasVersion, 31);
+  return next;
+}
 /** Resize a container and its local descendants as one transform. */
 export function transformObject(document, id, rect, startingDocument = document) {
   const object = sceneObject(document, id),
@@ -235,6 +268,10 @@ export function moveVertex(document, id, vertexId, position) {
 }
 export function removeObject(document, id) {
   const ids = new Set([id, ...descendantsOf(document, id).map((item) => item.id)]);
+  retainTableThreads(
+    document.blocks,
+    new Map(document.blocks.filter((item) => !ids.has(item.id)).map((b) => [b.id, b])),
+  );
   document.blocks = document.blocks.filter((item) => !ids.has(item.id));
   removeTextFlowFrames(document, ids);
 }
@@ -262,12 +299,14 @@ export function duplicateObjects(document, selection, { offset = { x: 16, y: 16 
   const copies = document.blocks
     .filter((item) => included.has(item.id))
     .map((item) => structuredClone(item));
+  const byOriginal = new Map(copies.map((item) => [item.id, item]));
   const ids = new Map(copies.map((item) => [item.id, uid('object-')]));
   for (const copy of copies) {
     copy.id = ids.get(copy.id);
     if (ids.has(copy.parentId)) copy.parentId = ids.get(copy.parentId);
     if (copy.points) copy.points = copy.points.map((point) => ({ ...point, id: uid('vertex-') }));
   }
+  retainTableThreads(document.blocks, byOriginal, { copy: true });
   const rootCopies = roots.map((item) => copies.find((copy) => copy.id === ids.get(item.id)));
   for (const copy of rootCopies) {
     copy.x += offset.x;
@@ -292,6 +331,10 @@ export function removePage(document, id) {
   const removed = document.blocks
     .filter((object) => object.pageId === id)
     .map((object) => object.id);
+  retainTableThreads(
+    document.blocks,
+    new Map(document.blocks.filter((b) => b.pageId !== id).map((b) => [b.id, b])),
+  );
   document.blocks = document.blocks.filter((object) => object.pageId !== id);
   removeTextFlowFrames(document, removed);
 }

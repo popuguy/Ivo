@@ -79,8 +79,39 @@ export function validateTable(value) {
   }
   if (cells.reduce((n, row) => n + row.reduce((sum, s) => sum + s.length, 0), 0) > 1000000)
     throw Error('Table text exceeds one million characters.');
+  const rowOptions = {};
+  if (value.rowOptions !== undefined) {
+    if (
+      !value.rowOptions ||
+      typeof value.rowOptions !== 'object' ||
+      Array.isArray(value.rowOptions)
+    )
+      throw Error('Invalid table row options.');
+    for (const [key, opt] of Object.entries(value.rowOptions)) {
+      if (
+        !/^(0|[1-9]\d*)$/.test(key) ||
+        Number(key) >= cells.length ||
+        !opt ||
+        typeof opt !== 'object' ||
+        Array.isArray(opt) ||
+        Object.keys(opt).some((k) => !['minimumHeight', 'keepWithNext'].includes(k)) ||
+        (opt.minimumHeight !== undefined &&
+          (!Number.isFinite(opt.minimumHeight) ||
+            opt.minimumHeight < 0 ||
+            opt.minimumHeight > 14400)) ||
+        (opt.keepWithNext !== undefined && typeof opt.keepWithNext !== 'boolean')
+      )
+        throw Error('Invalid table row options.');
+      if (opt.minimumHeight || opt.keepWithNext)
+        rowOptions[key] = {
+          ...(opt.minimumHeight && { minimumHeight: opt.minimumHeight }),
+          ...(opt.keepWithNext && { keepWithNext: true }),
+        };
+    }
+  }
   tableCoverage(value);
   return {
+    ...(Object.keys(rowOptions).length && { rowOptions }),
     cells: cells.map((row) => [...row]),
     widths: [...widths],
     merges: merges.map(({ row, column, rows, columns }) => ({ row, column, rows, columns })),
@@ -139,6 +170,12 @@ export function reshapeTable(source, action, { row, column, rows = 1, columns = 
       j < t.headerRows ? 0 : j >= nr - t.footerRows ? 2 : 1,
     );
     if (!horiz) {
+      if (t.rowOptions)
+        t.rowOptions = Object.fromEntries(
+          indices.flatMap((old, j) =>
+            old !== null && t.rowOptions[old] ? [[j, t.rowOptions[old]]] : [],
+          ),
+        );
       const next = indices.map((j) => sections[j ?? i]);
       if (next.some((v, k) => k > 0 && v < next[k - 1]) || !next.includes(1))
         throw Error('Keep headers, body rows and footers in order.');

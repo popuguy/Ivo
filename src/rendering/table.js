@@ -1,7 +1,7 @@
 import { tableCoverage } from '../domain/documents/tables.js';
 import { escapeHTML } from '../shared/html/sanitize.js';
 
-export function tableMarkup(table, { layout = false, escape = escapeHTML } = {}) {
+export function tableMarkup(table, { layout = false, escape = escapeHTML, part } = {}) {
   const { cells, widths, headerRows, footerRows } = table,
     covering = tableCoverage(table);
   const total = widths.reduce((sum, v) => sum + v, 0);
@@ -10,6 +10,7 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML } = {})
       widths.map((w) => '<col style="width:' + (100 * w) / total + '%">').join('') +
       '</colgroup>'
     : '';
+  const firstBodyRepeated = part && part.first > headerRows;
   function group(tag, first, last) {
     if (first >= last) return '';
     const rows = [];
@@ -19,6 +20,11 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML } = {})
         if (m && (m.row !== r || m.column !== c)) return '';
         const cell = tag === 'thead' ? 'th' : 'td',
           attributes = [
+            ...(part &&
+            ((tag === 'thead' && firstBodyRepeated) ||
+              (tag === 'tfoot' && part.last < cells.length - footerRows))
+              ? ['data-table-repeat']
+              : []),
             ...(tag === 'thead' ? ['scope="col"'] : []),
             ...(m?.columns > 1 ? ['colspan="' + m.columns + '"'] : []),
             ...(m?.rows > 1 ? ['rowspan="' + m.rows + '"'] : []),
@@ -35,7 +41,10 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML } = {})
           '>'
         );
       });
-      rows.push('<tr>' + rendered.join('') + '</tr>');
+      const minimum = layout && table.rowOptions?.[r]?.minimumHeight;
+      rows.push(
+        (minimum ? '<tr style="height:' + minimum + 'px">' : '<tr>') + rendered.join('') + '</tr>',
+      );
     }
     return '<' + tag + '>' + rows.join('') + '</' + tag + '>';
   }
@@ -44,7 +53,9 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML } = {})
       table.inset +
       'px;--table-stroke:' +
       table.stroke +
-      'px;--cell-vertical:' +
+      'px;' +
+      (part ? 'height:auto;' : '') +
+      '--cell-vertical:' +
       table.vertical +
       '"'
     : '';
@@ -53,9 +64,11 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML } = {})
     style +
     '>' +
     cols +
-    group('thead', 0, headerRows) +
-    group('tbody', headerRows, cells.length - footerRows) +
-    group('tfoot', cells.length - footerRows, cells.length) +
+    (part && part.first === part.last
+      ? ''
+      : group('thead', 0, headerRows) +
+        group('tbody', part?.first ?? headerRows, part?.last ?? cells.length - footerRows) +
+        group('tfoot', cells.length - footerRows, cells.length)) +
     '</table>'
   );
 }

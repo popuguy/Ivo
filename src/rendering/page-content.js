@@ -8,6 +8,22 @@ import { escapeHTML as esc, cleanHTML } from '../shared/html/sanitize.js';
 import { applyFrameTypography } from './text/format.js';
 import { applyTextLayout } from './text/layout.js';
 
+export function tableFrameHTML(item, part, editing) {
+  const table = part?.head.table || item.table;
+  return (
+    '<div class="table-frame"' +
+    (part?.overset ? ' data-table-overset' : '') +
+    ' style="font-family:' +
+    esc(fontFamilyFor(item.textStyle) || 'serif') +
+    ';font-size:' +
+    item.fontSize +
+    'px">' +
+    tableMarkup(table, { layout: true, part }) +
+    (editing ? tableDividers(table) : '') +
+    '</div>'
+  );
+}
+
 /** Shared authored-object markup, used by the interactive editor and the frozen PDF renderer. */
 export function sceneObjectHTML(
   item,
@@ -29,15 +45,7 @@ export function sceneObjectHTML(
   if (item.type === 'polygon')
     content = `<svg class="canvas-polygon" viewBox="0 0 ${item.w} ${item.h}" preserveAspectRatio="none" aria-label="Polygon"><polygon points="${item.points.map((p) => `${p.x * item.w},${p.y * item.h}`).join(' ')}" fill="${item.fill}" stroke="${item.stroke}" stroke-width="${item.strokeWidth}"/></svg>${kids.length ? `<div class="canvas-clip" style="clip-path:polygon(${item.points.map((p) => `${p.x * 100}% ${p.y * 100}%`).join(',')})">${kids.map(render).join('')}</div>` : ''}`;
   else if (item.type === 'table')
-    content =
-      '<div class="table-frame" style="font-family:' +
-      esc(fontFamilyFor(item.textStyle) || 'serif') +
-      ';font-size:' +
-      item.fontSize +
-      'px">' +
-      tableMarkup(item.table, { layout: true }) +
-      (editing ? tableDividers(item.table) : '') +
-      '</div>';
+    content = tableFrameHTML(item, flow?.tables?.get(item.id), editing);
   else if (item.type === 'image')
     content = item.src
       ? `<figure><div class="canvas-image-frame"><img draggable="false" src="${esc(source(item.src))}" alt="${esc(item.alt || 'Image')}" style="object-fit:${item.fit === 'contain' ? 'contain' : 'cover'};object-position:${item.crop?.x ?? 50}% ${item.crop?.y ?? 50}%"></div>${item.caption ? `<figcaption>${esc(item.caption)}</figcaption>` : ''}</figure>`

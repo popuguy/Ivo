@@ -33,6 +33,7 @@ export function putTableCells(source, row, column, values) {
     Math.max(width, source.widths.length),
   );
   Object.assign(next, {
+    ...(source.rowOptions && { rowOptions: structuredClone(source.rowOptions) }),
     headerRows: source.headerRows,
     footerRows: source.footerRows,
     merges: structuredClone(source.merges),
