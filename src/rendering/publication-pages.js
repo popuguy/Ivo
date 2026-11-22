@@ -1,3 +1,4 @@
+import { placeAnchoredArtwork } from './anchored-artwork.js';
 import { layoutTableThreads, prepareTableFonts } from './table-thread-layout.js';
 import { orderedPageObjects, parentObjects } from '../domain/documents/publishing.js';
 import { pageFolios } from '../domain/documents/page-sections.js';
@@ -34,6 +35,7 @@ export async function composePublicationChapter(doc, documents, assets, compose,
 export function paintPublicationPage(layout, doc, page, { source, flow, documents }) {
   const renderDoc = { ...doc, blocks: [...parentObjects(doc, page), ...doc.blocks] };
   layout.innerHTML = orderedPageObjects(renderDoc, page.id)
+    .filter((item) => !item.extensions?.ivoAnchor)
     .map((item) =>
       sceneObjectHTML(item, {
         document: renderDoc,
@@ -44,6 +46,7 @@ export function paintPublicationPage(layout, doc, page, { source, flow, document
     )
     .join('');
   applySceneTypography(layout, renderDoc);
+  placeAnchoredArtwork(layout, renderDoc, { source, flow, pageId: page.id });
   return renderDoc;
 }
 

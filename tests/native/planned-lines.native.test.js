@@ -820,3 +820,30 @@ test(
     assert.equal(result.layout.lines[0].carets.length, req.text.length + 1);
   },
 );
+
+test(
+  'inline graphics reserve their exact advance and ascent; above-line artwork reserves height at one caret',
+  mac,
+  async (t) => {
+    const service = await serviceFor(t),
+      req = await request('A\uFFFCB\u2029');
+    req.protocol = 9;
+    req.runs = [
+      { ...req.runs[0], end: 1 },
+      { ...req.runs[0], start: 1, end: 2, objectWidth: 45, objectHeight: 30, aboveLine: false },
+      { ...req.runs[0], start: 2 },
+    ];
+    const [inline] = await measure(service, req, [{ start: 0, end: 3 }]);
+    const layout = await service.compose({
+      ...req,
+      placements: [{ end: 4, frame: 0, baseline: 36, left: 0, width: 300 }],
+    });
+    const x = (index) => layout.layout.lines[0].carets.find((c) => c.index === index).primary;
+    close(x(2) - x(1), 45);
+    close(inline.ascent, 30);
+    req.runs[1].aboveLine = true;
+    const [above] = await measure(service, req, [{ start: 0, end: 3 }]);
+    close(inline.width - above.width, 45);
+    assert.ok(above.ascent >= 40);
+  },
+);

@@ -44,6 +44,9 @@ const fields = {
     'verticalScale',
     'features',
     'variations',
+    'objectWidth',
+    'objectHeight',
+    'aboveLine',
   ],
   resource: ['id', 'digest', 'postscript', 'data'],
   frame: [
@@ -113,7 +116,7 @@ export function validateCompositionRequest(request) {
   )
     throw Error('Invalid contour measurement request.');
   if (
-    ![1, 2, 3, 4, 5, 6, 7, 8].includes(request.protocol) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(request.protocol) ||
     (request.protocol === 1 && request.paragraphs !== undefined) ||
     (request.protocol >= 2 && !Array.isArray(request.paragraphs)) ||
     (request.protocol < 3 && request.placements !== undefined) ||
@@ -232,6 +235,16 @@ export function validateCompositionRequest(request) {
         )
           throw Error('Invalid contour edge placement.');
         if (shape === 'run') {
+          if (
+            ['objectWidth', 'objectHeight', 'aboveLine'].some((key) => Object.hasOwn(row, key)) &&
+            (request.protocol < 9 ||
+              request.text.slice(row.start, row.end) !== '\uFFFC' ||
+              ![row.objectWidth, row.objectHeight].every(
+                (n) => Number.isFinite(n) && n > 0 && n <= 100000,
+              ) ||
+              typeof row.aboveLine !== 'boolean')
+          )
+            throw Error('Invalid anchored object dimensions or source.');
           if (
             Object.hasOwn(row, 'language') &&
             (typeof row.language !== 'string' ||

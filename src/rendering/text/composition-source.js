@@ -156,7 +156,10 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
       href = anchor?.getAttribute('href'),
       pageId = /^#page=([A-Za-z0-9][A-Za-z0-9_-]{0,119})$/.exec(href || '')?.[1],
       url = safeURL(href);
+    const objectId = node.getAttribute?.('data-ivo-anchor');
+    const object = objectId && text === '\uFFFC' && doc?.blocks.find((b) => b.id === objectId);
     tokens.push({
+      ...(object?.extensions?.ivoAnchor && { object }),
       kind,
       logicalStart: start,
       logicalEnd: end,
@@ -373,6 +376,15 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
         highlight: style.highlight,
         language: style.language,
         ...character,
+        ...(token.object && {
+          objectId: token.object.id,
+          objectType: token.object.type,
+          objectWidth: token.object.w,
+          objectHeight: token.object.h,
+          aboveLine:
+            token.object.type !== 'table' &&
+            token.object.extensions.ivoAnchor.position === 'above-line',
+        }),
         ...(face?.variations ? { variations: face.variations } : {}),
       };
       const previous = runs.at(-1);
@@ -447,17 +459,19 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
   }
   return {
     ...(hyphenationPoints.length ? { hyphenationPoints } : {}),
-    protocol: spans.some((span) => span.kind === 'list-marker')
-      ? 8
-      : paragraphs.some((paragraph) => paragraph.tabStops)
-        ? 7
-        : paragraphs.some((paragraph) => paragraph.wordSpacing?.includes('|'))
-          ? 6
-          : paragraphs.some((paragraph) => wordSpacingSettings(paragraph.wordSpacing))
-            ? 5
-            : runs.some(hasNondefaultNativeCharacter)
-              ? 4
-              : 2,
+    protocol: runs.some((r) => r.objectId)
+      ? 9
+      : spans.some((span) => span.kind === 'list-marker')
+        ? 8
+        : paragraphs.some((paragraph) => paragraph.tabStops)
+          ? 7
+          : paragraphs.some((paragraph) => paragraph.wordSpacing?.includes('|'))
+            ? 6
+            : paragraphs.some((paragraph) => wordSpacingSettings(paragraph.wordSpacing))
+              ? 5
+              : runs.some(hasNondefaultNativeCharacter)
+                ? 4
+                : 2,
     id,
     mode: 'greedy-geometry-proof',
     // DOM serialization may spell a literal hard space as &nbsp;. Bind the proof

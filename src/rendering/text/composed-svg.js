@@ -118,7 +118,10 @@ export function composedSVG(
     !links.length &&
     !sourceStyles.some(
       (style) =>
-        style.underline || style.strikethrough || (style.highlight && style.highlight !== 'none'),
+        style.objectId ||
+        style.underline ||
+        style.strikethrough ||
+        (style.highlight && style.highlight !== 'none'),
     );
   for (const line of lines) {
     const decorations = [],
@@ -163,6 +166,20 @@ export function composedSVG(
       geometry = new Map();
     for (const caret of line.carets || [])
       if (!carets.has(caret.index)) carets.set(caret.index, caret);
+    for (
+      let index = firstIntersecting(sourceStyles, line.start);
+      sourceStyles[index]?.start < line.end;
+      index++
+    ) {
+      const style = sourceStyles[index];
+      if (!style.objectId) continue;
+      const x = style.aboveLine ? (line.originX ?? 0) : carets.get(style.start)?.primary;
+      if (!finite(x)) throw Error('The compositor omitted an anchored object caret.');
+      const y = line.baseline - style.objectHeight - (style.aboveLine ? style.size : 0);
+      ink.push(
+        `<rect data-anchor-site="${esc(style.objectId)}" x="${x}" y="${y}" width="${style.objectWidth}" height="${style.objectHeight}" fill="none" pointer-events="none"/>`,
+      );
+    }
     for (const run of line.runs) {
       const first = firstIntersecting(sourceStyles, run.start),
         style = sourceStyles[first]?.start <= run.start ? sourceStyles[first] : {},
@@ -216,6 +233,11 @@ export function composedSVG(
         }
       }
       for (const glyph of glyphs) {
+        if (
+          text[glyph.index] === '\uFFFC' &&
+          sourceStyles[firstIntersecting(sourceStyles, glyph.index)]?.objectId
+        )
+          continue;
         if (!glyph.vector) {
           if (text.slice(glyph.index, glyph.end).trim())
             throw Error('A composed glyph has no vector representation.');

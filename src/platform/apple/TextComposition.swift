@@ -63,13 +63,18 @@ public final class TextCompositionEngine {
     let horizontalScale: Double?
     let verticalScale: Double?
     let variations: [String: Double]?
+    let objectWidth, objectHeight: Double?
+    let aboveLine: Bool?
     let features: [String: Bool]?
     enum CodingKeys: String, CodingKey {
       case start, end, font, size, language, ligatures, tracking, kerning, textColor, leading, autoLeading
-      case baselineShift, horizontalScale, verticalScale, features, variations
+      case baselineShift, horizontalScale, verticalScale, features, variations, objectWidth, objectHeight, aboveLine
     }
     init(from decoder: Decoder) throws {
       let values = try decoder.container(keyedBy: CodingKeys.self)
+      objectWidth = try values.decodeIfPresent(Double.self, forKey: .objectWidth)
+      objectHeight = try values.decodeIfPresent(Double.self, forKey: .objectHeight)
+      aboveLine = try values.decodeIfPresent(Bool.self, forKey: .aboveLine)
       start = try values.decode(Int.self, forKey: .start)
       end = try values.decode(Int.self, forKey: .end)
       font = try values.decode(String.self, forKey: .font)
@@ -243,7 +248,7 @@ public final class TextCompositionEngine {
   func validate(_ request: Request) throws -> [String: CGFont] {
     let length = request.text.utf16.count
     try require(
-      [1, 2, 3, 4, 5, 6, 7, 8].contains(request.protocol)
+      [1, 2, 3, 4, 5, 6, 7, 8, 9].contains(request.protocol)
         && [
           "greedy-geometry-proof", "measure-lines-proof", "explicit-lines-proof",
           "planned-lines-proof",
@@ -591,6 +596,12 @@ public final class TextCompositionEngine {
       try require(
         fonts[run.font] != nil && finite(run.size, 1, 2000) && finite(run.tracking, -1000, 10000),
         "Unavailable font or invalid run metrics")
+      if run.objectWidth != nil || run.objectHeight != nil || run.aboveLine != nil {
+        try require(request.protocol >= 9 && run.end == run.start + 1 &&
+          (request.text as NSString).character(at: run.start) == 0xfffc &&
+          finite(run.objectWidth ?? 0, 0.000001, 100000) && finite(run.objectHeight ?? 0, 0.000001, 100000)
+          && run.aboveLine != nil, "Invalid anchored object geometry or source")
+      }
       if request.paragraphs?.contains(where: {
         $0.wordSpacing != nil && $0.start < run.end && $0.end > run.start
       }) == true {
@@ -858,12 +869,13 @@ public final class TextCompositionEngine {
       inkDescent = boxes.map { $0.1 }.max() ?? 0
     }
     return CharacterMetrics(
-      ascent: struts.map { CTFontGetAscent($0) }.max() ?? 0,
+      ascent: max(sourceRuns.map(anchorAscent).max() ?? 0, struts.map { CTFontGetAscent($0) }.max() ?? 0),
       descent: struts.map { CTFontGetDescent($0) }.max() ?? 0,
       leading: struts.map { CTFontGetLeading($0) }.max() ?? 0,
       capHeight: struts.map { CTFontGetCapHeight($0) }.max() ?? 0,
       xHeight: struts.map { CTFontGetXHeight($0) }.max() ?? 0,
-      inkAscent: inkAscent, inkDescent: inkDescent)
+      inkAscent: sourceRuns.filter { $0.objectHeight != nil }.map(anchorAscent).max().map { max(inkAscent, $0) } ?? inkAscent,
+      inkDescent: inkDescent)
   }
   func tabStyle(_ stops: [TabStop], corrections: [Double: Double] = [:]) -> CTParagraphStyle {
     var tabs = stops.map { stop -> CTTextTab in
@@ -1044,6 +1056,25 @@ public final class TextCompositionEngine {
     }
     return result
   }
+  private final class AnchoredBox {
+    let width, ascent: CGFloat
+    init(_ width: Double, _ ascent: Double) { self.width = width; self.ascent = ascent }
+  }
+  private func anchoredDelegate(_ box: AnchoredBox) -> CTRunDelegate {
+    var callbacks = CTRunDelegateCallbacks(version: kCTRunDelegateVersion1,
+      dealloc: { Unmanaged<AnchoredBox>.fromOpaque($0).release() },
+      getAscent: { Unmanaged<AnchoredBox>.fromOpaque($0).takeUnretainedValue().ascent },
+      getDescent: { _ in 0 },
+      getWidth: { Unmanaged<AnchoredBox>.fromOpaque($0).takeUnretainedValue().width })
+    return CTRunDelegateCreate(&callbacks, Unmanaged.passRetained(box).toOpaque())!
+  }
+  private func anchorAscent(_ run: TextRun) -> Double {
+    (run.objectHeight ?? 0) + (run.aboveLine == true ? run.size : 0)
+  }
+  private func lineAdvance(_ run: TextRun) -> Double {
+    let leading = (run.leading ?? 0) > 0 ? run.leading! : run.size * (run.autoLeading ?? 120) / 100
+    return max(leading, anchorAscent(run))
+  }
   func attributedSource(_ request: Request, fonts: [String: CGFont]) throws
     -> NSMutableAttributedString
   {
@@ -1078,6 +1109,11 @@ public final class TextCompositionEngine {
           NSAttributedString.Key(kCTForegroundColorAttributeName as String): color(
             run.textColor ?? "#252525"),
         ], range: NSRange(location: run.start, length: run.end - run.start))
+      if let w = run.objectWidth {
+        let delegate = anchoredDelegate(AnchoredBox(run.aboveLine == true ? 0 : w, anchorAscent(run)))
+        attributed.addAttribute(NSAttributedString.Key(kCTRunDelegateAttributeName as String), value: delegate,
+          range: NSRange(location: run.start, length: 1))
+      }
       if let language = run.language {
         attributed.addAttribute(NSAttributedString.Key(kCTLanguageAttributeName as String), value: language,
           range: NSRange(location: run.start, length: run.end - run.start))
@@ -1621,9 +1657,7 @@ public final class TextCompositionEngine {
         leading = character.leading
       }
       let advance =
-        sourceRuns.map {
-          ($0.leading ?? 0) > 0 ? $0.leading! : $0.size * ($0.autoLeading ?? 120) / 100
-        }.max() ?? 14.4
+        sourceRuns.map(lineAdvance).max() ?? 14.4
       let measuredWidth = width + (hyphenWidths[candidate.end] ?? 0)
       var row = Measurement(
         start: candidate.start, end: candidate.end, width: measuredWidth,
@@ -1996,9 +2030,7 @@ public final class TextCompositionEngine {
           leading = character.leading
         }
         let advance =
-          sourceRuns.map {
-            ($0.leading ?? 0) > 0 ? $0.leading! : $0.size * ($0.autoLeading ?? 120) / 100
-          }.max() ?? 14.4
+          sourceRuns.map(lineAdvance).max() ?? 14.4
         let baseline: Double
         if let placement = placement {
           baseline = placement.baseline

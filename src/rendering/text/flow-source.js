@@ -1,3 +1,4 @@
+import { sizeAnchorSites } from './anchor-sites.js';
 import { paintConditionalText } from './paragraph-style-rules.js';
 import { listMarkers } from '../../shared/dom/list-numbering.js';
 import { cleanHTML } from '../../shared/html/sanitize.js';
@@ -8,6 +9,7 @@ export function annotatedSource(html, doc, settings) {
   const root = document.createElement('div');
   root.innerHTML = cleanHTML(html);
   paintConditionalText(root, doc, settings);
+  if (html.includes('data-ivo-anchor')) sizeAnchorSites(root, doc);
   const map = textIndexMap(root),
     origins = new Map(),
     markers = listMarkers(root);

@@ -1,3 +1,4 @@
+import { verifyAnchoredArtwork } from '../publishing/anchored-artwork.js';
 import { verifyConditionalStyleTyping } from './conditional-styles.js';
 import { verifyStructuredLists } from './structured-lists.js';
 import { verifyNativeFindChange } from './find-change.js';
@@ -614,6 +615,7 @@ try {
     report({ phase: 'edit' });
   }
   if (phase === 'reopen') {
+    await verifyAnchoredArtwork(host, assert, native);
     mixedScriptNavigation = await verifyMixedScriptNavigation(
       host,
       window.nativeEditorTest,
