@@ -12,6 +12,7 @@ export function compositionLayoutKey(doc) {
     doc.publishing?.baselineGrid,
     doc.textWrapPreferences,
     doc.hyphenationExceptions,
+    doc.extensions?.ivoFootnotes,
   ]);
 }
 

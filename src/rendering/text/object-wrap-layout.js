@@ -1,3 +1,7 @@
+import { documentFootnoteOptions } from '../../domain/documents/footnotes.js';
+import { fitFootnotes, footnoteReferences } from './footnote-layout.js';
+import { fontFamilyFor } from '../../domain/text/typography.js';
+import { effectiveTextStyle } from '../../domain/documents/publishing.js';
 import {
   nextWrapRowTop,
   textWrapObstacles,
@@ -50,6 +54,51 @@ function columnSlots(frame) {
 /** Multiple source fragments can share one baseline around an interior object.
  * Their HTML is derived paint/provenance; the flow remains one canonical input. */
 export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageContours } = {}) {
+  const notes = footnoteReferences(flow.html);
+  if (!notes.length) return fitWrappedText(doc, flow, { allowPages, imageContours });
+  let changed = false;
+  for (;;) {
+    const frames = new Map(doc.blocks.map((block) => [block.id, block]));
+    const slots = flow.frameIds.flatMap((id) =>
+      columnSlots(frames.get(id)).map((s) => ({ ...s, frameId: id })),
+    );
+    const fitter = fitFootnotes(
+      slots,
+      notes,
+      fontFamilyFor(effectiveTextStyle(doc, flow.style).textStyle),
+      documentFootnoteOptions(doc),
+    );
+    let step = fitter.next(),
+      result;
+    while (!step.done) {
+      const limits = new Map(step.value.map((s) => [s.id, s.height]));
+      result = fitWrappedText(doc, flow, { allowPages: false, imageContours, limits });
+      step = fitter.next({ ranges: result.ranges });
+    }
+    const columns = step.value.columns;
+    result.status.overset ||= step.value.footnotesOverset;
+    for (const col of columns) {
+      if (!col.footnoteHTML) continue;
+      result.fragments.get(col.frameId).html += col.footnoteHTML;
+      result.status.used = Math.max(result.status.used, flow.frameIds.indexOf(col.frameId) + 1);
+    }
+    if (
+      result.status.overset &&
+      allowPages &&
+      flow.automaticPages &&
+      result.status.used === flow.frameIds.length &&
+      appendTextFlowPage(doc, flow)
+    ) {
+      changed = true;
+      continue;
+    }
+    if (allowPages && trimTextFlowPages(doc, flow, Math.max(1, result.status.used))) changed = true;
+    result.changed = changed;
+    result.status.frames = flow.frameIds.length;
+    return result;
+  }
+}
+function fitWrappedText(doc, flow, { allowPages, imageContours, limits }) {
   for (const id of flow.frameIds) {
     let frame = doc.blocks.find((b) => b.id === id);
     if (['center', 'bottom'].includes(frame.frameOptions?.verticalAlign))
@@ -65,7 +114,8 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageConto
     }
   }
   const measured = createWrapLineMeasurer(doc, flow),
-    fragments = new Map();
+    fragments = new Map(),
+    ranges = new Map();
   let start = 0,
     used = 0,
     rows = 0,
@@ -79,6 +129,8 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageConto
         parts = [],
         frameStart = start;
       for (const column of columnSlots(frame)) {
+        if (limits) column.height = limits.get(column.id);
+        const columnStart = start;
         let y = 0,
           rowTop = 0,
           entryBaseline = null,
@@ -233,6 +285,7 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageConto
           y += height + spaceAfter;
           entryBaseline = null;
         }
+        ranges.set(column.id, { start: columnStart, end: start });
         if (start >= measured.total) break;
       }
       if (start > frameStart) used = frameIndex + 1;
@@ -261,6 +314,7 @@ export function layoutWrappedTextFlow(doc, flow, { allowPages = true, imageConto
     if (allowPages && trimTextFlowPages(doc, flow, Math.max(1, used))) changed = true;
     return {
       fragments,
+      ranges,
       changed,
       status: {
         overset: start < measured.total,

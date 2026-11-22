@@ -907,3 +907,48 @@
   max-height: min(32vh, 16em);
   overflow-y: auto;
 }
+
+.flow-footnotes [data-footnote-number] {
+  pointer-events: auto;
+  cursor: text;
+}
+.footnote-editor {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(300px, calc(100vw - 8px));
+  padding: 10px;
+  font: 12px var(--font-ui, system-ui);
+  color: var(--ink, #222);
+  background: var(--panel, #f6f6f6);
+  border: 1px solid var(--line, #bbb);
+}
+.footnote-editor textarea {
+  display: block;
+  width: 100%;
+  margin: 5px 0;
+  font: inherit;
+}
+.footnote-editor > div {
+  display: flex;
+  justify-content: end;
+  gap: 6px;
+}
+.footnote-options form {
+  display: grid;
+  gap: 7px;
+}
+.footnote-options label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1em;
+}
+.footnote-options input[type='number'] {
+  width: 6em;
+}
+.footnote-options form > div {
+  display: flex;
+  justify-content: end;
+  gap: 6px;
+}
