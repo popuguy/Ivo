@@ -1,3 +1,5 @@
+import { readFindQuery } from '../text/find-characters.js';
+
 const prefix = 'ivo.find-change.query.';
 const presets = [
   { name: 'Multiple Spaces to Single Space', mode: 'grep', needle: ' {2,}', replacement: ' ' },
@@ -23,7 +25,7 @@ function savedQueries() {
           typeof q.needle === 'string' &&
           typeof q.replacement === 'string'
         )
-          list.push({ ...q, name: key.slice(prefix.length) });
+          list.push({ ...readFindQuery(q), name: key.slice(prefix.length) });
       } catch {
         /* Ignore an unreadable preference entry. */
       }
@@ -83,7 +85,7 @@ export function installFindQueries(form, { read, apply, report }) {
     try {
       if (localStorage.getItem(prefix + name) !== null)
         return report('A query with that name already exists.');
-      localStorage.setItem(prefix + name, JSON.stringify(query));
+      localStorage.setItem(prefix + name, JSON.stringify({ ...query, characterSyntax: 2 }));
     } catch {
       return report('This device could not save the query.');
     }

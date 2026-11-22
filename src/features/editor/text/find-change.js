@@ -1,4 +1,6 @@
 import { runGrep, replacementParts } from './grep.js';
+import { decodeFindField } from './find-characters.js';
+export { decodeFindField } from './find-characters.js';
 import { formattedRegions, formatRanges, formatAttributes } from './find-format.js';
 import { objectAvailable, effectiveTextStyle } from '../../../domain/documents/publishing.js';
 import { frameTextSettings, textFlowForFrame } from '../../../domain/documents/text-flows.js';
@@ -56,10 +58,6 @@ export function findTextSources(doc, fragmentFor, overset = () => false) {
 
 const paragraphTags = 'p,div,h1,h2,h3,h4,h5,h6,li,blockquote';
 
-export function decodeFindField(value) {
-  return value.replace(/\^([pt^])/g, (_, code) => ({ p: '\r', t: '\t', '^': '^' })[code]);
-}
-
 function indexedSource(root) {
   const map = textIndexMap(root),
     parts = [],
@@ -113,8 +111,9 @@ export function findSelection(html, start, end) {
     .slice(searchStart, searchEnd)
     .replace(/\^/g, '^^')
     .replace(/\r/g, '^p')
+    .replace(/\n/g, '^n')
     .replace(/\t/g, '^t');
-  return { searchStart, searchEnd, text: text.includes('\n') ? '' : text };
+  return { searchStart, searchEnd, text };
 }
 
 function contained(ranges, start, end) {

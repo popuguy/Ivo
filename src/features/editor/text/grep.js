@@ -1,4 +1,5 @@
 import { createGrepWorker } from './grep-worker-factory.js';
+import { grepTildeCodes } from './find-characters.js';
 
 export function runGrep(request, signal) {
   signal.throwIfAborted();
@@ -47,8 +48,15 @@ export function replacementParts(template, groups) {
     } else if (c === '$' && next === '$') {
       literal += '$';
       i++;
-    } else if (c === '\\' && next && Object.hasOwn({ r: 1, n: 1, t: 1, '\\': 1, $: 1 }, next)) {
-      literal += { r: '\r', n: '\n', t: '\t', '\\': '\\', $: '$' }[next];
+    } else if (c === '~' && grepTildeCodes.has(next)) {
+      literal += grepTildeCodes.get(next);
+      i++;
+    } else if (
+      c === '\\' &&
+      next &&
+      Object.hasOwn({ r: 1, n: 1, t: 1, '\\': 1, $: 1, '~': 1 }, next)
+    ) {
+      literal += { r: '\r', n: '\n', t: '\t', '\\': '\\', $: '$', '~': '~' }[next];
       i++;
     } else literal += c;
   }

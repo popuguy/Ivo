@@ -24,11 +24,22 @@
   font-size: 14px;
   font-weight: 600;
 }
-.canvas-find-change > label {
+.canvas-find-change > label,
+.canvas-find-change .find-expression label {
   display: grid;
   align-items: center;
   grid-template-columns: min(32%, 88px) minmax(0, 1fr);
   gap: 8px;
+}
+.canvas-find-change .find-expression {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+}
+.canvas-find-change select[data-find-characters] {
+  appearance: none;
+  text-align: center;
+  padding: 0;
 }
 .canvas-find-change input[type='text'],
 .canvas-find-change select,

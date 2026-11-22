@@ -4,7 +4,7 @@ The [current development state](../development/STATE.md) records the latest engi
 
 ## Readiness for the desktop text review
 
-**21 November 2026 · about 55% ready (11/20).** This score rates how far five desktop workflows have advanced toward a full Mac side-by-side review with InDesign. Separately, 50 of the 63 release capabilities have some implementation evidence. The desktop review excludes physical mobile input, cloud sync, the deferred language and math work, and the proposed Markdown note type.
+**22 November 2026 · about 55% ready (11/20).** This score rates how far five desktop workflows have advanced toward a full Mac side-by-side review with InDesign. Separately, 50 of the 63 release capabilities have some implementation evidence. The desktop review excludes physical mobile input, cloud sync, the deferred language and math work, and the proposed Markdown note type.
 
 Each workflow gets equal weight and has five possible scores. At **0**, a reviewer cannot start the task. At **1**, individual pieces work. At **2**, a common case works end to end, with an important part of the workflow still missing or divergent. At **3**, representative everyday and difficult cases have repeatable editor checks, with some reference checks outstanding. At **4**, the agreed desktop scenarios are implemented, compared with InDesign and ready for independent testing. Known differences are recorded and the reviewer can finish each scenario. Twenty points is the invitation to start the full review. The review itself can still uncover defects.
 
@@ -18,9 +18,11 @@ Each workflow gets equal weight and has five possible scores. At **0**, a review
 
 At each completed text milestone, record the prior and current total, the workflow affected, the test or comparison that supports a change, and the largest remaining obstacle. Keep the score steady when a fix strengthens an existing score without moving the workflow to the next level. [Release capability ledger](text-parity-programme.md#capability-acceptance-ledger) · [Column comparisons](../native-word-spacing.md) · [Frame comparisons](../frame-composition.md) · [Desktop verification](../verification.md)
 
-## Paragraph reflow and editorial search · 21 November
+## Paragraph reflow and editorial search · 21–22 November
 
 Desktop review readiness held at **11/20 (55%)**. A single-line fit now weighs how far it must stretch or compress the line. Paragraph Composer charges progressively for compression beyond the preferred minimum. Both benefit from using the same defaults in the editor and PDF. In the earlier 180-column comparison, exact line-ending matches increased from 141 to 151. In 160 fresh layouts using English, Spanish and Italian, matches increased from 124 to 135. Ordinary default justification and explicitly entered defaults produced identical lines, glyphs and carets in the Mac editor. In the six-page contour fixture the crowded line on page three now stays empty, as in the reference. The two apps still end the sixth linked frame on different words. [Column results](../native-word-spacing.md#column-comparisons) · [Wrap results](../frame-composition.md#multiple-openings-on-one-line)
+
+Find/Change has a special-character menu beside each field in Text and GREP. An editor check converts a forced line break to a paragraph, retains italic text and replaces a nonbreaking space with an em dash. The menu inserts the appropriate expression at the caret. Existing saved queries retain the literal meaning of codes introduced in this version. Glyph-ID and multi-document search remain open. [Adobe’s Find/Change character reference](https://helpx.adobe.com/incopy/desktop/write-and-edit/add-and-edit-text/find-change.html)
 
 ## Earlier release estimates
 

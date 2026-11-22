@@ -1,3 +1,5 @@
+import { grepTildeCodes } from './find-characters.js';
+
 // InDesign's paragraph anchors and horizontal spaces have different semantics from JavaScript's.
 const horizontal = '\\t\\p{Zs}';
 const word = '\\p{Alphabetic}\\p{M}\\p{Nd}\\p{Pc}\\u200c\\u200d';
@@ -26,10 +28,13 @@ function compile(needle, caseSensitive) {
         const leave = '(?<=[' + word + '])(?![' + word + '])';
         const boundary = '(?:' + enter + '|' + leave + ')';
         source += { b: boundary, B: '(?!' + boundary + ')', '<': enter, '>': leave }[escaped];
-      } else if (!inClass && escaped === 'A') source += '^';
+      } else if (escaped === '~') source += '~';
+      else if (!inClass && escaped === 'A') source += '^';
       else if (!inClass && escaped === 'z') source += '(?![\\s\\S])';
       else if (!inClass && escaped === 'R') source += '[\\r\\n]';
       else source += '\\' + escaped;
+    } else if (c === '~' && grepTildeCodes.has(needle[i + 1])) {
+      source += grepTildeCodes.get(needle[++i]);
     } else if (c === '^' && !inClass) source += '(?<![^\\r])';
     else if (c === '$' && !inClass) source += '(?![^\\r])';
     else {

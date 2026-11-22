@@ -160,7 +160,40 @@ export async function verifyEditorialSearch() {
         await new Promise((r) => setTimeout(r, 12));
       assert(!panel().hasAttribute('aria-busy'), 'search settles');
     };
+    function insertCharacter(name, token) {
+      const menu = panel().querySelector('[data-find-characters="' + name + '"]');
+      menu.value = token;
+      assert(menu.value === token, 'missing character option ' + token);
+      menu.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const original = model.html;
+    model.html = '<p><em>Cut</em><br>and\u00a0sew</p>';
+    set('needle', 'Cut?and');
+    control('needle').setSelectionRange(3, 4);
+    insertCharacter('needle', '^n');
+    assert(
+      control('needle').value === 'Cut^nand' && control('needle').selectionStart === 5,
+      'insertion replaces the selected range and returns the caret',
+    );
+    set('replacement', 'Cut');
+    insertCharacter('replacement', '^p');
+    action('all');
+    assert(
+      model.html.includes('</p><p>') &&
+        !model.html.includes('<br>') &&
+        model.html.includes('<em>Cut</em>'),
+      'Text menu creates a real paragraph and retains emphasis: ' + model.html,
+    );
     panel().querySelector('[data-find-mode="grep"]').click();
+    set('needle', '');
+    insertCharacter('needle', '~s');
+    set('replacement', '');
+    insertCharacter('replacement', '~_');
+    action('all');
+    await settled();
+    assert(model.html.includes('—sew'), 'GREP menu replaces the nonbreaking space with an em dash');
+    previous.length = 0;
+    model.html = original;
     set('needle', '^');
     action('next');
     await settled();

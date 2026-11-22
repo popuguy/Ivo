@@ -2,6 +2,7 @@ import { findTextMatches, applyTextChanges, plannedReplacement } from '../text/f
 
 import { findFormats, namedFormats } from '../text/find-format.js';
 import { installFindQueries } from './find-queries.js';
+import { findCharacters } from '../text/find-characters.js';
 
 /** The scope belongs to the text selection at dialog entry, even as Find Next moves the caret. */
 export function createFindChangePanel({
@@ -71,6 +72,18 @@ export function createFindChangePanel({
       tab.setAttribute('aria-pressed', String(mode === tab.dataset.findMode));
     field('word').disabled = mode === 'grep';
     panel.querySelector('[data-grep-help]').hidden = mode !== 'grep';
+    for (const picker of panel.querySelectorAll('[data-find-characters]')) {
+      picker.replaceChildren(new Option('⋯', ''));
+      for (const [name, entries] of findCharacters) {
+        const group = document.createElement('optgroup');
+        group.label = name;
+        for (const [label, code, , escape] of entries) {
+          const token = mode === 'grep' ? (escape ?? '~' + code) : '^' + code;
+          group.append(new Option(label, token));
+        }
+        picker.append(group);
+      }
+    }
   }
   function applySettings(q) {
     setMode(q.mode);
@@ -325,8 +338,8 @@ export function createFindChangePanel({
       <div class="find-query"><label>Query <select name="query"></select></label><button type="button" name="save-query">Save…</button><button type="button" name="delete-query">Delete</button></div>
       <div class="find-query" data-query-entry hidden><input name="query-name" type="text" aria-label="Query name" placeholder="Query name" maxlength="100"><button type="button" name="confirm-query">Save query</button></div>
       <div class="find-modes" role="group" aria-label="Search mode"><button type="button" data-find-mode="text">Text</button><button type="button" data-find-mode="grep">GREP</button></div>
-      <label>Find what<input name="needle" type="text" autocomplete="off" spellcheck="false"></label>
-      <label>Change to<input name="replacement" type="text" autocomplete="off" spellcheck="false"></label>
+      <div class="find-expression"><label>Find what<input name="needle" type="text" autocomplete="off" spellcheck="false"></label><select data-find-characters="needle" aria-label="Special characters for search" title="Special characters for search"></select></div>
+      <div class="find-expression"><label>Change to<input name="replacement" type="text" autocomplete="off" spellcheck="false"></label><select data-find-characters="replacement" aria-label="Special characters for replace" title="Special characters for replace"></select></div>
       <label>Search<select name="scope"><option value="document">Document</option><option value="flow">Text Flow</option><option value="selection">Selection</option></select></label>
       <label>Direction<select name="direction"><option value="forward">Forward</option><option value="backward">Backward</option></select></label>
       <div class="find-options"><label><input name="case" type="checkbox">Case Sensitive</label><label><input name="word" type="checkbox">Whole Word</label></div>
@@ -363,6 +376,7 @@ export function createFindChangePanel({
         : lastSettings || { mode: 'text', needle: '', replacement: '' },
     );
     panel.addEventListener('input', (event) => {
+      if (event.target.hasAttribute('data-find-characters')) return;
       if (['query-name', 'query'].includes(event.target.name)) return;
       cancel();
       if (event.target !== field('direction') && event.target !== field('scope')) resetQuery();
@@ -370,6 +384,15 @@ export function createFindChangePanel({
         button('next').textContent =
           field('direction').value === 'backward' ? 'Find Previous' : 'Find Next';
       } else if (event.target !== field('replacement')) invalidate();
+    });
+    panel.addEventListener('change', (event) => {
+      const picker = event.target;
+      if (!picker.dataset.findCharacters || !picker.value) return;
+      const input = field(picker.dataset.findCharacters);
+      input.setRangeText(picker.value, input.selectionStart, input.selectionEnd, 'end');
+      picker.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus({ preventScroll: true });
     });
     panel.addEventListener('submit', (event) => {
       event.preventDefault();

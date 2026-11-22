@@ -1,6 +1,6 @@
 # Current development state
 
-Updated 21 November 2026. This file describes current contracts; the [verification record](../verification.md) retains milestone history, test counts and review builds. The [backlog](../backlog.md) owns unfinished work.
+Updated 22 November 2026. This file describes current contracts; the [verification record](../verification.md) retains milestone history, test counts and review builds. The [backlog](../backlog.md) owns unfinished work.
 
 Desktop release qualification now checks sustained typing in a real window, including a 72-flow magazine masthead and older linked text with deeply nested formatting. A completed native typing revision can display its glyphs while the next revision is being composed. Only the latest revision owns document geometry and autosave. [Release input checks](../verification.md#continuous-typing-and-desktop-release-qualification--20-november-2026) A [six-page contour study](../verification.md#six-page-contour-reflow--21-november-2026) separately checks the cost and correctness of recomposing one long flow through complex image masks.
 
