@@ -149,7 +149,7 @@ async function verifySoftWrap({ svg, b, editor, input, flow, bridge, settle }) {
     restored.textContent === text.slice(0, boundary - 2) + 'Če' + text.slice(boundary),
     'replacement across an unforced page break lost adjacent source',
   );
-  return { mixedScriptSoftWrapEditing: true };
+  return { mixedScriptSoftWrapEditing: true, mixedScriptSoftWrapIndex: boundary };
 }
 
 async function verifyParagraphBoundary({ svg, a, b, input, original, flow, bridge }) {
