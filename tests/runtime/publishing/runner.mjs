@@ -1,4 +1,5 @@
 import { prepareBackgroundTest, testWindowOptions } from '../helpers/background.mjs';
+import { prepareEpubZip } from '../../../scripts/epub-zip.mjs';
 import { app, BrowserWindow, protocol, net } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -18,6 +19,7 @@ protocol.registerSchemesAsPrivileged([
 app
   .whenReady()
   .then(async () => {
+    await prepareEpubZip();
     protocol.handle('ivo-publishing-test', (request) => {
       const target = path.resolve(root, '.' + new URL(request.url).pathname);
       if (!target.startsWith(root + path.sep)) return new Response('Forbidden', { status: 403 });
