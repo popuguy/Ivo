@@ -171,12 +171,13 @@ export async function renderPDFSnapshot(snapshot) {
           token: composition.token,
           placements: [],
         };
-        layer.placements.push({
+        const placement = {
           sourcePageIndex,
           destinationPageIndex: pageIndex,
           matrix: composedPDFMatrix(matrix, frame.height, page.height),
           clips,
-        });
+        };
+        layer.placements.push(placement);
         composedText.set(composition.token, layer);
         // A partially masked paragraph cannot represent a complete accessible text range.
         const box = svg.getBoundingClientRect();
@@ -200,8 +201,10 @@ export async function renderPDFSnapshot(snapshot) {
           }
           const marker = 'ivo-' + markerPrefix + '-' + paragraphs.length;
           const entry = describeComposedFrame(svg, composition, frame, roles, marker);
-          if (entry)
+          if (entry) {
+            placement.marker = marker;
             paragraphs.push({ ...entry, sourcePageIndex, destinationPageIndex: pageIndex });
+          }
         }
       }
     }

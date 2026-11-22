@@ -93,6 +93,30 @@ test('composed PDF layers retain their embedded text resources and explicit affi
   assert.ok(form.dict.lookup(PDFName.of('Resources')).lookup(PDFName.of('Font')).keys().length);
 });
 
+test('each tagged appearance of repeated native text has its own PDF structure parent', async () => {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([400, 400]);
+  const labels = ['first', undefined, 'second', undefined];
+  const placements = labels.map((marker, i) => ({
+    sourcePageIndex: 0,
+    destinationPageIndex: 0,
+    matrix: [1, 0, 0, 1, 0, i * 50],
+    marker,
+  }));
+  const tags = new Map();
+  await embedComposedTextLayers(pdf, [{ bytes: await sourcePDF(), placements }], {
+    frame: (_token, value) => value.marker,
+    attachFrame: (marker, _source, ref) => tags.set(marker, ref),
+  });
+  const forms = page.node.Resources().lookup(PDFName.of('XObject')).values();
+  assert.equal(forms.length, 4);
+  assert.deepEqual([...tags.keys()], ['first', 'second']);
+  assert.equal(forms[0], tags.get('first'));
+  assert.equal(forms[2], tags.get('second'));
+  assert.equal(forms[1], forms[3]);
+  assert.equal(new Set(forms).size, 3);
+});
+
 test('invalid composed geometry and missing pages reject before changing destination content', async () => {
   const bytes = await sourcePDF(),
     destination = await PDFDocument.create();

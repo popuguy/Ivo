@@ -27,7 +27,6 @@ export function preparePDFStructure(pdf, manifest) {
   const root = pdf.catalog.lookup(name('StructTreeRoot'));
   if (!(root instanceof PDFDict)) return;
   const paragraphs = new Map((manifest.paragraphs || []).map((p) => [p.marker, p]));
-  const frames = new Map();
   const links = new Map(manifest.links.map((link) => [link.marker, link]));
   const tags = new Map();
   const pageParents = new Map();
@@ -43,10 +42,6 @@ export function preparePDFStructure(pdf, manifest) {
     tags.set(marker, { ref, obj });
     obj.delete(name('Alt'));
     obj.set(name('S'), name('Div'));
-    frames.set(
-      [paragraph.token, paragraph.sourcePageIndex, paragraph.destinationPageIndex].join('/'),
-      paragraph,
-    );
     for (const part of paragraph.paragraphs) {
       const child = ctx.obj({
         Type: 'StructElem',
@@ -106,7 +101,15 @@ export function preparePDFStructure(pdf, manifest) {
   const marksBySource = new WeakMap();
   return {
     frame(token, value) {
-      return frames.get([token, value.sourcePageIndex, value.destinationPageIndex].join('/'));
+      const frame = paragraphs.get(value.marker);
+      if (
+        frame &&
+        tags.has(value.marker) &&
+        frame.token === token &&
+        frame.sourcePageIndex === value.sourcePageIndex &&
+        frame.destinationPageIndex === value.destinationPageIndex
+      )
+        return frame;
     },
     attachFrame(frame, sourcePage, formRef) {
       const source = sourcePage.doc;

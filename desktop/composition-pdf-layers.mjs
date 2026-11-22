@@ -37,7 +37,12 @@ export async function resolveCompositionPDFLayers(manifest, readPDF) {
     return {
       token: row.token,
       placements: row.placements.map((value) => {
-        only(value, ['sourcePageIndex', 'destinationPageIndex', 'matrix', 'clips']);
+        only(value, ['sourcePageIndex', 'destinationPageIndex', 'matrix', 'clips', 'marker']);
+        if (
+          value.marker !== undefined &&
+          (typeof value.marker !== 'string' || !/^ivo-[0-9a-f-]{36}-\d{1,4}$/.test(value.marker))
+        )
+          fail();
         if (
           !Number.isSafeInteger(value.sourcePageIndex) ||
           value.sourcePageIndex < 0 ||
@@ -69,6 +74,7 @@ export async function resolveCompositionPDFLayers(manifest, readPDF) {
           sourcePageIndex: value.sourcePageIndex,
           destinationPageIndex: value.destinationPageIndex,
           matrix: matrix.slice(),
+          ...(value.marker === undefined ? {} : { marker: value.marker }),
           clips: clips.map((polygon) => polygon.map(({ x, y }) => ({ x, y }))),
         };
       }),

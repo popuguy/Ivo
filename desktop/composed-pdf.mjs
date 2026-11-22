@@ -55,6 +55,7 @@ function placement(value, destinationCount) {
     sourcePageIndex: value.sourcePageIndex,
     destinationPageIndex: value.destinationPageIndex,
     matrix: value.matrix.slice(),
+    marker: value.marker,
     clips: clips.map((polygon) => polygon.map(({ x, y }) => ({ x, y }))),
   };
 }
@@ -130,17 +131,19 @@ export async function embedComposedTextLayers(pdf, layers, structure) {
         continue;
       }
       const tagged = structure?.frame(token, value);
-      if (tagged || !embedded.has(value.sourcePageIndex)) {
+      let page = tagged ? undefined : embedded.get(value.sourcePageIndex);
+      if (!page) {
         const { width, height } = source.getSize();
-        const [page] = await pdf.embedPages(
+        [page] = await pdf.embedPages(
           [source],
           [{ left: 0, bottom: 0, right: width, top: height }],
           [[1, 0, 0, 1, 0, 0]],
         );
-        embedded.set(value.sourcePageIndex, page);
         if (tagged) {
           await page.embed();
           structure.attachFrame(tagged, source, page.ref);
+        } else {
+          embedded.set(value.sourcePageIndex, page);
         }
       }
       const destination = destinationPages[value.destinationPageIndex],
@@ -151,7 +154,7 @@ export async function embedComposedTextLayers(pdf, layers, structure) {
         operators.push(closePath(), clip(), endPath());
       }
       destination.pushOperators(...operators, concatTransformationMatrix(...value.matrix));
-      destination.drawPage(embedded.get(value.sourcePageIndex), {
+      destination.drawPage(page, {
         x: 0,
         y: 0,
         xScale: 1,

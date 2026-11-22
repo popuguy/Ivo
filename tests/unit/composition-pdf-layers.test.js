@@ -20,6 +20,8 @@ const manifest = () => ({ pages: [{}], composedText: [{ token, placements: [plac
 
 test('PDF native layer resolver preserves placements and reads a repeated immutable token once', async () => {
   const input = manifest();
+  const marker = 'ivo-20000000-0000-4000-8000-000000000000-0';
+  input.composedText[0].placements[0].marker = marker;
   input.composedText.push({
     token,
     placements: [{ ...placement(), matrix: [0, 1, -1, 0, 100, 40] }],
@@ -33,6 +35,8 @@ test('PDF native layer resolver preserves placements and reads a repeated immuta
   assert.equal(reads, 1);
   assert.equal(layers.length, 1);
   assert.equal(layers[0].placements.length, 2);
+  assert.equal(layers[0].placements[0].marker, marker);
+  assert.equal(layers[0].placements[1].marker, undefined);
   assert.deepEqual(layers[0].bytes, bytes);
   input.composedText[0].placements[0].matrix[0] = 99;
   assert.equal(
@@ -52,6 +56,7 @@ test('invalid native PDF selectors and affine geometry reject before fetching te
   for (const mutate of [
     (m) => (m.composedText[0].path = '/arbitrary.pdf'),
     (m) => (m.composedText[0].token = 'guess'),
+    (m) => (m.composedText[0].placements[0].marker = 'unrelated'),
     (m) => (m.composedText[0].placements[0].matrix = [1, 1, 1, 1, 0, 0]),
     (m) => (m.composedText[0].placements[0].matrix[4] = Infinity),
     (m) => (m.composedText[0].placements[0].destinationPageIndex = 1),
