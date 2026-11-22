@@ -1,3 +1,4 @@
+import { runningFieldRanges } from '../../../domain/documents/running-text.js';
 import { tableThreads } from '../../../domain/documents/table-threads.js';
 import { runGrep, replacementParts } from './grep.js';
 import { decodeFindField } from './find-characters.js';
@@ -73,6 +74,7 @@ export function findTextSources(doc, fragmentFor, overset = () => false, tablePl
       regions,
       doc,
       defaults,
+      ...(item.extensions?.ivoRunningText && { runningFields: true }),
     });
   }
   return result;
@@ -153,11 +155,17 @@ function contained(ranges, start, end) {
 function prepared(owner, filter) {
   if (owner.cell) return { owner, index: indexCell(owner.value) };
   const index = sourceIndex(owner.html);
-  return { owner, index, formatted: filter && formattedRegions(index, owner, filter) };
+  return {
+    owner,
+    index,
+    fields: owner.runningFields && runningFieldRanges(index.text),
+    formatted: filter && formattedRegions(index, owner, filter),
+  };
 }
 
 function matchRange(prep, selection, from, to) {
-  const { index, owner, formatted } = prep;
+  const { index, owner, formatted, fields } = prep;
+  if (fields && fields.some((field) => from < field.end && to > field.start)) return null;
   const start = index.offsets?.[from] ?? from,
     end = index.offsets?.[to] ?? to;
   if (selection && (from < selection.searchStart || to > selection.searchEnd)) return null;

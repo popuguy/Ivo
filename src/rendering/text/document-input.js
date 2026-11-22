@@ -1,3 +1,4 @@
+import { runningFieldRanges } from '../../domain/documents/running-text.js';
 import { inlineListPrefix } from '../../shared/dom/list-numbering.js';
 import { applyListCommand } from './edit-lists.js';
 import { blankParagraphBreak } from './insertion.js';
@@ -79,7 +80,18 @@ function readParagraph(block, root, points, placeholder = blankParagraphBreak(bl
   // Multiple independent empty style/link elements carry authored metadata
   // with no text interval to slice. Keep their existing platform edit path.
   if (emptyContexts > 1 || (emptyContexts && runs.length)) return null;
-  return { block: block === root ? null : block, runs, leaves, positions, emptyStyle, length };
+  const fields = root.hasAttribute('data-running-fields')
+    ? runningFieldRanges(runs.map((run) => (run.break ? '\n' : run.text)).join(''))
+    : undefined;
+  return {
+    block: block === root ? null : block,
+    runs,
+    leaves,
+    positions,
+    emptyStyle,
+    length,
+    fields,
+  };
 }
 
 function cloneShell(node) {

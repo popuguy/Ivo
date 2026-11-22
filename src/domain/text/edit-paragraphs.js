@@ -1,3 +1,5 @@
+import { runningFieldEdge } from '../documents/running-text.js';
+
 // Paragraphs contain runs of UTF-16 text or a single soft break. The caller
 // supplies opaque style identities. Positions never refer to frames or pages.
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -141,6 +143,15 @@ export function editParagraphs(paragraphs, anchor, focus, { type, text = '', sty
   }
   const first = paragraphs[start.paragraph],
     last = paragraphs[end.paragraph];
+  const inserting = collapsed && !type.startsWith('delete');
+  if (first.fields?.length)
+    start = {
+      ...start,
+      offset: runningFieldEdge(first.fields, start.offset, inserting ? 'nearest' : 'start'),
+    };
+  if (inserting) end = start;
+  else if (last.fields?.length)
+    end = { ...end, offset: runningFieldEdge(last.fields, end.offset, 'end') };
   const before = sliceRuns(first.runs, 0, start.offset);
   const after = sliceRuns(last.runs, end.offset, Infinity);
   // An explicit caret style distinguishes two sides of the same run boundary.

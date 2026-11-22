@@ -3334,6 +3334,32 @@ export function mountCanvasEditor(host, options) {
         selected && ['text', 'quote'].includes(selected.type) && objectAvailable(doc(), selected)
           ? selected
           : null;
+      const element = activeText();
+      const range = target && activeTextId === target.id && preserveRange();
+      if (range && element) {
+        finishText();
+        const before = structuredClone(doc()),
+          viewBefore = captureView();
+        element.focus({ preventScroll: true });
+        const selection = document.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const result = applyDocumentInput(element, 'insertText', token, {});
+        if (result !== 'edited') return;
+        target.extensions = { ...target.extensions, ivoRunningText: true };
+        element.dataset.runningFields = 'true';
+        writeText(target, element.innerHTML, element);
+        doc().canvasVersion = Math.max(doc().canvasVersion, 26);
+        measureText(target, element);
+        onCommit(before, {
+          label: 'Insert ' + PARENT_FIELDS[key],
+          viewBefore,
+          viewAfter: captureView(),
+        });
+        selectionDirty = true;
+        requestFrame();
+        return;
+      }
       mutate(() => {
         if (target) {
           const end = /<\/(p|div|h[2-4]|blockquote)>\s*$/i;

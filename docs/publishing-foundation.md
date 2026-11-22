@@ -73,3 +73,10 @@ The picker currently requires an explicit destination in a normal paragraph or h
 These are requested work, not declarations of working buttons. No interface control is added for an absent proprietary paragraph composer, editorial feature or cloud service.
 
 Primary reference contracts: [Adobe panels](https://helpx.adobe.com/indesign/desktop/get-started/settings-and-preferences/customize-panels.html), [parent pages](https://helpx.adobe.com/indesign/desktop/create-and-organize-pages/create-and-manage-parent-pages/about-parent-pages.html), [layers](https://helpx.adobe.com/indesign/desktop/create-and-organize-pages/manage-layers/about-layers.html), [OpenType OS/2 metadata](https://learn.microsoft.com/en-us/typography/opentype/spec/os2). Runtime comparisons and extracted artifacts remain private.
+
+
+## Editing generated text on parent pages
+
+In the parent editor a running page number, section marker, last-page number or document name occupies one editing position. Arrow keys cross its full displayed name. Backspace, Delete and replacing a partial selection remove the whole field. Find/Change and spelling skip its internal label. Choosing a field while typing inserts it at the current selection. Selecting a frame as an object still appends a field. Previously saved names split across inline formatting use the same boundaries.
+
+A cross-reference has different editing semantics. Its source label can be edited and refreshed from its destination. A disposable InDesign document confirmed both behaviors. Removing the marker between A and B restored AB in one deletion. A manual edit inside a cross-reference survived until Update restored its generated text. [Adobe's cross-reference guide](https://helpx.adobe.com/indesign/desktop/indexes-and-references/references-and-bookmarks/manage-cross-references.html)

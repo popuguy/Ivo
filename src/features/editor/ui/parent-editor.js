@@ -1,3 +1,4 @@
+import { protectParentFieldSelections } from '../text/parent-fields.js';
 import { uid } from '../../../domain/documents/model.js';
 import { commitParentDefinition } from '../../../domain/documents/publishing.js';
 import { createDocumentHistory } from '../../../domain/history/document-history.js';
@@ -26,6 +27,7 @@ export function openParentEditor(editor, id, { getDocument, mount, options, onCo
   overlay.className = 'parent-editor-overlay';
   overlay.innerHTML = `<header><span>${escapeHTML(proxy.title)}</span><button data-finish-parent>Done</button></header><div class="parent-editor-host"></div>`;
   editor.append(overlay);
+  protectParentFieldSelections(overlay);
   const history = createDocumentHistory();
   let handle,
     closed = false;

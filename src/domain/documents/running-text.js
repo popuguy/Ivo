@@ -26,6 +26,21 @@ const markupEscape = (text) =>
 const tokens = new Map(Object.keys(PARENT_FIELDS).map((key) => [parentFieldToken(key), key]));
 const fieldPattern = new RegExp([...tokens.keys()].join('|'), 'g');
 
+export function runningFieldRanges(text) {
+  return Array.from(text.matchAll(fieldPattern), (m) => ({
+    start: m.index,
+    end: m.index + m[0].length,
+  }));
+}
+
+// Parent-page field names can span inline formatting, but act as one character.
+export function runningFieldEdge(fields, index, side) {
+  const field = fields.find((f) => f.start < index && index < f.end);
+  if (!field) return index;
+  if (side === 'nearest') return index - field.start < field.end - index ? field.start : field.end;
+  return field[side];
+}
+
 // Replace fields only in visible inline text. A field split across formatting
 // runs takes the formatting of its first character. Keep surrounding markup.
 export function resolveRunningText(html, values) {

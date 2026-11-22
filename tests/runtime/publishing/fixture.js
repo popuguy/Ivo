@@ -1,3 +1,4 @@
+import { verifyRunningFields } from './running-fields.js';
 import { verifyCrossReferences } from './cross-references.js';
 import { verifyBookEntries } from './book-entries.js';
 import { verifyContinuedTables } from './continued-tables.js';
@@ -344,6 +345,7 @@ try {
   runningField.value = 'current-page-number';
   runningField.dispatchEvent(new Event('change', { bubbles: true }));
   await tick();
+  await verifyRunningFields(parentHost, assert);
   parentHost.querySelector(`[data-layer-select="${added.id}"]`).click();
   parentHost.querySelector('[data-canvas-command="delete-layer"]').click();
   assert(doc.blocks[0].layerId === added.id, 'Parent layer edit escaped before commit');
