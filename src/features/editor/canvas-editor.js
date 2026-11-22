@@ -4282,7 +4282,10 @@ export function mountCanvasEditor(host, options) {
     if (text && options.editing) {
       event.preventDefault();
       beginTextInput('insertFromPaste');
-      const html = textClipboardHTML(event.clipboardData, () => textFlowForFrame(doc(), activeTextId)?.html || text.innerHTML);
+      const html = textClipboardHTML(
+        event.clipboardData,
+        () => textFlowForFrame(doc(), activeTextId)?.html || text.innerHTML,
+      );
       const fragment = document.createElement('div');
       fragment.innerHTML = html;
       // Native HTML insertion can turn untouched spaces beside the replacement

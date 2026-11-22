@@ -251,9 +251,32 @@ app
       h: 180,
       html: '<h2 data-paragraph-destination="par-sources">Sources</h2><h3>Image credits</h3>',
     });
-    const nativeTarget = insertObject(front,'text',{x:42,y:170,w:285,h:100,fontSize:13,textStyle:'cmu-serif',html:'<p>Paragraph location proof</p><p data-paragraph-destination="par-native">Fibre index</p>'});
-    const targetFlow = startTextFlow(front,nativeTarget.id,{automaticPages:false}); enableNativeComposition(front,targetFlow,'single-line');
-    insertObject(owner,'text',{pageId:owner.pages[1].id,x:42,y:230,w:275,h:60,html:'<p><a data-doc-id="'+front.id+'" data-page-id="stale" href="#doc='+front.id+'" data-xref-format="paragraph-text" data-xref-paragraph="'+targetFlow.id+'/par-native">Fibre index</a></p>'});
+    const nativeTarget = insertObject(front, 'text', {
+      x: 42,
+      y: 170,
+      w: 285,
+      h: 100,
+      fontSize: 13,
+      textStyle: 'cmu-serif',
+      html: '<p>Paragraph location proof</p><p data-paragraph-destination="par-native">Fibre index</p>',
+    });
+    const targetFlow = startTextFlow(front, nativeTarget.id, { automaticPages: false });
+    enableNativeComposition(front, targetFlow, 'single-line');
+    insertObject(owner, 'text', {
+      pageId: owner.pages[1].id,
+      x: 42,
+      y: 230,
+      w: 275,
+      h: 60,
+      html:
+        '<p><a data-doc-id="' +
+        front.id +
+        '" data-page-id="stale" href="#doc=' +
+        front.id +
+        '" data-xref-format="paragraph-text" data-xref-paragraph="' +
+        targetFlow.id +
+        '/par-native">Fibre index</a></p>',
+    });
     markTypographyVersion(front);
     owner.referenceFormats = [
       { id: 'xref-proof', name: 'Proof', definition: '<paraText/> · <pageNum/>' },
@@ -363,7 +386,12 @@ app
       outline.linkPoints.some(([from, to, top]) => from === 1 && to === 0 && top > 20 && top < 120),
       'PDFKit did not land at the referenced paragraph',
     );
-    assert(outline.linkPoints.some(([from,to,top])=>from===2 && to===0 && top>172 && top<270),'PDFKit did not land on the native target line');
+    assert(
+      outline.linkPoints.some(
+        ([from, to, top]) => from === 2 && to === 0 && top > 172 && top < 270,
+      ),
+      'PDFKit did not land on the native target line',
+    );
     assert.deepEqual(outline.labels, ['i', 'A–7', 'A–8']);
     assert(
       outline.pageLinks.some(([from, to]) => from === 1 && to === 2),
