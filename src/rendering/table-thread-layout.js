@@ -35,7 +35,10 @@ export function layoutTableThreads(doc, cache) {
       // independent of the camera, page position and selection.
       const key =
         cache &&
-        JSON.stringify([table, frames.map((f) => [f.id, f.w, f.h, f.fontSize, f.textStyle])]);
+        JSON.stringify([
+          table,
+          frames.map((f) => [f.id, f.w, f.h, f.fontSize, f.textStyle, f.frameOptions?.strokeWidth]),
+        ]);
       const previous = cache?.get(head);
       if (previous && previous.key === key) {
         for (const [id, part] of previous.parts) result.set(id, part);
@@ -47,14 +50,15 @@ export function layoutTableThreads(doc, cache) {
       grid.style.height = 'auto';
       const metrics = new Map();
       function measure(frame) {
-        const key = JSON.stringify([frame.w, frame.fontSize, frame.textStyle]);
+        const stroke = frame.frameOptions?.strokeWidth || 0;
+        const key = JSON.stringify([frame.w, frame.fontSize, frame.textStyle, stroke]);
         if (metrics.has(key)) return metrics.get(key);
-        host.style.width = frame.w + 'px';
+        host.style.width = Math.max(0, frame.w - 2 * stroke) + 'px';
         host.style.fontFamily = fontFamilyFor(frame.textStyle) || 'serif';
         host.style.fontSize = frame.fontSize + 'px';
         const heights = Array.from(grid.rows, (r) => r.getBoundingClientRect().height);
         const border = grid.getBoundingClientRect().height - heights.reduce((sum, h) => sum + h, 0);
-        const m = { heights, border };
+        const m = { heights, border: border + 2 * stroke };
         metrics.set(key, m);
         return m;
       }

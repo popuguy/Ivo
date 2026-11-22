@@ -195,6 +195,7 @@ export function continueTableOnNextPage(doc, id) {
     w,
     h,
     rotation: tail.rotation,
+    ...(tail.frameOptions && { frameOptions: structuredClone(tail.frameOptions) }),
     fontSize: tail.fontSize,
     textStyle: tail.textStyle,
     layerId: tail.layerId,

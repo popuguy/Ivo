@@ -80,6 +80,17 @@ export async function verifyContinuedTables(host, assert) {
         'Incorrect end-of-thread overflow',
       );
     }
+    for (const block of doc.blocks) {
+      block.h = 124;
+      block.frameOptions = { stroke: '#112233', strokeWidth: 10 };
+    }
+    select(head);
+    assert(shown() === '1,2,3|4,5,6|7,8,9|10', 'Rows crossed the painted frame edge');
+    doc.blocks.forEach((block) => {
+      delete block.frameOptions;
+      block.h = 84;
+    });
+    select(head);
     await editor.command('find-change');
     const search = host.querySelector('.canvas-find-change');
     search.elements.scope.value = 'document';
