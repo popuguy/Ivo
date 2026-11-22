@@ -1,3 +1,4 @@
+import { validParagraphKey } from '../../domain/documents/paragraph-destinations.js';
 import { originalLineGeometry } from './retained-geometry.js';
 import { escapeHTML as esc } from '../../shared/html/sanitize.js';
 import { characterInkBox, characterDecorationY } from '../../domain/text/character-geometry.js';
@@ -44,11 +45,15 @@ function sourceInterval(line, run, start, end, geometry) {
 
 function linkAttributes(link) {
   const page = /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(link.pageId || '') ? link.pageId : null;
+  const paragraph =
+    page && validParagraphKey(link.paragraphKey)
+      ? ' data-xref-paragraph="' + esc(link.paragraphKey) + '"'
+      : '';
   if (link.documentId && /^[\w-]{1,120}$/.test(link.documentId)) {
     const destination = page ? ' data-page-id="' + esc(page) + '"' : '';
-    return `data-doc-id="${esc(link.documentId)}"${destination} href="#doc=${esc(link.documentId)}"`;
+    return `data-doc-id="${esc(link.documentId)}"${destination}${paragraph} href="#doc=${esc(link.documentId)}"`;
   }
-  if (page) return 'href="#page=' + esc(page) + '"';
+  if (page) return 'href="#page=' + esc(page) + '"' + paragraph;
   return /^https?:\/\//.test(link.url || '') ? `href="${esc(link.url)}"` : '';
 }
 

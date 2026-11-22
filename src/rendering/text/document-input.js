@@ -167,6 +167,8 @@ function applyChange(root, local, change, type, data, marks, nextStyle) {
       : part.block
         ? cloneShell(part.block)
         : document.createElement('p');
+    if (i > 0 && block.nodeType === Node.ELEMENT_NODE)
+      block.removeAttribute('data-paragraph-destination');
     if (i > 0 && block.nodeName === 'LI') block.removeAttribute('value');
     const advance =
       i === 1 && nextStyle && !part.runs.length && block.nodeType === Node.ELEMENT_NODE;

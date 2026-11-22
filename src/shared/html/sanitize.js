@@ -1,4 +1,8 @@
-import { crossReferenceFormats } from '../../domain/documents/cross-references.js';
+import {
+  validParagraphId,
+  validParagraphKey,
+} from '../../domain/documents/paragraph-destinations.js';
+import { validCrossReferenceFormat } from '../../domain/documents/cross-references.js';
 import { listOrdinal } from '../../domain/text/list-numbering.js';
 import { nativeTextAttributes } from '../dom/native-text-format.js';
 import { normalizeInlineMetrics } from '../dom/inline-metrics.js';
@@ -110,6 +114,8 @@ export function cleanHTML(value) {
     }
     const attributes = { ...native, ...authored };
     const out = document.createElement(node.tagName.toLowerCase());
+    if (/^(P|H[234])$/.test(node.tagName) && validParagraphId(node.dataset.paragraphDestination))
+      out.dataset.paragraphDestination = node.dataset.paragraphDestination;
     const counter = node.tagName === 'OL' ? 'start' : node.tagName === 'LI' ? 'value' : null;
     if (node.tagName === 'OL' && node.dataset.ivoListSeries === 'default')
       out.dataset.ivoListSeries = 'default';
@@ -157,9 +163,14 @@ export function cleanHTML(value) {
       }
       if (
         (out.dataset.pageId || out.getAttribute('href')?.startsWith('#page=')) &&
-        Object.hasOwn(crossReferenceFormats, node.dataset.xrefFormat)
-      )
+        validCrossReferenceFormat(node.dataset.xrefFormat) &&
+        (node.dataset.xrefFormat !== 'paragraph-text' ||
+          validParagraphKey(node.dataset.xrefParagraph))
+      ) {
         out.dataset.xrefFormat = node.dataset.xrefFormat;
+        if (validParagraphKey(node.dataset.xrefParagraph))
+          out.dataset.xrefParagraph = node.dataset.xrefParagraph;
+      }
     }
     return out;
   }

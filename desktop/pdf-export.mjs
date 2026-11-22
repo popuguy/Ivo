@@ -59,7 +59,11 @@ export async function finalizePDF(bytes, manifest, { composedLayers = [] } = {})
     } else {
       const target = pages[link.target.pageIndex];
       if (!target) throw new Error('PDF link has no destination.');
-      annotation.Dest = [target.ref, 'XYZ', 0, manifest.pages[link.target.pageIndex].height, null];
+      const height = manifest.pages[link.target.pageIndex].height;
+      const top = Number.isFinite(link.target.top)
+        ? Math.max(0, Math.min(height, link.target.top))
+        : 0;
+      annotation.Dest = [target.ref, 'XYZ', 0, height - top, null];
     }
     page.node.addAnnot(pdf.context.register(pdf.context.obj(annotation)));
   }

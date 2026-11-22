@@ -1,3 +1,4 @@
+import { validParagraphKey } from '../../domain/documents/paragraph-destinations.js';
 import {
   exceptionLanguage,
   indexHyphenationExceptions,
@@ -163,12 +164,20 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
         target && /^[\w-]{1,120}$/.test(target)
           ? {
               documentId: target,
+              ...(validParagraphKey(anchor.dataset.xrefParagraph) && {
+                paragraphKey: anchor.dataset.xrefParagraph,
+              }),
               ...(/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(anchor.dataset.pageId || '') && {
                 pageId: anchor.dataset.pageId,
               }),
             }
           : pageId
-            ? { pageId }
+            ? {
+                pageId,
+                ...(validParagraphKey(anchor.dataset.xrefParagraph) && {
+                  paragraphKey: anchor.dataset.xrefParagraph,
+                }),
+              }
             : url
               ? { url }
               : null,

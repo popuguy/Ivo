@@ -1,3 +1,7 @@
+import {
+  paragraphDestinations,
+  paragraphDestination,
+} from '../../../domain/documents/paragraph-destinations.js';
 import { crossReferenceResolver } from '../../../domain/documents/cross-references.js';
 import { objectAvailable } from '../../../domain/documents/publishing.js';
 
@@ -27,8 +31,8 @@ function replaceLabel(link, label) {
 }
 
 /** Prepare a single undoable update. Unresolved labels and locked sources retain their last text. */
-export function planCrossReferenceUpdate(doc, documents) {
-  const resolve = crossReferenceResolver(documents),
+export function planCrossReferenceUpdate(doc, documents, onlyFormat, placements = new Map()) {
+  const resolve = crossReferenceResolver(documents, doc),
     changes = [];
   const frames = new Map(doc.blocks.map((b) => [b.id, b]));
   let updated = 0,
@@ -43,18 +47,37 @@ export function planCrossReferenceUpdate(doc, documents) {
     );
     let changed = false;
     for (const link of template.content.querySelectorAll('a[data-xref-format]')) {
+      if (onlyFormat && link.dataset.xrefFormat !== onlyFormat) continue;
       const pageId = link.dataset.pageId || /^#page=(.+)$/.exec(link.getAttribute('href'))?.[1];
-      const label = resolve(link.dataset.docId || doc.id, pageId, link.dataset.xrefFormat);
+      const id = link.dataset.docId || doc.id,
+        key = link.dataset.xrefParagraph;
+      if (key && !placements.has(id)) {
+        const chapter = documents.find((d) => d.id === id);
+        placements.set(id, chapter ? paragraphDestinations(chapter) : new Map());
+      }
+      const destination =
+        key &&
+        paragraphDestination(
+          documents.find((d) => d.id === id),
+          placements.get(id),
+          key,
+        );
+      const nextPage = key ? destination?.pageId : pageId;
+      const label = resolve(id, nextPage, link.dataset.xrefFormat, destination);
       if (label === null) {
         unresolved++;
         continue;
       }
-      if (link.textContent === label) continue;
+      if (link.textContent === label && nextPage === pageId) continue;
       if (!writable) {
         locked++;
         continue;
       }
-      replaceLabel(link, label);
+      if (nextPage !== pageId) {
+        if (link.dataset.docId) link.dataset.pageId = nextPage;
+        else link.setAttribute('href', '#page=' + nextPage);
+      }
+      if (link.textContent !== label) replaceLabel(link, label);
       updated++;
       changed = true;
     }

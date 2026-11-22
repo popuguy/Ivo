@@ -47,7 +47,7 @@ export function collectPrintedEntries(
   doc,
   flow,
   pages,
-  { matches, mayMatch, includeTables = false },
+  { matches, mayMatch, includeTables = false, flowTargetRect },
 ) {
   const results = new Map(pages.map((page) => [page.pageId, []]));
   const byId = new Map(doc.blocks.map((b) => [b.id, b]));
@@ -55,11 +55,22 @@ export function collectPrintedEntries(
   const excluded = new Set(doc.publication?.excluded || []);
   for (const source of doc.textFlows || [])
     if (source.contents || source.index) excluded.add(source.id);
-  function add(id, heading) {
+  function add(id, heading, rect) {
     const block = byId.get(id),
       page = physical.get(block?.pageId);
     if (!page || !page.section.querySelector('[data-object="' + CSS.escape(id) + '"]')) return;
-    results.get(page.pageId).push({ title: heading.title, level: heading.level });
+    const sheet = rect && page.section.getBoundingClientRect();
+    results.get(page.pageId).push({
+      title: heading.title,
+      level: heading.level,
+      ...(rect &&
+        sheet?.height > 0 && {
+          topFraction: Math.max(0, Math.min(1, (rect.top - sheet.top) / sheet.height)),
+        }),
+      ...(heading.marker && {
+        paragraphKey: (block.textFlowId || block.id) + '/' + heading.marker,
+      }),
+    });
   }
   const sources = new Map((doc.textFlows || []).map((f) => [f.id, f]));
   const seen = new Set(),
@@ -102,7 +113,7 @@ export function collectPrintedEntries(
             glyph.bottom > Math.max(frame.top, sheet.top) &&
             glyph.top < Math.min(frame.bottom, sheet.bottom)
           )
-            add(block.id, h);
+            add(block.id, h, h.marker && glyph);
         }
       continue;
     }
@@ -115,7 +126,12 @@ export function collectPrintedEntries(
       if (!fragment) continue;
       while (next < headings.length && headings[next].at < fragment.end) {
         const h = headings[next++];
-        if (h.at >= fragment.start) add(id, h);
+        if (h.at >= fragment.start) {
+          const section = physical.get(byId.get(id)?.pageId)?.section;
+          const frame =
+            flowTargetRect && section?.querySelector('[data-object="' + CSS.escape(id) + '"]');
+          add(id, h, frame && flowTargetRect(frame, fragment, h.at));
+        }
       }
     }
   }
