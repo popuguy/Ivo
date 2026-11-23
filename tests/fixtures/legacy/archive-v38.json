@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 38,
+  "documents": [
+    {
+      "id": "doc-e2601157-0d8e-4afb-bbb3-5b547b3e2c38",
+      "title": "Inline table before baseline offsets",
+      "kicker": "",
+      "subtitle": "",
+      "tags": [],
+      "aliases": [],
+      "blocks": [
+        {
+          "id": "block-1a99412c-0b78-4e63-817c-23f45ae8b498",
+          "type": "text",
+          "x": 48,
+          "y": 48,
+          "w": 180,
+          "h": 100,
+          "html": "<p>Samples</p><p><span data-ivo-anchor=\"block-f7aec388-c2c9-452f-9fb8-becdca9f248e\">￼</span></p>",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "cmu-serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "textKind": "area",
+          "textScale": {
+            "x": 1,
+            "y": 1
+          },
+          "pageId": "page-699a5854-b551-4457-a509-e4bba84b921f"
+        },
+        {
+          "id": "block-f7aec388-c2c9-452f-9fb8-becdca9f248e",
+          "type": "table",
+          "x": 48,
+          "y": 48,
+          "w": 180,
+          "h": 140,
+          "html": "",
+          "src": "",
+          "caption": "",
+          "alt": "",
+          "fit": "cover",
+          "textStyle": "cmu-serif",
+          "fontSize": 16,
+          "align": "left",
+          "crop": {
+            "x": 50,
+            "y": 50
+          },
+          "objectPosition": {
+            "x": 50,
+            "y": 50
+          },
+          "table": {
+            "cells": [
+              [
+                "",
+                ""
+              ]
+            ],
+            "widths": [
+              1,
+              1
+            ],
+            "merges": [],
+            "headerRows": 0,
+            "footerRows": 0,
+            "inset": 4,
+            "stroke": 0.5,
+            "vertical": "top"
+          },
+          "pageId": "page-699a5854-b551-4457-a509-e4bba84b921f",
+          "extensions": {
+            "ivoAnchor": {
+              "ownerId": "block-1a99412c-0b78-4e63-817c-23f45ae8b498",
+              "position": "above-line"
+            }
+          }
+        }
+      ],
+      "createdAt": "2026-11-23T03:36:42.518Z",
+      "updatedAt": "2026-11-23T03:36:42.518Z",
+      "layout": {
+        "columns": 12,
+        "rows": 38
+      },
+      "version": 1,
+      "template": "blank",
+      "canvasVersion": 37,
+      "pages": [
+        {
+          "id": "page-699a5854-b551-4457-a509-e4bba84b921f",
+          "name": "Page 1",
+          "width": 612,
+          "height": 792
+        }
+      ]
+    }
+  ],
+  "assets": []
+}

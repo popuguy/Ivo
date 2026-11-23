@@ -841,6 +841,15 @@ test(
     const x = (index) => layout.layout.lines[0].carets.find((c) => c.index === index).primary;
     close(x(2) - x(1), 45);
     close(inline.ascent, 30);
+    req.runs[1].objectOffset = 8;
+    const [raised] = await measure(service, req, [{ start: 0, end: 3 }]);
+    close(raised.width, inline.width);
+    close(raised.ascent, 38);
+    req.runs[1].objectOffset = -12;
+    const [lowered] = await measure(service, req, [{ start: 0, end: 3 }]);
+    close(lowered.ascent, 18);
+    close(lowered.descent, 12);
+    delete req.runs[1].objectOffset;
     req.runs[1].aboveLine = true;
     const [above] = await measure(service, req, [{ start: 0, end: 3 }]);
     close(inline.width - above.width, 45);

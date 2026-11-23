@@ -78,12 +78,17 @@ export function installTableControls({
 }) {
   const threadFor = (id) => tableThreads(doc().blocks).get(id) || [];
   function editable(owner, frame) {
-    return owner === doc() && threadFor(frame.id).every((item) => available(owner, item));
+    return (
+      owner === doc() &&
+      available(owner, frame) &&
+      threadFor(frame.id).every((item) => available(owner, item))
+    );
   }
   const dividers = installTableDividers({
     world,
     doc,
     selected,
+    select,
     available: editable,
     tableFor: (frame) => threadFor(frame.id)[0]?.table,
     mutate,
@@ -110,7 +115,7 @@ export function installTableControls({
     const { input, cell, block, row, column, edited } = current;
     current = null;
     input.remove();
-    cell.innerHTML = cellTextMarkup(
+    (cell.querySelector('[data-cell-content]') || cell).innerHTML = cellTextMarkup(
       block.table.cells[row][column],
       block.table.cellRuns?.[row + ',' + column],
     );

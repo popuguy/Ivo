@@ -905,6 +905,7 @@ export async function composeNativeTextFlows(
             ...(character.objectId && {
               objectWidth: character.objectWidth,
               objectHeight: character.objectHeight,
+              ...(character.objectOffset && { objectOffset: character.objectOffset }),
               aboveLine: character.aboveLine,
             }),
           }),

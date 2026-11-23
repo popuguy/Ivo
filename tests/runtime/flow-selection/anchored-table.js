@@ -170,9 +170,21 @@ export async function verifyDraggingInlineTable(host, mouse) {
       )
         throw Error('Dragging a cell changed the anchor, contents or selected the wrong frame');
     }
-    editor.restoreView({ selection: [table.id], activePage: page.dataset.page, tool: 'select' });
+    await editor.command('tool-text');
     await paint();
-    const grip = art().querySelector('[data-table-divider="0"]').getBoundingClientRect();
+    // Start with the insertion point in the paragraph. Its editable placeholder
+    // covers the table, just as it does after clicking in the review document.
+    const word = firstLetter(
+      art().closest('[data-page]').querySelector('[data-flow-frame]'),
+      'Finish schedule',
+    );
+    await mouse.select({ from: [word.left + 1, word.top + word.height / 2] });
+    await paint();
+    if (!host.querySelector('.canvas-flow-input').isContentEditable)
+      throw Error('Failed to enter the paragraph before resizing the table');
+    const grip = art()
+      .querySelector('[data-inline-edge="column"][data-index="0"]')
+      .getBoundingClientRect();
     const before = rect();
     await drag([grip.left + grip.width / 2, grip.top + grip.height / 2], [19, 0], (r) => {
       near(r.left, before.left, 'Column divider moved the table horizontally');
@@ -180,6 +192,59 @@ export async function verifyDraggingInlineTable(host, mouse) {
     });
     if (JSON.stringify(table.table.widths) === JSON.stringify(original.table.widths))
       throw Error('Column divider missed the table');
+    for (const [edge, index, dx, dy] of [
+      ['row', 1, 0, 14],
+      ['column', 1, 9, 0],
+      ['row', 3, 0, 11],
+      ['corner', 0, 18, 16],
+    ]) {
+      const old = rect();
+      const target = art().querySelector(
+        '[data-inline-edge="' +
+          edge +
+          '"]' +
+          (edge === 'corner' ? '' : '[data-index="' + index + '"]'),
+      );
+      const bounds = target.getBoundingClientRect();
+      const from = [
+        Math.round(bounds.left + bounds.width / 2),
+        Math.round(bounds.top + bounds.height / 2),
+      ];
+      if (document.elementFromPoint(...from)?.closest('[data-inline-edge]') !== target)
+        throw Error('Hidden inline table ' + edge + ' grip');
+      await mouse.drag(from, [from[0] + dx, from[1] + dy]);
+      await paint();
+      near(rect().width - old.width, dx, 'Width after ' + edge);
+      near(rect().height - old.height, dy, 'Height after ' + edge);
+      near(rect().left, old.left, 'Left origin after ' + edge);
+      if (doc.textFlows[0].html !== source || !table.extensions.ivoAnchor)
+        throw Error('Table size edit changed text or detached its marker');
+    }
+    async function shiftDrag(edge, delta) {
+      const box = art().querySelector(edge).getBoundingClientRect();
+      const start = [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2)];
+      await mouse.drag(start, [start[0] + delta[0], start[1] + delta[1]], 'shift');
+      await paint();
+    }
+    const beforeBalance = rect();
+    const firstColumn = () =>
+      art().querySelector('[data-table-column="0"]').getBoundingClientRect().width;
+    const oldColumn = firstColumn();
+    await shiftDrag('[data-inline-edge="column"][data-index="0"]', [12, 0]);
+    near(rect().width, beforeBalance.width, 'Shift internal column preserves table width');
+    near(firstColumn() - oldColumn, 12, 'Shift internal column changes the adjacent widths');
+    const proportions = firstColumn() / rect().width;
+    await shiftDrag('[data-inline-edge="column"][data-index="1"]', [11, 0]);
+    near(
+      firstColumn(),
+      rect().width * proportions,
+      'Shift outer edge preserves column proportions',
+    );
+    const aspect = rect().width / rect().height;
+    await shiftDrag('[data-inline-edge="corner"]', [22, 6]);
+    near(rect().height, rect().width / aspect, 'Shift corner preserves table proportions');
+    await editor.command('tool-select');
+    await paint();
     const cell = art().querySelector('[data-table-row="1"][data-table-column="0"]');
     const b = cell.getBoundingClientRect();
     await mouse.select({ from: [b.left + b.width / 2, b.top + b.height / 2], clicks: 2 });
@@ -191,6 +256,121 @@ export async function verifyDraggingInlineTable(host, mouse) {
       throw Error('Double-clicking a cell with the Selection tool did not enter it');
   } finally {
     if (hadGuides) await editor.command('toggle-smart-guides');
+    editor.destroy();
+    host.replaceChildren();
+  }
+}
+
+export async function verifyDraggingCobaltSwatch(host, mouse) {
+  const doc = fittingRoomProof(),
+    swatch = doc.blocks.find((b) => b.name === 'Cobalt swatch');
+  const original = structuredClone(swatch),
+    html = doc.textFlows[0].html;
+  const edits = [];
+  const editor = mountCanvasEditor(host, {
+    getDocument: () => doc,
+    documents: [doc],
+    editing: true,
+    initialState: { tool: 'select' },
+    source: (s) => s,
+    onChange() {},
+    onCommit(before) {
+      edits.push(before);
+    },
+    sessionId: 'dragging-cobalt-swatch',
+  });
+  const hadGuides = editor.getState().snap;
+  const art = () => host.querySelector('[data-anchored-artwork][data-object="' + swatch.id + '"]');
+  try {
+    await editor.command('fit-page');
+    await paint();
+    const page = art().closest('[data-page]');
+    const zoom =
+      page.getBoundingClientRect().width / doc.pages.find((p) => p.id === page.dataset.page).width;
+    for (const [dx, dy] of [
+      [13, 12],
+      [-6, -8],
+      [11, 0],
+    ]) {
+      const origin = art().getBoundingClientRect(),
+        offset = swatch.extensions.ivoAnchor.yOffset || 0;
+      const from = [
+        Math.round(origin.left + origin.width * 0.42),
+        Math.round(origin.top + origin.height * 0.54),
+      ];
+      const count = edits.length,
+        samples = [];
+      const capture = (e) => {
+        if (e.buttons && Math.hypot(e.clientX - from[0], e.clientY - from[1]) >= 3)
+          samples.push([e.clientY - from[1], art().getBoundingClientRect()]);
+      };
+      host.addEventListener('pointermove', capture);
+      try {
+        await mouse.drag(from, [from[0] + dx, from[1] + dy]);
+        await paint();
+      } finally {
+        host.removeEventListener('pointermove', capture);
+      }
+      if (samples.length < 2) throw Error('Missing swatch pointer samples');
+      for (const [distance, r] of samples) {
+        if (Math.abs(r.left - origin.left) > 1 || Math.abs(r.top - origin.top - distance) > 1.2)
+          throw Error(
+            'Swatch left its grab point: ' +
+              JSON.stringify({ x: r.left - origin.left, y: r.top - origin.top, distance }),
+          );
+      }
+      if (
+        editor.getState().selection[0] !== swatch.id ||
+        Math.abs((swatch.extensions.ivoAnchor.yOffset ?? 0) - (offset - dy / zoom)) > 0.1 ||
+        swatch.x !== original.x ||
+        swatch.y !== original.y ||
+        doc.textFlows[0].html !== html ||
+        edits.length !== count + Number(!!dy)
+      )
+        throw Error('Swatch drag changed the wrong object, source, offset or undo history.');
+      const placedPage = art().closest('[data-page]');
+      const site = placedPage.querySelector(
+        '[data-anchor-site="' +
+          swatch.id +
+          '"],[data-flow-frame] [data-ivo-anchor="' +
+          swatch.id +
+          '"]',
+      );
+      if (
+        !site ||
+        Math.abs(site.getBoundingClientRect().top - art().getBoundingClientRect().top) > 1
+      )
+        throw Error(
+          'Recomposed swatch detached from its word: ' +
+            JSON.stringify({
+              site: site?.getBoundingClientRect().toJSON(),
+              art: art().getBoundingClientRect().toJSON(),
+              old: origin.toJSON(),
+              offset: swatch.extensions.ivoAnchor.yOffset,
+              page: placedPage.dataset.page,
+            }),
+        );
+    }
+    // Option-drag creates a free copy at the painted location.
+    if (editor.getState().snap) await editor.command('toggle-smart-guides');
+    const origin = art().getBoundingClientRect();
+    const start = [
+      Math.round(origin.left + origin.width * 0.42),
+      Math.round(origin.top + origin.height * 0.54),
+    ];
+    await mouse.drag(start, [start[0] + 29, start[1] + 15], 'alt');
+    await paint();
+    const copy = doc.blocks.find((b) => b.id === editor.getState().selection[0]);
+    const box = host.querySelector('[data-object="' + copy.id + '"]').getBoundingClientRect();
+    if (
+      copy.id === swatch.id ||
+      copy.extensions?.ivoAnchor ||
+      Math.abs(box.left - origin.left - 29) > 1.2 ||
+      Math.abs(box.top - origin.top - 15) > 1.2
+    )
+      throw Error('Option drag did not duplicate the swatch from its composed position.');
+  } finally {
+    if (editor.getState().snap !== hadGuides) await editor.command('toggle-smart-guides');
     editor.destroy();
     host.replaceChildren();
   }

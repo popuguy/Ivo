@@ -7,12 +7,18 @@ import { attribute } from '../text/html.js';
 import { HYPHENATION_ATTRIBUTES } from '../text/hyphenation.js';
 import { CHARACTER_FIELDS, PARAGRAPH_FIELDS } from '../text/typography.js';
 
-export const CURRENT_ARCHIVE_VERSION = 38;
-export const CURRENT_CANVAS_VERSION = 37;
+export const CURRENT_ARCHIVE_VERSION = 39;
+export const CURRENT_CANVAS_VERSION = 38;
 
 // Highest requirement first. Keep a document's declared version after its
 // final marker is removed so editing and undo cannot downgrade the archive.
 const structuredTextFormats = [
+  {
+    name: 'Anchored graphic offsets',
+    archive: 39,
+    canvas: 38,
+    used: (doc) => doc.blocks?.some((b) => b.extensions?.ivoAnchor?.yOffset !== undefined),
+  },
   { name: 'Inline tables and formatted cells', archive: 38, canvas: 37, used: hasInlineTables },
   { name: 'Anchored objects', archive: 37, canvas: 36, used: hasAnchoredObjects },
   { name: 'Footnotes', archive: 36, canvas: 35, used: hasFootnotes },

@@ -3988,3 +3988,43 @@ dialog .prompt-instructions {
   width: var(--baseline-guide-width, 1px);
   background: var(--selection);
 }
+
+/* The resize targets follow real cell borders, including merged and auto-height cells. */
+[data-inline-edge] {
+  display: none;
+}
+.scene-editing:is([data-tool='text'], [data-tool='select'], [data-tool='direct'])
+  [data-inline-edge] {
+  display: block;
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
+  touch-action: none;
+  --edge-hit: calc(7 * var(--baseline-guide-width, 1px));
+}
+[data-inline-edge='column'] {
+  inset-block: 0;
+  right: 0;
+  width: var(--edge-hit);
+  transform: translateX(50%);
+  cursor: var(--cursor-resize-horizontal, ew-resize);
+}
+[data-inline-edge='row'] {
+  inset-inline: 0;
+  bottom: 0;
+  height: var(--edge-hit);
+  transform: translateY(50%);
+  cursor: var(--cursor-resize-vertical, ns-resize);
+}
+[data-inline-edge='corner'] {
+  right: 0;
+  bottom: 0;
+  width: calc(1.5 * var(--edge-hit));
+  height: calc(1.5 * var(--edge-hit));
+  transform: translate(35%, 35%);
+  cursor: var(--cursor-resize-tlbr, nwse-resize);
+}
+.scene-editing .object-table[data-anchored-artwork],
+.scene-editing .object-table[data-anchored-artwork] > .table-frame {
+  overflow: visible;
+}

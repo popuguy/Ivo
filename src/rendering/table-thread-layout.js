@@ -31,14 +31,24 @@ function setFrameMetrics(host, frame) {
   host.style.fontSize = frame.fontSize + 'px';
 }
 
+export function measureInlineRowMinimums(frame) {
+  return measureInline(frame, true);
+}
 export function measureInlineTableHeight(frame) {
+  return measureInline(frame, false);
+}
+function measureInline(frame, measureRows) {
   const host = measuringFrame();
   try {
     setFrameMetrics(host, frame);
-    host.innerHTML = tableMarkup(frame.table, { layout: true });
+    host.innerHTML = tableMarkup(
+      measureRows ? { ...frame.table, rowOptions: undefined } : frame.table,
+      { layout: true },
+    );
     const grid = host.firstElementChild;
     grid.style.height = 'auto';
     document.body.append(host);
+    if (measureRows) return Array.from(grid.rows, (row) => row.getBoundingClientRect().height);
     return Math.max(
       1,
       grid.getBoundingClientRect().height + 2 * (frame.frameOptions?.strokeWidth || 0),

@@ -1,4 +1,8 @@
-import { verifyDraggingInlineTable, verifyEditingBelowInlineTable } from './anchored-table.js';
+import {
+  verifyDraggingCobaltSwatch,
+  verifyDraggingInlineTable,
+  verifyEditingBelowInlineTable,
+} from './anchored-table.js';
 import { verifyCharacterScale } from './character-scale.js';
 import { verifyDocumentOperations, verifyListOperations } from './document-operations.js';
 import { verifyTypeShortcuts } from './type-shortcuts.js';
@@ -42,6 +46,7 @@ try {
     commits = 0;
   const reopening = new URL(location.href).searchParams.get('phase') === 'reopen';
   if (!reopening) {
+    await verifyDraggingCobaltSwatch(host, window.textCoreTest);
     await verifyDraggingInlineTable(host, window.textCoreTest);
     await verifyEditingBelowInlineTable(host, window.textCoreTest);
   }

@@ -63,17 +63,18 @@ public final class TextCompositionEngine {
     let horizontalScale: Double?
     let verticalScale: Double?
     let variations: [String: Double]?
-    let objectWidth, objectHeight: Double?
+    let objectWidth, objectHeight, objectOffset: Double?
     let aboveLine: Bool?
     let features: [String: Bool]?
     enum CodingKeys: String, CodingKey {
       case start, end, font, size, language, ligatures, tracking, kerning, textColor, leading, autoLeading
-      case baselineShift, horizontalScale, verticalScale, features, variations, objectWidth, objectHeight, aboveLine
+      case baselineShift, horizontalScale, verticalScale, features, variations, objectWidth, objectHeight, objectOffset, aboveLine
     }
     init(from decoder: Decoder) throws {
       let values = try decoder.container(keyedBy: CodingKeys.self)
       objectWidth = try values.decodeIfPresent(Double.self, forKey: .objectWidth)
       objectHeight = try values.decodeIfPresent(Double.self, forKey: .objectHeight)
+      objectOffset = try values.decodeIfPresent(Double.self, forKey: .objectOffset)
       aboveLine = try values.decodeIfPresent(Bool.self, forKey: .aboveLine)
       start = try values.decode(Int.self, forKey: .start)
       end = try values.decode(Int.self, forKey: .end)
@@ -596,11 +597,11 @@ public final class TextCompositionEngine {
       try require(
         fonts[run.font] != nil && finite(run.size, 1, 2000) && finite(run.tracking, -1000, 10000),
         "Unavailable font or invalid run metrics")
-      if run.objectWidth != nil || run.objectHeight != nil || run.aboveLine != nil {
+      if run.objectWidth != nil || run.objectHeight != nil || run.aboveLine != nil || run.objectOffset != nil {
         try require(request.protocol >= 9 && run.end == run.start + 1 &&
           (request.text as NSString).character(at: run.start) == 0xfffc &&
           finite(run.objectWidth ?? 0, 0.000001, 100000) && finite(run.objectHeight ?? 0, 0.000001, 100000)
-          && run.aboveLine != nil, "Invalid anchored object geometry or source")
+          && finite(run.objectOffset ?? 0, -14400, 14400) && run.aboveLine != nil, "Invalid anchored object geometry or source")
       }
       if request.paragraphs?.contains(where: {
         $0.wordSpacing != nil && $0.start < run.end && $0.end > run.start
@@ -870,12 +871,12 @@ public final class TextCompositionEngine {
     }
     return CharacterMetrics(
       ascent: max(sourceRuns.map(anchorAscent).max() ?? 0, struts.map { CTFontGetAscent($0) }.max() ?? 0),
-      descent: struts.map { CTFontGetDescent($0) }.max() ?? 0,
+      descent: max(sourceRuns.map(anchorDescent).max() ?? 0, struts.map { CTFontGetDescent($0) }.max() ?? 0),
       leading: struts.map { CTFontGetLeading($0) }.max() ?? 0,
       capHeight: struts.map { CTFontGetCapHeight($0) }.max() ?? 0,
       xHeight: struts.map { CTFontGetXHeight($0) }.max() ?? 0,
       inkAscent: sourceRuns.filter { $0.objectHeight != nil }.map(anchorAscent).max().map { max(inkAscent, $0) } ?? inkAscent,
-      inkDescent: inkDescent)
+      inkDescent: sourceRuns.filter { ($0.objectOffset ?? 0) < 0 }.map(anchorDescent).max().map { max(inkDescent, $0) } ?? inkDescent)
   }
   func tabStyle(_ stops: [TabStop], corrections: [Double: Double] = [:]) -> CTParagraphStyle {
     var tabs = stops.map { stop -> CTTextTab in
@@ -1057,23 +1058,24 @@ public final class TextCompositionEngine {
     return result
   }
   private final class AnchoredBox {
-    let width, ascent: CGFloat
-    init(_ width: Double, _ ascent: Double) { self.width = width; self.ascent = ascent }
+    let width, ascent, descent: CGFloat
+    init(_ width: Double, _ ascent: Double, _ descent: Double) { self.width = width; self.ascent = ascent; self.descent = descent }
   }
   private func anchoredDelegate(_ box: AnchoredBox) -> CTRunDelegate {
     var callbacks = CTRunDelegateCallbacks(version: kCTRunDelegateVersion1,
       dealloc: { Unmanaged<AnchoredBox>.fromOpaque($0).release() },
       getAscent: { Unmanaged<AnchoredBox>.fromOpaque($0).takeUnretainedValue().ascent },
-      getDescent: { _ in 0 },
+      getDescent: { Unmanaged<AnchoredBox>.fromOpaque($0).takeUnretainedValue().descent },
       getWidth: { Unmanaged<AnchoredBox>.fromOpaque($0).takeUnretainedValue().width })
     return CTRunDelegateCreate(&callbacks, Unmanaged.passRetained(box).toOpaque())!
   }
   private func anchorAscent(_ run: TextRun) -> Double {
-    (run.objectHeight ?? 0) + (run.aboveLine == true ? run.size : 0)
+    max(0, (run.objectHeight ?? 0) + (run.aboveLine == true ? run.size : 0) + (run.objectOffset ?? 0))
   }
+  private func anchorDescent(_ run: TextRun) -> Double { max(0, -(run.objectOffset ?? 0)) }
   private func lineAdvance(_ run: TextRun) -> Double {
     let leading = (run.leading ?? 0) > 0 ? run.leading! : run.size * (run.autoLeading ?? 120) / 100
-    return max(leading, anchorAscent(run))
+    return max(leading, anchorAscent(run) + anchorDescent(run))
   }
   func attributedSource(_ request: Request, fonts: [String: CGFont]) throws
     -> NSMutableAttributedString
@@ -1110,7 +1112,7 @@ public final class TextCompositionEngine {
             run.textColor ?? "#252525"),
         ], range: NSRange(location: run.start, length: run.end - run.start))
       if let w = run.objectWidth {
-        let delegate = anchoredDelegate(AnchoredBox(run.aboveLine == true ? 0 : w, anchorAscent(run)))
+        let delegate = anchoredDelegate(AnchoredBox(run.aboveLine == true ? 0 : w, anchorAscent(run), anchorDescent(run)))
         attributed.addAttribute(NSAttributedString.Key(kCTRunDelegateAttributeName as String), value: delegate,
           range: NSRange(location: run.start, length: 1))
       }

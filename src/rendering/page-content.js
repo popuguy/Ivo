@@ -18,8 +18,12 @@ export function tableFrameHTML(item, part, editing) {
     ';font-size:' +
     item.fontSize +
     'px">' +
-    tableMarkup(table, { layout: true, part }) +
-    (editing ? tableDividers(table) : '') +
+    tableMarkup(table, {
+      layout: true,
+      part,
+      inlineGrips: editing && !!item.extensions?.ivoAnchor,
+    }) +
+    (editing && !item.extensions?.ivoAnchor ? tableDividers(table) : '') +
     '</div>'
   );
 }

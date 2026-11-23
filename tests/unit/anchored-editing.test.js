@@ -13,6 +13,7 @@ import {
   anchorObject,
   anchoredObjectIds,
   anchorObjectMarker,
+  setAnchorYOffset,
 } from '../../src/domain/documents/anchored-objects.js';
 import { startTextFlow, threadFrame } from '../../src/domain/documents/text-flows.js';
 import { copyDocument } from '../../src/domain/documents/copy.js';
@@ -132,4 +133,29 @@ test('the newest format is required only for the features present and the prior 
   plain.html = '<p>See <span data-footnote="Woven%20sample">1</span></p>';
   markTypographyVersion(clean);
   assert.equal(check(clean).schemaVersion, 36);
+});
+
+test('an anchored graphic keeps its signed baseline offset through saving and copying', async () => {
+  const previous = JSON.parse(
+    await readFile(new URL('../fixtures/legacy/archive-v38.json', import.meta.url)),
+  );
+  assert.deepEqual(validateImport(previous), previous);
+  assert.equal(archiveVersion(previous.documents), 38);
+  const { doc, shape } = fixture();
+  for (const offset of [8.75, -12.5]) {
+    setAnchorYOffset(doc, shape, offset);
+    const saved = check(doc);
+    assert.equal(saved.schemaVersion, 39);
+    assert.equal(
+      check(copyDocument(saved.documents[0])).documents[0].blocks.find(
+        (b) => b.extensions?.ivoAnchor,
+      ).extensions.ivoAnchor.yOffset,
+      offset,
+    );
+    assert.throws(() => validateImport({ ...saved, schemaVersion: 38 }), /archive 39/);
+  }
+  assert.throws(() => setAnchorYOffset(doc, shape, Infinity), /offset/);
+  setAnchorYOffset(doc, shape, 0);
+  assert.equal('yOffset' in shape.extensions.ivoAnchor, false);
+  assert.equal(check(doc).schemaVersion, 39);
 });

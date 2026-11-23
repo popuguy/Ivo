@@ -1,4 +1,5 @@
-import { measureInlineTableHeight } from '../../../rendering/table-thread-layout.js';
+import { inlineTableResize } from './inline-table-resize.js';
+import { anchoredPlacement } from '../../../rendering/anchored-artwork.js';
 import {
   columnPoints,
   resizeColumn,
@@ -9,6 +10,7 @@ export function installTableDividers({
   world,
   doc,
   selected,
+  select,
   available,
   tableFor,
   mutate,
@@ -25,27 +27,105 @@ export function installTableDividers({
     marked = frame || null;
     if (marked) marked.dataset.selectedTable = '';
   }
-  function start(event) {
-    const grip = event.target.closest('[data-table-divider]');
-    if (!grip || !allowed() || event.button !== 0) return false;
-    const block = selected(),
-      owner = doc(),
-      frame = grip.closest('.table-frame');
-    if (
-      !block ||
-      block.type !== 'table' ||
-      block.id !== frame.parentElement.dataset.object ||
-      !available(owner, block)
-    )
-      return false;
+  function start(event, target = event.target) {
+    const grip = target?.closest('[data-inline-edge],[data-table-divider]');
+    if (!grip || !world.contains(grip) || !allowed() || event.button !== 0) return false;
+    const owner = doc(),
+      node = grip.closest('[data-object]'),
+      id = node.dataset.object;
+    const block = owner.blocks.find((b) => b.id === id);
+    if (!block || block.type !== 'table' || !available(owner, block)) return false;
+    const inline = !!grip.dataset.inlineEdge;
+    const placement = inline && anchoredPlacement(world, id);
+    const host = inline && owner.blocks.find((b) => b.id === placement?.frameId);
+    if (inline ? !host || !available(owner, host) : selected() !== block) return false;
     event.preventDefault();
     cancel?.();
+    // Editing text or a cell may repaint its page. Capture on the persistent
+    // workspace and reacquire the table after the previous edit is committed.
+    if (inline) select(id);
+    const mounted = world.querySelector('[data-object="' + CSS.escape(id) + '"]');
+    if (!mounted) return true;
+    const valid = () =>
+      doc() === owner &&
+      owner.blocks.includes(block) &&
+      selected() === block &&
+      allowed() &&
+      available(owner, block) &&
+      (!inline || available(owner, host));
+    if (!valid()) return true;
+    const interaction = inline
+      ? inlineTableResize({
+          block,
+          node: mounted,
+          grip,
+          event,
+          pageWidth: owner.pages.find((p) => p.id === placement.pageId).width,
+          valid,
+          mutate,
+        })
+      : columnResize(event, grip, block, mounted.querySelector('.table-frame'), valid);
+    if (!interaction) return true;
+    const session = new AbortController(),
+      opts = { signal: session.signal, capture: true };
+    const capture = inline ? world.closest('.canvas-viewport') : grip;
+    function finish(commit) {
+      session.abort();
+      cancel = null;
+      if (capture.hasPointerCapture(event.pointerId))
+        capture.releasePointerCapture(event.pointerId);
+      interaction.end(commit);
+    }
+    cancel = () => finish(false);
+    try {
+      capture.setPointerCapture(event.pointerId);
+    } catch {}
+    window.addEventListener(
+      'pointermove',
+      (e) => {
+        if (e.pointerId === event.pointerId) interaction.change(e);
+      },
+      opts,
+    );
+    window.addEventListener(
+      'pointerup',
+      (e) => {
+        if (e.pointerId === event.pointerId) {
+          interaction.change(e);
+          finish(true);
+        }
+      },
+      opts,
+    );
+    window.addEventListener(
+      'pointercancel',
+      (e) => {
+        if (e.pointerId === event.pointerId) cancel();
+      },
+      opts,
+    );
+    capture.addEventListener('lostpointercapture', cancel, opts);
+    window.addEventListener('blur', cancel, opts);
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          cancel();
+        }
+      },
+      opts,
+    );
+    return true;
+  }
+  function columnResize(event, grip, block, frame, valid) {
     const left = frame.querySelector('[data-table-start]').getBoundingClientRect(),
       right = frame.querySelector('[data-table-end]').getBoundingClientRect();
     const dx = right.x - left.x,
       dy = right.y - left.y,
       length = dx * dx + dy * dy;
-    if (length < 1) return true;
+    if (length < 1) return null;
     const i = Number(grip.dataset.tableDivider),
       table = tableFor(block),
       geometry = { ...block, table },
@@ -55,8 +135,6 @@ export function installTableDividers({
       placedY = parseFloat(objectNode.style.top),
       cols = frame.querySelectorAll('col'),
       grips = frame.querySelectorAll('[data-table-divider]');
-    const session = new AbortController(),
-      opts = { signal: session.signal, capture: true };
     let proposed;
     function preview(next) {
       Object.assign(objectNode.style, {
@@ -74,7 +152,6 @@ export function installTableDividers({
       });
     }
     function change(e) {
-      if (e.pointerId !== event.pointerId) return;
       const movement =
         (((e.clientX - event.clientX) * dx + (e.clientY - event.clientY) * dy) / length) *
         tableInnerWidth(block);
@@ -82,18 +159,7 @@ export function installTableDividers({
       preview(proposed);
     }
     function end(commit) {
-      session.abort();
-      cancel = null;
-      if (grip.hasPointerCapture(event.pointerId)) grip.releasePointerCapture(event.pointerId);
-      if (
-        !commit ||
-        !proposed ||
-        proposed.widths === table.widths ||
-        doc() !== owner ||
-        selected() !== block ||
-        !allowed() ||
-        !available(owner, block)
-      ) {
+      if (!commit || !proposed || proposed.widths === table.widths || !valid()) {
         preview({ w: block.w, x: block.x, y: block.y, widths: table.widths });
         return;
       }
@@ -101,45 +167,9 @@ export function installTableDividers({
       mutate(() => {
         Object.assign(block, rect);
         table.widths = widths;
-        if (block.extensions?.ivoAnchor) block.h = measureInlineTableHeight(block);
       }, 'Resize table columns');
     }
-    cancel = () => end(false);
-    try {
-      grip.setPointerCapture(event.pointerId);
-    } catch {}
-    window.addEventListener('pointermove', change, opts);
-    window.addEventListener(
-      'pointerup',
-      (e) => {
-        if (e.pointerId === event.pointerId) {
-          change(e);
-          end(true);
-        }
-      },
-      opts,
-    );
-    window.addEventListener(
-      'pointercancel',
-      (e) => {
-        if (e.pointerId === event.pointerId) cancel();
-      },
-      opts,
-    );
-    grip.addEventListener('lostpointercapture', cancel, opts);
-    window.addEventListener('blur', cancel, opts);
-    window.addEventListener(
-      'keydown',
-      (e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          cancel();
-        }
-      },
-      opts,
-    );
-    return true;
+    return { change, end };
   }
   return { mark, start, cancel: () => cancel?.() };
 }

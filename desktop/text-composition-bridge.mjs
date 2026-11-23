@@ -46,6 +46,7 @@ const fields = {
     'variations',
     'objectWidth',
     'objectHeight',
+    'objectOffset',
     'aboveLine',
   ],
   resource: ['id', 'digest', 'postscript', 'data'],
@@ -236,12 +237,16 @@ export function validateCompositionRequest(request) {
           throw Error('Invalid contour edge placement.');
         if (shape === 'run') {
           if (
-            ['objectWidth', 'objectHeight', 'aboveLine'].some((key) => Object.hasOwn(row, key)) &&
+            ['objectWidth', 'objectHeight', 'aboveLine', 'objectOffset'].some((key) =>
+              Object.hasOwn(row, key),
+            ) &&
             (request.protocol < 9 ||
               request.text.slice(row.start, row.end) !== '\uFFFC' ||
               ![row.objectWidth, row.objectHeight].every(
                 (n) => Number.isFinite(n) && n > 0 && n <= 100000,
               ) ||
+              (row.objectOffset !== undefined &&
+                (!Number.isFinite(row.objectOffset) || Math.abs(row.objectOffset) > 14400)) ||
               typeof row.aboveLine !== 'boolean')
           )
             throw Error('Invalid anchored object dimensions or source.');

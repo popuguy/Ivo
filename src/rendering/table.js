@@ -2,7 +2,10 @@ import { tableCoverage } from '../domain/documents/tables.js';
 import { escapeHTML } from '../shared/html/sanitize.js';
 import { cellTextMarkup } from './table-cell-text.js';
 
-export function tableMarkup(table, { layout = false, escape = escapeHTML, part } = {}) {
+export function tableMarkup(
+  table,
+  { layout = false, escape = escapeHTML, part, inlineGrips = false } = {},
+) {
   const { cells, widths, headerRows, footerRows } = table,
     covering = tableCoverage(table);
   const total = widths.reduce((sum, v) => sum + v, 0);
@@ -44,12 +47,26 @@ export function tableMarkup(table, { layout = false, escape = escapeHTML, part }
             ...(m?.rows > 1 ? ['rowspan="' + m.rows + '"'] : []),
             ...(layout ? ['data-table-row="' + r + '"', 'data-table-column="' + c + '"'] : []),
           ];
+        const body = cellTextMarkup(text, table.cellRuns?.[r + ',' + c], escape);
+        const lastRow = r + (m?.rows || 1) - 1,
+          lastColumn = c + (m?.columns || 1) - 1;
+        const grips = inlineGrips
+          ? '<i aria-hidden="true" data-inline-edge="column" data-index="' +
+            lastColumn +
+            '"></i>' +
+            '<i aria-hidden="true" data-inline-edge="row" data-index="' +
+            lastRow +
+            '"></i>' +
+            (lastRow === cells.length - 1 && lastColumn === widths.length - 1
+              ? '<i aria-hidden="true" data-inline-edge="corner"></i>'
+              : '')
+          : '';
         return (
           '<' +
           cell +
           (attributes.length ? ' ' + attributes.join(' ') : '') +
           '>' +
-          cellTextMarkup(text, table.cellRuns?.[r + ',' + c], escape) +
+          (inlineGrips ? '<span data-cell-content>' + body + '</span>' + grips : body) +
           '</' +
           cell +
           '>'

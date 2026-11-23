@@ -175,7 +175,11 @@ export function composedSVG(
       if (!style.objectId) continue;
       const x = style.aboveLine ? (line.originX ?? 0) : carets.get(style.start)?.primary;
       if (!finite(x)) throw Error('The compositor omitted an anchored object caret.');
-      const y = line.baseline - style.objectHeight - (style.aboveLine ? style.size : 0);
+      const y =
+        line.baseline -
+        style.objectHeight -
+        (style.objectOffset || 0) -
+        (style.aboveLine ? style.size : 0);
       ink.push(
         `<rect data-anchor-site="${esc(style.objectId)}" x="${x}" y="${y}" width="${style.objectWidth}" height="${style.objectHeight}" fill="none" pointer-events="none"/>`,
       );

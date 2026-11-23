@@ -381,6 +381,9 @@ export function compositionSource(root, { id, doc, settings, fontFor, authoredHT
           objectType: token.object.type,
           objectWidth: token.object.w,
           objectHeight: token.object.h,
+          ...(token.object.extensions.ivoAnchor.yOffset && {
+            objectOffset: token.object.extensions.ivoAnchor.yOffset,
+          }),
           aboveLine:
             token.object.type !== 'table' &&
             token.object.extensions.ivoAnchor.position === 'above-line',

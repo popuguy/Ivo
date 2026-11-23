@@ -1,4 +1,4 @@
-import { anchoredObjectIds } from '../../domain/documents/anchored-objects.js';
+import { anchoredObjectIds, setAnchorYOffset } from '../../domain/documents/anchored-objects.js';
 import {
   anchoredPlacement,
   moveFrameArtwork,
@@ -746,7 +746,7 @@ export function mountCanvasEditor(host, options) {
     endTextEditing();
     setSelectionState(id);
     const item = object();
-    if (item) state.activePage = item.pageId;
+    if (item) state.activePage = anchoredPlacement(world, item.id)?.pageId || item.pageId;
     renderPanel();
     renderSelection(true);
   }
@@ -983,9 +983,11 @@ export function mountCanvasEditor(host, options) {
     selectionDirty = true;
     const element = world.querySelector(`[data-object="${CSS.escape(item.id)}"]`);
     if (!element) return;
+    // Anchored artwork is placed by the text composer. Its authored page
+    // coordinates describe its old free position, including during vertex edits.
+    const placed = !!anchoredPlacement(world, item.id);
     for (const [name, value] of Object.entries({
-      left: item.x,
-      top: item.y,
+      ...(placed ? {} : { left: item.x, top: item.y }),
       width: item.w,
       height: item.h,
     }))
@@ -2544,6 +2546,11 @@ export function mountCanvasEditor(host, options) {
         g.ids = duplicateObjects(doc(), g.sourceIds, { offset: { x: 0, y: 0 } }).map(
           (item) => item.id,
         );
+        if (g.anchor) {
+          const copy = sceneObject(doc(), g.ids[0]);
+          Object.assign(copy, { x: g.anchor.left, y: g.anchor.top, pageId: g.pageId });
+          for (const child of descendantsOf(doc(), copy.id)) child.pageId = g.pageId;
+        }
         g.copying = true;
       } catch (error) {
         options.onNotify?.(error.message);
@@ -2560,6 +2567,7 @@ export function mountCanvasEditor(host, options) {
         : worldRect(g.baseline, sceneObject(g.baseline, g.id));
     setSelectionState(g.ids);
     paint();
+    if (g.anchor && !g.copying) g.anchor.element = anchoredPlacement(world, g.id)?.element;
     return true;
   }
   function replayMoveModifiers(event) {
@@ -2596,7 +2604,22 @@ export function mountCanvasEditor(host, options) {
     try {
       viewport.releasePointerCapture(old.pointerId);
     } catch {}
-    if (old.before) {
+    if (old.anchor && !old.copying) {
+      const anchor = old.anchor;
+      if (anchor.element) anchor.element.style.top = anchor.top + 'px';
+      const block = sceneObject(doc(), old.id);
+      if (
+        !cancel &&
+        old.moved &&
+        old.next !== anchor.offset &&
+        anchor.element?.isConnected &&
+        block?.extensions?.ivoAnchor &&
+        objectAvailable(doc(), block)
+      )
+        mutate(() => setAnchorYOffset(doc(), block, old.next), 'Move anchored graphic');
+      selectionDirty = true;
+      requestFrame();
+    } else if (old.before) {
       if (cancel) {
         restoreGestureDocument(old.before);
         if (old.sourceIds) setSelectionState(old.sourceIds);
@@ -2895,18 +2918,29 @@ export function mountCanvasEditor(host, options) {
       event.shiftKey && !event.altKey ? { beforeIds: state.selection.slice(), hit } : null;
     if (!state.selection.includes(hit)) select(clickToggle ? [...state.selection, hit] : hit);
     const items = objects(),
-      item = items[0],
-      before = structuredClone(doc());
+      item = items[0];
+    const placement = items.length === 1 && anchoredPlacement(world, item.id);
+    const anchor =
+      placement && item.type !== 'table'
+        ? {
+            element: placement.element,
+            left: parseFloat(placement.element.style.left),
+            top: parseFloat(placement.element.style.top),
+            offset: item.extensions.ivoAnchor.yOffset || 0,
+          }
+        : null;
+    const before = structuredClone(doc());
     startGesture(event, 'move', {
       id: item.id,
       ids: state.selection.slice(),
       sourceIds: state.selection.slice(),
+      anchor,
       clickToggle,
       copying: false,
       before,
       baseline: before,
       original: items.length > 1 ? selectionBounds(doc(), state.selection) : worldRect(doc(), item),
-      pageId: item.pageId,
+      pageId: placement?.pageId || item.pageId,
     });
   }
   function pointerMove(event) {
@@ -3004,6 +3038,16 @@ export function mountCanvasEditor(host, options) {
       editor.classList.add('is-dragging');
     }
     if (g.kind === 'move' && !moveMode(g, !!event.altKey)) return;
+    if (g.anchor && !g.copying) {
+      // Preview from the point the user grabbed. Recompose around the new
+      // baseline only when the gesture is committed.
+      g.next = Math.max(-14400, Math.min(14400, g.anchor.offset - dy));
+      if (g.anchor.element)
+        g.anchor.element.style.top = g.anchor.top + g.anchor.offset - g.next + 'px';
+      selectionDirty = true;
+      requestFrame();
+      return;
+    }
     const baseline = g.baseline || g.before;
     if (g.ids?.length > 1) {
       const selected = selectionRoots(baseline, g.ids),
@@ -4782,10 +4826,32 @@ export function mountCanvasEditor(host, options) {
   });
   listen(viewport, 'pointerdown', pointerDown);
   listen(viewport, 'pointermove', pointerMove);
+  function artworkBehindMarker(event, marker) {
+    return document
+      .elementsFromPoint(event.clientX, event.clientY)
+      .filter(
+        (node) =>
+          node.closest('[data-anchored-artwork]')?.dataset.object === marker.dataset.ivoAnchor,
+      );
+  }
+  listen(
+    viewport,
+    'pointermove',
+    (event) => {
+      if (event.buttons || space || state.tool !== 'text') return;
+      const marker = event.target.closest('.canvas-flow-input [data-ivo-anchor]');
+      if (!marker) return;
+      const edge = artworkBehindMarker(event, marker).find((node) =>
+        node.hasAttribute('data-inline-edge'),
+      );
+      marker.style.cursor = edge ? getComputedStyle(edge).cursor : '';
+    },
+    { capture: true },
+  );
   listen(viewport, 'pointerup', pointerUp);
   listen(viewport, 'pointercancel', pointerUp);
   listen(viewport, 'lostpointercapture', (event) => {
-    if (gesture?.pointerId === event.pointerId) finishGesture();
+    if (gesture?.pointerId === event.pointerId) finishGesture(!!gesture.anchor);
   });
   listen(
     viewport,
@@ -4795,13 +4861,13 @@ export function mountCanvasEditor(host, options) {
       if (marker && state.tool === 'text' && !space && event.button === 0) {
         // The editable placeholder lies over the painted table. Give the cell
         // under the pointer the same editing gesture it receives outside prose.
-        const cell = document
-          .elementsFromPoint(event.clientX, event.clientY)
-          .find(
-            (node) =>
-              node.matches('[data-table-row][data-table-column]') &&
-              node.closest('[data-anchored-artwork]')?.dataset.object === marker.dataset.ivoAnchor,
-          );
+        const stack = artworkBehindMarker(event, marker);
+        const grip = stack.find((node) => node.hasAttribute('data-inline-edge'));
+        if (grip && !busy && !dialogOpen() && tables.startDivider(event, grip)) {
+          event.stopImmediatePropagation();
+          return;
+        }
+        const cell = stack.find((node) => node.matches('[data-table-row][data-table-column]'));
         if (tables.edit(cell)) {
           event.preventDefault();
           event.stopImmediatePropagation();

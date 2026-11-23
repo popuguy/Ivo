@@ -16,7 +16,9 @@ export function sizeAnchorSites(root, doc) {
       overflow: 'hidden',
       lineHeight: '0',
       color: 'transparent',
-      verticalAlign: 'baseline',
+      verticalAlign: item.extensions.ivoAnchor.yOffset
+        ? item.extensions.ivoAnchor.yOffset + 'px'
+        : 'baseline',
     });
     slot.contentEditable = 'false';
   }

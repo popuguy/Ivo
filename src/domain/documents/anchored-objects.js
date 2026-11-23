@@ -75,6 +75,17 @@ export function anchorObject(doc, block, ownerId, position = 'inline') {
   doc.canvasVersion = Math.max(doc.canvasVersion || 1, block.type === 'table' ? 37 : 36);
 }
 
+export function setAnchorYOffset(doc, block, offset) {
+  const anchor = block.extensions?.ivoAnchor;
+  if (!anchor || block.type === 'table' || !Number.isFinite(offset) || Math.abs(offset) > 14400)
+    throw Error('Invalid anchored graphic offset.');
+  if (offset === 0) delete anchor.yOffset;
+  else {
+    anchor.yOffset = offset;
+    doc.canvasVersion = Math.max(doc.canvasVersion, 38);
+  }
+}
+
 export function validateAnchoredObjects(doc) {
   const sources = holders(doc);
   const byId = new Map((doc.blocks || []).map((b) => [b.id, b]));
@@ -89,7 +100,13 @@ export function validateAnchoredObjects(doc) {
       const anchor = block?.extensions?.ivoAnchor;
       if (seen.has(id) || anchor?.ownerId !== owner.id)
         throw Error('Invalid anchored object reference.');
-      if (Object.keys(anchor).some((key) => !['ownerId', 'position'].includes(key)))
+      if (
+        Object.keys(anchor).some((key) => !['ownerId', 'position', 'yOffset'].includes(key)) ||
+        ('yOffset' in anchor &&
+          (block.type === 'table' ||
+            !Number.isFinite(anchor.yOffset) ||
+            Math.abs(anchor.yOffset) > 14400))
+      )
         throw Error('Invalid anchored object settings.');
       checkBinding(doc, block, owner, anchor.position);
       seen.add(id);

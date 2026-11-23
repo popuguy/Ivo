@@ -47,8 +47,9 @@ app
       owned(event);
       return selectWithMouse(window.webContents, gesture);
     });
-    ipcMain.handle('ivo-text-core-drag', async (event, from, to) => {
+    ipcMain.handle('ivo-text-core-drag', async (event, from, to, modifier) => {
       owned(event);
+      const modifiers = ['shift', 'alt'].includes(modifier) ? [modifier] : [];
       for (const p of [from, to])
         if (!Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))
           throw Error('Invalid test coordinates');
@@ -58,6 +59,7 @@ app
         y: Math.round(from[1]),
         button: 'left',
         clickCount: 1,
+        modifiers,
       });
       for (let step = 1; step <= 20; step++) {
         await new Promise((r) => setTimeout(r, 8));
@@ -66,7 +68,7 @@ app
           x: Math.round(from[0] + ((to[0] - from[0]) * step) / 20),
           y: Math.round(from[1] + ((to[1] - from[1]) * step) / 20),
           button: 'left',
-          modifiers: ['leftButtonDown'],
+          modifiers: [...modifiers, 'leftButtonDown'],
         });
       }
       window.webContents.sendInputEvent({
@@ -75,6 +77,7 @@ app
         y: Math.round(to[1]),
         button: 'left',
         clickCount: 1,
+        modifiers,
       });
     });
     ipcMain.handle('ivo-text-core-key', (event, key, modifiers) => {

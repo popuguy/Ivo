@@ -73,6 +73,9 @@ export async function anchoredPublicationMarkup(doc, packageImage, escape) {
           item.w +
           '" height="' +
           item.h +
+          (item.extensions.ivoAnchor.yOffset
+            ? '" style="vertical-align:' + item.extensions.ivoAnchor.yOffset + 'px'
+            : '') +
           '" viewBox="0 0 ' +
           item.w +
           ' ' +
