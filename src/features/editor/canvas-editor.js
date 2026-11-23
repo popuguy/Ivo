@@ -1,5 +1,9 @@
 import { anchoredObjectIds } from '../../domain/documents/anchored-objects.js';
-import { placeAnchoredArtwork } from '../../rendering/anchored-artwork.js';
+import {
+  anchoredPlacement,
+  moveFrameArtwork,
+  placeAnchoredArtwork,
+} from '../../rendering/anchored-artwork.js';
 import { anchoredObjectDialog } from './ui/anchored-object-dialog.js';
 import { containsFootnote, footnoteCommands } from '../../domain/documents/footnotes.js';
 import {
@@ -596,6 +600,27 @@ export function mountCanvasEditor(host, options) {
       p = pagePosition(item.pageId);
     return { ...rect, x: rect.x + p.x, y: rect.y + p.y };
   }
+  function snapObjects(excluded, targetPage, origin, parentId) {
+    const results = [];
+    for (const item of doc().blocks) {
+      if (excluded.has(item.id) || (targetPage ? item.id === parentId : item.parentId)) continue;
+      const placement = item.extensions?.ivoAnchor && anchoredPlacement(world, item.id);
+      if (item.extensions?.ivoAnchor && (!placement || excluded.has(placement.frameId))) continue;
+      const pageId = placement?.pageId || item.pageId;
+      if (targetPage && pageId !== targetPage) continue;
+      const offset = origin || pagePosition(pageId);
+      const rect = placement
+        ? {
+            x: parseFloat(placement.element.style.left),
+            y: parseFloat(placement.element.style.top),
+            w: item.w,
+            h: item.h,
+          }
+        : worldRect(doc(), item);
+      results.push({ id: item.id, ...rect, x: rect.x + offset.x, y: rect.y + offset.y });
+    }
+    return results;
+  }
   function pointer(event) {
     const rect = viewport.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
@@ -981,6 +1006,7 @@ export function mountCanvasEditor(host, options) {
       applyFrameTypography(text, effectiveTextStyle(doc(), frameTextSettings(doc(), item)));
       applyTextLayout(text, item);
     }
+    moveFrameArtwork(world, doc(), item);
     for (const child of childrenOf(doc(), item.id)) updateObject(child);
   }
   function renderSelection(force = false) {
@@ -997,19 +1023,16 @@ export function mountCanvasEditor(host, options) {
       if (items.length && options.editing) {
         let rect = selectionBounds(doc(), state.selection);
         if (items.length === 1 && item?.extensions?.ivoAnchor) {
-          const element = world.querySelector(
-            '[data-anchored-artwork][data-object="' + CSS.escape(item.id) + '"]',
-          );
-          const page =
-            element &&
-            positions().find((p) => p.id === element.closest('[data-page]')?.dataset.page);
-          if (page)
+          const placement = anchoredPlacement(world, item.id);
+          if (placement) {
+            const page = pagePosition(placement.pageId);
             rect = {
-              x: page.x + parseFloat(element.style.left),
-              y: page.y + parseFloat(element.style.top),
+              x: page.x + parseFloat(placement.element.style.left),
+              y: page.y + parseFloat(placement.element.style.top),
               w: item.w,
               h: item.h,
             };
+          }
         }
         const frame = document.createElement('div');
         selectionFrame = frame;
@@ -1032,7 +1055,10 @@ export function mountCanvasEditor(host, options) {
             handle.style.top = point.y * 100 + '%';
             frame.append(handle);
           }
-        } else if (!activeTextId)
+        } else if (
+          !activeTextId &&
+          !(items.length === 1 && item?.type === 'table' && item.extensions?.ivoAnchor)
+        )
           for (const [direction, x, y] of handles) {
             const handle = document.createElement('button');
             handle.className = 'canvas-resize ' + direction;
@@ -2771,6 +2797,17 @@ export function mountCanvasEditor(host, options) {
     let hit = event.target.closest('[data-object]')?.dataset.object;
     if (hit && !objectAvailable(doc(), sceneObject(doc(), hit))) hit = null;
     lastHit = hit;
+    if (
+      hit &&
+      ['select', 'direct'].includes(state.tool) &&
+      event.target.closest('.object-table[data-anchored-artwork]')
+    ) {
+      // A cell occupies space in its current text frame, even when the table
+      // was originally inserted on a different page of the thread.
+      const frameId = anchoredPlacement(world, hit)?.frameId;
+      if (!frameId || !objectAvailable(doc(), sceneObject(doc(), frameId))) return;
+      hit = frameId;
+    }
     if (hit && state.tool === 'select' && !state.inside) {
       let item = sceneObject(doc(), hit);
       while (item?.parentId) {
@@ -2976,14 +3013,9 @@ export function mountCanvasEditor(host, options) {
             ...descendantsOf(baseline, item.id).map((child) => child.id),
           ]),
         );
-      const targets = alignmentRectTargets(
-        doc()
-          .blocks.filter((item) => !item.parentId && !excluded.has(item.id))
-          .map((item) => ({ id: item.id, ...sceneRect(doc(), item) })),
-        page().width,
-        page().height,
-        { artboardEdges: false },
-      );
+      const targets = alignmentRectTargets(snapObjects(excluded), page().width, page().height, {
+        artboardEdges: false,
+      });
       const result = transformBlock(
         g.original,
         { x: dx, y: dy },
@@ -3028,12 +3060,7 @@ export function mountCanvasEditor(host, options) {
               }) || sourcePage
             : sourcePage,
         origin = { x: p.x - sourcePage.x, y: p.y - sourcePage.y },
-        rectangles = doc()
-          .blocks.filter((v) => v.pageId === p.id && !ids.has(v.id) && v.id !== item.parentId)
-          .map((v) => {
-            const rect = worldRect(doc(), v);
-            return { id: v.id, ...rect, x: rect.x + origin.x, y: rect.y + origin.y };
-          });
+        rectangles = snapObjects(ids, p.id, origin, item.parentId);
       const result = transformBlock(
         g.original,
         { x: dx, y: dy },
@@ -4799,11 +4826,15 @@ export function mountCanvasEditor(host, options) {
       return;
     }
     if (!options.editing) return;
-    if (
-      ['text', 'direct', 'select'].includes(state.tool) &&
-      tables.edit(event.target.closest('[data-table-row]'))
-    )
-      return;
+    if (['text', 'direct', 'select'].includes(state.tool)) {
+      // Pointer capture can deliver the completed double-click to the viewport.
+      const target =
+        event.target === viewport
+          ? document.elementFromPoint(event.clientX, event.clientY)
+          : event.target;
+      if (target && world.contains(target) && tables.edit(target.closest('[data-table-row]')))
+        return;
+    }
     if (event.target.closest('[data-type-circle]')) {
       convertText();
       return;

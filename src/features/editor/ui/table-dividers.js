@@ -51,6 +51,8 @@ export function installTableDividers({
       geometry = { ...block, table },
       old = columnPoints(geometry)[i];
     const objectNode = frame.parentElement,
+      placedX = parseFloat(objectNode.style.left),
+      placedY = parseFloat(objectNode.style.top),
       cols = frame.querySelectorAll('col'),
       grips = frame.querySelectorAll('[data-table-divider]');
     const session = new AbortController(),
@@ -59,8 +61,8 @@ export function installTableDividers({
     function preview(next) {
       Object.assign(objectNode.style, {
         width: next.w + 'px',
-        left: next.x + 'px',
-        top: next.y + 'px',
+        left: placedX + (next.x - geometry.x) + 'px',
+        top: placedY + (next.y - geometry.y) + 'px',
       });
       const total = next.widths.reduce((a, b) => a + b, 0);
       let x = 0;
